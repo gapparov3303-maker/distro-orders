@@ -165,13 +165,14 @@ function sanitizeProd(d, old) {
 }
 
 /* ---------- остатки ---------- */
-/* Каталог для покупателей: у товаров, которых мало или нет, добавляется поле av (сколько можно заказать). */
+/* Каталог для покупателей: у товаров с учётом добавляется av (сколько можно заказать, не больше 500) и lw (товара мало). */
 function publicProd(prod, stk) {
   return {
     cats: prod.cats,
     items: prod.items.map(it => {
-      const a = stk ? stkPublic(stk[it.id]) : undefined;
-      return a === undefined ? it : Object.assign({}, it, { av: a });
+      const v = stk ? stkPublic(stk[it.id], MAX_QTY) : undefined;
+      if (!v) return it;
+      return Object.assign({}, it, v.lw ? { av: v.av, lw: 1 } : { av: v.av });
     })
   };
 }

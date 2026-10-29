@@ -43,12 +43,12 @@ const weightLabel=p=>Number(p&&p.amount)>0?amountStr(p.amount)+' '+unitName(p.un
 const prodDesc=p=>LANG==='uz'&&p.descUz?p.descUz:(p.desc||'');
 
 /* Остаток товара s = {q: на складе, r: отложено под заказы, low: порог «мало»}; нет записи — учёт не ведётся.
-   Покупателям число показываем только когда товара мало или нет совсем (stkPublic); в остальных случаях они видят просто «В наличии». */
+   Покупателям: av — сколько можно заказать (не больше cap, чтобы не раскрывать большие остатки), lw — товара мало, и число показываем в подписи «Мало (осталось N)». */
 const stkAvail=s=>s?Math.max(0,(Number(s.q)||0)-(Number(s.r)||0)):null;
-function stkPublic(s){
+function stkPublic(s,cap){
   if(!s)return undefined;
-  const a=stkAvail(s);
-  return (a===0||(Number(s.low)>0&&a<=Number(s.low)))?a:undefined;
+  const a=stkAvail(s),lw=a>0&&Number(s.low)>0&&a<=Number(s.low);
+  return {av:lw||!(cap>0)?a:Math.min(a,cap),lw};
 }
 
 function mergeCfg(d){

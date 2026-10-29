@@ -997,23 +997,31 @@ await t('остатки: приход, исправление, порог, вы�
   assert.equal(jr2[0].q, 205);
 });
 
-await t('остатки: покупатель видит число только когда мало или нет; точные остатки и резерв ему не отдаются', async () => {
+await t('остатки: покупатель всегда видит, сколько можно заказать (av), «мало» (lw) — отдельная пометка; склад, резерв и порог не раскрываются', async () => {
   await stockWorld();
   await setSt('p2', 40, 10);
   const clean = async () => {
     const txt = await (await call('GET', '/api/config')).text();
-    assert.ok(!txt.includes('"stk"') && !txt.includes('"q"') && !txt.includes('"r"') && !txt.includes('"low"'), 'в каталог попали внутренние данные остатков');
+    assert.ok(!txt.includes('"stk"') && !txt.includes('"q"') && !txt.includes('"r"') && !txt.includes('"low"') && !txt.includes('"rs"'), 'в каталог попали внутренние данные остатков');
     const b = await jsonOf(await call('GET', '/api/bootstrap', { init: iA() }));
     assert.equal(JSON.stringify(b.prod), JSON.stringify((await jsonOf(await call('GET', '/api/config'))).prod));
-    return (await pubItem('p2')).av;
+    return pubItem('p2');
   };
-  assert.equal(await clean(), undefined);                         // 40 — много: просто «В наличии»
+  let it = await clean();
+  assert.equal(it.av, 40);                                        // много: «В наличии», а в корзине упирается в 40
+  assert.equal(it.lw, undefined);
   assert.equal((await place(newUser(), [{ id: 'p2', qty: 29 }])).status, 200);   // свободно 11 — ещё выше порога 10
-  assert.equal(await clean(), undefined);
+  it = await clean();
+  assert.equal(it.av, 11);
+  assert.equal(it.lw, undefined);
   assert.equal((await place(newUser(), [{ id: 'p2', qty: 2 }])).status, 200);    // свободно 9 — «Мало (осталось 9)»
-  assert.equal(await clean(), 9);
+  it = await clean();
+  assert.equal(it.av, 9);
+  assert.equal(it.lw, 1);
   assert.equal((await place(newUser(), [{ id: 'p2', qty: 9 }])).status, 200);
-  assert.equal(await clean(), 0);                                 // свободно 0 — «Нет в наличии»
+  it = await clean();
+  assert.equal(it.av, 0);                                         // свободно 0 — «Нет в наличии»
+  assert.equal(it.lw, undefined);
   const r = await place(newUser(), [{ id: 'p2', qty: 1 }]);
   const d = await jsonOf(r);
   assert.equal(r.status, 409);
@@ -1022,15 +1030,41 @@ await t('остатки: покупатель видит число только
   assert.equal(d.prod.items.find(x => x.id === 'p2').av, 0, 'ответ об ошибке несёт свежий каталог');
   // приход возвращает товар в продажу
   await stockOp({ id: 'p2', op: 'in', n: 100 });
-  assert.equal(await clean(), undefined);
+  it = await clean();
+  assert.equal(it.av, 100);
+  assert.equal(it.lw, undefined);
   assert.equal((await place(newUser(), [{ id: 'p2', qty: 1 }])).status, 200);
-  // порог 0: число не показываем, пока не закончится совсем
+  assert.equal((await pubItem('p2')).av, 99);
+  // порог 0: «мало» не бывает, число совпадает с остатком до самого нуля
   await setSt('p4', 50, 0);
-  assert.equal((await pubItem('p4')).av, undefined);
+  assert.equal((await pubItem('p4')).av, 50);
+  assert.equal((await pubItem('p4')).lw, undefined);
   assert.equal((await place(newUser(), [{ id: 'p4', qty: 49 }])).status, 200);
-  assert.equal((await pubItem('p4')).av, undefined);
+  assert.equal((await pubItem('p4')).av, 1);
+  assert.equal((await pubItem('p4')).lw, undefined);
   assert.equal((await place(newUser(), [{ id: 'p4', qty: 1 }])).status, 200);
   assert.equal((await pubItem('p4')).av, 0);
+  // товар без учёта: ни av, ни lw
+  const free = await pubItem('p1');
+  assert.equal(free.av, undefined);
+  assert.equal(free.lw, undefined);
+});
+
+await t('остатки: большой склад клиенту не раскрывается — av не больше 500, а в заказ всё равно нельзя взять больше остатка', async () => {
+  await stockWorld();
+  await setSt('p2', 12345, 20);
+  let it = await pubItem('p2');
+  assert.equal(it.av, 500);
+  assert.equal(it.lw, undefined);
+  assert.ok(!JSON.stringify(await getProd()).includes('12345'));
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 500 }])).status, 200);
+  assert.equal((await pubItem('p2')).av, 500);                     // свободно 11845, но выше 500 в заказ всё равно не берут
+  // порог выше предела: число в «Мало (осталось N)» точное
+  await stockOp({ id: 'p2', op: 'set', n: 600 });
+  await stockOp({ id: 'p2', op: 'low', n: 550 });
+  it = await pubItem('p2');
+  assert.equal(it.av, 100);                                         // 600 на складе − 500 в резерве
+  assert.equal(it.lw, 1);
 });
 
 await t('остатки: заказ откладывает товар — другим доступно только свободное; заказ принимается целиком или никак', async () => {
@@ -1205,13 +1239,14 @@ await t('остатки: каталог, сохранённый продавцо
   const prod = await getProd();
   assert.equal(prod.items.find(x => x.id === 'p2').av, 3);
   // приложение продавца отправляет каталог обратно вместе с av и придуманными полями
-  prod.items.forEach(x => { x.stock = 999; x.q = 999; x.r = 0; x.low = 1; x.rs = { p2: 1 }; if (x.id === 'p4') x.av = 0; });
+  prod.items.forEach(x => { x.stock = 999; x.q = 999; x.r = 0; x.low = 1; x.rs = { p2: 1 }; if (x.id === 'p4') { x.av = 0; x.lw = 1; } });
   prod.items.find(x => x.id === 'p2').price = 415000;
   const r = await putProd(prod);
   const saved = (await jsonOf(r)).prod;
   assert.equal(saved.items.find(x => x.id === 'p2').price, 415000);
   assert.equal(saved.items.find(x => x.id === 'p2').av, 3, 'ответ сохранения содержит актуальное «осталось»');
   assert.equal(saved.items.find(x => x.id === 'p4').av, undefined, 'av от клиента не принимается');
+  assert.equal(saved.items.find(x => x.id === 'p4').lw, undefined, 'lw от клиента не принимается');
   assert.ok(saved.items.every(x => x.stock === undefined && x.q === undefined && x.low === undefined && x.rs === undefined));
   assert.deepEqual((await getStock()).p2, { q: 10, r: 7, low: 4 });
   // товар p4 не заблокирован выдуманным av

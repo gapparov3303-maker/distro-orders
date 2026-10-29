@@ -338,9 +338,9 @@ function loadForm(){
   }catch(e){}
 }
 function saveForm(){try{localStorage.setItem('sh-form',JSON.stringify({name:S.form.name,phone:S.form.phone,address:S.form.address,mode:S.form.mode}))}catch(e){}}
-/* Товар нельзя заказать: продавец снял галочку «В наличии» или свободный остаток равен нулю. Поле av приходит с сервера, когда товара мало или нет. */
+/* Товар нельзя заказать: продавец снял галочку «В наличии» или свободный остаток равен нулю. Поле av приходит с сервера у товаров с учётом (сколько можно заказать, не больше 500), lw — товара мало. */
 const soldOut=p=>p.on===false||p.av===0;
-/* Сколько штук можно положить в корзину: до 500, а если товара мало — не больше, чем осталось. */
+/* Сколько штук можно положить в корзину: до 500, а у товаров с учётом — не больше свободного остатка. */
 const maxQty=p=>typeof p.av==='number'?Math.min(MAX_QTY,p.av):MAX_QTY;
 const capOf=id=>{const p=S.prod.items.find(x=>x.id===id);return p?maxQty(p):MAX_QTY};
 /* Убирает из корзины то, чего больше нет в каталоге или что закончилось, и уменьшает количество до остатка. Возвращает, сколько позиций изменено. */
@@ -426,7 +426,7 @@ function productCtl(p){
 }
 function productCard(p){
   const off=soldOut(p),d=prodDesc(p),w=weightLabel(p);
-  const status=off?'':(typeof p.av==='number'?'<div class="pst low">'+esc(lowTxt(p.av))+'</div>':'<div class="pst">'+L('В наличии','Mavjud')+'</div>');
+  const status=off?'':(p.lw&&typeof p.av==='number'?'<div class="pst low">'+esc(lowTxt(p.av))+'</div>':'<div class="pst">'+L('В наличии','Mavjud')+'</div>');
   return '<article class="pcard'+(off?' off':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg">'+pimg(p)+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':'')+'</div>'
     +'<div class="pbody"><div class="pname">'+esc(nm(p))+'</div>'+(w?'<div class="pw">'+esc(w)+'</div>':'')+status
     +(d?'<div class="pdesc" data-act="pdesc">'+esc(d)+'</div>':'')
@@ -479,7 +479,7 @@ function paintCartLines(){
   el.innerHTML=cartLines().map(l=>{
     const p=l.p,w=weightLabel(p);
     return '<div class="cline" id="cl-'+esc(p.id)+'"><div class="cth">'+pimg(p)+'</div><div class="cn"><b>'+esc(nm(p))+'</b><small>'+(w?esc(w)+' · ':'')+money(p.price)+'</small>'
-      +(typeof p.av==='number'?'<small class="lowtxt">'+esc(lowTxt(p.av))+'</small>':'')+'</div>'
+      +(p.lw&&typeof p.av==='number'?'<small class="lowtxt">'+esc(lowTxt(p.av))+'</small>':'')+'</div>'
       +'<div class="cr">'+qtyHTML(p.id,l.qty,true)+'<div class="cs">'+money(l.qty*(Number(p.price)||0))+'</div></div></div>';
   }).join('');
   const t=$('#ctotalrow');if(t)t.textContent=money(cartTotal());
@@ -778,7 +778,11 @@ function stState(p){
 }
 /* переносит остатки в каталог на экране, чтобы продавец видел витрину так же, как клиент */
 function applyStk(){
-  S.prod.items.forEach(p=>{const a=stkPublic(S.stk[p.id]);if(a===undefined)delete p.av;else p.av=a});
+  S.prod.items.forEach(p=>{
+    const v=stkPublic(S.stk[p.id],MAX_QTY);
+    delete p.av;delete p.lw;
+    if(v){p.av=v.av;if(v.lw)p.lw=1}
+  });
 }
 function statsHTML(){
   const c={none:0,ok:0,low:0,out:0};
