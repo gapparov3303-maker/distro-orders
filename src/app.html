@@ -382,7 +382,7 @@ function paintGrid(){
   const items=S.prod.items.filter(p=>(S.shopCat==='all'||p.cat===S.shopCat)&&(!q||((p.name||'')+' '+(p.uz||'')).toLowerCase().indexOf(q)>=0));
   if(!items.length){g.innerHTML='<div class="empty"><b>'+L('Ничего не найдено','Hech narsa topilmadi')+'</b>'+L('Измените запрос или выберите другую категорию.','Soʻrovni oʻzgartiring yoki boshqa kategoriyani tanlang.')+'</div>';return}
   const cats=shopCats();
-  if(S.shopCat==='all'&&!q&&cats.length>1){
+  if(S.shopCat==='all'&&!q&&cats.length>=1){
     const rest=items.filter(p=>!cats.some(c=>c.id===p.cat));
     g.innerHTML=cats.map(c=>{const li=items.filter(p=>p.cat===c.id);return li.length?'<h2 class="chead">'+esc(nm(c))+'</h2><div class="pgrid">'+li.map(productCard).join('')+'</div>':''}).join('')
       +(rest.length?'<div class="pgrid" style="margin-top:20px">'+rest.map(productCard).join('')+'</div>':'');
