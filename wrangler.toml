@@ -1,0 +1,14 @@
+name = "distro-orders"
+main = "dist/worker.js"
+compatibility_date = "2025-09-01"
+
+# Хранилище заказов и каталога: один Durable Object на SQLite (входит в бесплатный тариф)
+[[durable_objects.bindings]]
+name = "SHOP"
+class_name = "Shop"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Shop"]
+
+# Секреты BOT_TOKEN и ADMIN_CODE здесь НЕ пишем. Их задают командами wrangler secret put.
