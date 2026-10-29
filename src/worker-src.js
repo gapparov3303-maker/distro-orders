@@ -16,6 +16,8 @@ const MAX_ITEMS = 300;        // товаров в каталоге
 const MAX_CART_LINES = 30;    // разных товаров в одном заказе
 const MAX_QTY = 500;          // штук одного товара в заказе
 const PROD_BODY_MAX = 400000; // размер каталога, который принимает сервер (символов)
+const MAX_STOCK = 1000000;    // предел для остатка и порога
+const JR_CAP = 200;           // сколько последних движений остатков хранить в журнале
 const TEXT_MAX = 4000;        // сообщение Telegram до 4096 знаков, берём с запасом
 const INIT_MAX_AGE = 2 * 24 * 3600; // initData старше двух суток не принимаем
 const NEXT = { new: ['accepted', 'cancelled'], accepted: ['ready', 'cancelled'], ready: ['done', 'cancelled'] };
@@ -162,6 +164,25 @@ function sanitizeProd(d, old) {
   return { cats, items };
 }
 
+/* ---------- остатки ---------- */
+/* Каталог для покупателей: у товаров, которых мало или нет, добавляется поле av (сколько можно заказать). */
+function publicProd(prod, stk) {
+  return {
+    cats: prod.cats,
+    items: prod.items.map(it => {
+      const a = stk ? stkPublic(stk[it.id]) : undefined;
+      return a === undefined ? it : Object.assign({}, it, { av: a });
+    })
+  };
+}
+/* Название для журнала и сообщений: «Рис, 25 кг». */
+function ruTitle(it) {
+  setLang('ru');
+  const w = weightLabel(it);
+  return String(it.name || '') + (w ? ', ' + w : '');
+}
+const intIn = (v, lo, hi) => (typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi) ? v : null;
+
 /* ---------- проверка заказа и пересчёт цены на сервере ---------- */
 /* Имя, телефон, способ получения, адрес, комментарий и время. */
 function validateForm(f, cfg) {
@@ -186,7 +207,7 @@ function validateForm(f, cfg) {
 }
 
 /* Заказ: цены и названия берём только из каталога на сервере. */
-function validateOrder(b, cfg, prod) {
+function validateOrder(b, cfg, prod, stk) {
   if (!b || typeof b !== 'object' || !Array.isArray(b.cart) || !b.form || typeof b.form !== 'object') return { err: 'bad_request' };
   if (b.cart.length < 1 || b.cart.length > MAX_CART_LINES) return { err: 'bad_request' };
   const items = [], seen = new Set();
@@ -202,13 +223,20 @@ function validateOrder(b, cfg, prod) {
     total += it.price * qty;
   }
   if (missing) return { err: 'unavailable' };
+  // остатки: заказать можно не больше, чем свободно (на складе минус уже отложенное под другие заказы)
+  const short = [];
+  if (stk) items.forEach(it => {
+    const s = stk[it.id];
+    if (s && it.qty > stkAvail(s)) short.push({ id: it.id, avail: stkAvail(s) });
+  });
+  if (short.length) return { err: 'stock', short };
   const fm = validateForm(b.form, cfg);
   if (fm.err) return fm;
   return { items, total, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, pickupAt: fm.pickupAt };
 }
 
-const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; return x; };
-const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; return x; };
+const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; return x; };
+const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; delete x.rs; return x; };
 
 /* ---------- тексты для Telegram ---------- */
 const STATUS_ICON = { new: '🆕', accepted: '🛠', ready: '✅', done: '📦', cancelled: '❌' };
@@ -326,6 +354,30 @@ export class Shop {
   }
   async getCfg() { return mergeCfg(await this.st.get('cfg')); }
   async getProd() { return normProd(await this.st.get('prod')); }
+  async getStk() { const s = await this.st.get('stk'); return s && typeof s === 'object' ? s : {}; }
+  async pubProd() { return publicProd(await this.getProd(), await this.getStk()); }
+  /* Новые строки журнала + прежние (последние JR_CAP). Возвращает массив для записи. */
+  async jrWith(rows) { return rows.concat((await this.st.get('jr')) || []).slice(0, JR_CAP); }
+  /* Сколько штук товара сейчас отложено под активные заказы (нужно, когда учёт товара включают заново). */
+  async reservedFor(id) {
+    let r = 0;
+    for (const o of await this.getOrders((await this.st.get('act')) || [])) if (o.rs && o.rs[id]) r += o.rs[id];
+    return r;
+  }
+  /* Предупреждение продавцам: товар закончился или стало меньше порога. rows: {title,before,after,low,q,r}. */
+  async stockAlert(rows) {
+    setLang('ru');
+    const lines = [];
+    for (const x of rows) {
+      if (!(x.after < x.before)) continue;
+      if (x.after === 0) lines.push('🚫 ' + x.title + ': свободного остатка нет (на складе ' + x.q + ', в заказах ' + x.r + ').');
+      else if (x.low > 0 && x.after <= x.low && x.before > x.low) lines.push('⚠️ ' + x.title + ': осталось ' + x.after + ' (порог ' + x.low + ').');
+    }
+    if (!lines.length) return;
+    let text = 'Остатки на складе:\n' + lines.join('\n');
+    if (text.length > TEXT_MAX) text = text.slice(0, TEXT_MAX - 1) + '…';
+    for (const aid of (await this.st.get('admins')) || []) await this.tg('sendMessage', { chat_id: aid, text });
+  }
   async isAdmin(uid) { return ((await this.st.get('admins')) || []).includes(uid); }
 
   /* --- Telegram --- */
@@ -374,7 +426,7 @@ export class Shop {
       if (path === '/webhook' && method === 'POST') return await this.webhook(request);
       if (path === '/setup') return await this.setup(request);
       if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5));
-      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.getProd() });
+      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd() });
       if (path.startsWith('/api/')) return await this.api(request, path, method);
       return json({ error: 'not_found' }, 404);
     } catch (e) {
@@ -397,7 +449,7 @@ export class Shop {
     const admin = await this.isAdmin(uid);
 
     if (path === '/api/bootstrap' && method === 'GET') {
-      return json({ cfg: await this.getCfg(), prod: await this.getProd(), me: { id: uid, name: u.first_name || '', admin }, orders: await this.myOrders(uid) });
+      return json({ cfg: await this.getCfg(), prod: await this.pubProd(), me: { id: uid, name: u.first_name || '', admin }, orders: await this.myOrders(uid) });
     }
     if (path === '/api/my-orders' && method === 'GET') return json({ orders: await this.myOrders(uid) });
 
@@ -440,6 +492,13 @@ export class Shop {
         if (r.err || !r.body) return json({ error: 'bad_request' }, r.err || 400);
         return await this.saveProd(r.body.prod);
       }
+      if (path === '/api/admin/stock' && method === 'GET') return json({ stk: await this.getStk() });
+      if (path === '/api/admin/journal' && method === 'GET') return json({ jr: (await this.st.get('jr')) || [] });
+      if (path === '/api/admin/stock' && method === 'POST') {
+        const r = await this.readBody(request, 2000);
+        if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
+        return await this.stockOp(u, r.body);
+      }
       if (path.startsWith('/api/admin/photo/') && (method === 'PUT' || method === 'DELETE')) {
         const id = path.slice('/api/admin/photo/'.length);
         if (!validId(id)) return json({ error: 'not_found' }, 404);
@@ -465,13 +524,14 @@ export class Shop {
   async placeOrder(u, body) {
     const cfg = await this.getCfg();
     const prod = await this.getProd();
-    const v = validateOrder(body, cfg, prod);
+    const stk = await this.getStk();
+    const v = validateOrder(body, cfg, prod, stk);
     if (v.err) {
-      const fresh = v.err === 'unavailable' || v.err === 'no_delivery';
-      return json({ error: v.err, cfg: fresh ? cfg : undefined, prod: fresh ? prod : undefined }, fresh ? 409 : 400);
+      const fresh = v.err === 'unavailable' || v.err === 'no_delivery' || v.err === 'stock';
+      return json({ error: v.err, short: v.short, cfg: fresh ? cfg : undefined, prod: fresh ? publicProd(prod, stk) : undefined }, fresh ? 409 : 400);
     }
     if (body.expectTotal !== undefined && Number(body.expectTotal) !== v.total) {
-      return json({ error: 'price_changed', cfg, prod }, 409);
+      return json({ error: 'price_changed', cfg, prod: publicProd(prod, stk) }, 409);
     }
     const uid = u.id;
     const ids = (await this.st.get('m:' + uid)) || [];
@@ -490,7 +550,19 @@ export class Shop {
       msgs: []
     };
     ids.unshift(id); act.unshift(id);
-    await this.st.put({ ['o:' + id]: order, ['m:' + uid]: ids.slice(0, 40), act });
+    // откладываем товар под заказ: пока заказ не выдан и не отменён, эти штуки другим покупателям недоступны
+    const upd = { ['o:' + id]: order, ['m:' + uid]: ids.slice(0, 40), act };
+    const low = [];
+    v.items.forEach(it => {
+      const s = stk[it.id];
+      if (!s) return;
+      const before = stkAvail(s);
+      s.r += it.qty;
+      (order.rs = order.rs || {})[it.id] = it.qty;
+      low.push({ title: ruTitle(it), before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
+    });
+    if (order.rs) upd.stk = stk;
+    await this.st.put(upd);
 
     // уведомления: ошибки Telegram не должны ломать приём заказа
     const sent = [];
@@ -507,6 +579,7 @@ export class Shop {
       }
     }
     await this.tg('sendMessage', { chat_id: uid, text: customerText(order, 'placed', cfg.shop), reply_markup: openBtn(this.origin, order.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы') });
+    await this.stockAlert(low);
     return json({ order: publicOrder(order) });
   }
 
@@ -516,9 +589,48 @@ export class Shop {
     const prod = sanitizeProd(input, old);
     const keep = new Set(prod.items.map(i => i.id));
     const gone = old.items.map(i => i.id).filter(id => !keep.has(id));
-    await this.st.put('prod', prod);
+    const stk = await this.getStk();
+    const upd = { prod };
+    if (gone.some(id => stk[id])) { gone.forEach(id => { delete stk[id]; }); upd.stk = stk; }   // остаток удалённого товара не копим
+    await this.st.put(upd);
     if (gone.length) await this.st.delete(gone.map(id => 'p:' + id));   // фото удалённых товаров не копим
-    return json({ prod });
+    return json({ prod: publicProd(prod, stk) });
+  }
+
+  /* Приход, исправление остатка, порог «мало», выключение учёта. Всё считает сервер, приложение шлёт только действие. */
+  async stockOp(u, b) {
+    if (!validId(b.id)) return json({ error: 'bad_request' }, 400);
+    const prod = await this.getProd();
+    const it = prod.items.find(x => x.id === b.id);
+    if (!it) return json({ error: 'not_found' }, 404);
+    const stk = await this.getStk();
+    const s0 = stk[it.id];
+    const row = (kind, d, q) => ({ t: new Date().toISOString(), id: it.id, name: ruTitle(it), kind, d, q, by: cleanStr(u.first_name || '', 30) });
+    const rows = [], low = [];
+    if (b.op === 'off') {
+      if (s0) { delete stk[it.id]; rows.push(row('off', 0, s0.q)); }
+    } else if (b.op === 'low') {
+      const n = intIn(b.n, 0, MAX_STOCK);
+      if (n === null) return json({ error: 'bad_request' }, 400);
+      if (!s0) return json({ error: 'not_tracked' }, 409);
+      s0.low = n;
+    } else if (b.op === 'in' || b.op === 'set') {
+      const n = intIn(b.n, b.op === 'in' ? 1 : 0, MAX_STOCK);
+      const lw = b.low === undefined || b.low === null ? null : intIn(b.low, 0, MAX_STOCK);
+      if (n === null || (b.low !== undefined && b.low !== null && lw === null)) return json({ error: 'bad_request' }, 400);
+      let s = s0;
+      if (!s) { s = stk[it.id] = { q: 0, r: await this.reservedFor(it.id), low: 0 }; }
+      const before = stkAvail(s), q0 = s.q;
+      s.q = b.op === 'in' ? Math.min(MAX_STOCK, s.q + n) : n;
+      if (lw !== null) s.low = lw;
+      rows.push(row(!s0 ? 'start' : b.op === 'in' ? 'in' : 'fix', s.q - q0, s.q));
+      if (s0) low.push({ title: ruTitle(it), before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
+    } else return json({ error: 'bad_request' }, 400);
+    const upd = { stk };
+    if (rows.length) upd.jr = await this.jrWith(rows);
+    await this.st.put(upd);
+    await this.stockAlert(low);
+    return json({ stk });
   }
   async setPhoto(id, bytes) {
     const prod = await this.getProd();
@@ -571,6 +683,23 @@ export class Shop {
       stats = (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 };
       if (to === 'done') { stats.doneSum += Number(o.total) || 0; stats.doneCount += 1; }
       upd.stats = stats;
+      // отложенный товар: при отмене возвращается в свободный, при выдаче списывается со склада
+      if (o.rs) {
+        const stk = await this.getStk(), rows = [];
+        for (const pid of Object.keys(o.rs)) {
+          const s = stk[pid], qty = Number(o.rs[pid]) || 0;
+          if (!s) continue;
+          s.r = Math.max(0, s.r - qty);
+          if (to === 'done') {
+            const q0 = s.q, it = (o.items || []).find(x => x.id === pid) || { name: pid };
+            s.q = Math.max(0, s.q - qty);
+            rows.push({ t: o.statusAt, id: pid, name: ruTitle(it), kind: 'out', d: s.q - q0, q: s.q, ref: o.id });
+          }
+        }
+        delete o.rs;
+        upd.stk = stk;
+        if (rows.length) upd.jr = await this.jrWith(rows);
+      }
     }
     await this.st.put(upd);
     return { order: o, changed: true, stats: stats || undefined };

@@ -931,6 +931,299 @@ await t('пустое хранилище и неполные данные раб
   W = makeWorld();
 });
 
+/* ---------- остатки на складе ---------- */
+async function stockWorld() {
+  W = makeWorld();
+  await send({ update_id: 5, message: { message_id: 41, from: SELLER, chat: { id: SELLER.id, type: 'private' }, text: '/admin ' + CODE } });
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  tgLog = [];
+}
+const stockOp = (body, init) => call('POST', '/api/admin/stock', { init: init || iS(), body });
+const getStock = async () => (await jsonOf(await call('GET', '/api/admin/stock', { init: iS() }))).stk;
+const getJr = async () => (await jsonOf(await call('GET', '/api/admin/journal', { init: iS() }))).jr;
+const pubItem = async id => (await getProd()).items.find(x => x.id === id);
+const stockAlerts = () => tgAll('sendMessage', p => String(p.text).startsWith('Остатки на складе:'));
+const setSt = (id, n, low) => stockOp({ id, op: 'set', n, low });
+const adminOrdersOf = async () => (await jsonOf(await call('GET', '/api/admin/orders', { init: iS() }))).orders;
+const setStatus = (id, to) => call('POST', '/api/admin/status', { init: iS(), body: { id, to } });
+
+await t('остатки: приход, исправление, порог, выключение; клиенту закрыто; мусор отклоняется; журнал ведётся', async () => {
+  await stockWorld();
+  const A = newUser();
+  assert.equal((await stockOp({ id: 'p2', op: 'set', n: 5 }, A.init())).status, 403);
+  assert.equal((await call('GET', '/api/admin/stock', { init: A.init() })).status, 403);
+  assert.equal((await call('GET', '/api/admin/journal', { init: A.init() })).status, 403);
+  assert.equal((await call('POST', '/api/admin/stock', { body: { id: 'p2', op: 'set', n: 5 } })).status, 401);
+  assert.deepEqual(await getStock(), {});
+
+  let r = await setSt('p2', 40, 10);
+  assert.equal(r.status, 200);
+  assert.deepEqual((await jsonOf(r)).stk.p2, { q: 40, r: 0, low: 10 });
+  r = await stockOp({ id: 'p2', op: 'in', n: 5 });
+  assert.equal((await jsonOf(r)).stk.p2.q, 45);
+  assert.equal((await jsonOf(await setSt('p2', 44))).stk.p2.q, 44);
+  assert.equal((await jsonOf(await setSt('p2', 44))).stk.p2.low, 10, 'порог не должен сбрасываться, если его не прислали');
+  assert.equal((await jsonOf(await stockOp({ id: 'p2', op: 'low', n: 12 }))).stk.p2.low, 12);
+  r = await stockOp({ id: 'p1', op: 'low', n: 3 });
+  assert.equal(r.status, 409);
+  assert.equal((await jsonOf(r)).error, 'not_tracked');
+
+  const before = JSON.stringify(await getStock());
+  const bad = [
+    { id: 'p2', op: 'in', n: 0 }, { id: 'p2', op: 'in', n: -3 }, { id: 'p2', op: 'in', n: 1.5 }, { id: 'p2', op: 'in', n: '5' },
+    { id: 'p2', op: 'set', n: -1 }, { id: 'p2', op: 'set', n: 2000000 }, { id: 'p2', op: 'set', n: null }, { id: 'p2', op: 'set' },
+    { id: 'p2', op: 'set', n: 5, low: -1 }, { id: 'p2', op: 'set', n: 5, low: 'много' }, { id: 'p2', op: 'low', n: 1.2 },
+    { id: 'p2', op: 'wipe', n: 5 }, { id: 'p2', n: 5 }, { id: '../x', op: 'set', n: 5 }, { id: 5, op: 'set', n: 5 }
+  ];
+  for (const b of bad) assert.equal((await stockOp(b)).status, 400, JSON.stringify(b));
+  assert.equal((await stockOp({ id: 'p9', op: 'set', n: 5 })).status, 404);
+  assert.equal(JSON.stringify(await getStock()), before, 'неверные запросы не должны менять остаток');
+
+  const jr = await getJr();
+  assert.deepEqual(jr.map(x => [x.kind, x.d, x.q]), [['fix', 0, 44], ['fix', -1, 44], ['in', 5, 45], ['start', 40, 40]]);
+  assert.equal(jr[0].name, 'Рис, 25 кг');
+  assert.equal(jr[0].by, 'Jasur');
+  assert.equal(jr[0].id, 'p2');
+
+  r = await stockOp({ id: 'p2', op: 'off' });
+  assert.deepEqual((await jsonOf(r)).stk, {});
+  assert.equal((await getJr())[0].kind, 'off');
+  assert.equal((await stockOp({ id: 'p2', op: 'off' })).status, 200, 'повторное выключение безвредно');
+
+  // журнал хранит только последние записи
+  for (let i = 0; i < 205; i++) await stockOp({ id: 'p4', op: 'in', n: 1 });
+  const jr2 = await getJr();
+  assert.equal(jr2.length, 200);
+  assert.equal(jr2[0].q, 205);
+});
+
+await t('остатки: покупатель видит число только когда мало или нет; точные остатки и резерв ему не отдаются', async () => {
+  await stockWorld();
+  await setSt('p2', 40, 10);
+  const clean = async () => {
+    const txt = await (await call('GET', '/api/config')).text();
+    assert.ok(!txt.includes('"stk"') && !txt.includes('"q"') && !txt.includes('"r"') && !txt.includes('"low"'), 'в каталог попали внутренние данные остатков');
+    const b = await jsonOf(await call('GET', '/api/bootstrap', { init: iA() }));
+    assert.equal(JSON.stringify(b.prod), JSON.stringify((await jsonOf(await call('GET', '/api/config'))).prod));
+    return (await pubItem('p2')).av;
+  };
+  assert.equal(await clean(), undefined);                         // 40 — много: просто «В наличии»
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 29 }])).status, 200);   // свободно 11 — ещё выше порога 10
+  assert.equal(await clean(), undefined);
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 2 }])).status, 200);    // свободно 9 — «Мало (осталось 9)»
+  assert.equal(await clean(), 9);
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 9 }])).status, 200);
+  assert.equal(await clean(), 0);                                 // свободно 0 — «Нет в наличии»
+  const r = await place(newUser(), [{ id: 'p2', qty: 1 }]);
+  const d = await jsonOf(r);
+  assert.equal(r.status, 409);
+  assert.equal(d.error, 'stock');
+  assert.deepEqual(d.short, [{ id: 'p2', avail: 0 }]);
+  assert.equal(d.prod.items.find(x => x.id === 'p2').av, 0, 'ответ об ошибке несёт свежий каталог');
+  // приход возвращает товар в продажу
+  await stockOp({ id: 'p2', op: 'in', n: 100 });
+  assert.equal(await clean(), undefined);
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 1 }])).status, 200);
+  // порог 0: число не показываем, пока не закончится совсем
+  await setSt('p4', 50, 0);
+  assert.equal((await pubItem('p4')).av, undefined);
+  assert.equal((await place(newUser(), [{ id: 'p4', qty: 49 }])).status, 200);
+  assert.equal((await pubItem('p4')).av, undefined);
+  assert.equal((await place(newUser(), [{ id: 'p4', qty: 1 }])).status, 200);
+  assert.equal((await pubItem('p4')).av, 0);
+});
+
+await t('остатки: заказ откладывает товар — другим доступно только свободное; заказ принимается целиком или никак', async () => {
+  await stockWorld();
+  await setSt('p2', 10);
+  const c1 = newUser(), c2 = newUser(), c3 = newUser(), c4 = newUser();
+  let r = await place(c1, [{ id: 'p2', qty: 7 }]);
+  assert.equal(r.status, 200);
+  const o1 = (await jsonOf(r)).order;
+  assert.equal(o1.rs, undefined, 'служебная пометка о резерве не должна уходить клиенту');
+  assert.deepEqual((await getStock()).p2, { q: 10, r: 7, low: 0 });
+  // второй хочет 4, а свободно 3
+  r = await place(c2, [{ id: 'p2', qty: 4 }]);
+  assert.equal(r.status, 409);
+  assert.deepEqual((await jsonOf(r)).short, [{ id: 'p2', avail: 3 }]);
+  // заказ с несколькими товарами: нехватка по одному отклоняет всё, лишнего не откладывается и заказов не прибавляется
+  await setSt('p4', 20);
+  const nOrders = (await adminOrdersOf()).length;
+  r = await place(c2, [{ id: 'p4', qty: 5 }, { id: 'p2', qty: 4 }, { id: 'p1', qty: 2 }]);
+  assert.equal(r.status, 409);
+  assert.deepEqual((await jsonOf(r)).short, [{ id: 'p2', avail: 3 }]);
+  assert.equal((await adminOrdersOf()).length, nOrders);
+  assert.deepEqual((await getStock()).p4, { q: 20, r: 0, low: 0 });
+  // ровно столько, сколько свободно, — можно; смешанный заказ с товаром без учёта тоже
+  r = await place(c2, [{ id: 'p4', qty: 5 }, { id: 'p2', qty: 3 }, { id: 'p1', qty: 2 }]);
+  assert.equal(r.status, 200);
+  const st = await getStock();
+  assert.deepEqual([st.p2.q, st.p2.r, st.p4.r], [10, 10, 5]);
+  assert.equal(st.p1, undefined, 'товар без учёта не должен получить остаток');
+  // свободного нет
+  r = await place(c3, [{ id: 'p2', qty: 1 }]);
+  assert.equal(r.status, 409);
+  // старый баг-класс: сумма и количество проверяются раньше остатка и не ломаются
+  assert.equal((await place(c4, [{ id: 'p2', qty: 501 }])).status, 400);
+  assert.equal((await place(c4, [{ id: 'p2', qty: 0 }])).status, 400);
+  // у продавца и в «моих заказах» служебного поля нет
+  assert.ok((await adminOrdersOf()).every(o => o.rs === undefined));
+  const mine = await jsonOf(await call('GET', '/api/my-orders', { init: c1.init() }));
+  assert.ok(mine.orders.every(o => o.rs === undefined));
+  // всё свободное взять можно, а на единицу больше — нет
+  assert.equal((await place(c4, [{ id: 'p4', qty: 15 }])).status, 200);
+  assert.equal((await place(c4, [{ id: 'p4', qty: 1 }])).status, 409);
+});
+
+await t('остатки: отмена и выдача — отложенное возвращается или списывается ровно один раз', async () => {
+  await stockWorld();
+  await setSt('p2', 20);
+  const a = newUser(), b = newUser(), c = newUser(), d = newUser();
+  const oa = (await jsonOf(await place(a, [{ id: 'p2', qty: 5 }]))).order;
+  const ob_ = (await jsonOf(await place(b, [{ id: 'p2', qty: 4 }]))).order;
+  assert.deepEqual((await getStock()).p2, { q: 20, r: 9, low: 0 });
+  // клиент сам отменяет новый заказ — товар возвращается
+  assert.equal((await call('POST', '/api/cancel', { init: a.init(), body: { id: oa.id } })).status, 200);
+  assert.deepEqual((await getStock()).p2, { q: 20, r: 4, low: 0 });
+  assert.equal((await call('POST', '/api/cancel', { init: a.init(), body: { id: oa.id } })).status, 409);
+  assert.deepEqual((await getStock()).p2, { q: 20, r: 4, low: 0 }, 'повторная отмена не должна возвращать второй раз');
+  // заказ в работе и готов — остаток пока не списан, но отложен
+  assert.equal((await setStatus(ob_.id, 'accepted')).status, 200);
+  assert.equal((await setStatus(ob_.id, 'ready')).status, 200);
+  assert.deepEqual((await getStock()).p2, { q: 20, r: 4, low: 0 });
+  assert.equal((await jsonOf(await call('GET', '/api/admin/journal', { init: iS() }))).jr.filter(x => x.kind === 'out').length, 0);
+  // выдан — списывается со склада
+  assert.equal((await setStatus(ob_.id, 'done')).status, 200);
+  assert.deepEqual((await getStock()).p2, { q: 16, r: 0, low: 0 });
+  let out = (await getJr()).filter(x => x.kind === 'out');
+  assert.deepEqual(out.map(x => [x.d, x.q, x.ref, x.id]), [[-4, 16, ob_.id, 'p2']]);
+  assert.equal(out[0].name, 'Рис, 25 кг');
+  // повторное «выдан» и попытка отменить выданный заказ ничего не меняют
+  assert.equal((await setStatus(ob_.id, 'done')).status, 200);
+  assert.equal((await setStatus(ob_.id, 'cancelled')).status, 409);
+  assert.deepEqual((await getStock()).p2, { q: 16, r: 0, low: 0 });
+  assert.equal((await getJr()).filter(x => x.kind === 'out').length, 1);
+  // продавец отменяет заказ в работе — возвращается; повтор безвреден
+  const oc = (await jsonOf(await place(c, [{ id: 'p2', qty: 3 }]))).order;
+  await setStatus(oc.id, 'accepted');
+  assert.deepEqual((await getStock()).p2, { q: 16, r: 3, low: 0 });
+  await setStatus(oc.id, 'cancelled');
+  await setStatus(oc.id, 'cancelled');
+  assert.deepEqual((await getStock()).p2, { q: 16, r: 0, low: 0 });
+  // кнопки в Telegram работают так же
+  const od = (await jsonOf(await place(d, [{ id: 'p2', qty: 2 }]))).order;
+  await cb(SELLER, 'c:' + od.id);
+  await cb(SELLER, 's:' + od.id + ':cancelled');
+  await cb(SELLER, 's:' + od.id + ':cancelled');
+  assert.deepEqual((await getStock()).p2, { q: 16, r: 0, low: 0 });
+  const oe = (await jsonOf(await place(d, [{ id: 'p2', qty: 6 }]))).order;
+  for (const to of ['accepted', 'ready', 'done']) await cb(SELLER, 's:' + oe.id + ':' + to);
+  assert.deepEqual((await getStock()).p2, { q: 10, r: 0, low: 0 });
+  // выдача не уводит остаток в минус, даже если продавец его уже уменьшил вручную
+  const ox = (await jsonOf(await place(a, [{ id: 'p2', qty: 8 }]))).order;
+  await setSt('p2', 3);
+  for (const to of ['accepted', 'ready', 'done']) await setStatus(ox.id, to);
+  assert.deepEqual((await getStock()).p2, { q: 0, r: 0, low: 0 });
+  assert.equal((await getJr())[0].d, -3, 'в журнале записано, сколько реально списано');
+});
+
+await t('остатки: продавцу приходит предупреждение один раз при пересечении порога и когда товар закончился', async () => {
+  await stockWorld();
+  await setSt('p2', 30, 10);
+  const o = [];
+  const buy = async qty => { const r = await place(newUser(), [{ id: 'p2', qty }]); assert.equal(r.status, 200); o.push(qty); return stockAlerts().length; };
+  tgLog = [];
+  assert.equal(await buy(15), 0);                  // свободно 15 — выше порога
+  assert.equal(await buy(6), 1);                   // свободно 9 — ниже порога: предупреждение
+  const a1 = stockAlerts()[0];
+  assert.equal(a1.payload.chat_id, SELLER.id);
+  assert.ok(a1.payload.text.includes('Рис, 25 кг: осталось 9 (порог 10)'), a1.payload.text);
+  assert.equal(await buy(1), 1);                   // уже ниже порога — повторно не пишем
+  assert.equal(await buy(8), 2);                   // закончился
+  assert.ok(stockAlerts()[1].payload.text.includes('свободного остатка нет (на складе 30, в заказах 30)'));
+  // приход предупреждений не вызывает, а исправление «вниз» ниже порога — вызывает
+  await setSt('p4', 100, 10);
+  tgLog = [];
+  await stockOp({ id: 'p4', op: 'in', n: 5 });
+  assert.equal(stockAlerts().length, 0);
+  await setSt('p4', 8);
+  assert.equal(stockAlerts().length, 1);
+  assert.ok(stockAlerts()[0].payload.text.includes('Макароны, 400 г: осталось 8 (порог 10)'));
+  await setSt('p4', 7);
+  assert.equal(stockAlerts().length, 1, 'ниже порога уже было — не повторяем');
+  // у товара без порога предупреждаем только о нуле
+  await setSt('p1', 5, 0);
+  tgLog = [];
+  assert.equal((await place(newUser(), [{ id: 'p1', qty: 4 }])).status, 200);
+  assert.equal(stockAlerts().length, 0);
+  assert.equal((await place(newUser(), [{ id: 'p1', qty: 1 }])).status, 200);
+  assert.equal(stockAlerts().length, 1);
+  // отмена заказа возвращает товар без предупреждений; недоступность Telegram не мешает принять заказ
+  tgFail = true;
+  try { assert.equal((await place(newUser(), [{ id: 'p4', qty: 1 }])).status, 200); } finally { tgFail = false; }
+});
+
+await t('остатки: товар без учёта работает как раньше; учёт можно выключить и включить заново; удалённый товар не оставляет остатка', async () => {
+  await stockWorld();
+  // без учёта: 500 штук проходят, остатков нет
+  assert.equal((await place(newUser(), [{ id: 'p1', qty: 500 }])).status, 200);
+  assert.deepEqual(await getStock(), {});
+  // включили учёт, заказали, выключили, заказали ещё, включили заново: в резерве только то, что было отложено при включённом учёте
+  await setSt('p2', 100);
+  const c1 = newUser(), c2 = newUser();
+  const o1 = (await jsonOf(await place(c1, [{ id: 'p2', qty: 4 }]))).order;
+  await stockOp({ id: 'p2', op: 'off' });
+  assert.equal((await pubItem('p2')).av, undefined);
+  const o2 = (await jsonOf(await place(c2, [{ id: 'p2', qty: 50 }]))).order;   // учёта нет — можно
+  await setSt('p2', 20);
+  assert.deepEqual((await getStock()).p2, { q: 20, r: 4, low: 0 });
+  assert.equal((await call('POST', '/api/cancel', { init: c2.init(), body: { id: o2.id } })).status, 200);
+  assert.deepEqual((await getStock()).p2, { q: 20, r: 4, low: 0 }, 'заказ без резерва не должен менять остаток при отмене');
+  assert.equal((await call('POST', '/api/cancel', { init: c1.init(), body: { id: o1.id } })).status, 200);
+  assert.deepEqual((await getStock()).p2, { q: 20, r: 0, low: 0 });
+  // отмена заказа, пока учёт выключен, и повторное включение
+  const o3 = (await jsonOf(await place(c1, [{ id: 'p2', qty: 6 }]))).order;
+  await stockOp({ id: 'p2', op: 'off' });
+  assert.equal((await call('POST', '/api/cancel', { init: c1.init(), body: { id: o3.id } })).status, 200);
+  await setSt('p2', 20);
+  assert.deepEqual((await getStock()).p2, { q: 20, r: 0, low: 0 }, 'отменённый заказ не должен остаться в резерве');
+  // удалили товар из каталога — остаток исчезает, а при возврате товара с тем же номером он без учёта
+  const o4 = (await jsonOf(await place(c1, [{ id: 'p2', qty: 2 }]))).order;
+  const prod = await getProd();
+  prod.items = prod.items.filter(x => x.id !== 'p2');
+  const r = await putProd(prod);
+  assert.equal(r.status, 200);
+  assert.equal((await getStock()).p2, undefined);
+  assert.equal((await call('POST', '/api/cancel', { init: c1.init(), body: { id: o4.id } })).status, 200, 'отмена заказа с удалённым товаром не падает');
+  assert.deepEqual(await getStock(), {});
+});
+
+await t('остатки: каталог, сохранённый продавцом, не затирает остатки, а поля av/q/stock от клиента игнорируются', async () => {
+  await stockWorld();
+  await setSt('p2', 10, 4);
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 7 }])).status, 200);        // свободно 3, мало
+  const prod = await getProd();
+  assert.equal(prod.items.find(x => x.id === 'p2').av, 3);
+  // приложение продавца отправляет каталог обратно вместе с av и придуманными полями
+  prod.items.forEach(x => { x.stock = 999; x.q = 999; x.r = 0; x.low = 1; x.rs = { p2: 1 }; if (x.id === 'p4') x.av = 0; });
+  prod.items.find(x => x.id === 'p2').price = 415000;
+  const r = await putProd(prod);
+  const saved = (await jsonOf(r)).prod;
+  assert.equal(saved.items.find(x => x.id === 'p2').price, 415000);
+  assert.equal(saved.items.find(x => x.id === 'p2').av, 3, 'ответ сохранения содержит актуальное «осталось»');
+  assert.equal(saved.items.find(x => x.id === 'p4').av, undefined, 'av от клиента не принимается');
+  assert.ok(saved.items.every(x => x.stock === undefined && x.q === undefined && x.low === undefined && x.rs === undefined));
+  assert.deepEqual((await getStock()).p2, { q: 10, r: 7, low: 4 });
+  // товар p4 не заблокирован выдуманным av
+  assert.equal((await place(newUser(), [{ id: 'p4', qty: 5 }], { expectTotal: undefined })).status, 200);
+  // и цена изменилась: старая сумма просит подтверждения, а свежий каталог приходит с остатками
+  const r2 = await place(newUser(), [{ id: 'p2', qty: 1 }], { expectTotal: 410000 });
+  const d2 = await jsonOf(r2);
+  assert.equal(r2.status, 409);
+  assert.equal(d2.error, 'price_changed');
+  assert.equal(d2.prod.items.find(x => x.id === 'p2').av, 3);
+});
+
 await t('без секретов сервер не падает и говорит, что делать', async () => {
   W = makeWorld({ BOT_TOKEN: undefined });
   W.shop.env.BOT_TOKEN = undefined;

@@ -42,6 +42,15 @@ const amountStr=v=>String(Math.round((Number(v)||0)*1000)/1000).replace('.',',')
 const weightLabel=p=>Number(p&&p.amount)>0?amountStr(p.amount)+' '+unitName(p.unit):'';
 const prodDesc=p=>LANG==='uz'&&p.descUz?p.descUz:(p.desc||'');
 
+/* Остаток товара s = {q: на складе, r: отложено под заказы, low: порог «мало»}; нет записи — учёт не ведётся.
+   Покупателям число показываем только когда товара мало или нет совсем (stkPublic); в остальных случаях они видят просто «В наличии». */
+const stkAvail=s=>s?Math.max(0,(Number(s.q)||0)-(Number(s.r)||0)):null;
+function stkPublic(s){
+  if(!s)return undefined;
+  const a=stkAvail(s);
+  return (a===0||(Number(s.low)>0&&a<=Number(s.low)))?a:undefined;
+}
+
 function mergeCfg(d){
   const out=clone(DEFAULT);
   if(d&&typeof d==='object'&&d.shop&&typeof d.shop==='object')Object.keys(out.shop).forEach(k=>{if(d.shop[k]!==undefined&&d.shop[k]!==null)out.shop[k]=d.shop[k]});
