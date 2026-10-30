@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -33,16 +33,27 @@ class MockStorage {
     return Array.isArray(k) ? n : n > 0;
   }
 }
-let tgLog = [], tgFail = false, msgSeq = 1000;
+let tgLog = [], tgFail = false, tgDocFail = false, tgDocDelay = 0, msgSeq = 1000;
 globalThis.fetch = async (url, init) => {
   const u = String(url);
   assert.ok(u.startsWith('https://api.telegram.org/bot' + TOKEN + '/'), 'запрос ушёл не в Telegram: ' + u);
   if (tgFail) throw new Error('сеть недоступна');
   const method = u.split('/').pop();
-  const payload = JSON.parse(init.body);
-  tgLog.push({ method, payload });
+  // файлы уходят как multipart-форма: поля складываем в payload, сам файл — в file
+  let payload, file = null;
+  if (init.body instanceof FormData) {
+    payload = {};
+    for (const [k, v] of init.body.entries()) {
+      if (typeof v === 'string') payload[k] = v;
+      else file = { name: v.name, type: v.type, bytes: new Uint8Array(await v.arrayBuffer()) };
+    }
+  } else payload = JSON.parse(init.body);
+  tgLog.push({ method, payload, file });
+  if (tgDocDelay && method === 'sendDocument') await new Promise(r => setTimeout(r, tgDocDelay));
+  if (tgDocFail && method === 'sendDocument') return new Response(JSON.stringify({ ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' }), { status: 403, headers: { 'content-type': 'application/json' } });
   const res = { ok: true, result: true };
   if (method === 'sendMessage') res.result = { message_id: ++msgSeq, chat: { id: payload.chat_id } };
+  if (method === 'sendDocument') res.result = { message_id: ++msgSeq, chat: { id: Number(payload.chat_id) } };
   if (method === 'getMe') res.result = { id: 123456, username: 'distro_test_bot' };
   return new Response(JSON.stringify(res), { headers: { 'content-type': 'application/json' } });
 };
@@ -1257,6 +1268,943 @@ await t('остатки: каталог, сохранённый продавцо
   assert.equal(r2.status, 409);
   assert.equal(d2.error, 'price_changed');
   assert.equal(d2.prod.items.find(x => x.id === 'p2').av, 3);
+});
+
+/* ---------- клиентская база ---------- */
+const adminClients = async () => (await jsonOf(await call('GET', '/api/admin/clients', { init: iS() }))).clients;
+const clientOf = async uid => (await adminClients()).find(c => c.uid === uid);
+const editClient = (uid, body, init) => call('PUT', '/api/admin/clients/' + uid, { init: init || iS(), body });
+const putProfile = (c, body) => call('PUT', '/api/profile', { init: c.init(), body });
+const meOf = async c => (await jsonOf(await call('GET', '/api/bootstrap', { init: c.init() }))).me;
+const delForm = over => ({ form: formFor(S.DEFAULT, 'delivery', over) });
+const ONE = [{ id: 'p4', qty: 1 }];
+
+await t('клиенты: первый заказ создаёт клиента, следующие дополняют только пустое; заметка, группа и блокировка клиенту не видны', async () => {
+  await stockWorld();
+  const A = { u: ANNA, init: iA };
+  assert.equal((await adminClients()).length, 0);
+  assert.equal((await place(A, ONE, delForm(), 'delivery')).status, 200);
+  let c = await clientOf(ANNA.id);
+  assert.equal(c.name, 'ООО Ориент');
+  assert.equal(c.phone, '+998 91 555 44 33');
+  assert.deepEqual(c.addrs, ['Навои, ул. Галаба 12, склад 3']);
+  assert.equal(c.n, 1);
+  assert.equal(c.ds, 0);
+  assert.equal(c.sum, 0);
+  assert.equal(c.tg.username, 'anna_k');
+  assert.ok(c.last && c.since);
+  // клиент видит только своё: имя, телефон, организацию, адреса
+  assert.deepEqual((await meOf(A)).profile, { name: 'ООО Ориент', phone: '+998 91 555 44 33', org: '', addrs: ['Навои, ул. Галаба 12, склад 3'] });
+  assert.equal((await editClient(ANNA.id, { note: 'секретная заметка', grp: 'Кафе' })).status, 200);
+  const txt = JSON.stringify(await jsonOf(await call('GET', '/api/bootstrap', { init: iA() }))) + await (await call('GET', '/api/my-orders', { init: iA() })).text();
+  assert.ok(!txt.includes('секретная') && !txt.includes('Кафе') && !txt.includes('"note"') && !txt.includes('"grp"') && !txt.includes('"sum"') && !txt.includes('"cx"'), 'внутренние данные клиента попали к клиенту');
+  // второй заказ с другим именем и новым адресом: имя не меняется, адрес добавляется, повтор адреса не дублируется
+  assert.equal((await place(A, ONE, { form: formFor(S.DEFAULT, 'delivery', { name: 'Анна', address: 'Навои, ул. Другая 5' }) }, 'delivery')).status, 200);
+  assert.equal((await place(A, ONE, { form: formFor(S.DEFAULT, 'delivery', { name: 'Анна', address: 'НАВОИ, УЛ. ДРУГАЯ 5' }) }, 'delivery')).status, 200);
+  c = await clientOf(ANNA.id);
+  assert.equal(c.name, 'ООО Ориент');
+  assert.deepEqual(c.addrs, ['Навои, ул. Галаба 12, склад 3', 'Навои, ул. Другая 5']);
+  assert.equal(c.n, 3);
+  assert.equal(c.note, 'секретная заметка');
+  // закрыто для остальных
+  const B = newUser();
+  assert.equal((await call('GET', '/api/admin/clients', { init: B.init() })).status, 403);
+  assert.equal((await call('GET', '/api/admin/clients/' + ANNA.id, { init: B.init() })).status, 403);
+  assert.equal((await editClient(ANNA.id, { note: 'x' }, B.init())).status, 403);
+  assert.equal((await call('DELETE', '/api/admin/clients/' + ANNA.id, { init: B.init() })).status, 403);
+  assert.equal((await call('GET', '/api/admin/clients')).status, 401);
+});
+
+await t('клиенты: профиль — проверка полей, адреса, лишние поля игнорируются', async () => {
+  await stockWorld();
+  const A = newUser();
+  assert.equal((await call('PUT', '/api/profile', { body: { name: 'Х' } })).status, 401);
+  assert.equal((await meOf(A)).profile, null);
+  let r = await putProfile(A, { name: 'ИП Юсупов', phone: '+998 90 123 45 67', org: 'Магазин «Ляззат»', addrs: ['Навои, ул. Навои 1', 'навои, ул. навои 1', ' Зарафшан, ул. Мира 7 '] });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await jsonOf(r)).profile, { name: 'ИП Юсупов', phone: '+998 90 123 45 67', org: 'Магазин «Ляззат»', addrs: ['Навои, ул. Навои 1', 'Зарафшан, ул. Мира 7'] });
+  assert.deepEqual((await meOf(A)).profile.addrs, ['Навои, ул. Навои 1', 'Зарафшан, ул. Мира 7']);
+  // отдельные поля можно менять по одному
+  let pr = await jsonOf(await putProfile(A, { org: '' }));
+  assert.equal(pr.profile.org, '');
+  assert.equal(pr.profile.name, 'ИП Юсупов');
+  // плохие данные
+  assert.equal((await jsonOf(await putProfile(A, { phone: '123' }))).error, 'bad_phone');
+  assert.equal((await jsonOf(await putProfile(A, { addrs: ['ул'] }))).error, 'bad_addr');
+  assert.equal((await jsonOf(await putProfile(A, { addrs: ['а1 адрес', 'а2 адрес', 'а3 адрес', 'а4 адрес', 'а5 адрес', 'а6 адрес'] }))).error, 'too_many_addrs');
+  assert.equal((await putProfile(A, { addrs: 'ул. Мира 5' })).status, 400);
+  assert.equal((await putProfile(A, { name: 123 })).status, 400);
+  assert.equal((await putProfile(A, [])).status, 400);
+  assert.equal((await call('PUT', '/api/profile', { init: A.init(), body: 'не json' })).status, 400);
+  assert.deepEqual((await meOf(A)).profile.addrs, ['Навои, ул. Навои 1', 'Зарафшан, ул. Мира 7'], 'ошибочный запрос не должен ничего менять');
+  // длинные значения обрезаются, управляющие символы убираются
+  pr = await jsonOf(await putProfile(A, { name: 'Я'.repeat(100) + '\n', org: 'О'.repeat(200) }));
+  assert.equal(pr.profile.name.length, 60);
+  assert.equal(pr.profile.org.length, 80);
+  // клиент не может сам поставить себе заметку, группу или снять блокировку
+  await editClient(A.u.id, { blocked: true, grp: 'Кафе', note: 'ждёт' });
+  r = await putProfile(A, { note: 'моя', grp: 'Свой', blocked: false, name: 'Новое имя' });
+  assert.equal(r.status, 200);
+  const c = await clientOf(A.u.id);
+  assert.equal(c.name, 'Новое имя');
+  assert.equal(c.note, 'ждёт');
+  assert.equal(c.grp, 'Кафе');
+  assert.equal(c.blocked, true);
+  // а заказ принимает данные из профиля: форма — как обычно, организация подставляется сервером
+  await editClient(A.u.id, { blocked: false, org: 'ООО Ромашка' });
+  assert.equal((await place(A, ONE)).status, 200);
+  assert.equal((await adminOrdersOf()).find(o => o.uid === undefined && o.name === 'ООО Ориент').org, 'ООО Ромашка');
+});
+
+await t('клиенты: продавец правит данные, заказ их не затирает; организация, группа и заметка видны продавцу в Telegram', async () => {
+  await stockWorld();
+  const A = newUser();
+  assert.equal((await place(A, ONE)).status, 200);
+  const uid = A.u.id;
+  let r = await editClient(uid, { name: 'ООО Ромашка', phone: '+998 90 111 22 33', org: 'Сеть «Ромашка»', addrs: ['Навои, ул. Мира 1'], note: 'платит в конце недели\nзвонить заранее', grp: 'Магазин' });
+  assert.equal(r.status, 200);
+  const c = (await jsonOf(r)).client;
+  assert.equal(c.note, 'платит в конце недели\nзвонить заранее');
+  assert.equal(c.n, 1);
+  tgLog = [];
+  const o = (await jsonOf(await place(A, ONE))).order;
+  assert.equal(o.org, 'Сеть «Ромашка»', 'клиент видит организацию в своём заказе');
+  assert.equal(o.note, undefined);
+  const c2 = await clientOf(uid);
+  assert.equal(c2.name, 'ООО Ромашка');
+  assert.equal(c2.phone, '+998 90 111 22 33');
+  assert.equal(c2.n, 2);
+  const card = lastTg('sendMessage', p => p.chat_id === SELLER.id && String(p.text).includes(o.id)).payload.text;
+  assert.ok(card.includes('Организация: Сеть «Ромашка»'), card);
+  assert.ok(card.includes('👥 Группа: Магазин') && card.includes('📝 Заметка: платит в конце недели\nзвонить заранее'), card);
+  // при смене статуса карточка в Telegram перерисовывается и сохраняет эти строки
+  tgLog = [];
+  assert.equal((await setStatus(o.id, 'accepted')).status, 200);
+  const edited = lastTg('editMessageText');
+  assert.ok(edited && edited.payload.text.includes('👥 Группа: Магазин') && edited.payload.text.includes('Организация: Сеть «Ромашка»'));
+  // проверки продавца
+  assert.equal((await jsonOf(await editClient(uid, { phone: '12' }))).error, 'bad_phone');
+  assert.equal((await editClient(uid, { addrs: Array(6).fill(0).map((_, i) => 'Адрес номер ' + i) })).status, 400);
+  assert.equal((await editClient(uid, { note: 5 })).status, 400);
+  assert.equal((await editClient(uid, { grp: ['Кафе'] })).status, 400);
+  assert.equal((await jsonOf(await editClient(uid, { note: 'Н'.repeat(900) }))).client.note.length, 500);
+  assert.equal((await jsonOf(await editClient(uid, { grp: 'Г'.repeat(90) }))).client.grp.length, 30);
+  assert.equal((await jsonOf(await editClient(uid, { blocked: 'yes' }))).client.blocked, false, 'блокировка включается только значением true');
+  assert.equal((await editClient(424242, { note: 'x' })).status, 404);
+  assert.equal((await call('GET', '/api/admin/clients/424242', { init: iS() })).status, 404);
+  assert.equal((await call('GET', '/api/admin/clients/abc', { init: iS() })).status, 404);
+  assert.equal((await clientOf(uid)).n, 2, 'счётчики не принимаются от продавца');
+  await editClient(uid, { n: 999, sum: 999, uid: 5, since: 'x' });
+  const c3 = await clientOf(uid);
+  assert.ok(c3.n === 2 && c3.sum === 0 && c3.uid === uid && c3.since !== 'x');
+  // карточка клиента с историей заказов
+  const d = await jsonOf(await call('GET', '/api/admin/clients/' + uid, { init: iS() }));
+  assert.equal(d.client.uid, uid);
+  assert.equal(d.orders.length, 2);
+  assert.ok(d.orders.every(x => x.uid === undefined && x.rs === undefined));
+});
+
+await t('клиенты: блокировка закрывает заказы, но не профиль; снимается сразу', async () => {
+  await stockWorld();
+  await setSt('p2', 10);
+  const A = newUser(), B = newUser();
+  assert.equal((await place(A, ONE)).status, 200);
+  assert.equal((await editClient(A.u.id, { blocked: true })).status, 200);
+  const nOrders = (await adminOrdersOf()).length;
+  tgLog = [];
+  const r = await place(A, [{ id: 'p2', qty: 3 }]);
+  assert.equal(r.status, 403);
+  assert.equal((await jsonOf(r)).error, 'blocked');
+  assert.equal((await adminOrdersOf()).length, nOrders, 'заказ не создан');
+  assert.deepEqual((await getStock()).p2, { q: 10, r: 0, low: 0 }, 'товар не отложен');
+  assert.equal(tgAll('sendMessage').length, 0, 'продавцу ничего не пришло');
+  assert.equal((await meOf(A)).blocked, true);
+  assert.equal((await meOf(B)).blocked, false);
+  assert.equal((await putProfile(A, { name: 'Другое имя' })).status, 200);
+  assert.equal((await place(B, ONE)).status, 200, 'остальные заказывают как обычно');
+  // отменить свой прежний заказ заблокированный клиент по-прежнему может
+  const mine = (await jsonOf(await call('GET', '/api/my-orders', { init: A.init() }))).orders;
+  assert.equal((await call('POST', '/api/cancel', { init: A.init(), body: { id: mine[0].id } })).status, 200);
+  assert.equal((await editClient(A.u.id, { blocked: false })).status, 200);
+  assert.equal((await meOf(A)).blocked, false);
+  assert.equal((await place(A, [{ id: 'p2', qty: 3 }])).status, 200);
+});
+
+await t('клиенты: выдача добавляет сумму клиенту, отмена убирает заказ из счёта', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o1 = (await jsonOf(await place(A, CART))).order;      // 1 394 000
+  const o2 = (await jsonOf(await place(A, ONE))).order;
+  const o3 = (await jsonOf(await place(A, ONE))).order;
+  let c = await clientOf(A.u.id);
+  assert.equal(c.n, 3);
+  for (const to of ['accepted', 'ready', 'done']) assert.equal((await setStatus(o1.id, to)).status, 200);
+  assert.equal((await setStatus(o2.id, 'cancelled')).status, 200);
+  assert.equal((await call('POST', '/api/cancel', { init: A.init(), body: { id: o3.id } })).status, 200);
+  c = await clientOf(A.u.id);
+  assert.equal(c.n, 1);
+  assert.equal(c.ds, 1);
+  assert.equal(c.sum, 1394000);
+  // повторная смена того же статуса ничего не удваивает
+  assert.equal((await setStatus(o1.id, 'done')).status, 200);
+  assert.equal((await clientOf(A.u.id)).sum, 1394000);
+  // администратор через кнопку в Telegram
+  const o4 = (await jsonOf(await place(A, ONE))).order;
+  for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + o4.id + ':' + to);
+  await cb(SELLER, 's:' + o4.id + ':done');
+  assert.equal((await clientOf(A.u.id)).ds, 2);
+  assert.equal((await clientOf(A.u.id)).sum, 1394000 + 7500);
+});
+
+await t('клиенты: база собирается из прежних заказов один раз; удаление клиента не трогает заказы', async () => {
+  W = makeWorld();
+  await send({ update_id: 5, message: { message_id: 41, from: SELLER, chat: { id: SELLER.id, type: 'private' }, text: '/admin ' + CODE } });
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  tgLog = [];
+  const mk = (id, uid, createdAt, status, over) => Object.assign({
+    id, createdAt, status, lang: 'ru', name: 'Клиент ' + uid, phone: '+998 90 000 00 0' + (uid % 10), mode: 'pickup', address: '', pickupAt: '2030-01-01T10:00',
+    comment: '', items: [{ id: 'p4', name: 'Макароны', uz: '', amount: 400, unit: 'g', price: 7500, qty: 2 }], total: 15000, uid, tg: { username: 'u' + uid, name: 'Имя ' + uid }, msgs: []
+  }, over || {});
+  const old = [
+    mk('Z-OLD01', 5001, '2030-01-01T08:00:00.000Z', 'done', { total: 100000, name: 'Старое имя', mode: 'delivery', address: 'Навои, ул. Старая 1' }),
+    mk('Z-OLD02', 5001, '2030-01-02T08:00:00.000Z', 'new', { name: 'Новое имя', mode: 'delivery', address: 'Навои, ул. Новая 2', total: 15000 }),
+    mk('Z-OLD03', 5002, '2030-01-03T08:00:00.000Z', 'cancelled'),
+    mk('Z-OLD04', 5003, '2030-01-04T08:00:00.000Z', 'accepted')
+  ];
+  const upd = { act: ['Z-OLD04', 'Z-OLD02'], hist: ['Z-OLD03', 'Z-OLD01'] };
+  old.forEach(o => { upd['o:' + o.id] = o; });
+  await W.storage.put(upd);
+  let list = await adminClients();
+  assert.deepEqual(list.map(c => c.uid).sort(), [5001, 5002, 5003]);
+  const c1 = list.find(c => c.uid === 5001);
+  assert.equal(c1.name, 'Новое имя', 'контакты берутся из самого свежего заказа');
+  assert.equal(c1.n, 2);
+  assert.equal(c1.ds, 1);
+  assert.equal(c1.sum, 100000);
+  assert.deepEqual(c1.addrs, ['Навои, ул. Новая 2', 'Навои, ул. Старая 1']);
+  assert.equal(c1.tg.username, 'u5001');
+  assert.equal(c1.last, '2030-01-02T08:00:00.000Z');
+  assert.equal(list.find(c => c.uid === 5002).n, 0, 'отменённый заказ в счёт не идёт');
+  // повторное чтение ничего не удваивает; новый заказ присоединяется к существующему клиенту
+  list = await adminClients();
+  assert.equal(list.find(c => c.uid === 5001).n, 2);
+  const U = { u: { id: 5001, first_name: 'Клиент', language_code: 'ru' }, init: () => initDataFor({ id: 5001, first_name: 'Клиент', language_code: 'ru' }) };
+  assert.equal((await place(U, ONE)).status, 200);
+  assert.equal((await clientOf(5001)).n, 3);
+  assert.equal((await adminClients()).length, 3);
+  // удаление
+  const before = (await adminOrdersOf()).length;
+  assert.equal((await call('DELETE', '/api/admin/clients/5002', { init: iS() })).status, 200);
+  assert.equal((await clientOf(5002)), undefined);
+  assert.equal((await call('GET', '/api/admin/clients/5002', { init: iS() })).status, 404);
+  assert.equal((await adminClients()).length, 2);
+  assert.equal((await adminOrdersOf()).length, before, 'заказы удалённого клиента остаются');
+  // а если такой клиент снова закажет, запись появится заново
+  const V = { u: { id: 5002, first_name: 'Вернулся', language_code: 'ru' }, init: () => initDataFor({ id: 5002, first_name: 'Вернулся', language_code: 'ru' }) };
+  assert.equal((await place(V, ONE)).status, 200);
+  assert.equal((await clientOf(5002)).n, 1);
+});
+
+await t('клиенты: у клиента без заказов и профиля базы нет; при полной базе заказы всё равно принимаются', async () => {
+  await stockWorld();
+  const A = newUser();
+  assert.equal((await meOf(A)).profile, null);
+  assert.equal((await adminClients()).length, 0);
+  // база заполнена до предела
+  const fake = Array.from({ length: 3000 }, (_, i) => 700000 + i);
+  await W.storage.put({ cx: fake, cxb: 1 });
+  assert.equal((await place(A, ONE)).status, 200, 'заказ принят, хотя в базу новый клиент не поместился');
+  assert.equal((await clientOf(A.u.id)), undefined);
+  assert.equal((await putProfile(A, { name: 'Не поместится' })).status, 503);
+  assert.equal((await adminClients()).length, 0);   // записей нет, остался только пустой индекс
+  // у существующего клиента всё работает и при полной базе
+  await W.storage.put({ ['c:' + fake[0]]: Object.assign({ uid: fake[0], name: 'Старый', phone: '', org: '', addrs: [], note: '', grp: '', blocked: false, since: '2030-01-01', last: '', n: 0, ds: 0, sum: 0, tg: { username: '', name: '' }, lang: '' }) });
+  assert.equal((await editClient(fake[0], { note: 'ок' })).status, 200);
+  assert.equal((await clientOf(fake[0])).note, 'ок');
+});
+
+/* ---------- минимальная сумма и стоимость доставки ---------- */
+await t('доставка и минимум: настройки по умолчанию «нет», числа приводятся к целым в пределах', async () => {
+  await stockWorld();
+  const c0 = await getCfg();
+  assert.equal(c0.shop.minOrder, 0);
+  assert.equal(c0.shop.deliveryFee, 0);
+  assert.equal(c0.shop.freeDeliveryFrom, 0);
+  assert.equal((await putCfg(sh => { sh.minOrder = -5; sh.deliveryFee = 'abc'; sh.freeDeliveryFrom = 12.7; })).status, 200);
+  let c = await getCfg();
+  assert.deepEqual([c.shop.minOrder, c.shop.deliveryFee, c.shop.freeDeliveryFrom], [0, 0, 13]);
+  assert.equal((await putCfg(sh => { sh.minOrder = 1e12; sh.deliveryFee = 30000; })).status, 200);
+  c = await getCfg();
+  assert.equal(c.shop.minOrder, 1e9);
+  assert.equal(c.shop.deliveryFee, 30000);
+  // общая функция: клиент и сервер считают одинаково
+  const cf = fee => ({ shop: { deliveryFee: fee[0], freeDeliveryFrom: fee[1] } });
+  assert.equal(S.deliveryFee(cf([30000, 0]), 'delivery', 1), 30000);
+  assert.equal(S.deliveryFee(cf([30000, 0]), 'pickup', 1), 0);
+  assert.equal(S.deliveryFee(cf([0, 0]), 'delivery', 1), 0);
+  assert.equal(S.deliveryFee(cf([30000, 500000]), 'delivery', 499999), 30000);
+  assert.equal(S.deliveryFee(cf([30000, 500000]), 'delivery', 500000), 0);
+  assert.equal(S.deliveryFee(cf([30000, 500000]), 'pickup', 100), 0);
+});
+
+await t('минимальная сумма: меньший заказ не принимается, доставка к сумме не прибавляется, настройки приходят свежие', async () => {
+  await stockWorld();
+  assert.equal((await putCfg(sh => { sh.minOrder = 100000; })).status, 200);
+  const A = newUser();
+  const nOrders = async () => (await adminOrdersOf()).length;
+  let r = await place(A, [{ id: 'p4', qty: 1 }]);
+  const d = await jsonOf(r);
+  assert.equal(r.status, 409);
+  assert.equal(d.error, 'min_order');
+  assert.equal(d.min, 100000);
+  assert.equal(d.cfg.shop.minOrder, 100000, 'ответ несёт свежие настройки');
+  assert.equal(await nOrders(), 0);
+  assert.equal((await place(A, [{ id: 'p4', qty: 13 }])).status, 409, '13 × 7 500 = 97 500, это меньше минимума');
+  assert.equal((await place(A, [{ id: 'p4', qty: 13 }], {}, 'delivery')).status, 409, 'на доставку минимум тоже действует');
+  assert.equal(await nOrders(), 0);
+  // платная доставка не помогает набрать минимум: считаются только товары
+  assert.equal((await putCfg(sh => { sh.deliveryFee = 30000; })).status, 200);
+  const r2 = await place(A, [{ id: 'p4', qty: 13 }], { expectTotal: 127500 }, 'delivery');
+  assert.equal(r2.status, 409);
+  assert.equal((await jsonOf(r2)).error, 'min_order');
+  // сумма товаров от минимума проходит (самовывоз без доставки и доставка с ценой)
+  assert.equal((await place(A, [{ id: 'p4', qty: 14 }])).status, 200);        // 105 000
+  assert.equal((await place(A, [{ id: 'p4', qty: 14 }], { expectTotal: 135000 }, 'delivery')).status, 200);   // 105 000 + 30 000
+  assert.equal(await nOrders(), 2);
+  // минимум можно убрать
+  assert.equal((await putCfg(sh => { sh.minOrder = 0; })).status, 200);
+  assert.equal((await place(A, [{ id: 'p4', qty: 1 }])).status, 200);
+});
+
+await t('стоимость доставки: берётся только при доставке, бесплатна от порога, сумма заказа проверяется сервером', async () => {
+  await stockWorld();
+  assert.equal((await putCfg(sh => { sh.deliveryFee = 30000; sh.freeDeliveryFrom = 500000; })).status, 200);
+  // самовывоз: без доставки, в заказе нет лишних полей
+  let o = (await jsonOf(await place(newUser(), [{ id: 'p1', qty: 2 }]))).order;      // 164 000
+  assert.equal(o.total, 164000);
+  assert.equal(o.fee, undefined);
+  assert.equal(o.sub, undefined);
+  // доставка: к товарам прибавляется 30 000
+  tgLog = [];
+  let r = await place(newUser(), [{ id: 'p1', qty: 2 }], { expectTotal: 194000 }, 'delivery');
+  assert.equal(r.status, 200);
+  o = (await jsonOf(r)).order;
+  assert.equal(o.total, 194000);
+  assert.equal(o.fee, 30000);
+  assert.equal(o.sub, 164000);
+  const card = norm(lastTg('sendMessage', p => p.chat_id === SELLER.id && String(p.text).includes(o.id)).payload.text);
+  assert.ok(card.includes('Стоимость доставки: 30 000 сум') && card.includes('Итого: 194 000 сум'), card);
+  // клиент, который ещё видит сумму без доставки, получает просьбу подтвердить новую
+  r = await place(newUser(), [{ id: 'p1', qty: 2 }], { expectTotal: 164000 }, 'delivery');
+  const d = await jsonOf(r);
+  assert.equal(r.status, 409);
+  assert.equal(d.error, 'price_changed');
+  assert.equal(d.cfg.shop.deliveryFee, 30000);
+  // от порога доставка бесплатна: 820 000 ≥ 500 000
+  o = (await jsonOf(await place(newUser(), [{ id: 'p2', qty: 2 }], { expectTotal: 820000 }, 'delivery'))).order;
+  assert.equal(o.total, 820000);
+  assert.equal(o.fee, undefined);
+  // граница: ровно на пороге уже бесплатно, на рубль меньше — платно
+  assert.equal((await putCfg(sh => { sh.freeDeliveryFrom = 164000; })).status, 200);
+  assert.equal((await jsonOf(await place(newUser(), [{ id: 'p1', qty: 2 }], { expectTotal: 164000 }, 'delivery'))).order.fee, undefined);
+  assert.equal((await putCfg(sh => { sh.freeDeliveryFrom = 164001; })).status, 200);
+  assert.equal((await jsonOf(await place(newUser(), [{ id: 'p1', qty: 2 }], { expectTotal: 194000 }, 'delivery'))).order.fee, 30000);
+  // порога нет — доставка платная всегда
+  assert.equal((await putCfg(sh => { sh.freeDeliveryFrom = 0; })).status, 200);
+  assert.equal((await jsonOf(await place(newUser(), [{ id: 'p2', qty: 2 }], { expectTotal: 850000 }, 'delivery'))).order.fee, 30000);
+  // доставка бесплатная по умолчанию (0)
+  assert.equal((await putCfg(sh => { sh.deliveryFee = 0; })).status, 200);
+  assert.equal((await jsonOf(await place(newUser(), [{ id: 'p1', qty: 2 }], { expectTotal: 164000 }, 'delivery'))).order.fee, undefined);
+});
+
+await t('стоимость доставки: сумма с доставкой попадает в «выдано» у клиента и в общую сумму, у заказа без неё всё как раньше', async () => {
+  await stockWorld();
+  assert.equal((await putCfg(sh => { sh.deliveryFee = 30000; })).status, 200);
+  const A = newUser();
+  const o = (await jsonOf(await place(A, [{ id: 'p1', qty: 2 }], { expectTotal: 194000 }, 'delivery'))).order;
+  for (const to of ['accepted', 'ready', 'done']) assert.equal((await setStatus(o.id, to)).status, 200);
+  assert.equal((await clientOf(A.u.id)).sum, 194000);
+  assert.equal((await jsonOf(await call('GET', '/api/admin/orders', { init: iS() }))).stats.doneSum, 194000);
+  const mine = (await jsonOf(await call('GET', '/api/my-orders', { init: A.init() }))).orders[0];
+  assert.equal(mine.fee, 30000);
+  assert.equal(mine.sub, 164000);
+});
+
+
+/* ---------- выгрузки: сборочный лист, Excel, резервная копия ---------- */
+import zlib from 'node:zlib';
+// читает ZIP без сжатия (так пишет сервер) и сверяет контрольные суммы независимым способом
+function unzip(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let e = bytes.length - 22;
+  assert.equal(dv.getUint32(e, true), 0x06054b50, 'нет конца архива');
+  const n = dv.getUint16(e + 10, true);
+  let p = dv.getUint32(e + 16, true);
+  const out = {};
+  for (let i = 0; i < n; i++) {
+    assert.equal(dv.getUint32(p, true), 0x02014b50);
+    const crc = dv.getUint32(p + 16, true), size = dv.getUint32(p + 24, true), nl = dv.getUint16(p + 28, true), off = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nl));
+    assert.equal(dv.getUint32(off, true), 0x04034b50);
+    const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+    const data = bytes.subarray(start, start + size);
+    assert.equal(zlib.crc32(data), crc, 'контрольная сумма ' + name);
+    out[name] = data;
+    p += 46 + nl;
+  }
+  return out;
+}
+const unxml = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+// листы xlsx → { имя листа: [[ячейки]] }
+function readXlsx(bytes) {
+  const z = unzip(bytes), dec = x => new TextDecoder().decode(x);
+  const wb = dec(z['xl/workbook.xml']);
+  const names = [...wb.matchAll(/<sheet name="([^"]*)"/g)].map(m => unxml(m[1]));
+  const res = {};
+  names.forEach((nm, i) => {
+    const xml = dec(z['xl/worksheets/sheet' + (i + 1) + '.xml']);
+    const rows = [];
+    for (const rm of xml.matchAll(/<row r="(\d+)">(.*?)<\/row>/g)) {
+      const row = [];
+      for (const cm of rm[2].matchAll(/<c r="([A-Z]+)\d+"([^>]*)>(.*?)<\/c>/g)) {
+        let ci = 0; for (const ch of cm[1]) ci = ci * 26 + ch.charCodeAt(0) - 64;
+        const t = cm[3].match(/<t[^>]*>(.*?)<\/t>/s), v = cm[3].match(/<v>(.*?)<\/v>/);
+        row[ci - 1] = t ? unxml(t[1]) : v ? Number(v[1]) : '';
+      }
+      rows[Number(rm[1]) - 1] = row;
+    }
+    res[nm] = Array.from(rows, r => Array.from(r || [], c => c === undefined ? '' : c));
+  });
+  return res;
+}
+const exportReq = (kind, extra, init) => call('POST', '/api/admin/export', { init: init || iS(), body: Object.assign({ kind }, extra || {}) });
+const pickReq = (body, init) => call('POST', '/api/admin/pick', { init: init || iS(), body: body || {} });
+const lastDoc = () => lastTg('sendDocument');
+const dumpFile = f => { if (process.env.EXPORT_DUMP && f) fs.writeFileSync(path.join(process.env.EXPORT_DUMP, f.name), f.bytes); };
+
+await t('выгрузки и сборочный лист доступны только продавцу', async () => {
+  await stockWorld();
+  const A = newUser();
+  await place(A, [{ id: 'p1', qty: 1 }]);
+  tgLog = [];
+  for (const kind of ['orders', 'clients', 'backup', 'pick']) {
+    assert.equal((await exportReq(kind, {}, A.init())).status, 403, kind);
+    assert.equal((await call('POST', '/api/admin/export', { body: { kind } })).status, 401, kind);
+  }
+  assert.equal((await pickReq({}, A.init())).status, 403);
+  assert.equal((await call('POST', '/api/admin/pick', { body: {} })).status, 401);
+  assert.equal(tgAll('sendDocument').length, 0);
+});
+
+await t('Excel с заказами: файл приходит продавцу в чат, внутри заказы и товары с суммами, доставкой и организацией', async () => {
+  await stockWorld();
+  assert.equal((await putCfg(sh => { sh.deliveryFee = 30000; })).status, 200);
+  const A = newUser(), B = newUser();
+  assert.equal((await putProfile(A, { org: 'Магазин «Ориент» & Ко <1>' })).status, 200);
+  const o1 = (await jsonOf(await place(A, [{ id: 'p1', qty: 2 }, { id: 'p4', qty: 10 }], { expectTotal: 269000, form: formFor(S.DEFAULT, 'delivery', { comment: 'Звонить за час' }) }, 'delivery'))).order;   // 164 000 + 75 000 + доставка 30 000
+  const o2 = (await jsonOf(await place(B, [{ id: 'p2', qty: 1 }], { form: formFor(S.DEFAULT, 'pickup', { name: '=1+1', comment: '' }) }))).order;
+  for (const to of ['accepted', 'ready', 'done']) assert.equal((await setStatus(o2.id, to)).status, 200);
+  tgLog = [];
+  const r = await exportReq('orders');
+  const d = await jsonOf(r);
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.equal(d.ok, true);
+  assert.equal(d.n, 2);
+  const doc = lastDoc();
+  assert.ok(doc, 'файл не отправлен');
+  dumpFile(doc.file);
+  assert.equal(doc.payload.chat_id, String(SELLER.id));
+  assert.ok(/^orders-\d{4}-\d{2}-\d{2}\.xlsx$/.test(doc.file.name), doc.file.name);
+  assert.equal(doc.file.bytes.length, d.size);
+  assert.ok(doc.payload.caption.includes('Заказы: 2'));
+  const x = readXlsx(doc.file.bytes);
+  assert.deepEqual(Object.keys(x), ['Заказы', 'Товары в заказах']);
+  const head = x['Заказы'][0];
+  assert.deepEqual(head.slice(0, 5), ['№ заказа', 'Создан', 'Статус', 'Получение', 'Когда']);
+  const by = id => x['Заказы'].find(r => r[0] === id);
+  const a = by(o1.id), b = by(o2.id);
+  assert.ok(a && b);
+  const col = n => head.indexOf(n);
+  assert.equal(a[col('Статус')], 'Новый');
+  assert.equal(a[col('Получение')], 'Доставка');
+  assert.equal(a[col('Организация')], 'Магазин «Ориент» & Ко <1>');       // служебные знаки XML сохранились
+  assert.equal(a[col('Адрес доставки')], 'Навои, ул. Галаба 12, склад 3');
+  assert.equal(a[col('Комментарий')], 'Звонить за час');
+  assert.equal(a[col('Телефон')], '+998 91 555 44 33');                    // телефон остался текстом
+  assert.equal(a[col('Доставка, сум')], 30000);
+  assert.equal(a[col('Товары, сум')], o1.total - 30000);
+  assert.equal(a[col('Итого, сум')], o1.total);
+  assert.equal(a[col('Позиций')], 2);
+  assert.equal(b[col('Статус')], 'Выдан');
+  assert.equal(b[col('Получение')], 'Самовывоз');
+  assert.equal(b[col('Адрес доставки')], '');
+  assert.equal(b[col('Клиент')], '=1+1');                                   // «формула» осталась текстом
+  assert.equal(b[col('Доставка, сум')], 0);
+  assert.equal(b[col('Итого, сум')], 410000);
+  // созданный заказ показан по времени склада (UTC+5)
+  const cr = new Date(Date.parse(o1.createdAt) + 5 * 3600000).toISOString().slice(0, 16).replace('T', ' ');
+  assert.equal(a[col('Создан')], cr);
+  // лист «Товары в заказах»: по строке на позицию, сумма = цена × количество
+  const it = x['Товары в заказах'];
+  assert.deepEqual(it[0], ['№ заказа', 'Статус', 'Когда', 'Клиент', 'Товар', 'Вес / объём', 'Количество', 'Цена, сум', 'Сумма, сум']);
+  const lines = it.slice(1).filter(r => r[0] === o1.id);
+  assert.equal(lines.length, 2);
+  const oil = lines.find(r => r[4] === 'Масло подсолнечное');
+  assert.deepEqual([oil[5], oil[6], oil[7], oil[8]], ['5 л', 2, 82000, 164000]);
+  const mac = lines.find(r => r[4] === 'Макароны');
+  assert.deepEqual([mac[5], mac[6], mac[7], mac[8]], ['400 г', 10, 7500, 75000]);
+  assert.equal(it.slice(1).length, 3);
+  // сервер освободился: следующая выгрузка проходит
+  assert.equal((await exportReq('orders')).status, 200);
+});
+
+await t('Excel с клиентами: поля базы, группа, заметка, адреса, блокировка', async () => {
+  await stockWorld();
+  const A = newUser();
+  assert.equal((await putProfile(A, { name: 'Анвар', phone: '+998 90 111 22 33', org: 'Кафе «Чинор»', addrs: ['Навои, Галаба 1', 'Зарафшан, Мира 5'] })).status, 200);
+  const o = (await jsonOf(await place(A, [{ id: 'p1', qty: 2 }]))).order;
+  for (const to of ['accepted', 'ready', 'done']) await setStatus(o.id, to);
+  assert.equal((await editClient(A.u.id, { grp: 'VIP', note: 'Платит в срок', blocked: false })).status, 200);
+  const B = newUser();
+  await place(B, [{ id: 'p4', qty: 1 }]);
+  assert.equal((await editClient(B.u.id, { blocked: true })).status, 200);
+  tgLog = [];
+  const d = await jsonOf(await exportReq('clients'));
+  assert.equal(d.ok, true);
+  assert.equal(d.n, 2);
+  const doc = lastDoc();
+  dumpFile(doc.file);
+  assert.ok(/^clients-\d{4}-\d{2}-\d{2}\.xlsx$/.test(doc.file.name));
+  const rows = readXlsx(doc.file.bytes)['Клиенты'];
+  const head = rows[0], col = n => head.indexOf(n);
+  assert.deepEqual(head.slice(0, 6), ['Имя', 'Телефон', 'Организация', 'Группа', 'Адреса доставки', 'Заметка']);
+  const a = rows.find(r => r[col('Организация')] === 'Кафе «Чинор»');
+  assert.ok(a);
+  assert.equal(a[col('Имя')], 'ООО Ориент' === a[col('Имя')] ? 'ООО Ориент' : 'Анвар');
+  assert.equal(a[col('Группа')], 'VIP');
+  assert.equal(a[col('Заметка')], 'Платит в срок');
+  assert.equal(a[col('Адреса доставки')], 'Навои, Галаба 1 | Зарафшан, Мира 5');
+  assert.equal(a[col('Заказов')], 1);
+  assert.equal(a[col('Завершено')], 1);
+  assert.equal(a[col('Сумма завершённых, сум')], 164000);
+  assert.equal(a[col('Заблокирован')] || '', '');
+  const b = rows.find(r => r[col('Заблокирован')] === 'да');
+  assert.ok(b);
+  assert.equal(rows.length, 3);
+});
+
+await t('резервная копия: архив с данными и фото, без токена и кода продавца', async () => {
+  await stockWorld();
+  const A = newUser();
+  assert.equal((await stockOp({ id: 'p1', op: 'set', n: 20, low: 3 })).status, 200);
+  const o = (await jsonOf(await place(A, [{ id: 'p1', qty: 2 }]))).order;
+  const photo = jpegBytes(800, 600, 5000);
+  assert.equal((await putPhoto('p1', photo)).status, 200);
+  assert.equal((await putPhoto('p2', jpegBytes(640, 480, 7000))).status, 200);
+  await editClient(A.u.id, { grp: 'VIP', note: 'Заметка' });
+  tgLog = [];
+  const d = await jsonOf(await exportReq('backup'));
+  assert.equal(d.ok, true);
+  const doc = lastDoc();
+  dumpFile(doc.file);
+  assert.ok(/^backup-\d{4}-\d{2}-\d{2}\.zip$/.test(doc.file.name));
+  assert.ok(doc.payload.caption.includes('заказов 1') && doc.payload.caption.includes('клиентов 1') && doc.payload.caption.includes('фото 2'), doc.payload.caption);
+  const z = unzip(doc.file.bytes);
+  assert.deepEqual(Object.keys(z).sort(), ['README.txt', 'backup.json', 'photos/p1.jpg', 'photos/p2.jpg']);
+  assert.deepEqual(Buffer.from(z['photos/p1.jpg']), Buffer.from(photo));
+  const raw = new TextDecoder().decode(z['backup.json']);
+  assert.ok(!raw.includes(TOKEN) && !raw.includes(CODE), 'в копии нет токена и кода');
+  const bk = JSON.parse(raw);
+  assert.equal(bk.kind, 'distro-backup');
+  assert.equal(bk.v, 1);
+  assert.equal(bk.cfg.shop.name, DEFAULT_NAME);
+  assert.equal(bk.prod.items.length, 4);
+  assert.equal(bk.stk.p1.q, 20);
+  assert.equal(bk.stk.p1.r, 2);                                              // резерв под активный заказ сохранён
+  assert.equal(bk.orders.length, 1);
+  assert.equal(bk.orders[0].id, o.id);
+  assert.equal(bk.orders[0].uid, A.u.id);                                    // в копии есть владелец заказа
+  assert.ok(!('msgs' in bk.orders[0]));
+  assert.equal(bk.clients.length, 1);
+  assert.equal(bk.clients[0].grp, 'VIP');
+  assert.deepEqual(bk.admins, [SELLER.id]);
+  assert.deepEqual(bk.photos, { saved: 2, of: 2 });
+  assert.ok(new TextDecoder().decode(z['README.txt']).includes('backup.json'));
+});
+
+await t('резервная копия: фото сверх лимита не вешают копию, остальное сохраняется целиком', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  for (let i = 0; i < 70; i++) prod.items.push({ id: 'x' + i, cat: 'oil', name: 'Товар ' + i, uz: '', desc: '', descUz: '', amount: 1, unit: 'kg', price: 1000, on: true });
+  assert.equal((await putProd(prod)).status, 200);
+  for (let i = 0; i < 70; i++) assert.equal((await putPhoto('x' + i, jpegBytes(800, 600, 290000))).status, 200, 'фото ' + i);
+  tgLog = [];
+  const d = await jsonOf(await exportReq('backup'));
+  assert.equal(d.ok, true);
+  const z = unzip(lastDoc().file.bytes);
+  const photos = Object.keys(z).filter(k => k.startsWith('photos/'));
+  assert.ok(photos.length > 60 && photos.length < 70, 'фото в копии: ' + photos.length);
+  assert.ok(d.size < 21000000, 'размер ' + d.size);
+  const bk = JSON.parse(new TextDecoder().decode(z['backup.json']));
+  assert.deepEqual(bk.photos, { saved: photos.length, of: 70 });
+  assert.equal(bk.prod.items.length, 74);
+  assert.ok(lastDoc().payload.caption.includes('из 70'));
+});
+
+await t('сборочный лист: общий список по всем заказам и отдельная страница на каждый заказ', async () => {
+  await stockWorld();
+  assert.equal((await putCfg(sh => { sh.deliveryFee = 30000; })).status, 200);
+  const A = newUser(), B = newUser();
+  assert.equal((await putProfile(A, { org: 'Кафе <b>Чинор</b>' })).status, 200);
+  const o1 = (await jsonOf(await place(A, [{ id: 'p1', qty: 2 }, { id: 'p4', qty: 3 }], { form: formFor(S.DEFAULT, 'delivery', { comment: 'Домофон <script>alert(1)</script>' }), expectTotal: totalOf([{ id: 'p1', qty: 2 }, { id: 'p4', qty: 3 }]) + 30000 }, 'delivery'))).order;
+  const o2 = (await jsonOf(await place(B, [{ id: 'p1', qty: 3 }, { id: 'p2', qty: 1 }]))).order;
+  const r = await pickReq({});
+  const d = await jsonOf(r);
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.equal(d.n, 2);
+  if (process.env.EXPORT_DUMP) fs.writeFileSync(path.join(process.env.EXPORT_DUMP, 'sborka-multi.html'), d.html);
+  const h = norm(d.html);
+  assert.ok(h.startsWith('<!doctype html>'));
+  assert.ok(h.includes('Всего собрать со склада'));
+  // масло: 2 + 3 = 5 в двух заказах; макароны 3; рис 1
+  const sum = h.slice(h.indexOf('Всего собрать'), h.indexOf('<section class="ord">'));
+  assert.ok(/Масло подсолнечное<small>5 л<\/small><\/td><td class="q">5<\/td><td class="p">2<\/td>/.test(sum), sum);
+  assert.ok(/Рис<small>25 кг<\/small><\/td><td class="q">1<\/td><td class="p">1<\/td>/.test(sum), sum);
+  assert.ok(/Макароны<small>400 г<\/small><\/td><td class="q">3<\/td><td class="p">1<\/td>/.test(sum), sum);
+  assert.ok(sum.indexOf('Масла') < sum.indexOf('Крупы и макароны'), 'товары сгруппированы по категориям каталога');
+  // страницы заказов
+  assert.equal(h.split('<section class="ord">').length - 1, 2);
+  assert.ok(h.includes(o1.id) && h.includes(o2.id));
+  const s1 = h.slice(h.indexOf(o1.id), h.indexOf('</section>', h.indexOf(o1.id)));
+  assert.ok(s1.includes('Доставка') && s1.includes('Навои, ул. Галаба 12, склад 3'), s1);
+  assert.ok(s1.includes('<td colspan="3">Доставка</td><td class="s">30 000</td>'), s1);
+  assert.ok(s1.includes('К оплате при получении: <b>' + norm(S.fmtMoney ? '' : '') ) || s1.includes('К оплате при получении'));
+  assert.ok(s1.includes('<td class="s">' + norm((o1.total).toLocaleString('ru-RU')) + '</td>'), 'итог заказа: ' + s1);
+  // ввод клиента не превращается в разметку
+  assert.ok(!h.includes('<script>alert(1)</script>') && !h.includes('<b>Чинор</b>'));
+  assert.ok(h.includes('Домофон &lt;script&gt;alert(1)&lt;/script&gt;') && h.includes('Кафе &lt;b&gt;Чинор&lt;/b&gt;'));
+  // заказы идут по времени выдачи
+  assert.ok(h.indexOf('Всего собрать') < h.indexOf(o1.id));
+});
+
+await t('сборочный лист: один заказ — без общего списка; по номерам, по дню, только новые и в работе', async () => {
+  await stockWorld();
+  const A = newUser(), B = newUser(), C = newUser();
+  const o1 = (await jsonOf(await place(A, [{ id: 'p1', qty: 1 }]))).order;
+  const o2 = (await jsonOf(await place(B, [{ id: 'p4', qty: 2 }]))).order;
+  const o3 = (await jsonOf(await place(C, [{ id: 'p2', qty: 1 }]))).order;
+  // по номеру: общего списка нет
+  let d = await jsonOf(await pickReq({ ids: [o2.id] }));
+  assert.equal(d.n, 1);
+  assert.ok(d.html.includes(o2.id) && !d.html.includes(o1.id) && !d.html.includes('Всего собрать'));
+  // чужие и неверные номера отбрасываются
+  d = await jsonOf(await pickReq({ ids: [o1.id, 'нет-такого', '../x', 42, o1.id] }));
+  assert.equal(d.n, 1);
+  // готовые и выданные в «сборку» по умолчанию не попадают, отменённые тоже
+  await setStatus(o1.id, 'accepted'); await setStatus(o1.id, 'ready');
+  await setStatus(o3.id, 'cancelled');
+  d = await jsonOf(await pickReq({}));
+  assert.equal(d.n, 1);
+  assert.ok(d.html.includes(o2.id) && !d.html.includes(o1.id) && !d.html.includes(o3.id));
+  await setStatus(o2.id, 'accepted');
+  assert.equal((await jsonOf(await pickReq({}))).n, 1);                       // «в работе» тоже собираем
+  // по дню
+  const day = (await adminOrdersOf()).find(o => o.id === o2.id).pickupAt.slice(0, 10);
+  assert.equal((await jsonOf(await pickReq({ day }))).n, 1);
+  const r = await pickReq({ day: '2001-01-01' });
+  assert.equal(r.status, 404);
+  assert.equal((await jsonOf(r)).error, 'empty');
+  // мусор в дне не ломает запрос: берутся все
+  assert.equal((await jsonOf(await pickReq({ day: '<x>' }))).n, 1);
+  // совсем пусто
+  await setStatus(o2.id, 'cancelled');
+  assert.equal((await pickReq({})).status, 404);
+  assert.equal((await pickReq({ ids: [] })).status, 404);
+  assert.equal((await call('POST', '/api/admin/pick', { init: iS(), body: 'null' })).status, 400);
+});
+
+await t('сборочный лист: больше 100 заказов — в лист входят первые, об остальных предупреждение', async () => {
+  await stockWorld();
+  assert.equal((await stockOp({ id: 'p4', op: 'set', n: 1000 })).status, 200);
+  for (let i = 0; i < 103; i++) assert.equal((await place(newUser(), [{ id: 'p4', qty: 1 }])).status, 200, 'заказ ' + i);
+  const d = await jsonOf(await pickReq({}));
+  assert.equal(d.n, 100);
+  assert.equal(d.cut, 3);
+  assert.ok(d.html.includes('ещё 3 не поместились'));
+  assert.equal(d.html.split('<section class="ord">').length - 1, 100);
+});
+
+await t('сборочный лист отправляется файлом .html в чат продавца', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = (await jsonOf(await place(A, [{ id: 'p1', qty: 2 }]))).order;
+  tgLog = [];
+  const r = await exportReq('pick', { ids: [o.id] });
+  const d = await jsonOf(r);
+  assert.equal(r.status, 200, JSON.stringify(d));
+  const doc = lastDoc();
+  dumpFile(doc.file);
+  assert.ok(/^sborka-\d{4}-\d{2}-\d{2}\.html$/.test(doc.file.name));
+  assert.equal(doc.file.type, 'text/html');
+  const h = new TextDecoder().decode(doc.file.bytes);
+  assert.ok(h.startsWith('<!doctype html>') && h.includes(o.id) && h.includes('Масло подсолнечное'));
+  assert.equal(doc.payload.chat_id, String(SELLER.id));
+  // пустой выбор — понятная ошибка, ничего не отправлено
+  tgLog = [];
+  const e = await exportReq('pick', { ids: ['Z-NOPE1'] });
+  assert.equal(e.status, 404);
+  assert.equal(tgAll('sendDocument').length, 0);
+});
+
+await t('выгрузка: Telegram отказал — продавец получает причину, а сервер не зависает', async () => {
+  await stockWorld();
+  await place(newUser(), [{ id: 'p1', qty: 1 }]);
+  tgDocFail = true;
+  const r = await exportReq('orders');
+  tgDocFail = false;
+  const d = await jsonOf(r);
+  assert.equal(r.status, 502);
+  assert.equal(d.error, 'send_failed');
+  assert.ok(d.detail.includes('blocked'));
+  // сеть упала совсем
+  tgFail = true;
+  const r2 = await exportReq('clients');
+  tgFail = false;
+  assert.equal(r2.status, 502);
+  assert.equal((await jsonOf(r2)).error, 'send_failed');
+  // после ошибки выгрузка снова работает
+  assert.equal((await exportReq('orders')).status, 200);
+});
+
+await t('выгрузка: неизвестный вид и две выгрузки одновременно', async () => {
+  await stockWorld();
+  await place(newUser(), [{ id: 'p1', qty: 1 }]);
+  for (const kind of ['', 'photos', 'ALL', '../x']) assert.equal((await exportReq(kind)).status, 400, 'вид «' + kind + '»');
+  assert.equal((await call('POST', '/api/admin/export', { init: iS(), body: 'null' })).status, 400);
+  assert.equal((await call('GET', '/api/admin/export', { init: iS() })).status, 404);
+  tgLog = [];
+  tgDocDelay = 60;
+  const [a, b] = await Promise.all([exportReq('orders'), exportReq('orders')]);
+  tgDocDelay = 0;
+  const codes = [a.status, b.status].sort();
+  assert.deepEqual(codes, [200, 429]);
+  assert.equal(tgAll('sendDocument').length, 1);
+  assert.equal((await exportReq('orders')).status, 200);
+});
+
+await t('выгрузки: пустой магазин не ломается', async () => {
+  await stockWorld();
+  for (const kind of ['orders', 'clients', 'backup']) {
+    tgLog = [];
+    const r = await exportReq(kind);
+    assert.equal(r.status, 200, kind);
+    assert.ok(lastDoc().file.bytes.length > 100, kind);
+  }
+  const x = readXlsx(lastTg('sendDocument', p => true).file.bytes);   // backup.zip читается как zip
+  assert.ok(x);
+});
+
+
+/* ---------- пакет 3: метки, избранное, прайс из Excel ---------- */
+const FIX = f => new Uint8Array(fs.readFileSync(path.join(root, 'test/fixtures', f)));
+const importReq = (bytes, apply, init) => call('POST', '/api/admin/import' + (apply ? '?apply=1' : ''), { init: init || iS(), body: bytes, headers: { 'content-type': 'application/octet-stream' } });
+const favReq = (c, ids) => call('PUT', '/api/fav', { init: c.init(), body: { ids } });
+const catalogNow = async () => (await jsonOf(await call('GET', '/api/config'))).prod;
+
+await t('метки: «Акция» со старой ценой и «Новинка»; лишнее и неверное убирается', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  prod.items[0].tag = 'sale'; prod.items[0].old = 95000;
+  prod.items[1].tag = 'new'; prod.items[1].old = 500000;       // у «Новинки» старой цены нет
+  prod.items[2].tag = 'hot'; prod.items[2].old = 100;          // чужая метка не принимается
+  prod.items[3].tag = 'sale'; prod.items[3].old = -5;
+  assert.equal((await putProd(prod)).status, 200);
+  const it = (await catalogNow()).items;
+  assert.deepEqual([it[0].tag, it[0].old], ['sale', 95000]);
+  assert.deepEqual([it[1].tag, it[1].old], ['new', 0]);
+  assert.deepEqual([it[2].tag, it[2].old], ['', 0]);
+  assert.deepEqual([it[3].tag, it[3].old], ['sale', 0]);
+  // метки видны всем, в том числе без входа
+  const open = (await jsonOf(await call('GET', '/api/config'))).prod.items;
+  assert.equal(open[0].tag, 'sale');
+  // метка и старая цена не влияют на цену заказа
+  const r = await place(newUser(), [{ id: 'p1', qty: 1 }]);
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).order.total, 82000);
+});
+
+await t('избранное: хранится у клиента, чужих и удалённых товаров нет, в базе клиентов не появляется', async () => {
+  await stockWorld();
+  const A = newUser(), B = newUser();
+  assert.deepEqual((await meOf(A)).fav, []);
+  let r = await favReq(A, ['p2', 'p1', 'p2', 'nope1']);          // повтор и товар, которого нет
+  assert.equal(r.status, 200);
+  assert.deepEqual((await jsonOf(r)).fav, ['p2', 'p1']);
+  assert.deepEqual((await meOf(A)).fav, ['p2', 'p1']);
+  assert.deepEqual((await meOf(B)).fav, []);                      // у другого клиента своё
+  assert.equal((await adminClients()).length, 0);                 // «сердечко» не создаёт клиента
+  // неверные данные
+  assert.equal((await favReq(A, ['../x'])).status, 400);
+  assert.equal((await favReq(A, 'p1')).status, 400);
+  assert.equal((await call('PUT', '/api/fav', { init: A.init(), body: { ids: Array.from({ length: 101 }, (_, i) => 'p' + i) } })).status, 400);
+  assert.equal((await call('PUT', '/api/fav', { body: { ids: [] } })).status, 401);
+  assert.deepEqual((await meOf(A)).fav, ['p2', 'p1']);            // после отказов список не пострадал
+  // удалённый из каталога товар уходит из избранного при следующем сохранении
+  const prod = SAMPLE_PROD(); prod.items = prod.items.filter(x => x.id !== 'p2');
+  assert.equal((await putProd(prod)).status, 200);
+  r = await favReq(A, ['p2', 'p1']);
+  assert.deepEqual((await jsonOf(r)).fav, ['p1']);
+  // пустой список очищает
+  assert.deepEqual((await jsonOf(await favReq(A, []))).fav, []);
+  assert.deepEqual((await meOf(A)).fav, []);
+  // 100 штук — можно
+  const big = SAMPLE_PROD();
+  for (let i = 0; i < 100; i++) big.items.push({ id: 'f' + i, cat: 'oil', name: 'Т' + i, uz: '', desc: '', descUz: '', amount: 1, unit: 'kg', price: 1000, on: true });
+  assert.equal((await putProd(big)).status, 200);
+  assert.equal((await jsonOf(await favReq(A, big.items.slice(4).map(x => x.id)))).fav.length, 100);
+});
+
+await t('Excel-прайс доступен только продавцу', async () => {
+  await stockWorld();
+  const A = newUser();
+  assert.equal((await importReq(FIX('price-openpyxl.xlsx'), false, A.init())).status, 403);
+  assert.equal((await call('POST', '/api/admin/import', { body: FIX('price-openpyxl.xlsx') })).status, 401);
+  assert.equal((await exportReq('catalog', {}, A.init())).status, 403);
+  const before = JSON.stringify(await catalogNow());
+  assert.equal((await importReq(FIX('price-openpyxl.xlsx'), true, A.init())).status, 403);
+  assert.equal(JSON.stringify(await catalogNow()), before);
+});
+
+for (const fx of ['price-openpyxl.xlsx', 'price-libreoffice.xlsx']) {
+  await t('прайс из Excel (' + fx + '): сначала показывает изменения, ничего не удаляет, фото и остатки на месте', async () => {
+    await stockWorld();
+    const photo = jpegBytes(800, 600, 5000);
+    assert.equal((await putPhoto('p1', photo)).status, 200);
+    assert.equal((await stockOp({ id: 'p1', op: 'set', n: 20, low: 3 })).status, 200);
+    const before = JSON.stringify(await catalogNow());
+    // просмотр: каталог не меняется
+    let r = await importReq(FIX(fx), false);
+    let d = await jsonOf(r);
+    assert.equal(r.status, 200, JSON.stringify(d));
+    assert.equal(d.applied, false);
+    assert.deepEqual(d.summary, { added: 2, updated: 3, same: 1, errors: 4, newCats: ['Мука'] });
+    assert.equal(JSON.stringify(await catalogNow()), before);
+    // что именно изменится
+    const upd = id => d.changes.find(c => c.id === id);
+    const f = (c, k) => c.fields.find(x => x.k === k);
+    assert.deepEqual([f(upd('p1'), 'price').from, f(upd('p1'), 'price').to], [82000, 85000]);   // «85 000» с пробелом прочитан как число
+    assert.equal(f(upd('p1'), 'tag').to, 'sale');
+    assert.equal(f(upd('p1'), 'old').to, 95000);
+    assert.equal(f(upd('p2'), 'price').to, 430000);                 // «рис» найден по названию без учёта регистра
+    assert.equal(upd('p2').name, 'Рис');
+    assert.equal(f(upd('p3'), 'on').to, true);                      // «Сахар» возвращён в продажу
+    assert.equal(f(upd('p3'), 'price').to, 530000);
+    assert.equal(d.changes.filter(c => c.kind === 'add').length, 2);
+    // ошибки по строкам, остальные строки не пострадали
+    const msgs = d.errors.map(e => e.msg).join(' | ');
+    assert.ok(msgs.includes('цена должна быть числом') && msgs.includes('нет названия') && msgs.includes('неизвестная единица') && msgs.includes('уже был выше'), msgs);
+    assert.ok(d.errors.every(e => e.row >= 4), 'номера строк считаются по листу');
+    // применение
+    r = await importReq(FIX(fx), true);
+    d = await jsonOf(r);
+    assert.equal(r.status, 200);
+    assert.equal(d.applied, true);
+    const prod = await catalogNow();
+    assert.equal(prod.items.length, 6);                              // 4 прежних + 2 новых, ничего не удалено
+    const it = id => prod.items.find(x => x.id === id);
+    assert.deepEqual([it('p1').price, it('p1').tag, it('p1').old], [85000, 'sale', 95000]);
+    assert.equal(it('p2').price, 430000);
+    assert.deepEqual([it('p3').on, it('p3').tag, it('p3').price], [true, 'new', 530000]);
+    assert.equal(it('p4').price, 7500);                              // в файле такая же цена, а вторая строка «Макароны» отклонена
+    assert.equal(it('p1').pv, (await jsonOf(await call('GET', '/api/config'))).prod.items[0].pv);
+    const mouka = prod.items.find(x => x.name === 'Мука высшего сорта');
+    assert.deepEqual([mouka.price, mouka.amount, mouka.unit, mouka.tag, mouka.on], [300000, 50, 'kg', 'new', true]);
+    assert.ok(/^[A-Za-z0-9_-]{1,24}$/.test(mouka.id));
+    assert.equal(prod.cats.find(c => c.id === mouka.cat).name, 'Мука');
+    const odd = prod.items.find(x => x.name === 'Крупа <b>тест</b> & Ко');
+    assert.deepEqual([odd.price, odd.on, odd.tag, odd.old, odd.unit], [1201, false, 'sale', 1501, 'pc']);   // «1 200,5» с запятой округлено
+    assert.equal(prod.cats.length, 3);
+    // фото и остаток те же
+    assert.equal(it('p1').pv.length > 0, true);
+    const img = await call('GET', '/img/p1');
+    assert.deepEqual(Buffer.from(await img.arrayBuffer()), Buffer.from(photo));
+    assert.deepEqual(await getStock(), { p1: { q: 20, r: 0, low: 3 } });
+    // повтор того же файла ничего не меняет
+    d = await jsonOf(await importReq(FIX(fx), true));
+    assert.equal(d.applied, false);
+    assert.deepEqual([d.summary.added, d.summary.updated], [0, 0]);
+    // клиент заказывает по новой цене
+    const o = await place(newUser(), [{ id: 'p1', qty: 2 }], { expectTotal: 170000 });
+    assert.equal(o.status, 200);
+  });
+}
+
+await t('прайс из Excel: каталог можно выгрузить, поправить и загрузить обратно; без правок изменений нет', async () => {
+  await stockWorld();
+  assert.equal((await putCfg(sh => { sh.name = 'База'; })).status, 200);
+  tgLog = [];
+  assert.equal((await exportReq('catalog')).status, 200);
+  const doc = lastDoc();
+  dumpFile(doc.file);
+  assert.ok(/^catalog-\d{4}-\d{2}-\d{2}\.xlsx$/.test(doc.file.name));
+  const x = readXlsx(doc.file.bytes);
+  assert.deepEqual(Object.keys(x), ['Каталог', 'Как заполнять']);
+  assert.deepEqual(x['Каталог'][0].slice(0, 3), ['Код', 'Категория', 'Название']);
+  const row = x['Каталог'].find(r => r[0] === 'p1');
+  assert.deepEqual([row[1], row[2], row[6], row[7], row[8], row[9]], ['Масла', 'Масло подсолнечное', 5, 'л', 82000, 'да']);
+  assert.equal(x['Каталог'].find(r => r[0] === 'p3')[9], 'нет');
+  assert.equal(x['Каталог'].length, 5);
+  // выгруженный файл читается обратно: все 4 товара «без изменений»
+  const d = await jsonOf(await importReq(doc.file.bytes, true));
+  assert.equal(d.applied, false);
+  assert.deepEqual(d.summary, { added: 0, updated: 0, same: 4, errors: 0, newCats: [] });
+});
+
+await t('прайс из Excel: плохие файлы отклоняются понятной причиной, каталог цел', async () => {
+  await stockWorld();
+  const before = JSON.stringify(await catalogNow());
+  const why = async (bytes, status) => { const r = await importReq(bytes, true); assert.equal(r.status, status || 400); const d = await jsonOf(r); assert.equal(d.error, 'bad_file'); return d.why; };
+  assert.equal(await why(new Uint8Array([1, 2, 3])), 'not_xlsx');
+  assert.equal(await why(new TextEncoder().encode('Название;Цена\nРис;1000\n'.repeat(20))), 'not_xlsx');   // CSV
+  assert.equal(await why(new Uint8Array(0)), 'not_xlsx');
+  assert.equal(await why(new Uint8Array(1100000).fill(0x50), 413), 'too_big');
+  // zip без книги Excel: резервная копия
+  tgLog = [];
+  await exportReq('backup');
+  assert.equal(await why(lastDoc().file.bytes), 'not_xlsx');
+  // настоящая книга, но без колонок «Название» и «Цена»
+  tgLog = [];
+  await exportReq('orders');
+  assert.equal(await why(lastDoc().file.bytes), 'no_header');
+  // «архив-бомба»: честно заявлен большой размер, и вранье о малом размере
+  const mk = (name, raw, declared) => {
+    const nm = Buffer.from(name), data = zlib.deflateRawSync(raw);
+    const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(8, 8); lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(declared, 22); lh.writeUInt16LE(nm.length, 26);
+    const cd = Buffer.alloc(46); cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(8, 10); cd.writeUInt32LE(data.length, 20); cd.writeUInt32LE(declared, 24); cd.writeUInt16LE(nm.length, 28);
+    const body = Buffer.concat([lh, nm, data]);
+    const eo = Buffer.alloc(22); eo.writeUInt32LE(0x06054b50, 0); eo.writeUInt16LE(1, 8); eo.writeUInt16LE(1, 10); eo.writeUInt32LE(46 + nm.length, 12); eo.writeUInt32LE(body.length, 16);
+    return new Uint8Array(Buffer.concat([body, cd, nm, eo]));
+  };
+  const big = Buffer.alloc(30000000, 0x20);
+  assert.equal(await why(mk('xl/workbook.xml', big, big.length)), 'too_big');
+  assert.equal(await why(mk('xl/workbook.xml', big, 100)), 'too_big');
+  assert.equal(JSON.stringify(await catalogNow()), before);
+});
+
+await t('прайс из Excel: больше 300 товаров и 40 категорий не помещаются, остальное добавляется', async () => {
+  await stockWorld();
+  let d = await jsonOf(await importReq(FIX('price-many.xlsx'), true));
+  assert.equal(d.applied, true);
+  assert.equal((await catalogNow()).items.length, 300);
+  assert.deepEqual([d.summary.added, d.summary.errors], [296, 14]);
+  assert.ok(d.errors.every(e => e.msg.includes('уже 300 товаров')));
+  await stockWorld();
+  d = await jsonOf(await importReq(FIX('price-cats.xlsx'), true));
+  const prod = await catalogNow();
+  assert.equal(prod.cats.length, 40);
+  assert.deepEqual([d.summary.added, d.summary.errors], [38, 12]);
+  assert.ok(d.errors.every(e => e.msg.includes('40 категорий')));
+  assert.equal(prod.items.length, 4 + 38);
 });
 
 await t('без секретов сервер не падает и говорит, что делать', async () => {

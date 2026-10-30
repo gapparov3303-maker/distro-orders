@@ -87,6 +87,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .sum .r.t{border-bottom:0;font-weight:700;padding-top:10px}
 .sum .r.t span:last-child{font:700 16px var(--f-display)}
 .note{background:var(--accent-soft);border-radius:12px;padding:10px 12px;font-size:13px}
+.note.warnnote{background:var(--warn-soft);color:var(--warn);font-weight:600}
 .btn{appearance:none;border:0;border-radius:12px;padding:13px 18px;font-weight:600;font-size:15px;background:var(--accent);color:var(--accent-ink);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
 .btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
 .btn.sm{padding:7px 12px;font-size:13px;border-radius:10px}
@@ -111,7 +112,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .tabs::-webkit-scrollbar{display:none}
 .tab{appearance:none;background:transparent;border:0;border-bottom:2.5px solid transparent;box-shadow:inset 0 -1px 0 var(--line);padding:10px 12px;font-weight:600;font-size:14px;color:var(--ink-2);cursor:pointer;white-space:nowrap;flex:none}
 .tab .badge{margin-left:3px}
-@media (max-width:430px){.tab{padding:10px 8px;font-size:13px}}
+@media (max-width:430px){.tab{padding:10px 4px;font-size:12px}.tab .badge{margin-left:2px;min-width:16px;height:16px;padding:0 4px;font-size:10px}}
 .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
 .filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
 .ordlist{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
@@ -132,6 +133,15 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .tot b{font:700 15px var(--f-display);font-variant-numeric:tabular-nums}
 .tot span{font-size:12px;color:var(--ink-2)}
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.xtools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px}
+.xmenu{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+.xmenu .chip[disabled]{opacity:.45;cursor:default}
+.xtools .unit{width:100%;font-size:12px;color:var(--ink-2)}
+.pov{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.pov[hidden]{display:none}
+.pbar{display:flex;align-items:center;gap:8px;padding:8px max(12px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
+.pbar .grow{flex:1}
+.pframe{flex:1;width:100%;border:0;background:#fff;color-scheme:light}
 .st{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
 .st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .st.info{background:var(--info-soft);color:var(--info)}
@@ -163,6 +173,11 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .pchips::-webkit-scrollbar{display:none}
 .pchips .chip{flex:none;white-space:nowrap}
 .chead{font:700 14px var(--f-display);margin:20px 0 10px}
+.chg{padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.chg b{display:block;font-size:14px}.chg small{display:block;color:var(--ink-2)}
+.chg.bad small{color:var(--bad)}
+.impsum{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0;font-size:13px}
+.impsum b{font-size:15px}
 .chead:first-child{margin-top:4px}
 .pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media (min-width:640px){.pgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -173,6 +188,14 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .pimg{position:relative;aspect-ratio:4/3;background:linear-gradient(160deg,var(--stage-a),var(--stage-b));display:flex;align-items:center;justify-content:center;overflow:hidden}
 .pimg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .ph{font-size:34px;line-height:1}
+.pimg .lbl{position:absolute;left:8px;top:8px;z-index:1;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--info);color:var(--surface)}
+.pimg .lbl.sale{background:var(--bad)}
+.pimg .fav{position:absolute;right:6px;top:6px;z-index:2;width:38px;height:38px;border-radius:50%;border:0;padding:0;display:flex;align-items:center;justify-content:center;background:var(--surface);color:var(--ink-2);cursor:pointer;box-shadow:0 1px 3px rgba(20,35,31,.25)}
+.pimg .fav svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
+.pimg .fav[aria-pressed="true"]{color:var(--bad)}
+.pimg .fav[aria-pressed="true"] svg{fill:currentColor}
+.pold{display:inline-block;margin-right:6px;font:500 12px var(--f-body);color:var(--ink-2);text-decoration:line-through}
+.psale{margin-left:6px;font:700 11px var(--f-body);color:var(--bad)}
 .pimg .tag{position:absolute;left:8px;top:8px;background:var(--ink);color:var(--bg);font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;z-index:1}
 .pbody{padding:10px 12px 12px;display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
 .pname{font-weight:600;font-size:14px;line-height:1.3;overflow-wrap:anywhere}
@@ -214,7 +237,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .pthumb{position:relative;width:104px;height:104px;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,var(--stage-a),var(--stage-b));display:flex;align-items:center;justify-content:center}
 .pthumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .pbtns{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-.pbtns label.dis{opacity:.6;pointer-events:none}
+.pbtns label.dis,.row-btns label.dis{opacity:.6;pointer-events:none}
 .sr{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
 .pf{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
 .pf .full{grid-column:1/-1}
@@ -270,6 +293,30 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .jrow .jd.plus{color:var(--ok)}
 .jrow .jd.minus{color:var(--bad)}
 
+/* клиенты */
+.clrow{padding:12px 0;border-top:1px solid var(--line)}
+.clrow:first-child{border-top:0;padding-top:2px}
+.clhead{appearance:none;background:transparent;border:0;width:100%;text-align:left;padding:0;cursor:pointer;display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.clhead .cn{min-width:0;display:grid;gap:2px}
+.clhead .cn b{font-size:15px;overflow-wrap:anywhere}
+.clhead .cn small{font-size:12.5px;color:var(--ink-2);overflow-wrap:anywhere}
+.cbadges{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;flex:none;max-width:45%}
+.cmeta{font-size:12.5px;color:var(--ink-2);margin-top:6px}
+.ced{margin-top:12px;display:grid;gap:14px}
+.ced .form{gap:12px}
+.ced h3{font:700 13px var(--f-display)}
+.gchips,.achips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.gchips .chip{height:30px;font-size:12px;padding:0 10px}
+.achips .chip{height:auto;min-height:34px;padding:6px 12px;text-align:left;justify-content:flex-start;max-width:100%;white-space:normal;line-height:1.3;overflow-wrap:anywhere}
+.ck{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer}
+.ck small{display:block;color:var(--ink-2);font-size:12px}
+.corder{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 10px;font-size:13px;padding:7px 0;border-top:1px dashed var(--line)}
+.corder:first-of-type{border-top:0}
+.corder .oid{font-weight:700}
+.corder .cs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.csearch{margin-bottom:12px}
+.bannerbad{background:var(--bad-soft);color:var(--bad);border-radius:12px;padding:10px 12px;font-size:13px;font-weight:600}
+
 /* placed */
 .eyebrow{font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
 .stack{display:grid;gap:12px}
@@ -306,7 +353,11 @@ const S={
   busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,
   prod:{cats:[],items:[]},cart:{},shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
   pfilter:'all',upl:{},dirtyC:false,dirtyP:false,cd:null,
-  stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false
+  stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,
+  profile:null,blocked:false,pfBusy:false,
+  cl:[],clLoaded:false,cq:'',cg:'all',cOpen:null,cDet:{},cBusy:false,cDel:null,
+  pm:false,xbusy:'',pick:null,pickBusy:false,
+  fav:[],favT:null,favSeq:0,imp:null,impBusy:false
 };
 const view=$('#view');
 let toastT=null,saveT=null;
@@ -338,6 +389,15 @@ function loadForm(){
   }catch(e){}
 }
 function saveForm(){try{localStorage.setItem('sh-form',JSON.stringify({name:S.form.name,phone:S.form.phone,address:S.form.address,mode:S.form.mode}))}catch(e){}}
+/* профиль на сервере главнее того, что запомнил телефон: имя и телефон берём из него; адрес подставляем, если поле пустое */
+function applyProfile(){
+  const p=S.profile;if(!p)return;
+  if(p.name)S.form.name=p.name;
+  if(p.phone)S.form.phone=p.phone;
+  if(!S.form.address&&p.addrs&&p.addrs.length)S.form.address=p.addrs[0];
+  saveForm();
+}
+const blockedTxt=()=>L('Оформление заказов для вас сейчас недоступно. Свяжитесь с продавцом','Hozir siz uchun buyurtma berish mavjud emas. Sotuvchi bilan bogʻlaning')+(S.cfg.shop.phone?': '+S.cfg.shop.phone:'.');
 /* Товар нельзя заказать: продавец снял галочку «В наличии» или свободный остаток равен нулю. Поле av приходит с сервера у товаров с учётом (сколько можно заказать, не больше 500), lw — товара мало. */
 const soldOut=p=>p.on===false||p.av===0;
 /* Сколько штук можно положить в корзину: до 500, а у товаров с учётом — не больше свободного остатка. */
@@ -357,6 +417,10 @@ function pruneCart(){
 const cartLines=()=>S.prod.items.filter(p=>S.cart[p.id]>0).map(p=>({p,qty:S.cart[p.id]}));
 const cartCount=()=>cartLines().reduce((s,l)=>s+l.qty,0);
 const cartTotal=()=>cartLines().reduce((s,l)=>s+l.qty*(Number(l.p.price)||0),0);
+/* доставка и итог к оплате считаются так же, как на сервере (общая функция deliveryFee) */
+const cartFee=()=>deliveryFee(S.cfg,mode(),cartTotal());
+const cartPay=()=>cartTotal()+cartFee();
+const minOrder=()=>Number(S.cfg.shop.minOrder)||0;
 /* Ставит количество в корзине (не больше остатка и 500). Возвращает, сколько в итоге стоит в корзине. */
 function cartSet(id,q){
   const p=S.prod.items.find(x=>x.id===id),cap=p?maxQty(p):MAX_QTY;
@@ -397,6 +461,7 @@ function switchLang(){
 /* nav */
 function renderNav(){
   const items=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
+  if(S.auth)items.push(['profile',L('Профиль','Profil')]);
   if(S.admin)items.push(['seller',L('Продавец','Sotuvchi'),newCount()]);
   const nav=$('#nav');
   nav.setAttribute('aria-label',L('Разделы','Boʻlimlar'));
@@ -424,20 +489,48 @@ function productCtl(p){
   if(!q)return '<button type="button" class="btn sm padd" data-act="padd" data-id="'+esc(p.id)+'">'+L('В корзину','Savatga')+'</button>';
   return qtyHTML(p.id,q,false);
 }
+const HEART='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.2-9.3C1.6 7.8 3.6 4.5 7 4.5c2 0 3.5 1.1 5 3 1.5-1.9 3-3 5-3 3.4 0 5.4 3.3 4.2 6.7-1.7 4.7-9.2 9.3-9.2 9.3z"/></svg>';
+const isFav=id=>S.fav.includes(id);
+const favBtn=id=>S.auth?'<button type="button" class="fav" data-act="fav" data-id="'+esc(id)+'" aria-pressed="'+isFav(id)+'" aria-label="'+esc(L('В избранное','Sevimlilarga'))+'">'+HEART+'</button>':'';
+function priceHTML(p){
+  const o=oldPrice(p),pc=salePct(p);
+  return (o?'<span class="pold">'+money(o)+'</span>':'')+money(p.price)+(pc?'<span class="psale">−'+pc+'%</span>':'');
+}
 function productCard(p){
   const off=soldOut(p),d=prodDesc(p),w=weightLabel(p);
   const status=off?'':(p.lw&&typeof p.av==='number'?'<div class="pst low">'+esc(lowTxt(p.av))+'</div>':'<div class="pst">'+L('В наличии','Mavjud')+'</div>');
-  return '<article class="pcard'+(off?' off':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg">'+pimg(p)+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':'')+'</div>'
+  return '<article class="pcard'+(off?' off':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg">'+pimg(p)+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
     +'<div class="pbody"><div class="pname">'+esc(nm(p))+'</div>'+(w?'<div class="pw">'+esc(w)+'</div>':'')+status
     +(d?'<div class="pdesc" data-act="pdesc">'+esc(d)+'</div>':'')
-    +'<div class="pprice">'+money(p.price)+'</div><div class="pctl">'+productCtl(p)+'</div></div></article>';
+    +'<div class="pprice">'+priceHTML(p)+'</div><div class="pctl">'+productCtl(p)+'</div></div></article>';
 }
+/* Поиск по названию, описанию и весу на обоих языках: каждое слово запроса должно встретиться. */
+const normQ=s=>String(s||'').toLowerCase().replace(/ё/g,'е').replace(/[ʻʼ’‘`']/g,'');
+function matchQ(p,q){
+  const words=normQ(q).split(/\s+/).filter(Boolean);
+  if(!words.length)return true;
+  const hay=normQ([p.name,p.uz,p.desc,p.descUz,weightLabel(p)].join(' '));
+  return words.every(w=>hay.indexOf(w)>=0);
+}
+/* особые разделы рядом с категориями: избранное, акции, новинки */
+function shopSpecials(){
+  const out=[];
+  if(S.auth&&S.fav.some(id=>S.prod.items.some(p=>p.id===id)))out.push(['fav','★ '+L('Избранное','Sevimlilar')]);
+  if(S.prod.items.some(p=>p.tag==='sale'))out.push(['sale',tagName('sale')]);
+  if(S.prod.items.some(p=>p.tag==='new'))out.push(['new',tagName('new')]);
+  return out;
+}
+const inShopFilter=p=>S.shopCat==='all'?true:S.shopCat==='fav'?isFav(p.id):S.shopCat==='sale'?p.tag==='sale':S.shopCat==='new'?p.tag==='new':p.cat===S.shopCat;
 /* Сетка товаров: по выбранной категории и поиску. В режиме «Все» без поиска товары идут разделами по категориям. */
 function paintGrid(){
   const g=$('#pgrid');if(!g)return;
-  const q=S.q.trim().toLowerCase();
-  const items=S.prod.items.filter(p=>(S.shopCat==='all'||p.cat===S.shopCat)&&(!q||((p.name||'')+' '+(p.uz||'')).toLowerCase().indexOf(q)>=0));
-  if(!items.length){g.innerHTML='<div class="empty"><b>'+L('Ничего не найдено','Hech narsa topilmadi')+'</b>'+L('Измените запрос или выберите другую категорию.','Soʻrovni oʻzgartiring yoki boshqa kategoriyani tanlang.')+'</div>';return}
+  const q=S.q.trim();
+  const items=S.prod.items.filter(p=>inShopFilter(p)&&matchQ(p,q));
+  if(!items.length){
+    g.innerHTML=S.shopCat==='fav'&&!q?'<div class="empty"><b>'+L('В избранном пока пусто','Sevimlilar hozircha boʻsh')+'</b>'+L('Нажмите на сердечко у товара, и он появится здесь.','Mahsulotdagi yurakchani bosing, u shu yerda paydo boʻladi.')+'</div>'
+      :'<div class="empty"><b>'+L('Ничего не найдено','Hech narsa topilmadi')+'</b>'+L('Измените запрос или выберите другую категорию.','Soʻrovni oʻzgartiring yoki boshqa kategoriyani tanlang.')+'</div>';
+    return;
+  }
   const cats=shopCats();
   if(S.shopCat==='all'&&!q&&cats.length>=1){
     const rest=items.filter(p=>!cats.some(c=>c.id===p.cat));
@@ -450,7 +543,7 @@ function paintShopBar(){
   const n=cartCount();
   if(!n){bar.style.display='none';bar.innerHTML='';return}
   bar.style.display='';
-  if(S.shopStep==='cart')bar.innerHTML='<div class="wrap"><div><small>'+L('Итого, оплата при получении','Jami, olganda toʻlanadi')+'</small><strong id="ctotal">'+money(cartTotal())+'</strong></div><button type="button" class="btn" data-act="submitorder">'+L('Заказать','Buyurtma berish')+'</button></div>';
+  if(S.shopStep==='cart')bar.innerHTML='<div class="wrap"><div><small>'+L('Итого, оплата при получении','Jami, olganda toʻlanadi')+'</small><strong id="ctotal">'+money(cartPay())+'</strong></div><button type="button" class="btn" data-act="submitorder">'+L('Заказать','Buyurtma berish')+'</button></div>';
   else bar.innerHTML='<div class="wrap"><div><small>'+L('Корзина','Savat')+': '+n+' '+L('шт.','dona')+'</small><strong>'+money(cartTotal())+'</strong></div><button type="button" class="btn" data-act="opencart">'+L('Оформить заказ','Buyurtma berish')+'</button></div>';
 }
 function renderShop(){
@@ -462,12 +555,31 @@ function renderShop(){
   if(S.shopStep==='cart'&&cartCount()>0)return renderCart();
   S.shopStep='list';
   const cats=shopCats();
-  if(S.shopCat!=='all'&&!cats.some(c=>c.id===S.shopCat))S.shopCat='all';
-  const chips=cats.length>1?'<div class="pchips" role="group" aria-label="'+esc(L('Категории','Kategoriyalar'))+'">'
-    +[['all',L('Все','Barchasi')]].concat(cats.map(c=>[c.id,nm(c)])).map(c=>'<button type="button" class="chip" data-act="scat" data-id="'+esc(c[0])+'" aria-pressed="'+(S.shopCat===c[0])+'">'+esc(c[1])+'</button>').join('')+'</div>':'';
-  const search=S.prod.items.length>8?'<div class="search"><input type="search" id="q" value="'+esc(S.q)+'" placeholder="'+esc(L('Поиск по названию','Nomi boʻyicha qidirish'))+'" autocomplete="off" aria-label="'+esc(L('Поиск по названию','Nomi boʻyicha qidirish'))+'"></div>':'';
+  const specials=shopSpecials();
+  if(S.shopCat!=='all'&&!cats.some(c=>c.id===S.shopCat)&&!specials.some(x=>x[0]===S.shopCat))S.shopCat='all';
+  const chips=cats.length>1||specials.length?'<div class="pchips" role="group" aria-label="'+esc(L('Категории','Kategoriyalar'))+'">'
+    +[['all',L('Все','Barchasi')]].concat(specials,cats.length>1?cats.map(c=>[c.id,nm(c)]):[]).map(c=>'<button type="button" class="chip" data-act="scat" data-id="'+esc(c[0])+'" aria-pressed="'+(S.shopCat===c[0])+'">'+esc(c[1])+'</button>').join('')+'</div>':'';
+  const search=S.prod.items.length>8?'<div class="search"><input type="search" id="q" value="'+esc(S.q)+'" placeholder="'+esc(L('Поиск по названию и описанию','Nomi va tavsifi boʻyicha qidirish'))+'" autocomplete="off" aria-label="'+esc(L('Поиск по названию и описанию','Nomi va tavsifi boʻyicha qidirish'))+'"></div>':'';
   view.innerHTML='<div class="wrap shop"><div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</h1>'+search+chips+'<div id="pgrid"></div></div><div class="bar" id="bar"></div>';
   paintGrid();paintShopBar();
+}
+function toggleFav(id){
+  if(!S.auth)return;
+  S.fav=isFav(id)?S.fav.filter(x=>x!==id):S.fav.concat([id]).slice(-100);
+  S.favSeq++;
+  document.querySelectorAll('.fav[data-id="'+CSS.escape(id)+'"]').forEach(b=>b.setAttribute('aria-pressed',String(isFav(id))));
+  if(S.view==='shop'&&!S.shopPlaced&&S.shopStep==='list'){
+    const sp=shopSpecials();
+    if(S.shopCat==='fav'&&!sp.some(x=>x[0]==='fav')){S.shopCat='all';renderShop()}
+    else if(S.shopCat==='fav')paintGrid();
+    else{const had=!!document.querySelector('[data-act="scat"][data-id="fav"]');if(had!==sp.some(x=>x[0]==='fav'))renderShop()}
+  }
+  clearTimeout(S.favT);S.favT=setTimeout(pushFav,600);
+}
+async function pushFav(){
+  const seq=S.favSeq,r=await api('PUT','/api/fav',{ids:S.fav});
+  if(!r.ok||!r.data){toast(L('Избранное не сохранилось. Проверьте соединение.','Sevimlilar saqlanmadi. Ulanishni tekshiring.'));return}
+  if(S.favSeq===seq&&JSON.stringify(r.data.fav)!==JSON.stringify(S.fav)){S.fav=r.data.fav;if(S.view==='shop')renderShop()}
 }
 function paintShopCtl(id){
   const p=S.prod.items.find(x=>x.id===id),el=document.querySelector('#pc-'+CSS.escape(id)+' .pctl');
@@ -482,7 +594,21 @@ function paintCartLines(){
       +(p.lw&&typeof p.av==='number'?'<small class="lowtxt">'+esc(lowTxt(p.av))+'</small>':'')+'</div>'
       +'<div class="cr">'+qtyHTML(p.id,l.qty,true)+'<div class="cs">'+money(l.qty*(Number(p.price)||0))+'</div></div></div>';
   }).join('');
-  const t=$('#ctotalrow');if(t)t.textContent=money(cartTotal());
+  paintCartSum();
+}
+/* Блок «Итого» в корзине: товары, доставка (если она платная), итог, подсказки про минимум и бесплатную доставку. */
+function paintCartSum(){
+  const el=$('#csum');if(!el)return;
+  const sub=cartTotal(),fee=cartFee(),sh=S.cfg.shop,del=mode()==='delivery',feeSet=Number(sh.deliveryFee)>0,free=Number(sh.freeDeliveryFrom)||0;
+  const showFee=del&&feeSet;
+  el.innerHTML=(showFee?'<div class="r"><span>'+L('Товары','Mahsulotlar')+'</span><span id="csubrow">'+money(sub)+'</span></div><div class="r"><span>'+L('Доставка','Yetkazib berish')+'</span><span id="cfeerow">'+(fee>0?money(fee):L('бесплатно','bepul'))+'</span></div>':'')
+    +'<div class="r t"><span>'+L('Итого','Jami')+'</span><span id="ctotalrow">'+money(cartPay())+'</span></div>';
+  const m=$('#cmin');if(!m)return;
+  const min=minOrder(),notes=[];
+  if(min>0&&sub<min)notes.push('<div class="note warnnote" role="status">'+L('Минимальная сумма заказа: '+money(min)+'. Добавьте товаров ещё на '+money(min-sub)+'.','Buyurtmaning minimal summasi: '+money(min)+'. Yana '+money(min-sub)+' lik mahsulot qoʻshing.')+'</div>');
+  if(showFee&&fee>0&&free>sub)notes.push('<div class="note" role="status">'+L('До бесплатной доставки осталось '+money(free-sub)+'.','Bepul yetkazib berishgacha '+money(free-sub)+' qoldi.')+'</div>');
+  m.innerHTML=notes.length?'<div class="stack" style="margin-top:12px">'+notes.join('')+'</div>':'';
+  paintShopBar();
 }
 /* Меняет суммы на экране, не перерисовывая поле, в которое клиент печатает количество. */
 function refreshTotals(id){
@@ -490,8 +616,7 @@ function refreshTotals(id){
   if(p&&line)line.textContent=money((S.cart[id]||0)*(Number(p.price)||0));
   const cap=capOf(id);
   document.querySelectorAll('[data-act="pplus"],[data-act="cplus"]').forEach(b=>{if(b.dataset.id===id)b.disabled=(S.cart[id]||0)>=cap});
-  const t=$('#ctotalrow');if(t)t.textContent=money(cartTotal());
-  paintShopBar();renderNav();
+  paintCartSum();paintShopBar();renderNav();
 }
 /* Поля заказа: способ получения, имя, телефон, адрес (для доставки), дата, время, комментарий */
 function formHTML(pk){
@@ -500,11 +625,21 @@ function formHTML(pk){
     +(canDel?'<div class="full"><div class="seg" role="group" aria-label="'+esc(L('Способ получения','Olish usuli'))+'"><button type="button" data-act="mode" data-v="pickup" aria-pressed="'+(!del)+'">'+L('Самовывоз','Olib ketish')+'</button><button type="button" data-act="mode" data-v="delivery" aria-pressed="'+del+'">'+L('Доставка','Yetkazib berish')+'</button></div></div>':'')
     +'<div><label class="lab" for="f-name">'+L('Ваше имя или название компании','Ismingiz yoki kompaniya nomi')+'</label><input type="text" id="f-name" data-f="name" value="'+esc(S.form.name)+'" autocomplete="name"><div class="err" id="e-name"></div></div>'
     +'<div><label class="lab" for="f-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="f-phone" data-f="phone" value="'+esc(S.form.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel"><div class="err" id="e-phone"></div></div>'
-    +(del?'<div class="full"><label class="lab" for="f-address">'+L('Адрес доставки','Yetkazib berish manzili')+'</label><textarea id="f-address" data-f="address" rows="2" maxlength="200" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'" autocomplete="street-address">'+esc(S.form.address)+'</textarea><div class="err" id="e-address"></div></div>':'')
+    +(del?'<div class="full"><label class="lab" for="f-address">'+L('Адрес доставки','Yetkazib berish manzili')+'</label><textarea id="f-address" data-f="address" rows="2" maxlength="200" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'" autocomplete="street-address">'+esc(S.form.address)+'</textarea><div class="err" id="e-address"></div>'+addrChips()+'</div>':'')
     +'<div><label class="lab" for="f-date">'+(del?L('Дата доставки','Yetkazib berish sanasi'):L('Дата получения','Olish sanasi'))+'</label><input type="date" id="f-date" data-f="date" min="'+pk.min+'" max="'+pk.max+'" value="'+esc(S.form.date)+'"><div class="err" id="e-date"></div></div>'
     +'<div><label class="lab" for="f-time">'+L('Время','Vaqt')+'</label><select id="f-time" data-f="time"></select><div class="err" id="e-time"></div></div>'
     +'<div class="full"><label class="lab" for="f-comment">'+L('Пожелания к заказу','Buyurtmaga istaklar')+'</label><textarea id="f-comment" data-f="comment" placeholder="'+esc(L('Как позвонить, пожелания к упаковке','Qachon qoʻngʻiroq qilish, qadoqlash boʻyicha istaklar'))+'">'+esc(S.form.comment)+'</textarea></div>'
     +'</div>';
+}
+/* сохранённые адреса из профиля: нажал и адрес подставился */
+function addrChips(){
+  const a=S.profile&&S.profile.addrs;
+  if(!a||!a.length)return '';
+  return '<div class="achips" id="achips" role="group" aria-label="'+esc(L('Сохранённые адреса','Saqlangan manzillar'))+'">'+a.map((x,i)=>'<button type="button" class="chip" data-act="addr" data-i="'+i+'" aria-pressed="'+(S.form.address.trim().toLowerCase()===x.toLowerCase())+'">'+esc(x)+'</button>').join('')+'</div>';
+}
+function markAddr(){
+  const cur=S.form.address.trim().toLowerCase();
+  document.querySelectorAll('#achips .chip').forEach(b=>{const x=S.profile&&S.profile.addrs[Number(b.dataset.i)];b.setAttribute('aria-pressed',String(!!x&&x.toLowerCase()===cur))});
 }
 function fillTimes(){
   const sel=$('#f-time');if(!sel)return;
@@ -526,8 +661,9 @@ function renderCart(){
   S.shopStep='cart';
   view.innerHTML='<div class="wrap shop"><button type="button" class="btn ghost sm backlink" data-act="shoplist">← '+L('К каталогу','Katalogga')+'</button><h1>'+L('Корзина','Savat')+'</h1><div class="stack">'
     +'<div class="card" id="clines" style="margin-bottom:0"></div>'
-    +'<div class="sum"><div class="r t"><span>'+L('Итого','Jami')+'</span><span id="ctotalrow"></span></div></div>'
+    +'<div class="sum" id="csum"></div><div id="cmin"></div>'
     +'<section class="sec" style="padding-top:6px"><h2>'+L('Получение заказа','Buyurtmani olish')+'</h2><div class="stack">'
+    +(S.blocked?'<div class="bannerbad" role="alert">'+esc(blockedTxt())+'</div>':'')
     +formHTML(pk)
     +'<div class="note" id="cnote">'+cartNote()+'</div>'
     +'<button type="button" class="btn" id="submit" data-act="submitorder">'+L('Заказать','Buyurtma berish')+'</button>'
@@ -547,6 +683,7 @@ function renderShopPlaced(){
     +'<div class="sum"><div class="r"><span>'+(del?L('Доставка','Yetkazib berish'):L('Самовывоз','Olib ketish'))+'</span><span>'+esc(fmtWhen(o.pickupAt))+'</span></div>'
     +(del?'<div class="r"><span>'+L('Адрес','Manzil')+'</span><span style="white-space:normal;text-align:right">'+esc(o.address)+'</span></div>':'')
     +(o.items||[]).map(it=>'<div class="r">'+itemRow(it)+'</div>').join('')
+    +(o.fee>0?'<div class="r"><span>'+L('Стоимость доставки','Yetkazib berish narxi')+'</span><span>'+money(o.fee)+'</span></div>':'')
     +'<div class="r t"><span>'+L('К оплате при получении','Olganda toʻlanadi')+'</span><span>'+money(o.total)+'</span></div></div>'
     +'<div class="row-btns">'+(tg?'<a class="btn ghost" data-act="contact" href="'+tg+'" target="_blank" rel="noopener">'+L('Написать продавцу','Sotuvchiga yozish')+'</a>':'')
     +'<button type="button" class="btn ghost" data-act="shopagain">'+L('Ещё из каталога','Katalogdan yana')+'</button>'
@@ -568,7 +705,8 @@ function orderErrText(er){
     pickup:L('Это время уже недоступно. Выберите другое.','Bu vaqt endi mavjud emas. Boshqasini tanlang.'),
     auth:L('Сессия устарела. Закройте и снова откройте приложение в боте.','Seans eskirdi. Ilovani yopib, botdan qayta oching.'),
     expired:L('Сессия устарела. Закройте и снова откройте приложение в боте.','Seans eskirdi. Ilovani yopib, botdan qayta oching.'),
-    busy:L('Сейчас много заказов. Попробуйте чуть позже.','Hozir buyurtmalar koʻp. Birozdan keyin urinib koʻring.')
+    busy:L('Сейчас много заказов. Попробуйте чуть позже.','Hozir buyurtmalar koʻp. Birozdan keyin urinib koʻring.'),
+    blocked:blockedTxt()
   }[er]||L('Не удалось отправить заказ. Проверьте соединение и попробуйте ещё раз.','Buyurtmani yuborib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.');
 }
 async function submitOrder(){
@@ -584,13 +722,19 @@ async function submitOrder(){
   const first=FIELDS.find(k=>e[k]);
   if(first){const inp=$('#f-'+first);if(inp){inp.focus();try{inp.scrollIntoView({block:'center',behavior:'smooth'})}catch(x){}}return}
   if(!S.auth){toast(L('Откройте приложение через бота в Telegram, чтобы оформить заказ','Buyurtma berish uchun ilovani Telegramdagi bot orqali oching'));return}
+  if(S.blocked){toast(blockedTxt());return}
+  if(minOrder()>0&&cartTotal()<minOrder()){
+    toast(L('Минимальная сумма заказа: '+money(minOrder()),'Buyurtmaning minimal summasi: '+money(minOrder())));
+    const m=$('#cmin');if(m)try{m.scrollIntoView({block:'center',behavior:'smooth'})}catch(x){}
+    return;
+  }
   S.busy=true;
   const btn=$('#submit');if(btn){btn.disabled=true;btn.textContent=L('Отправляем…','Yuborilmoqda…')}
   const f=S.form,del=mode()==='delivery';
   const r=await api('POST','/api/order',{
     cart:lines.map(l=>({id:l.p.id,qty:l.qty})),
     form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',date:f.date,time:f.time,comment:f.comment.trim()},
-    lang:LANG,expectTotal:cartTotal()
+    lang:LANG,expectTotal:cartPay()
   });
   S.busy=false;
   if(!r.ok){
@@ -614,6 +758,11 @@ async function submitOrder(){
       toast(L('Столько товара нет на складе. '+what+'. Мы обновили корзину.','Omborda buncha mahsulot yoʻq. '+what+'. Savatni yangiladik.'));
       return;
     }
+    if(er==='min_order'){
+      renderShop();
+      toast(L('Минимальная сумма заказа: '+money(Number(r.data.min)||minOrder()),'Buyurtmaning minimal summasi: '+money(Number(r.data.min)||minOrder())));
+      return;
+    }
     if(er==='price_changed'||er==='unavailable'||er==='no_delivery'){
       pruneCart();
       S.shopStep=cartCount()?'cart':'list';
@@ -623,6 +772,7 @@ async function submitOrder(){
         :L('Что-то из корзины закончилось, мы обновили её. Проверьте заказ и оформите ещё раз.','Savatdagi baʼzi narsalar tugadi, savatni yangiladik. Buyurtmani tekshirib, qaytadan bering.'));
       return;
     }
+    if(er==='blocked')S.blocked=true;
     renderShop();toast(orderErrText(er));
     return;
   }
@@ -631,6 +781,12 @@ async function submitOrder(){
   S.shopPlaced={order};S.shopStep='list';
   S.myOrders=[order].concat(S.myOrders.filter(o=>o.id!==order.id));
   S.form.comment='';
+  if(!S.profile)S.profile={name:order.name,phone:order.phone,org:'',addrs:order.mode==='delivery'&&order.address?[order.address]:[]};
+  else{
+    if(!S.profile.name)S.profile.name=order.name;
+    if(!S.profile.phone)S.profile.phone=order.phone;
+    if(order.mode==='delivery'&&order.address&&S.profile.addrs.length<5&&!S.profile.addrs.some(a=>a.toLowerCase()===order.address.toLowerCase()))S.profile.addrs=S.profile.addrs.concat([order.address]);
+  }
   try{S.tg&&S.tg.HapticFeedback&&S.tg.HapticFeedback.notificationOccurred('success')}catch(x){}
   renderNav();renderShop();
   window.scrollTo(0,0);
@@ -641,17 +797,19 @@ const pill=o=>{const t=stOf(o.status,o.mode);return '<span class="st '+t.c+'">'+
 function sellerActs(o){
   const a=(to,label)=>'<button type="button" class="btn sm" data-act="status" data-id="'+esc(o.id)+'" data-to="'+to+'">'+label+'</button>';
   const del=o.mode==='delivery';
-  if(o.status==='new')return a('accepted',L('Принять в работу','Ishga qabul qilish'))+cancelBtn(o);
-  if(o.status==='accepted')return a('ready',del?L('Готов к отправке','Joʻnatishga tayyor'):L('Готов к выдаче','Topshirishga tayyor'))+cancelBtn(o);
-  if(o.status==='ready')return a('done',del?L('Доставлен клиенту','Mijozga yetkazildi'):L('Выдан клиенту','Mijozga topshirildi'))+cancelBtn(o);
-  return '';
+  const pk='<button type="button" class="btn ghost sm" data-act="pick1" data-id="'+esc(o.id)+'">'+L('Сборочный лист','Yigʻish roʻyxati')+'</button>';
+  if(o.status==='new')return a('accepted',L('Принять в работу','Ishga qabul qilish'))+cancelBtn(o)+pk;
+  if(o.status==='accepted')return a('ready',del?L('Готов к отправке','Joʻnatishga tayyor'):L('Готов к выдаче','Topshirishga tayyor'))+cancelBtn(o)+pk;
+  if(o.status==='ready')return a('done',del?L('Доставлен клиенту','Mijozga yetkazildi'):L('Выдан клиенту','Mijozga topshirildi'))+cancelBtn(o)+pk;
+  return o.status==='done'?pk:'';
 }
 function cancelBtn(o){
   const sure=S.cc===o.id;
   return '<button type="button" class="btn ghost sm" data-act="scancel" data-id="'+esc(o.id)+'">'+(sure?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить','Bekor qilish'))+'</button>';
 }
 function orderCard(o,m){
-  const acts=m==='seller'?sellerActs(o):(o.status==='new'?'<button type="button" class="btn ghost sm" data-act="mycancel" data-id="'+esc(o.id)+'">'+(S.cc===o.id?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить заказ','Buyurtmani bekor qilish'))+'</button>':'');
+  const rep=m==='mine'?'<button type="button" class="btn ghost sm" data-act="repeat" data-id="'+esc(o.id)+'">'+L('Повторить заказ','Buyurtmani takrorlash')+'</button>':'';
+  const acts=m==='seller'?sellerActs(o):rep+(o.status==='new'?'<button type="button" class="btn ghost sm" data-act="mycancel" data-id="'+esc(o.id)+'">'+(S.cc===o.id?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить заказ','Buyurtmani bekor qilish'))+'</button>':'');
   const first=(o.items||[]).map(i=>S.prod.items.find(p=>p.id===i.id)).find(p=>p&&p.pv);
   const del=o.mode==='delivery';
   return '<article class="ord'+(m==='seller'&&o.status==='new'?' is-new':'')+'"><div class="th">'+(first?'<img src="'+imgUrl(first)+'" alt="" loading="lazy">':'<span class="ph" aria-hidden="true">📦</span>')+'</div><div class="ob">'
@@ -659,7 +817,8 @@ function orderCard(o,m){
     +'<div class="when">'+esc(fmtWhen(o.pickupAt))+'</div>'
     +'<div class="spec">'+(del?L('Доставка: ','Yetkazib berish: ')+esc(o.address||''):L('Самовывоз','Olib ketish'))+'</div>'
     +(o.items||[]).map(it=>'<div class="pl">'+itemRow(it)+'</div>').join('')
-    +(m==='seller'?'<div class="cust"><b>'+esc(o.name)+'</b> <span>'+esc(o.phone)+'</span>'+(o.tg&&o.tg.username?' <span>@'+esc(o.tg.username)+'</span>':'')+' <button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(o.phone)+'">'+L('Копировать','Nusxalash')+'</button></div>':'')
+    +(o.fee>0?'<div class="pl"><span>'+L('Стоимость доставки','Yetkazib berish narxi')+'</span><span>'+money(o.fee)+'</span></div>':'')
+    +(m==='seller'?'<div class="cust"><b>'+esc(o.name)+'</b>'+(o.org?' <span>'+esc(o.org)+'</span>':'')+' <span>'+esc(o.phone)+'</span>'+(o.tg&&o.tg.username?' <span>@'+esc(o.tg.username)+'</span>':'')+' <button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(o.phone)+'">'+L('Копировать','Nusxalash')+'</button></div>':'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
     +'<div class="tot"><b>'+money(o.total)+'</b><span>'+L('оплата при получении','olganda toʻlanadi')+'</span></div>'
     +(acts?'<div class="acts">'+acts+'</div>':'')
@@ -677,6 +836,62 @@ function renderMine(){
   view.innerHTML=h+'</div>';
 }
 
+/* ---------- профиль клиента ---------- */
+function renderProfile(){
+  let h='<div class="wrap page"><h1>'+L('Мой профиль','Mening profilim')+'</h1>';
+  if(!S.ready)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else if(!S.auth)h+='<div class="empty"><b>'+L('Откройте через бота','Bot orqali oching')+'</b>'+L('Профиль доступен, если открыть приложение из бота в Telegram.','Profil ilovani Telegramdagi botdan ochganda mavjud.')+'</div>';
+  else{
+    const p=S.profile||{name:'',phone:'',org:'',addrs:[]};
+    h+='<p class="lead">'+L('Эти данные подставляются в заказ, на любом вашем устройстве. При оформлении заказа их можно изменить.','Bu maʼlumotlar istalgan qurilmangizda buyurtmaga avtomatik qoʻyiladi. Buyurtma berayotganda oʻzgartirish mumkin.')+'</p>'
+      +(S.blocked?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(blockedTxt())+'</div>':'')
+      +'<div class="card"><div class="form">'
+      +'<div><label class="lab" for="p-name">'+L('Ваше имя','Ismingiz')+'</label><input type="text" id="p-name" data-pf="name" maxlength="60" value="'+esc(p.name)+'" autocomplete="name"><div class="err" id="pe-name"></div></div>'
+      +'<div><label class="lab" for="p-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="p-phone" data-pf="phone" maxlength="25" value="'+esc(p.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel"><div class="err" id="pe-phone"></div></div>'
+      +'<div class="full"><label class="lab" for="p-org">'+L('Организация (магазин, кафе, компания)','Tashkilot (doʻkon, kafe, kompaniya)')+'</label><input type="text" id="p-org" data-pf="org" maxlength="80" value="'+esc(p.org)+'" autocomplete="organization"><div class="err" id="pe-org"></div></div>'
+      +'<div class="full"><label class="lab" for="p-addrs">'+L('Адреса доставки: каждый с новой строки, до 5','Yetkazib berish manzillari: har biri yangi qatordan, 5 tagacha')+'</label><textarea id="p-addrs" data-pf="addrs" rows="4" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'">'+esc((p.addrs||[]).join('\n'))+'</textarea><div class="err" id="pe-addrs"></div></div>'
+      +'</div><div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="pfsave" data-act="pfsave">'+L('Сохранить','Saqlash')+'</button></div></div>';
+  }
+  view.innerHTML=h+'</div>';
+}
+/* общая проверка полей клиента на телефоне; возвращает {v} или {e:{поле:текст}} */
+function checkClientFields(get){
+  const e={},v={name:get('name').trim(),phone:get('phone').trim(),org:get('org').trim()};
+  if(v.phone&&(v.phone.replace(/\D/g,'').length<9||v.phone.replace(/\D/g,'').length>15))e.phone=L('Проверьте номер телефона','Telefon raqamini tekshiring');
+  const lines=get('addrs').split(/\r?\n/).map(x=>x.trim()).filter(Boolean),addrs=[];
+  lines.forEach(x=>{if(!addrs.some(y=>y.toLowerCase()===x.toLowerCase()))addrs.push(x)});
+  if(addrs.some(x=>x.length<5))e.addrs=L('Адрес слишком короткий','Manzil juda qisqa');
+  else if(addrs.length>5)e.addrs=L('Можно сохранить не больше 5 адресов','5 tadan ortiq manzil saqlab boʻlmaydi');
+  v.addrs=addrs;
+  return Object.keys(e).length?{e}:{v};
+}
+const clientErrText=er=>({
+  bad_phone:L('Проверьте номер телефона','Telefon raqamini tekshiring'),
+  bad_addr:L('Адрес слишком короткий','Manzil juda qisqa'),
+  too_many_addrs:L('Можно сохранить не больше 5 адресов','5 tadan ortiq manzil saqlab boʻlmaydi'),
+  busy:L('Сейчас сохранить нельзя. Попробуйте позже.','Hozir saqlab boʻlmaydi. Keyinroq urinib koʻring.')
+}[er]||L('Не удалось сохранить. Проверьте соединение.','Saqlab boʻlmadi. Ulanishni tekshiring.'));
+async function saveProfile(){
+  if(S.pfBusy||!S.auth)return;
+  const get=k=>{const el=document.getElementById('p-'+k);return el?String(el.value):''};
+  const c=checkClientFields(get);
+  ['name','phone','org','addrs'].forEach(k=>{const er=document.getElementById('pe-'+k),inp=document.getElementById('p-'+k);if(er)er.textContent=(c.e&&c.e[k])||'';if(inp)inp.setAttribute('aria-invalid',c.e&&c.e[k]?'true':'false')});
+  if(c.e){const k=Object.keys(c.e)[0],inp=document.getElementById('p-'+k);if(inp)inp.focus();return}
+  S.pfBusy=true;
+  const btn=$('#pfsave');if(btn)btn.disabled=true;
+  const r=await api('PUT','/api/profile',c.v);
+  S.pfBusy=false;
+  if(btn)btn.disabled=false;
+  if(!r.ok||!r.data||!r.data.profile){toast(clientErrText(r.data&&r.data.error));return}
+  S.profile=r.data.profile;
+  /* данные профиля подставляем в форму заказа сразу; адрес — только если поле пустое или адреса больше нет в профиле */
+  S.form.name=S.profile.name||S.form.name;S.form.phone=S.profile.phone||S.form.phone;
+  if(!S.form.address||!S.profile.addrs.some(a=>a.toLowerCase()===S.form.address.toLowerCase()))S.form.address=S.profile.addrs[0]||S.form.address;
+  saveForm();
+  toast(L('Профиль сохранён','Profil saqlandi'));
+  if(S.view==='profile')renderProfile();
+}
+
 /* ---------- seller ---------- */
 function renderSeller(){
   if(!S.admin){view.innerHTML='<div class="wrap page"><div class="empty"><b>'+L('Раздел для продавца','Sotuvchi boʻlimi')+'</b>'+L('Откройте приложение с правами редактора.','Ilovani muharrir huquqi bilan oching.')+'</div></div>';return}
@@ -689,7 +904,7 @@ const stockWarn=()=>S.prod.items.filter(p=>{const s=stState(p);return s==='low'|
 function paintTabs(){
   const el=$('#stabs');if(!el)return;
   const w=stockWarn();
-  const tabs=[['orders',L('Заказы','Buyurtmalar')],['prod',L('Каталог','Katalog')],['stock',L('Остатки','Qoldiq')+(w?' <span class="badge warn">'+w+'</span>':'')],['settings',L('Настройки','Sozlamalar')]];
+  const tabs=[['orders',L('Заказы','Buyurtmalar')],['prod',L('Каталог','Katalog')],['stock',L('Остатки','Qoldiq')+(w?' <span class="badge warn">'+w+'</span>':'')],['clients',L('Клиенты','Mijozlar')],['settings',L('Настройки','Sozlamalar')]];
   el.innerHTML=tabs.map(t=>'<button type="button" class="tab" role="tab" data-act="stab" data-t="'+t[0]+'" aria-selected="'+(S.sellerTab===t[0])+'">'+t[1]+'</button>').join('');
 }
 function paintSeller(){
@@ -697,6 +912,7 @@ function paintSeller(){
   if(S.sellerTab==='orders')b.innerHTML=ordersHTML();
   else if(S.sellerTab==='prod')b.innerHTML=prodHTML();
   else if(S.sellerTab==='stock')b.innerHTML=stockHTML();
+  else if(S.sellerTab==='clients')b.innerHTML=clientsHTML();
   else b.innerHTML=settingsHTML();
   paintSave();
 }
@@ -710,6 +926,7 @@ function ordersHTML(){
   let h='<div class="stats"><div class="stat'+(nNew?' hot':'')+'"><small>'+L('Новые','Yangi')+'</small><b>'+nNew+'</b></div><div class="stat"><small>'+L('В работе','Ishlanmoqda')+'</small><b>'+nWork+'</b></div><div class="stat"><small>'+L('На сегодня','Bugunga')+'</small><b>'+nToday+'</b></div><div class="stat"><small>'+L('Завершено на сумму','Yakunlangan summa')+'</small><b>'+money(sum)+'</b></div></div>';
   const fl=[['active',L('Активные','Faol')],['done',L('Завершены','Yakunlangan')],['cancelled',L('Отменены','Bekor qilingan')],['all',L('Все','Hammasi')]];
   h+='<div class="filters">'+fl.map(f=>'<button type="button" class="chip" data-act="filter" data-v="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+'</button>').join('')+'</div>';
+  h+=xtoolsHTML();
   let list=all.filter(o=>S.filter==='all'?true:S.filter==='active'?act(o):o.status===S.filter);
   if(S.filter==='active')list.sort((a,b)=>String(a.pickupAt).localeCompare(String(b.pickupAt)));
   else list.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -717,6 +934,66 @@ function ordersHTML(){
   else h+='<div class="ordlist">'+list.map(o=>orderCard(o,'seller')).join('')+'</div>';
   return h;
 }
+/* ---------- сборочный лист и выгрузки ---------- */
+const XLAB={orders:['Заказы в Excel','Buyurtmalar Excelda'],clients:['Клиенты в Excel','Mijozlar Excelda'],backup:['Получить резервную копию','Zaxira nusxasini olish'],pick:['Файлом в чат','Chatga fayl sifatida'],catalog:['Каталог в Excel','Katalog Excelda']};
+const xlab=k=>S.xbusy===k?L('Отправляем…','Yuborilmoqda…'):L(XLAB[k][0],XLAB[k][1]);
+const xbtn=(k,cls)=>'<button type="button" class="btn ghost sm'+(cls?' '+cls:'')+'" data-act="'+(k==='pick'?'xpick':'xport')+'" data-k="'+k+'" data-xk="'+k+'"'+(S.xbusy?' disabled':'')+'>'+xlab(k)+'</button>';
+function xtoolsHTML(){
+  const work=S.allOrders.filter(o=>o.status==='new'||o.status==='accepted');
+  const d=shopNow(),today=ymd(d);d.setDate(d.getDate()+1);
+  const tom=ymd(d);
+  const chip=(lab,day)=>{const n=day?work.filter(o=>String(o.pickupAt).slice(0,10)===day).length:work.length;return '<button type="button" class="chip" data-act="pick" data-day="'+day+'"'+(n&&!S.pickBusy?'':' disabled')+'>'+lab+' · '+n+'</button>'};
+  return '<div class="xtools"><button type="button" class="btn ghost sm" data-act="pmenu" aria-expanded="'+(S.pm?'true':'false')+'">'+L('Сборочный лист','Yigʻish roʻyxati')+(S.pm?' ▴':' ▾')+'</button>'+xbtn('orders')
+    +(S.pm?'<div class="xmenu">'+chip(L('Все','Hammasi'),'')+chip(L('Сегодня','Bugun'),today)+chip(L('Завтра','Ertaga'),tom)+'</div><div class="unit">'+L('Что достать со склада: общий список и страница на каждый заказ. Берутся новые заказы и заказы в работе. Один заказ можно открыть кнопкой в его карточке.','Ombordan nimalarni olish kerak: umumiy roʻyxat va har bir buyurtma uchun alohida sahifa. Yangi va ishdagi buyurtmalar olinadi. Bitta buyurtmani uning kartochkasidagi tugma bilan ochish mumkin.')+'</div>':'')
+    +'</div>';
+}
+function paintX(){
+  document.querySelectorAll('[data-xk]').forEach(b=>{b.disabled=!!S.xbusy;b.textContent=xlab(b.dataset.xk)});
+}
+const xErrText=er=>({
+  empty:L('Нет заказов для сборки','Yigʻish uchun buyurtma yoʻq'),
+  busy:L('Файл уже готовится. Подождите несколько секунд.','Fayl tayyorlanmoqda. Bir necha soniya kuting.'),
+  send_failed:L('Telegram не принял файл. Откройте чат с ботом, нажмите «Старт» и повторите.','Telegram faylni qabul qilmadi. Bot chatini oching, «Start» tugmasini bosing va qayta urining.')
+}[er]||L('Не удалось подготовить файл. Проверьте соединение и повторите.','Faylni tayyorlab boʻlmadi. Ulanishni tekshiring va qayta urining.'));
+/* Файл уходит в чат продавца с ботом: в Telegram он открывается и сохраняется на любом устройстве. */
+async function doExport(kind,extra){
+  if(S.xbusy||!S.admin)return;
+  S.xbusy=kind;paintX();
+  const r=await api('POST','/api/admin/export',Object.assign({kind},extra||{}));
+  S.xbusy='';paintX();
+  if(r.ok&&r.data&&r.data.ok){toast(L('Файл отправлен вам в чат с ботом. Закройте приложение, чтобы его увидеть.','Fayl botdagi chatingizga yuborildi. Koʻrish uchun ilovani yoping.'));return}
+  toast(xErrText(r.data&&r.data.error));
+}
+async function openPick(body){
+  if(S.pickBusy||!S.admin)return;
+  S.pickBusy=true;
+  const r=await api('POST','/api/admin/pick',body);
+  S.pickBusy=false;
+  if(!r.ok||!r.data||!r.data.html){toast(xErrText(r.data&&r.data.error));return}
+  S.pick={body,n:r.data.n};
+  let ov=document.getElementById('pov');
+  if(!ov){ov=document.createElement('div');ov.id='pov';ov.className='pov';ov.setAttribute('role','dialog');ov.setAttribute('aria-modal','true');document.body.appendChild(ov)}
+  ov.setAttribute('aria-label',L('Сборочный лист','Yigʻish roʻyxati')+', '+r.data.n);
+  const canPrint=!(S.tg&&/^(android|ios)$/.test(S.tg.platform||''));
+  ov.innerHTML='<div class="pbar"><button type="button" class="btn ghost sm" data-act="pclose">← '+L('Назад','Orqaga')+'</button><span class="grow"></span>'
+    +(canPrint?'<button type="button" class="btn ghost sm" data-act="pprint">'+L('Печать','Chop etish')+'</button>':'')+xbtn('pick')+'</div>'
+    +'<iframe class="pframe" id="pframe" title="'+esc(L('Сборочный лист','Yigʻish roʻyxati'))+'" sandbox="allow-same-origin allow-modals"></iframe>';
+  $('#pframe').srcdoc=r.data.html;
+  ov.hidden=false;
+  const cb=ov.querySelector('[data-act="pclose"]');if(cb)cb.focus();
+}
+function closePick(){
+  const ov=document.getElementById('pov');
+  if(ov){ov.hidden=true;ov.innerHTML=''}
+  S.pick=null;
+}
+function printPick(){
+  const f=$('#pframe');
+  try{f.contentWindow.focus();f.contentWindow.print()}
+  catch(e){toast(L('Печать здесь недоступна. Нажмите «Файлом в чат» и распечатайте файл из браузера.','Bu yerda chop etib boʻlmaydi. «Chatga fayl sifatida» tugmasini bosib, faylni brauzerdan chop eting.'))}
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.pick)closePick()});
+
 function photoBlock(p){
   const id=esc(p.id),busy=!!S.upl[p.id];
   return '<div class="pthumb">'+pimg(p)+'</div><div class="pbtns">'
@@ -743,11 +1020,74 @@ function prodRow(p){
     +fld('amount',L('Вес или объём единицы','Birlik ogʻirligi yoki hajmi'),inp('amount','number',p.amount||0,' inputmode="decimal" step="any" min="0"'))
     +fld('unit',L('Единица','Birlik'),'<select id="punit-'+id+'" data-pid="'+id+'" data-pp="unit">'+UNIT_IDS.map(u=>'<option value="'+u+'"'+(p.unit===u?' selected':'')+'>'+esc(unitName(u))+'</option>').join('')+'</select>')
     +fld('price',L('Цена за единицу, сум','Birlik narxi, soʻm'),inp('price','number',p.price||0,' inputmode="numeric" step="500" min="0"'))
+    +fld('tag',L('Метка','Belgi'),'<select id="ptag-'+id+'" data-pid="'+id+'" data-pp="tag"><option value=""'+(!p.tag?' selected':'')+'>'+L('Без метки','Belgisiz')+'</option><option value="sale"'+(p.tag==='sale'?' selected':'')+'>'+tagName('sale')+'</option><option value="new"'+(p.tag==='new'?' selected':'')+'>'+tagName('new')+'</option></select>')
+    +fld('old',L('Старая цена для акции, сум','Aksiya uchun eski narx, soʻm'),inp('old','number',p.old||0,' inputmode="numeric" step="500" min="0"'))
     +'<div class="avail"><label class="chk"><input type="checkbox" data-pid="'+id+'" data-pp="on"'+(p.on!==false?' checked':'')+'> '+L('В наличии','Mavjud')+'</label></div>'
     +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' шт. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' dona. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
     +'<div class="full pact"><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="-1" aria-label="'+esc(L('Выше','Yuqoriga'))+'">▲</button><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="1" aria-label="'+esc(L('Ниже','Pastga'))+'">▼</button>'
     +'<button type="button" class="btn ghost sm" data-act="pdel" data-id="'+id+'">'+(S.cd===p.id?L('Точно удалить?','Aniq oʻchirilsinmi?'):L('Удалить товар','Mahsulotni oʻchirish'))+'</button></div>'
     +'</div></div>';
+}
+/* ---------- прайс из Excel ---------- */
+const IMP_F={price:['цена','narx'],name:['название','nomi'],uz:['название (узб.)','nomi (uz)'],desc:['описание','tavsif'],descUz:['описание (узб.)','tavsif (uz)'],cat:['категория','kategoriya'],amount:['вес','ogʻirlik'],unit:['единица','birlik'],on:['в наличии','mavjud'],tag:['метка','belgi'],old:['старая цена','eski narx']};
+function impVal(k,v){
+  if(k==='price'||k==='old')return v?num(v):'—';
+  if(k==='on')return v?L('да','ha'):L('нет','yoʻq');
+  if(k==='tag')return v?tagName(v):L('нет','yoʻq');
+  if(k==='unit')return unitName(v);
+  if(k==='amount')return amountStr(v);
+  return v===''||v==null?'—':String(v).slice(0,40);
+}
+function impWhy(w){return {
+  not_xlsx:L('Это не файл Excel (.xlsx). Откройте прайс в Excel и сохраните как «Книга Excel (*.xlsx)».','Bu Excel (.xlsx) fayli emas. Prays-listni Excelda ochib, «Excel Workbook (*.xlsx)» sifatida saqlang.'),
+  no_header:L('Не нашёл колонки «Название» и «Цена» в первых строках. Проверьте заголовки.','Birinchi qatorlarda «Название» va «Цена» ustunlari topilmadi. Sarlavhalarni tekshiring.'),
+  too_big:L('Файл слишком большой (до 1 МБ).','Fayl juda katta (1 MB gacha).')
+}[w]||L('Не удалось прочитать файл.','Faylni oʻqib boʻlmadi.')}
+function impCardHTML(){
+  const im=S.imp;
+  let h='<div class="card"><h3>'+L('Прайс из Excel','Excel prays-listi')+'</h3><div class="unit">'+L('Выгрузите каталог в Excel, поправьте цены и загрузите файл обратно. Перед применением вы увидите, что изменится. Ничего не удаляется, фото и остатки не меняются.','Katalogni Excelga yuklab oling, narxlarni tuzating va faylni qaytarib yuklang. Qoʻllashdan oldin nima oʻzgarishini koʻrasiz. Hech narsa oʻchirilmaydi, rasm va qoldiqlar oʻzgarmaydi.')+'</div>'
+    +'<div class="row-btns">'+xbtn('catalog')
+    +'<label class="btn ghost sm'+(S.impBusy?' dis':'')+'" for="imp-file">'+(im&&im.busy?L('Читаем файл…','Fayl oʻqilmoqda…'):L('Загрузить прайс','Prays yuklash'))+'</label><input type="file" class="sr" id="imp-file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-imp="1"'+(S.impBusy?' disabled':'')+'></div>';
+  if(im&&im.res){
+    const r=im.res,sm=r.summary;
+    h+='<div class="impsum" id="impsum"><span>'+L('Добавится','Qoʻshiladi')+': <b>'+sm.added+'</b></span><span>'+L('Изменится','Oʻzgaradi')+': <b>'+sm.updated+'</b></span><span>'+L('Без изменений','Oʻzgarishsiz')+': <b>'+sm.same+'</b></span>'+(sm.errors?'<span style="color:var(--bad)">'+L('Ошибок','Xatolar')+': <b>'+sm.errors+'</b></span>':'')+'</div>';
+    if(sm.newCats&&sm.newCats.length)h+='<div class="unit">'+L('Новые категории: ','Yangi kategoriyalar: ')+esc(sm.newCats.join(', '))+'</div>';
+    h+=r.changes.map(c=>{
+      const f=c.fields.map(x=>c.kind==='add'?(x.k==='price'?L('цена ','narx ')+impVal('price',x.to):''):esc(L(IMP_F[x.k][0],IMP_F[x.k][1]))+': '+esc(impVal(x.k,x.from))+' → '+esc(impVal(x.k,x.to))).filter(Boolean).join('; ');
+      return '<div class="chg"><b>'+(c.kind==='add'?'+ ':'')+esc(c.name)+'</b><small>'+(c.kind==='add'?esc(L('новый товар, ','yangi mahsulot, ')+(c.cat?c.cat+', ':''))+f:f)+'</small></div>';
+    }).join('');
+    if(r.moreChanges)h+='<div class="unit">'+L('…и ещё изменений: ','…va yana oʻzgarishlar: ')+r.moreChanges+'</div>';
+    if(r.errors.length)h+='<div class="unit" style="margin-top:8px"><b>'+L('Эти строки не будут загружены:','Bu qatorlar yuklanmaydi:')+'</b></div>'+r.errors.map(e=>'<div class="chg bad"><small>'+L('строка ','qator ')+e.row+': '+esc(e.msg)+'</small></div>').join('')+(r.moreErrors?'<div class="unit">'+L('…и ещё ошибок: ','…va yana xatolar: ')+r.moreErrors+'</div>':'');
+    const can=sm.added+sm.updated>0;
+    h+=(can?'':'<div class="note" style="margin-top:8px">'+L('В файле нет изменений для каталога.','Faylda katalog uchun oʻzgarishlar yoʻq.')+'</div>')
+      +'<div class="row-btns" style="margin-top:10px">'+(can?'<button type="button" class="btn sm" id="impapply" data-act="impapply"'+(S.impBusy?' disabled':'')+'>'+L('Применить изменения','Oʻzgarishlarni qoʻllash')+'</button>':'')+'<button type="button" class="btn ghost sm" data-act="impcancel"'+(S.impBusy?' disabled':'')+'>'+(can?L('Отмена','Bekor qilish'):L('Закрыть','Yopish'))+'</button></div>';
+  }
+  return h+'</div>';
+}
+async function importFile(file){
+  if(S.impBusy||!S.admin)return;
+  if(file.size>1000000){toast(impWhy('too_big'));return}
+  S.impBusy=true;S.imp={busy:true};paintSeller();
+  await flushSave();   // сначала уходят несохранённые правки каталога
+  let bytes;
+  try{bytes=new Uint8Array(await file.arrayBuffer())}catch(e){S.impBusy=false;S.imp=null;paintSeller();toast(impWhy(''));return}
+  const r=await apiBin('POST','/api/admin/import',bytes,'application/octet-stream');
+  S.impBusy=false;
+  if(!r.ok||!r.data||!r.data.summary){S.imp=null;paintSeller();toast(r.data&&r.data.why?impWhy(r.data.why):L('Не удалось прочитать файл. Проверьте соединение.','Faylni oʻqib boʻlmadi. Ulanishni tekshiring.'));return}
+  S.imp={bytes,res:r.data};paintSeller();
+  try{document.getElementById('impsum').scrollIntoView({block:'center'})}catch(e){}
+}
+async function impApply(){
+  if(S.impBusy||!S.imp||!S.imp.bytes)return;
+  S.impBusy=true;paintSeller();
+  await flushSave();
+  const r=await apiBin('POST','/api/admin/import?apply=1',S.imp.bytes,'application/octet-stream');
+  S.impBusy=false;
+  if(!r.ok||!r.data||!r.data.summary){paintSeller();toast(L('Не удалось применить прайс. Проверьте соединение и попробуйте ещё раз.','Prays qoʻllanmadi. Ulanishni tekshirib, qayta urining.'));return}
+  const sm=r.data.summary;
+  if(r.data.prod){S.prod=normProd(r.data.prod);applyStk();pruneCart()}
+  S.imp=null;paintSeller();renderNav();
+  toast(L('Готово: добавлено '+sm.added+', изменено '+sm.updated+'.','Tayyor: '+sm.added+' ta qoʻshildi, '+sm.updated+' ta oʻzgardi.'));
 }
 function prodHTML(){
   const P=S.prod;
@@ -755,6 +1095,7 @@ function prodHTML(){
   const list=P.items.filter(p=>S.pfilter==='all'||p.cat===S.pfilter);
   let h='<div class="note" style="margin-bottom:14px">'+L('Каталог товаров. Сначала создайте категории, затем добавляйте товары: название, описание, вес, цену и фото. Клиенты видят изменения сразу. Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым.','Mahsulotlar katalogi. Avval kategoriyalar yarating, keyin mahsulotlar qoʻshing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Mijozlar oʻzgarishlarni darhol koʻradi. Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi.')+'</div>'
     +'<div class="savebar" id="savebar"></div>';
+  h+=impCardHTML();
   h+='<div class="card"><h3>'+L('Категории','Kategoriyalar')+'</h3><div class="unit">'+L('Название по-русски и по-узбекски. Удалить можно пустую категорию.','Ruscha va oʻzbekcha nomi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
   P.cats.forEach(c=>{
     const id=esc(c.id);
@@ -902,6 +1243,160 @@ async function stockDo(id,body,okMsg,soft){
   if(S.jrOpen)loadJournal();
 }
 
+/* ---------- клиенты (продавец) ---------- */
+const cName=c=>c.name||(c.tg&&c.tg.name)||(c.tg&&c.tg.username?'@'+c.tg.username:'')||('ID '+c.uid);
+function agoTxt(iso){
+  const t=new Date(iso).getTime();
+  if(isNaN(t))return '';
+  const d=Math.floor((Date.now()-t)/86400000);
+  if(d<=0)return L('сегодня','bugun');
+  if(d===1)return L('вчера','kecha');
+  if(d<60)return L(d+' дн. назад',d+' kun oldin');
+  return jrDate(iso);
+}
+const groupsList=()=>[...new Set(S.cl.map(c=>c.grp).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+function clientMatch(c){
+  if(S.cg==='blocked'&&!c.blocked)return false;
+  if(S.cg.slice(0,2)==='g:'&&c.grp!==S.cg.slice(2))return false;
+  const q=S.cq.trim().toLowerCase();
+  if(!q)return true;
+  const hay=[c.name,c.org,c.phone,c.tg&&c.tg.username,c.tg&&c.tg.name,c.grp,c.note].join(' ').toLowerCase();
+  if(hay.includes(q))return true;
+  const qd=q.replace(/\D/g,'');
+  return qd.length>=3&&String(c.phone||'').replace(/\D/g,'').includes(qd);
+}
+const clientsSorted=()=>S.cl.slice().sort((a,b)=>String(b.last||b.since).localeCompare(String(a.last||a.since)));
+function clientStatsHTML(){
+  const st=(lab,v,hot)=>'<div class="stat'+(hot?' hot':'')+'"><small>'+lab+'</small><b>'+v+'</b></div>';
+  const bl=S.cl.filter(c=>c.blocked).length;
+  return st(L('Клиентов','Mijozlar'),S.cl.length)+st(L('Заказывали','Buyurtma berganlar'),S.cl.filter(c=>c.n>0).length)+st(L('Выдано на сумму','Topshirilgan summa'),money(S.cl.reduce((s,c)=>s+(Number(c.sum)||0),0)))+st(L('Заблокировано','Bloklangan'),bl,bl>0);
+}
+function clientChipsHTML(){
+  const ch=(v,label)=>'<button type="button" class="chip" data-act="cfilter" data-v="'+esc(v)+'" aria-pressed="'+(S.cg===v)+'">'+esc(label)+'</button>';
+  const bl=S.cl.filter(c=>c.blocked).length;
+  return ch('all',L('Все','Hammasi')+' '+S.cl.length)+groupsList().map(g=>ch('g:'+g,g+' '+S.cl.filter(c=>c.grp===g).length)).join('')+(bl?ch('blocked',L('Заблокированные','Bloklanganlar')+' '+bl):'');
+}
+function clientRowHTML(c){
+  const open=S.cOpen===c.uid;
+  const sub=[c.org,c.phone].filter(Boolean).map(esc).join(' · ');
+  const badges=(c.grp?'<span class="st info">'+esc(c.grp)+'</span>':'')+(c.blocked?'<span class="st bad">'+L('Заблокирован','Bloklangan')+'</span>':'');
+  const ago=c.last?agoTxt(c.last):'';
+  return '<div class="clrow" id="clrow-'+c.uid+'"><button type="button" class="clhead" data-act="copen" data-id="'+c.uid+'" aria-expanded="'+open+'"><span class="cn"><b>'+esc(cName(c))+'</b>'+(sub?'<small>'+sub+'</small>':'')+'</span><span class="cbadges">'+badges+'</span></button>'
+    +'<div class="cmeta">'+L('Заказов: ','Buyurtmalar: ')+num(c.n)+' · '+L('выдано на ','topshirildi: ')+money(c.sum)+(ago?' · '+L('последний: ','oxirgisi: ')+esc(ago):'')+'</div>'
+    +(open?clientEditHTML(c):'')+'</div>';
+}
+function clientOrdersHTML(uid){
+  const list=S.cDet[uid];
+  if(!list)return '<div class="unit">'+L('Загружаем…','Yuklanmoqda…')+'</div>';
+  if(!list.length)return '<div class="unit">'+L('Заказов пока нет.','Hozircha buyurtma yoʻq.')+'</div>';
+  const sorted=list.slice().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+  return sorted.slice(0,15).map(o=>'<div class="corder"><span class="oid">'+esc(o.id)+'</span><span class="cs">'+pill(o)+'<span>'+esc(jrDate(o.createdAt))+'</span></span><b>'+money(o.total)+'</b></div>').join('')
+    +(sorted.length>15?'<div class="unit" style="padding-top:6px">'+L('… и ещё '+(sorted.length-15),'… va yana '+(sorted.length-15)+' ta')+'</div>':'');
+}
+function clientEditHTML(c){
+  const id=c.uid,phone=String(c.phone||'').replace(/[^\d+]/g,''),tgu=c.tg&&c.tg.username;
+  const sug=[...new Set(groupsList().concat([L('Магазин','Doʻkon'),L('Кафе','Kafe'),L('Столовая','Oshxona')]))];
+  return '<div class="ced" id="ced">'
+    +'<div class="form">'
+    +'<div><label class="lab" for="ce-name">'+L('Имя','Ism')+'</label><input type="text" id="ce-name" data-ce="name" maxlength="60" value="'+esc(c.name)+'"></div>'
+    +'<div><label class="lab" for="ce-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="ce-phone" data-ce="phone" maxlength="25" value="'+esc(c.phone)+'" placeholder="+998 90 123 45 67"></div>'
+    +'<div class="full"><label class="lab" for="ce-org">'+L('Организация','Tashkilot')+'</label><input type="text" id="ce-org" data-ce="org" maxlength="80" value="'+esc(c.org)+'"></div>'
+    +'<div class="full"><label class="lab" for="ce-addrs">'+L('Адреса доставки: каждый с новой строки, до 5','Yetkazib berish manzillari: har biri yangi qatordan, 5 tagacha')+'</label><textarea id="ce-addrs" data-ce="addrs" rows="3">'+esc((c.addrs||[]).join('\n'))+'</textarea><div class="err" id="cee-addrs"></div></div>'
+    +'<div class="full"><label class="lab" for="ce-grp">'+L('Группа','Guruh')+'</label><input type="text" id="ce-grp" data-ce="grp" maxlength="30" value="'+esc(c.grp)+'" placeholder="'+esc(L('Например: Магазин','Masalan: Doʻkon'))+'"><div class="gchips">'+sug.map(g=>'<button type="button" class="chip" data-act="cgrp" data-v="'+esc(g)+'">'+esc(g)+'</button>').join('')+'</div></div>'
+    +'<div class="full"><label class="lab" for="ce-note">'+L('Заметка (видна только вам)','Eslatma (faqat sizga koʻrinadi)')+'</label><textarea id="ce-note" data-ce="note" rows="3" maxlength="500" placeholder="'+esc(L('Например: платит в конце недели','Masalan: hafta oxirida toʻlaydi'))+'">'+esc(c.note)+'</textarea></div>'
+    +'<div class="full"><label class="ck"><input type="checkbox" id="ce-blocked" data-ce="blocked"'+(c.blocked?' checked':'')+'><span>'+L('Заблокировать','Bloklash')+'<small>'+L('Клиент не сможет оформить заказ, пока вы не снимете блокировку.','Siz blokni olmaguningizcha mijoz buyurtma bera olmaydi.')+'</small></span></label></div>'
+    +'</div>'
+    +'<div class="row-btns"><button type="button" class="btn sm" data-act="csave" data-id="'+id+'">'+L('Сохранить','Saqlash')+'</button>'
+    +(phone?'<a class="btn ghost sm" href="tel:'+esc(phone)+'">'+L('Позвонить','Qoʻngʻiroq')+'</a>':'')
+    +(tgu?'<a class="btn ghost sm" data-act="contact" href="https://t.me/'+encodeURIComponent(tgu)+'" target="_blank" rel="noopener">Telegram</a>':'')+'</div>'
+    +'<div><h3>'+L('История заказов','Buyurtmalar tarixi')+'</h3><div id="cord">'+clientOrdersHTML(id)+'</div></div>'
+    +'<div><button type="button" class="btn ghost sm" data-act="cldel" data-id="'+id+'">'+(S.cDel===id?L('Точно удалить из базы?','Bazadan aniq oʻchirilsinmi?'):L('Удалить из базы','Bazadan oʻchirish'))+'</button></div></div>';
+}
+function clientListHTML(){
+  const list=clientsSorted().filter(clientMatch);
+  return list.length?list.map(clientRowHTML).join(''):'<div class="unit" style="padding:10px 0">'+L('Никого не нашли.','Hech kim topilmadi.')+'</div>';
+}
+function clientsHTML(){
+  if(!S.clLoaded)return '<div class="empty"><b>'+L('Загружаем клиентов','Mijozlar yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  if(!S.cl.length)return '<div class="empty"><b>'+L('Клиентов пока нет','Hozircha mijoz yoʻq')+'</b>'+L('Клиент появляется в базе после первого заказа или когда заполнит свой профиль.','Mijoz birinchi buyurtmadan keyin yoki oʻz profilini toʻldirganda bazaga tushadi.')+'</div>';
+  return '<div class="xtools">'+xbtn('clients')+'</div><div class="stats" id="cstats">'+clientStatsHTML()+'</div>'
+    +'<input type="search" id="cq" class="csearch" value="'+esc(S.cq)+'" placeholder="'+esc(L('Поиск: имя, телефон, организация','Qidirish: ism, telefon, tashkilot'))+'" aria-label="'+esc(L('Поиск клиента','Mijozni qidirish'))+'" autocomplete="off">'
+    +'<div class="filters" id="cfilters">'+clientChipsHTML()+'</div>'
+    +'<div class="card" id="clients-list">'+clientListHTML()+'</div>';
+}
+function paintClients(){
+  const b=$('#sbody');
+  if(b&&S.view==='seller'&&S.sellerTab==='clients')b.innerHTML=clientsHTML();
+}
+/* перерисовывает только список и фильтры, поле поиска остаётся на месте */
+function paintClientList(){
+  const l=$('#clients-list');
+  if(!l){paintClients();return}
+  l.innerHTML=clientListHTML();
+  const f=$('#cfilters');if(f)f.innerHTML=clientChipsHTML();
+  const st=$('#cstats');if(st)st.innerHTML=clientStatsHTML();
+}
+async function loadClients(){
+  if(!S.admin)return;
+  const r=await api('GET','/api/admin/clients');
+  if(!r.ok||!r.data||!Array.isArray(r.data.clients))return;
+  const first=!S.clLoaded;
+  S.clLoaded=true;
+  if(!first&&JSON.stringify(r.data.clients)===JSON.stringify(S.cl))return;
+  S.cl=r.data.clients;
+  if(S.view!=='seller'||S.sellerTab!=='clients')return;
+  if($('#ced'))return;   // карточка открыта: не затираем то, что продавец печатает; список обновится, когда её закроют
+  const ae=document.activeElement;
+  if(ae&&ae.id==='cq'){paintClientList();return}
+  paintClients();
+}
+async function loadClientDetail(uid){
+  const r=await api('GET','/api/admin/clients/'+uid);
+  if(!r.ok||!r.data)return;
+  S.cDet[uid]=r.data.orders||[];
+  const el=$('#cord');
+  if(el&&S.cOpen===uid)el.innerHTML=clientOrdersHTML(uid);
+}
+function toggleClient(uid){
+  S.cOpen=S.cOpen===uid?null:uid;S.cDel=null;
+  paintClientList();
+  if(S.cOpen!==null){
+    loadClientDetail(uid);
+    const row=document.getElementById('clrow-'+uid);
+    if(row)try{row.scrollIntoView({block:'nearest'})}catch(x){}
+  }
+}
+async function saveClient(uid){
+  if(S.cBusy)return;
+  const get=k=>{const el=document.getElementById('ce-'+k);return el?String(el.value):''};
+  const c=checkClientFields(get);
+  const er=document.getElementById('cee-addrs');if(er)er.textContent=(c.e&&c.e.addrs)||'';
+  if(c.e){
+    if(c.e.phone){toast(c.e.phone);const el=document.getElementById('ce-phone');if(el)el.focus()}
+    else{const el=document.getElementById('ce-addrs');if(el)el.focus()}
+    return;
+  }
+  const blk=document.getElementById('ce-blocked');
+  const body=Object.assign({},c.v,{grp:get('grp').trim(),note:get('note').trim(),blocked:!!(blk&&blk.checked)});
+  S.cBusy=true;
+  const btn=document.querySelector('[data-act="csave"]');if(btn)btn.disabled=true;
+  const r=await api('PUT','/api/admin/clients/'+uid,body);
+  S.cBusy=false;
+  if(btn)btn.disabled=false;
+  if(!r.ok||!r.data||!r.data.client){toast(r.status===404?L('Клиента уже нет в базе','Mijoz endi bazada yoʻq'):clientErrText(r.data&&r.data.error));return}
+  const i=S.cl.findIndex(x=>x.uid===uid);
+  if(i>=0)S.cl[i]=r.data.client;
+  toast(L('Клиент сохранён','Mijoz saqlandi'));
+  paintClientList();
+}
+async function deleteClient(uid){
+  const r=await api('DELETE','/api/admin/clients/'+uid);
+  if(!r.ok){toast(clientErrText(r.data&&r.data.error));return}
+  S.cl=S.cl.filter(c=>c.uid!==uid);S.cOpen=null;S.cDel=null;delete S.cDet[uid];
+  toast(L('Клиент удалён из базы. Его заказы остались.','Mijoz bazadan oʻchirildi. Buyurtmalari qoldi.'));
+  paintClients();
+}
+
 /* Сжимает фото на телефоне: JPEG, длинная сторона ~800 px, до ~280 КБ. */
 async function shrinkPhoto(file){
   const url=URL.createObjectURL(file);
@@ -923,9 +1418,9 @@ async function shrinkPhoto(file){
     return null;
   }finally{URL.revokeObjectURL(url)}
 }
-async function apiBin(method,path,blob){
+async function apiBin(method,path,blob,ctype){
   try{
-    const h={'content-type':'image/jpeg'};
+    const h={'content-type':ctype||'image/jpeg'};
     if(S.initData)h['x-init-data']=S.initData;
     const r=await fetch(path,{method,headers:h,body:blob,cache:'no-store'});
     let data=null;try{data=await r.json()}catch(e){}
@@ -970,9 +1465,14 @@ function settingsHTML(){
     +'<div class="full"><label class="chk"><input type="checkbox" id="s-delivery" data-s="delivery"'+(s.delivery!==false?' checked':'')+'> '+L('Доставка по адресу включена','Manzilga yetkazib berish yoqilgan')+'</label></div>'
     +num('lead',L('Самовывоз: заказ за, часов минимум','Olib ketish: buyurtma, kamida soat'),'leadHours',0,240)
     +num('dlead',L('Доставка: заказ за, часов минимум','Yetkazib berish: buyurtma, kamida soat'),'deliveryLeadHours',0,240)
+    +num('minorder',L('Минимальная сумма заказа, сум (0 — без минимума)','Buyurtmaning minimal summasi, soʻm (0 — cheklovsiz)'),'minOrder',0,1000000000)
+    +num('dfee',L('Стоимость доставки, сум (0 — бесплатно)','Yetkazib berish narxi, soʻm (0 — bepul)'),'deliveryFee',0,1000000000)
+    +num('dfree',L('Доставка бесплатна от суммы, сум (0 — нет порога)','Yetkazib berish bepul boʻladigan summa, soʻm (0 — chegarasiz)'),'freeDeliveryFrom',0,1000000000)
+    +'<div class="full"><div class="note">'+L('Минимальная сумма считается по товарам и действует и на самовывоз, и на доставку. Стоимость доставки добавляется к заказу только при доставке; если указан порог, при сумме товаров от него доставка бесплатна.','Minimal summa mahsulotlar boʻyicha hisoblanadi va olib ketishga ham, yetkazib berishga ham taalluqli. Yetkazib berish narxi faqat yetkazishda qoʻshiladi; chegara koʻrsatilsa, mahsulotlar shu summadan oshganda yetkazish bepul.')+'</div></div>'
     +num('from',L('Время работы с, часов','Ish vaqti: dan, soat'),'openFrom',0,22)
     +num('to',L('Время работы до, часов','Ish vaqti: gacha, soat'),'openTo',1,23)
-    +'</div></div>';
+    +'</div></div>'
+    +'<div class="card"><h3>'+L('Резервная копия','Zaxira nusxasi')+'</h3><div class="unit">'+L('Один файл со всем: настройки, каталог с фото, остатки, заказы и клиенты. Он придёт вам в чат с ботом. Храните его в надёжном месте: в нём телефоны и адреса клиентов. Токен бота и код продавца в файл не попадают.','Hammasi bitta faylda: sozlamalar, rasmli katalog, qoldiqlar, buyurtmalar va mijozlar. U botdagi chatingizga keladi. Uni ishonchli joyda saqlang: unda mijozlarning telefon va manzillari bor. Bot tokeni va sotuvchi kodi faylga kirmaydi.')+'</div>'+xbtn('backup')+'</div>';
 }
 function paintSave(){
   const el=$('#savebar');if(!el)return;
@@ -1031,6 +1531,28 @@ async function setStatus(id,to){
   applyOrder(r.data.order,r.data.stats);
   loadStock();   // выдача списывает товар, отмена возвращает
 }
+/* «Повторить заказ»: кладёт в корзину всё из прошлого заказа, что сейчас есть в продаже (по сегодняшним ценам и остаткам). */
+function repeatOrder(id){
+  const o=S.myOrders.find(x=>x.id===id);
+  if(!o)return;
+  let added=0,cut=0;const skipped=[];
+  (o.items||[]).forEach(it=>{
+    const p=S.prod.items.find(x=>x.id===it.id),qty=Number(it.qty)||0;
+    if(!p||soldOut(p)||qty<1){skipped.push(nm(it));return}
+    const cur=S.cart[p.id]||0;
+    if(!cur&&cartLines().length>=MAX_LINES){skipped.push(nm(it));return}
+    const want=Math.min(MAX_QTY,cur+qty),cap=maxQty(p),got=Math.min(want,cap);
+    if(got<want)cut++;
+    if(got>cur){S.cart[p.id]=got;added++}
+  });
+  saveCart();
+  if(!added){toast(L('Этих товаров сейчас нет в наличии','Bu mahsulotlar hozir mavjud emas'));return}
+  S.shopPlaced=null;S.shopStep='cart';
+  go('shop');
+  toast(L('Товары из заказа '+id+' добавлены в корзину. Проверьте количество и цены.','Buyurtma '+id+' mahsulotlari savatga qoʻshildi. Miqdor va narxlarni tekshiring.')
+    +(skipped.length?L(' Нет в наличии: ',' Mavjud emas: ')+skipped.slice(0,3).join(', ')+(skipped.length>3?'…':'')+'.':'')
+    +(cut?L(' Количество уменьшено по остатку.',' Miqdor qoldiqqa qarab kamaytirildi.'):''));
+}
 async function cancelMine(id){
   const r=await api('POST','/api/cancel',{id});
   if(!r.ok){
@@ -1046,6 +1568,7 @@ function render(){
   renderNav();
   if(S.view==='shop')renderShop();
   else if(S.view==='mine')renderMine();
+  else if(S.view==='profile')renderProfile();
   else renderSeller();
 }
 function go(v){
@@ -1086,6 +1609,7 @@ document.addEventListener('click',e=>{
     renderCart();
   }
   else if(a==='scat'){S.shopCat=t.dataset.id;renderShop()}
+  else if(a==='fav')toggleFav(t.dataset.id);
   else if(a==='pdesc')t.classList.toggle('open');
   else if(a==='padd'||a==='pplus'||a==='pminus'){
     const id=t.dataset.id,cur=S.cart[id]||0;
@@ -1119,7 +1643,7 @@ document.addEventListener('click',e=>{
     if(!S.prod.cats.length){toast(L('Сначала создайте категорию','Avval kategoriya yarating'));return}
     if(S.prod.items.length>=MAX_ITEMS){toast(L('Больше '+MAX_ITEMS+' товаров нельзя',MAX_ITEMS+' tadan ortiq mahsulot boʻlmaydi'));return}
     const cat=S.pfilter!=='all'?S.pfilter:S.prod.cats[0].id;
-    const p={id:'p'+Math.random().toString(36).slice(2,9),cat,name:L('Новый товар','Yangi mahsulot'),uz:'Yangi mahsulot',desc:'',descUz:'',amount:0,unit:'g',price:0,on:true,pv:''};
+    const p={id:'p'+Math.random().toString(36).slice(2,9),cat,name:L('Новый товар','Yangi mahsulot'),uz:'Yangi mahsulot',desc:'',descUz:'',amount:0,unit:'g',price:0,on:true,tag:'',old:0,pv:''};
     S.prod.items.push(p);queueSave('prod');paintSeller();
     const inp=document.getElementById('pname-'+p.id);
     if(inp){inp.focus();inp.select();try{inp.scrollIntoView({block:'center'})}catch(x){}}
@@ -1154,8 +1678,10 @@ document.addEventListener('click',e=>{
   else if(a==='stab'){
     S.sellerTab=t.dataset.t;S.sc=null;
     document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.t===S.sellerTab)));
+    try{t.scrollIntoView({block:'nearest',inline:'nearest'})}catch(x){}
     paintSeller();
     if(S.sellerTab==='stock'){loadStock();if(S.jrOpen)loadJournal()}
+    if(S.sellerTab==='clients')loadClients();
   }
   else if(a==='sfilter'){S.sfilter=t.dataset.v;paintStock()}
   else if(a==='sjr'){S.jrOpen=!S.jrOpen;paintStock();if(S.jrOpen)loadJournal()}
@@ -1184,6 +1710,38 @@ document.addEventListener('click',e=>{
       setTimeout(()=>{if(S.sc===id){S.sc=null;paintStockRow(id)}},4000);
     }
   }
+  else if(a==='cfilter'){S.cg=t.dataset.v;paintClientList()}
+  else if(a==='copen')toggleClient(Number(t.dataset.id));
+  else if(a==='csave')saveClient(Number(t.dataset.id));
+  else if(a==='cgrp'){const el=document.getElementById('ce-grp');if(el){el.value=t.dataset.v;el.focus()}}
+  else if(a==='cldel'){
+    const uid=Number(t.dataset.id);
+    if(S.cDel===uid){S.cDel=null;deleteClient(uid)}
+    else{
+      S.cDel=uid;t.textContent=L('Точно удалить из базы?','Bazadan aniq oʻchirilsinmi?');
+      setTimeout(()=>{if(S.cDel===uid){S.cDel=null;t.textContent=L('Удалить из базы','Bazadan oʻchirish')}},4000);
+    }
+  }
+  else if(a==='pmenu'){S.pm=!S.pm;paintSeller()}
+  else if(a==='impapply')impApply();
+  else if(a==='impcancel'){S.imp=null;paintSeller()}
+  else if(a==='pick')openPick(t.dataset.day?{day:t.dataset.day}:{});
+  else if(a==='pick1')openPick({ids:[t.dataset.id]});
+  else if(a==='pclose')closePick();
+  else if(a==='pprint')printPick();
+  else if(a==='xport')doExport(t.dataset.k);
+  else if(a==='xpick'){if(S.pick)doExport('pick',S.pick.body)}
+  else if(a==='pfsave')saveProfile();
+  else if(a==='repeat')repeatOrder(t.dataset.id);
+  else if(a==='addr'){
+    const x=S.profile&&S.profile.addrs[Number(t.dataset.i)];
+    if(!x)return;
+    S.form.address=x;saveForm();
+    const ta=$('#f-address');
+    if(ta){ta.value=x;ta.setAttribute('aria-invalid','false')}
+    const er=$('#e-address');if(er)er.textContent='';
+    markAddr();
+  }
   else if(a==='filter'){S.filter=t.dataset.v;paintSeller()}
   else if(a==='status'){setStatus(t.dataset.id,t.dataset.to)}
   else if(a==='contact'){try{if(S.tg&&S.initData&&S.tg.openTelegramLink){e.preventDefault();S.tg.openTelegramLink(t.href)}}catch(err){}}
@@ -1203,6 +1761,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='q'){S.q=t.value;paintGrid()}
+  else if(t.id==='cq'){S.cq=t.value;paintClientList()}
   else if(t.dataset.qty!==undefined){
     /* количество вводят с клавиатуры: пока клиент печатает, обновляем только суммы */
     const id=t.dataset.qty;let v=Math.floor(Number(t.value));
@@ -1216,13 +1775,14 @@ document.addEventListener('input',e=>{
     const f=t.dataset.f;S.form[f]=t.value;
     if(f==='date')fillTimes();
     if(f==='name'||f==='phone'||f==='address')saveForm();
+    if(f==='address')markAddr();
     const er=$('#e-'+f);if(er&&er.textContent){er.textContent='';t.setAttribute('aria-invalid','false')}
   }
   else if(t.dataset.pid!==undefined){
     const p=S.prod.items.find(x=>x.id===t.dataset.pid),k=t.dataset.pp;
     if(!p)return;
     if(k==='on'){p.on=t.checked;const row=t.closest('.prow');if(row)row.classList.toggle('off',!t.checked)}
-    else if(k==='amount'||k==='price'){const v=Number(t.value);p[k]=isFinite(v)&&v>=0?v:0}
+    else if(k==='amount'||k==='price'||k==='old'){const v=Number(t.value);p[k]=isFinite(v)&&v>=0?v:0}
     else p[k]=t.value;
     queueSave('prod');
   }
@@ -1235,7 +1795,7 @@ document.addEventListener('input',e=>{
   else if(t.dataset.s){
     const k=t.dataset.s;
     if(k==='delivery')S.cfg.shop.delivery=t.checked;
-    else if(['leadHours','deliveryLeadHours','openFrom','openTo'].includes(k)){const v=Number(t.value);S.cfg.shop[k]=isFinite(v)&&v>=0?v:0}
+    else if(['leadHours','deliveryLeadHours','openFrom','openTo','minOrder','deliveryFee','freeDeliveryFrom'].includes(k)){const v=Number(t.value);S.cfg.shop[k]=isFinite(v)&&v>=0?v:0}
     else S.cfg.shop[k]=t.value;
     if(k==='name'){$('#brandName').textContent=t.value||DEFAULT.shop.name;document.title=t.value||DEFAULT.shop.name}
     queueSave();
@@ -1244,7 +1804,12 @@ document.addEventListener('input',e=>{
 
 document.addEventListener('change',e=>{
   const t=e.target;
-  if(t&&t.type==='file'&&t.dataset.photo){
+  if(t&&t.type==='file'&&t.dataset.imp){
+    const f=t.files&&t.files[0];
+    if(f)importFile(f);
+    try{t.value=''}catch(x){}
+  }
+  else if(t&&t.type==='file'&&t.dataset.photo){
     const f=t.files&&t.files[0];
     if(f)uploadPhoto(t.dataset.photo,f);
     try{t.value=''}catch(x){}
@@ -1289,6 +1854,7 @@ async function loadMine(){
 async function loadAdmin(){
   if(!S.admin)return;
   loadStock();
+  if(S.sellerTab==='clients')loadClients();
   const r=await api('GET','/api/admin/orders');
   if(!r.ok||!r.data)return;
   if(JSON.stringify(r.data.orders)===JSON.stringify(S.allOrders)&&JSON.stringify(r.data.stats)===JSON.stringify(S.stats))return;
@@ -1344,13 +1910,14 @@ function tick(){
     if(r.ok&&r.data){
       S.auth=true;S.uid=r.data.me.id;S.admin=!!r.data.me.admin;
       S.cfg=mergeCfg(r.data.cfg);S.prod=normProd(r.data.prod);S.myOrders=r.data.orders||[];
+      S.profile=r.data.me.profile||null;S.blocked=!!r.data.me.blocked;S.fav=Array.isArray(r.data.me.fav)?r.data.me.fav:[];
     }else S.authErr=(r.data&&r.data.error)||'net';
   }
   if(!S.auth){
     const r=await api('GET','/api/config');
     if(r.ok&&r.data){S.cfg=mergeCfg(r.data.cfg);S.prod=normProd(r.data.prod)}
   }
-  loadCart();pruneCart();loadForm();normalizeMode();
+  loadCart();pruneCart();loadForm();applyProfile();normalizeMode();
   S.ready=true;
   render();
   if(S.admin)loadAdmin();

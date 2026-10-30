@@ -24,7 +24,7 @@ function stOf(status,mode){
 
 const DEFAULT={
   v:3,
-  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20}
+  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0}
 };
 const clone=o=>JSON.parse(JSON.stringify(o));
 const pad=n=>String(n).padStart(2,'0');
@@ -42,6 +42,12 @@ const amountStr=v=>String(Math.round((Number(v)||0)*1000)/1000).replace('.',',')
 const weightLabel=p=>Number(p&&p.amount)>0?amountStr(p.amount)+' '+unitName(p.unit):'';
 const prodDesc=p=>LANG==='uz'&&p.descUz?p.descUz:(p.desc||'');
 
+/* Метки товара: «Акция» (со старой ценой) и «Новинка». Старая цена показывается, только если она выше нынешней. */
+const TAGS={sale:{ru:'Акция',uz:'Aksiya'},new:{ru:'Новинка',uz:'Yangilik'}};
+const tagName=t=>TAGS[t]?(LANG==='uz'?TAGS[t].uz:TAGS[t].ru):'';
+const oldPrice=p=>p&&p.tag==='sale'&&Number(p.old)>Number(p.price)?Number(p.old):0;
+const salePct=p=>{const o=oldPrice(p);return o?Math.max(1,Math.min(99,Math.round((o-Number(p.price))/o*100))):0};
+
 /* Остаток товара s = {q: на складе, r: отложено под заказы, low: порог «мало»}; нет записи — учёт не ведётся.
    Покупателям: av — сколько можно заказать (не больше cap, чтобы не раскрывать большие остатки), lw — товара мало, и число показываем в подписи «Мало (осталось N)». */
 const stkAvail=s=>s?Math.max(0,(Number(s.q)||0)-(Number(s.r)||0)):null;
@@ -51,6 +57,12 @@ function stkPublic(s,cap){
   return {av:lw||!(cap>0)?a:Math.min(a,cap),lw};
 }
 
+/* Стоимость доставки: берётся только при доставке; если указан порог «бесплатно от» и сумма товаров его достигла, доставка бесплатна. */
+function deliveryFee(cfg,mode,sub){
+  const sh=cfg.shop,fee=Number(sh.deliveryFee)||0,free=Number(sh.freeDeliveryFrom)||0;
+  if(mode!=='delivery'||fee<=0)return 0;
+  return free>0&&Number(sub)>=free?0:fee;
+}
 function mergeCfg(d){
   const out=clone(DEFAULT);
   if(d&&typeof d==='object'&&d.shop&&typeof d.shop==='object')Object.keys(out.shop).forEach(k=>{if(d.shop[k]!==undefined&&d.shop[k]!==null)out.shop[k]=d.shop[k]});
@@ -113,7 +125,9 @@ function orderText(o,shop,maxItems){
     P.push(L('Адрес: ','Manzil: ')+(o.address||''));
   }else P.push(L('Самовывоз: ','Olib ketish: ')+fmtWhen(o.pickupAt));
   P.push(L('Имя: ','Ism: ')+o.name+L(', тел.: ',', tel.: ')+o.phone);
+  if(o.org)P.push(L('Организация: ','Tashkilot: ')+o.org);
   if(o.comment)P.push(L('Комментарий: ','Izoh: ')+o.comment);
+  if(o.fee>0)P.push(L('Стоимость доставки: ','Yetkazib berish narxi: ')+money(o.fee));
   P.push(L('Итого: ','Jami: ')+money(o.total)+L(', оплата при получении',', olganda toʻlanadi'));
   return P.join('\n');
 }
