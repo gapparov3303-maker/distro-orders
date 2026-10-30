@@ -24,7 +24,7 @@ function stOf(status,mode){
 
 const DEFAULT={
   v:3,
-  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0}
+  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[]}
 };
 const clone=o=>JSON.parse(JSON.stringify(o));
 const pad=n=>String(n).padStart(2,'0');
@@ -47,6 +47,88 @@ const TAGS={sale:{ru:'Акция',uz:'Aksiya'},new:{ru:'Новинка',uz:'Yang
 const tagName=t=>TAGS[t]?(LANG==='uz'?TAGS[t].uz:TAGS[t].ru):'';
 const oldPrice=p=>p&&p.tag==='sale'&&Number(p.old)>Number(p.price)?Number(p.old):0;
 const salePct=p=>{const o=oldPrice(p);return o?Math.max(1,Math.min(99,Math.round((o-Number(p.price))/o*100))):0};
+
+/* Цена за штуку зависит от количества: у товара до трёх ступеней tiers=[{n, price}] («от n шт — price»), по возрастанию n и убыванию цены.
+   Считается по штукам этого товара в заказе, и цена ступени действует на все штуки. */
+const tiersOf=p=>Array.isArray(p&&p.tiers)?p.tiers:[];
+function unitPrice(p,qty){
+  let pr=Number(p&&p.price)||0;
+  tiersOf(p).forEach(t=>{if(qty>=Number(t.n)&&Number(t.price)>0&&Number(t.price)<pr)pr=Number(t.price)});
+  return pr;
+}
+/* Следующая ступень, до которой не хватает штук: {n, price, left} или null. */
+function nextTier(p,qty){
+  const cur=unitPrice(p,qty);
+  const t=tiersOf(p).find(x=>Number(x.n)>qty&&Number(x.price)>0&&Number(x.price)<cur);
+  return t?{n:Number(t.n),price:Number(t.price),left:Number(t.n)-qty}:null;
+}
+/* Скидка от суммы заказа: cfg.shop.discounts=[{from, pct}] — «от суммы from скидка pct %». Берётся самая большая из достигнутых. */
+function orderDiscount(cfg,sub){
+  let pct=0;
+  (((cfg&&cfg.shop&&cfg.shop.discounts)||[])).forEach(d=>{if(sub>=Number(d.from)&&Number(d.pct)>pct)pct=Number(d.pct)});
+  return {pct,amount:pct?Math.round(sub*pct/100):0};
+}
+/* Следующая скидка, до которой не хватает суммы: {from, pct, left} или null. */
+function nextDiscount(cfg,sub){
+  const cur=orderDiscount(cfg,sub).pct;
+  const d=(((cfg&&cfg.shop&&cfg.shop.discounts)||[])).find(x=>Number(x.from)>sub&&Number(x.pct)>cur);
+  return d?{from:Number(d.from),pct:Number(d.pct),left:Number(d.from)-sub}:null;
+}
+
+/* Чистка ступеней цены и скидок: одни и те же правила в приложении и на сервере.
+   Ступени цены: до трёх, «от n шт» (n от 2 до 500) по возрастанию, цена каждой ниже обычной и ниже предыдущей. */
+const cleanTiers=(a,price)=>{
+  const t=[];
+  (Array.isArray(a)?a:[]).forEach(x=>{
+    if(!x||typeof x!=='object')return;
+    const n=Math.round(Number(x.n)),pr=Math.round(Number(x.price));
+    if(n>=2&&n<=500&&pr>=1&&pr<=1e8)t.push({n,price:pr});
+  });
+  t.sort((x,y)=>x.n-y.n);
+  const out=[];let prev=Number(price)||0;
+  t.forEach(x=>{
+    if(out.length&&x.n===out[out.length-1].n)return;
+    if(x.price<prev){out.push(x);prev=x.price}
+  });
+  return out.slice(0,3);
+};
+/* Скидки от суммы заказа: до трёх ступеней «от суммы — %»; сумма растёт, процент (1–50) строго растёт, иначе ступень отбрасывается. */
+const cleanDiscounts=a=>{
+  const t=[];
+  (Array.isArray(a)?a:[]).forEach(d=>{
+    if(!d||typeof d!=='object')return;
+    const from=Math.round(Number(d.from)),pct=Math.round(Number(d.pct));
+    if(from>=1&&from<=1e9&&pct>=1)t.push({from,pct:Math.min(50,pct)});
+  });
+  t.sort((x,y)=>x.from-y.from);
+  const out=[];
+  t.forEach(d=>{
+    const last=out[out.length-1];
+    if(last&&(d.from===last.from||d.pct<=last.pct))return;
+    out.push(d);
+  });
+  return out.slice(0,3);
+};
+
+/* Упаковки: у товара поля box («в коробке N шт») и blk («в блоке N шт»), оба необязательные. Цена и склад всегда в штуках. */
+const PACK_KEYS=['box','blk'];
+const packSize=(p,k)=>{const n=Math.floor(Number(p&&p[k]));return n>=2?n:0};
+const packShort=k=>k==='box'?L('кор.','quti'):L('бл.','blok');
+const packWord=k=>k==='box'?L('коробка','quti'):L('блок','blok');
+const pcsWord=()=>L('шт','dona');
+/* Раскладывает штуки по упаковкам, сначала по большим: 100 шт при коробке 48 и блоке 12 → 2 кор. + 0 бл., остаток 4 шт. */
+function packSplit(p,qty){
+  const parts=[];let r=Math.max(0,Math.floor(Number(qty)||0));
+  PACK_KEYS.forEach(k=>{const n=packSize(p,k);if(n&&r>=n){const c=Math.floor(r/n);parts.push({k,c,n});r-=c*n}});
+  return {parts,rest:r};
+}
+/* «2 кор. × 12 шт» (одна упаковка, без остатка), «2 кор. + 1 бл. + 4 шт» (иначе); пусто, если упаковок нет или в количество не вошла ни одна. */
+function packText(p,qty){
+  const {parts,rest}=packSplit(p,qty);
+  if(!parts.length)return '';
+  if(parts.length===1&&!rest)return parts[0].c+' '+packShort(parts[0].k)+' × '+parts[0].n+' '+pcsWord();
+  return parts.map(x=>x.c+' '+packShort(x.k)).concat(rest?[rest+' '+pcsWord()]:[]).join(' + ');
+}
 
 /* Остаток товара s = {q: на складе, r: отложено под заказы, low: порог «мало»}; нет записи — учёт не ведётся.
    Покупателям: av — сколько можно заказать (не больше cap, чтобы не раскрывать большие остатки), lw — товара мало, и число показываем в подписи «Мало (осталось N)». */
@@ -107,7 +189,8 @@ function fmtWhen(s){
 }
 function prodLine(it){
   const w=weightLabel(it);
-  return '• '+nm(it)+(w?' ('+w+')':'')+' × '+it.qty+' = '+money(it.price*it.qty);
+  const pk=packText(it,it.qty);
+  return '• '+nm(it)+(w?' ('+w+')':'')+' × '+it.qty+(pk?' ('+pk+')':'')+' = '+money(it.price*it.qty);
 }
 /* Текст заказа для Telegram. maxItems: если список очень длинный, показываем первые позиции и пишем, сколько скрыто. */
 function orderText(o,shop,maxItems){
@@ -127,6 +210,7 @@ function orderText(o,shop,maxItems){
   P.push(L('Имя: ','Ism: ')+o.name+L(', тел.: ',', tel.: ')+o.phone);
   if(o.org)P.push(L('Организация: ','Tashkilot: ')+o.org);
   if(o.comment)P.push(L('Комментарий: ','Izoh: ')+o.comment);
+  if(o.disc>0)P.push(L('Скидка '+o.dpct+'%: −','Chegirma '+o.dpct+'%: −')+money(o.disc));
   if(o.fee>0)P.push(L('Стоимость доставки: ','Yetkazib berish narxi: ')+money(o.fee));
   P.push(L('Итого: ','Jami: ')+money(o.total)+L(', оплата при получении',', olganda toʻlanadi'));
   return P.join('\n');

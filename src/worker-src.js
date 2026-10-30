@@ -122,6 +122,7 @@ function sanitizeCfg(d) {
   s.minOrder = Math.round(clampN(s.minOrder, 0, 1e9, 0));
   s.deliveryFee = Math.round(clampN(s.deliveryFee, 0, 1e9, 0));
   s.freeDeliveryFrom = Math.round(clampN(s.freeDeliveryFrom, 0, 1e9, 0));
+  s.discounts = cleanDiscounts(s.discounts);
   return out;
 }
 
@@ -136,6 +137,8 @@ function normProd(d) {
   }
   return out;
 }
+/* Штук в блоке или коробке: 0 (нет такой упаковки) или от 2 до 500. */
+const cleanPack = v => { const n = Math.round(Number(v)); return n >= 2 && n <= MAX_QTY ? n : 0; };
 /* Чистит то, что прислал продавец. Версию фото (pv) клиент не задаёт: берём из сохранённых данных. */
 function sanitizeProd(d, old) {
   const oldItems = new Map(normProd(old).items.map(i => [i.id, i]));
@@ -153,6 +156,7 @@ function sanitizeProd(d, old) {
     while (seen.has(id)) id = 'p' + randId(6);
     seen.add(id);
     const prev = oldItems.get(id);
+    const price = Math.round(clampN(o.price, 0, 1e8, 0));
     items.push({
       id,
       cat: cats.some(c => c.id === o.cat) ? o.cat : (cats[0] ? cats[0].id : ''),
@@ -162,7 +166,10 @@ function sanitizeProd(d, old) {
       descUz: cleanStr(o.descUz, 300, true),
       amount: Math.round(clampN(o.amount, 0, 100000, 0) * 1000) / 1000,
       unit: UNIT_IDS.includes(o.unit) ? o.unit : 'g',
-      price: Math.round(clampN(o.price, 0, 1e8, 0)),
+      price,
+      tiers: cleanTiers(o.tiers, price),
+      blk: cleanPack(o.blk),
+      box: cleanPack(o.box),
       on: o.on !== false,
       tag: o.tag === 'sale' || o.tag === 'new' ? o.tag : '',
       old: o.tag === 'sale' ? Math.round(clampN(o.old, 0, 1e8, 0)) : 0,
@@ -228,8 +235,12 @@ function validateOrder(b, cfg, prod, stk) {
     seen.add(c.id);
     const it = prod.items.find(x => x.id === c.id);
     if (!it || it.on === false) { missing = true; continue; }
-    items.push({ id: it.id, name: it.name, uz: it.uz || '', amount: it.amount, unit: it.unit, price: it.price, qty });
-    total += it.price * qty;
+    const price = unitPrice(it, qty);    // цена за штуку с учётом ступеней: считает только сервер
+    const line = { id: it.id, name: it.name, uz: it.uz || '', amount: it.amount, unit: it.unit, price, qty };
+    if (packSize(it, 'box')) line.box = packSize(it, 'box');
+    if (packSize(it, 'blk')) line.blk = packSize(it, 'blk');
+    items.push(line);
+    total += price * qty;
   }
   if (missing) return { err: 'unavailable' };
   // остатки: заказать можно не больше, чем свободно (на складе минус уже отложенное под другие заказы)
@@ -241,11 +252,12 @@ function validateOrder(b, cfg, prod, stk) {
   if (short.length) return { err: 'stock', short };
   const fm = validateForm(b.form, cfg);
   if (fm.err) return fm;
-  // минимальная сумма считается по товарам, доставка к ней не прибавляется
+  // минимальная сумма и порог бесплатной доставки считаются по товарам до скидки, доставка к ним не прибавляется
   const min = Number(cfg.shop.minOrder) || 0;
   if (min > 0 && total < min) return { err: 'min_order', min };
   const fee = deliveryFee(cfg, fm.mode, total);
-  return { items, sub: total, fee, total: total + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, pickupAt: fm.pickupAt };
+  const dc = orderDiscount(cfg, total);
+  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, pickupAt: fm.pickupAt };
 }
 
 const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; return x; };
@@ -476,17 +488,17 @@ function whenRu(s) {
 function ordersSheets(orders) {
   setLang('ru');
   const list = orders.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const rows = [['№ заказа', 'Создан', 'Статус', 'Получение', 'Когда', 'Клиент', 'Телефон', 'Организация', 'Telegram', 'Адрес доставки', 'Комментарий', 'Товары, сум', 'Доставка, сум', 'Итого, сум', 'Позиций']];
-  const items = [['№ заказа', 'Статус', 'Когда', 'Клиент', 'Товар', 'Вес / объём', 'Количество', 'Цена, сум', 'Сумма, сум']];
+  const rows = [['№ заказа', 'Создан', 'Статус', 'Получение', 'Когда', 'Клиент', 'Телефон', 'Организация', 'Telegram', 'Адрес доставки', 'Комментарий', 'Товары, сум', 'Скидка, сум', 'Доставка, сум', 'Итого, сум', 'Позиций']];
+  const items = [['№ заказа', 'Статус', 'Когда', 'Клиент', 'Товар', 'Вес / объём', 'Количество', 'В упаковках', 'Цена, сум', 'Сумма, сум']];
   list.forEach(o => {
-    const fee = Number(o.fee) || 0, total = Number(o.total) || 0, st = stOf(o.status, o.mode).name, when = String(o.pickupAt || '').replace('T', ' ');
+    const fee = Number(o.fee) || 0, total = Number(o.total) || 0, disc = Number(o.disc) || 0, st = stOf(o.status, o.mode).name, when = String(o.pickupAt || '').replace('T', ' ');
     rows.push([o.id, shopTime(o.createdAt), st, o.mode === 'delivery' ? 'Доставка' : 'Самовывоз', when, o.name || '', o.phone || '', o.org || '',
-      o.tg && o.tg.username ? '@' + o.tg.username : '', o.mode === 'delivery' ? (o.address || '') : '', o.comment || '', total - fee, fee, total, (o.items || []).length]);
-    (o.items || []).forEach(it => items.push([o.id, st, when, o.name || '', it.name || '', weightLabel(it), Number(it.qty) || 0, Number(it.price) || 0, (Number(it.price) || 0) * (Number(it.qty) || 0)]));
+      o.tg && o.tg.username ? '@' + o.tg.username : '', o.mode === 'delivery' ? (o.address || '') : '', o.comment || '', total - fee + disc, disc, fee, total, (o.items || []).length]);
+    (o.items || []).forEach(it => items.push([o.id, st, when, o.name || '', it.name || '', weightLabel(it), Number(it.qty) || 0, packText(it, it.qty), Number(it.price) || 0, (Number(it.price) || 0) * (Number(it.qty) || 0)]));
   });
   return [
-    { name: 'Заказы', w: [11, 17, 16, 12, 17, 22, 17, 22, 16, 34, 30, 14, 14, 14, 9], money: [11, 12, 13], rows },
-    { name: 'Товары в заказах', w: [11, 16, 17, 22, 32, 13, 12, 14, 14], money: [7, 8], rows: items }
+    { name: 'Заказы', w: [11, 17, 16, 12, 17, 22, 17, 22, 16, 34, 30, 14, 12, 14, 14, 9], money: [11, 12, 13, 14], rows },
+    { name: 'Товары в заказах', w: [11, 16, 17, 22, 32, 13, 12, 20, 14, 14], money: [8, 9], rows: items }
   ];
 }
 function clientsSheets(clients) {
@@ -525,7 +537,7 @@ function pickHtml(orders, shop, prod, cut) {
     const agg = new Map();
     list.forEach(o => (o.items || []).forEach(it => {
       let a = agg.get(it.id);
-      if (!a) { a = { id: it.id, name: it.name, w: weightLabel(it), qty: 0, n: 0 }; agg.set(it.id, a); }
+      if (!a) { a = { id: it.id, name: it.name, w: weightLabel(it), qty: 0, n: 0, pk: prod.items.find(x => x.id === it.id) || it }; agg.set(it.id, a); }
       a.qty += Number(it.qty) || 0; a.n += 1;
     }));
     const rows = [...agg.values()].sort((a, b) => {
@@ -539,12 +551,12 @@ function pickHtml(orders, shop, prod, cut) {
     rows.forEach(a => {
       const cid = catOf.get(a.id), cn = catName.get(cid) || 'Другое';
       if (cn !== lastCat) { h += '<tr><td colspan="4" style="padding:10px 6px 2px;border-bottom:0"><h3 style="margin:0">' + esc(cn) + '</h3></td></tr>'; lastCat = cn; }
-      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(a.name) + (a.w ? '<small>' + esc(a.w) + '</small>' : '') + '</td>', '<td class="q">' + a.qty + '</td>', '<td class="p">' + a.n + '</td>']);
+      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(a.name) + (a.w ? '<small>' + esc(a.w) + '</small>' : '') + '</td>', '<td class="q">' + a.qty + (packText(a.pk, a.qty) ? '<small>' + esc(packText(a.pk, a.qty)) + '</small>' : '') + '</td>', '<td class="p">' + a.n + '</td>']);
     });
     h += '</tbody></table></section>';
   }
   list.forEach(o => {
-    const del = o.mode === 'delivery', fee = Number(o.fee) || 0;
+    const del = o.mode === 'delivery', fee = Number(o.fee) || 0, disc = Number(o.disc) || 0;
     h += '<section class="ord"><h2><span class="id">' + esc(o.id) + '</span><span class="tag">' + (del ? 'Доставка' : 'Самовывоз') + '</span><span class="tag">' + esc(stOf(o.status, o.mode).name) + '</span></h2>'
       + '<div class="row"><b>' + (del ? 'Доставить' : 'Выдать') + ':</b> ' + esc(whenRu(o.pickupAt)) + '</div>'
       + '<div class="row"><b>' + esc(o.name || '') + '</b>' + (o.org ? ' · ' + esc(o.org) : '') + ' · ' + esc(o.phone || '') + '</div>'
@@ -553,9 +565,9 @@ function pickHtml(orders, shop, prod, cut) {
       + '<table><thead>' + tr(['<th class="c"></th>', '<th>Товар</th>', '<th class="q">Кол-во</th>', '<th class="p">Цена</th>', '<th class="s">Сумма</th>']) + '</thead><tbody>';
     (o.items || []).forEach(it => {
       const w = weightLabel(it);
-      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(it.name) + (w ? '<small>' + esc(w) + '</small>' : '') + '</td>', '<td class="q">' + (Number(it.qty) || 0) + '</td>', '<td class="p">' + num(it.price) + '</td>', '<td class="s">' + num((Number(it.price) || 0) * (Number(it.qty) || 0)) + '</td>']);
+      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(it.name) + (w ? '<small>' + esc(w) + '</small>' : '') + '</td>', '<td class="q">' + (Number(it.qty) || 0) + (packText(it, it.qty) ? '<small>' + esc(packText(it, it.qty)) + '</small>' : '') + '</td>', '<td class="p">' + num(it.price) + '</td>', '<td class="s">' + num((Number(it.price) || 0) * (Number(it.qty) || 0)) + '</td>']);
     });
-    h += '</tbody><tfoot>' + (fee > 0 ? tr(['<td></td>', '<td colspan="3">Доставка</td>', '<td class="s">' + num(fee) + '</td>']) : '')
+    h += '</tbody><tfoot>' + (disc > 0 ? tr(['<td></td>', '<td colspan="3">Скидка ' + (Number(o.dpct) || 0) + '%</td>', '<td class="s">−' + num(disc) + '</td>']) : '') + (fee > 0 ? tr(['<td></td>', '<td colspan="3">Доставка</td>', '<td class="s">' + num(fee) + '</td>']) : '')
       + tr(['<td></td>', '<td colspan="3">Итого</td>', '<td class="s">' + num(o.total) + '</td>']) + '</tfoot></table>'
       + '<div class="pay">К оплате при получении: <b>' + esc(money(o.total)) + '</b></div><div class="sign">Собрал: ____________ &nbsp; Проверил: ____________</div></section>';
   });
@@ -848,6 +860,107 @@ function catalogSheets(prod) {
     { name: 'Как заполнять', w: [150], plain: true, rows: help.map(x => [x]) }];
 }
 
+/* ---------- отчёты ---------- */
+/* Продажи копятся по дням: когда заказ становится «выдан», его сумма, товары и клиент добавляются в запись rp:<день> (день по часам склада).
+   Самих заказов в панели хранится не больше 150 завершённых, поэтому отчёты берут данные не из них. Старше 400 дней записи удаляются. */
+const RP_KEEP = 400;
+const RP_RANGES = [7, 30, 90, 365];
+const RP_COVER = 14;          // на сколько дней считаем запас в подсказке «что пора закупать»
+const dayOf = iso => { const t = Date.parse(iso); return new Date((Number.isFinite(t) ? t : Date.now()) + SHOP_TZ * 3600000).toISOString().slice(0, 10); };
+const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+const newRp = () => ({ n: 0, sum: 0, disc: 0, fee: 0, items: [], cl: [] });
+function rpAdd(rp, o) {
+  const total = Number(o.total) || 0;
+  rp.n += 1; rp.sum += total; rp.disc += Number(o.disc) || 0; rp.fee += Number(o.fee) || 0;
+  for (const it of o.items || []) {
+    const qty = Number(it.qty) || 0;
+    let x = rp.items.find(y => y.id === it.id);
+    if (!x) { x = { id: String(it.id), name: cleanStr(it.name, 60), qty: 0, sum: 0 }; rp.items.push(x); }
+    x.qty += qty; x.sum += qty * (Number(it.price) || 0);
+  }
+  if (o.uid) {
+    let c = rp.cl.find(y => y.uid === o.uid);
+    if (!c) { if (rp.cl.length >= 400) return; c = { uid: o.uid, name: '', org: '', n: 0, sum: 0 }; rp.cl.push(c); }
+    c.name = cleanStr(o.name, 60) || c.name; c.org = cleanStr(o.org || '', 80) || c.org;
+    c.n += 1; c.sum += total;
+  }
+}
+/* Собирает отчёт за days дней, заканчивая днём today. Вход: rp — Map «день → запись», rp0 — с какого дня ведётся учёт. */
+function reportBuild(o) {
+  const { days, today, rp, rp0, prod, stk } = o;
+  const from = addDays(today, -(days - 1));
+  const series = [], months = new Map(), prods = new Map(), cls = new Map();
+  const tot = { n: 0, sum: 0, disc: 0, fee: 0 };
+  for (let i = 0; i < days; i++) {
+    const d = addDays(from, i), r = rp.get(d);
+    series.push({ d, n: r ? r.n : 0, sum: r ? r.sum : 0 });
+    if (!r) continue;
+    tot.n += r.n; tot.sum += r.sum; tot.disc += r.disc; tot.fee += r.fee;
+    const m = months.get(d.slice(0, 7)) || { m: d.slice(0, 7), n: 0, sum: 0 };
+    m.n += r.n; m.sum += r.sum; months.set(m.m, m);
+    r.items.forEach(x => { const a = prods.get(x.id) || { id: x.id, name: x.name, qty: 0, sum: 0 }; a.qty += x.qty; a.sum += x.sum; a.name = x.name || a.name; prods.set(x.id, a); });
+    r.cl.forEach(c => { const a = cls.get(c.uid) || { name: c.name, org: c.org, n: 0, sum: 0 }; a.n += c.n; a.sum += c.sum; a.name = c.name || a.name; a.org = c.org || a.org; cls.set(c.uid, a); });
+  }
+  // прошлый период той же длины: только если учёт шёл уже тогда
+  const pFrom = addDays(from, -days);
+  let prev = null;
+  if (rp0 && rp0 <= pFrom) {
+    prev = { n: 0, sum: 0 };
+    for (let i = 0; i < days; i++) { const r = rp.get(addDays(pFrom, i)); if (r) { prev.n += r.n; prev.sum += r.sum; } }
+  }
+  const pitem = new Map((prod ? prod.items : []).map(x => [x.id, x]));
+  const prodsOut = [...prods.values()].sort((a, b) => b.sum - a.sum || b.qty - a.qty).slice(0, 20).map(x => {
+    const it = pitem.get(x.id);
+    return Object.assign({}, x, it ? { name: it.name, w: weightLabel(it) } : {});
+  });
+  const clOut = [...cls.values()].sort((a, b) => b.sum - a.sum || b.n - a.n).slice(0, 10);
+  // что пора закупать: у товаров с учётом остатка считаем, на сколько дней хватит при нынешних продажах (за последние 30 дней или сколько есть)
+  const span = Math.max(1, Math.round((Date.parse(today) - Date.parse(rp0 || today)) / 86400000) + 1);
+  const W = Math.min(30, span), wFrom = addDays(today, -(W - 1));
+  const sold = new Map();
+  for (let i = 0; i < W; i++) { const r = rp.get(addDays(wFrom, i)); if (r) r.items.forEach(x => sold.set(x.id, (sold.get(x.id) || 0) + x.qty)); }
+  const list = [];
+  for (const it of prod ? prod.items : []) {
+    const s = stk && stk[it.id];
+    if (!s) continue;
+    const q = sold.get(it.id) || 0;
+    if (!(q > 0)) continue;
+    const avail = stkAvail(s), daily = q / W, left = avail / daily;
+    if (left > RP_COVER) continue;
+    list.push({ id: it.id, name: it.name, w: weightLabel(it), avail, daily: Math.round(daily * 100) / 100, left: Math.round(left * 10) / 10, need: Math.max(0, Math.ceil(daily * RP_COVER - avail)) });
+  }
+  list.sort((a, b) => a.left - b.left);
+  return {
+    days, from, to: today, since: rp0 || today, span, thin: span < 7,
+    tot: Object.assign(tot, { avg: tot.n ? Math.round(tot.sum / tot.n) : 0 }), prev,
+    series, months: [...months.values()].sort((a, b) => a.m.localeCompare(b.m)),
+    prods: prodsOut, cl: clOut, buy: { window: W, cover: RP_COVER, list: list.slice(0, 30) }
+  };
+}
+const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const ruDay = d => d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4);
+const ruMonth = m => MONTHS_RU[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(0, 4);
+function reportSheets(r) {
+  setLang('ru');
+  const days = [['Дата', 'Заказов', 'Сумма, сум']].concat(r.series.map(x => [ruDay(x.d), x.n, x.sum]));
+  days.push(['Итого', r.tot.n, r.tot.sum]);
+  const months = [['Месяц', 'Заказов', 'Сумма, сум']].concat(r.months.map(x => [ruMonth(x.m), x.n, x.sum]));
+  const prods = [['Товар', 'Вес / объём', 'Продано, шт', 'Сумма, сум']].concat(r.prods.map(x => [x.name, x.w || '', x.qty, x.sum]));
+  const cl = [['Клиент', 'Организация', 'Заказов', 'Сумма, сум']].concat(r.cl.map(x => [x.name, x.org || '', x.n, x.sum]));
+  const buy = [['Товар', 'Вес / объём', 'Свободно, шт', 'Продаётся в день, шт', 'Хватит на, дней', 'Докупить на ' + r.buy.cover + ' дн., шт']].concat(r.buy.list.map(x => [x.name, x.w || '', x.avail, x.daily, x.left, x.need]));
+  const head = ['Отчёт за ' + ruDay(r.from) + ' — ' + ruDay(r.to), 'Учёт продаж ведётся с ' + ruDay(r.since) + '. В отчёт входят заказы со статусом «выдан» и «доставлен».',
+    'Сумма товара считается по ценам в заказе, до скидки на весь заказ. Сумма заказа — то, что заплатил клиент (со скидкой и доставкой).',
+    'Заказов: ' + r.tot.n + '. Сумма: ' + num(r.tot.sum) + ' сум. Скидки: ' + num(r.tot.disc) + ' сум. Доставка: ' + num(r.tot.fee) + ' сум. Средний заказ: ' + num(r.tot.avg) + ' сум.'];
+  return [
+    { name: 'Сводка', w: [150], plain: true, rows: head.map(x => [x]) },
+    { name: 'По дням', w: [14, 11, 16], money: [2], rows: days },
+    { name: 'По месяцам', w: [20, 11, 16], money: [2], rows: months },
+    { name: 'Товары', w: [38, 14, 14, 16], money: [3], rows: prods },
+    { name: 'Клиенты', w: [30, 26, 11, 16], money: [3], rows: cl },
+    { name: 'Что закупать', w: [38, 14, 14, 20, 16, 24], rows: buy }
+  ];
+}
+
 /* ---------- страница настройки ---------- */
 function setupPage(inner) {
   return html('<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Настройка бота</title>'
@@ -915,6 +1028,35 @@ export class Shop {
     const upd = { cxb: 1, cx: [...map.keys()] };
     map.forEach((c, uid) => { upd['c:' + uid] = c; });
     await this.st.put(upd);
+  }
+  /* Один раз при первом обращении: заполняет отчёты из уже завершённых заказов, которые ещё хранятся (до 150). Дальше записи копятся сами. */
+  async ensureReports() {
+    if (await this.st.get('rpx') !== undefined) return;
+    const done = (await this.getOrders((await this.st.get('hist')) || [])).filter(o => o.status === 'done');
+    const byDay = new Map();
+    let first = null;
+    for (const o of done) {
+      const d = dayOf(o.statusAt || o.createdAt);
+      let r = byDay.get(d);
+      if (!r) { r = newRp(); byDay.set(d, r); }
+      rpAdd(r, o);
+      if (!first || d < first) first = d;
+    }
+    const days = [...byDay.keys()].sort().slice(-RP_KEEP);
+    const upd = { rpx: days, rp0: first || dayOf(new Date().toISOString()) };
+    days.forEach(d => { upd['rp:' + d] = byDay.get(d); });
+    await this.st.put(upd);
+  }
+  async report(days) {
+    await this.ensureReports();
+    days = RP_RANGES.includes(days) ? days : 30;
+    const today = dayOf(new Date().toISOString());
+    const idx = (await this.st.get('rpx')) || [];
+    const need = addDays(today, -Math.max(2 * days, 30));
+    const map = await this.getMany(idx.filter(d => d >= need).map(d => 'rp:' + d));
+    const rp = new Map();
+    map.forEach((v, k) => rp.set(k.slice(3), v));
+    return reportBuild({ days, today, rp, rp0: await this.st.get('rp0'), prod: await this.getProd(), stk: await this.getStk() });
   }
   async getProd() { return normProd(await this.st.get('prod')); }
   async getStk() { const s = await this.st.get('stk'); return s && typeof s === 'object' ? s : {}; }
@@ -1025,6 +1167,7 @@ export class Shop {
       act: (await this.st.get('act')) || [], hist: (await this.st.get('hist')) || [],
       orders: orders.map(o => { const x = Object.assign({}, o); delete x.msgs; return x; }),
       clients: idx.map(x => cmap.get('c:' + x)).filter(Boolean),
+      reports: await this.reportsDump(),
       photos: { saved: photos.length, of: withPhoto.length }
     };
     const readme = 'Резервная копия магазина «' + ((data.cfg.shop && data.cfg.shop.name) || '') + '»\r\nСоздана: ' + shopTime(at) + ' (время склада)\r\n\r\n'
@@ -1035,6 +1178,15 @@ export class Shop {
       files: [{ name: 'backup.json', data: enc.encode(JSON.stringify(data)) }, { name: 'README.txt', data: enc.encode(readme) }].concat(photos),
       info: { orders: orders.length, clients: data.clients.length, photos: photos.length, photosOf: withPhoto.length }
     };
+  }
+  /* Записи продаж по дням для резервной копии. */
+  async reportsDump() {
+    await this.ensureReports();
+    const idx = (await this.st.get('rpx')) || [];
+    const map = await this.getMany(idx.map(d => 'rp:' + d));
+    const days = {};
+    idx.forEach(d => { const v = map.get('rp:' + d); if (v) days[d] = v; });
+    return { since: (await this.st.get('rp0')) || '', days };
   }
   /* Собирает файл выгрузки. kind: orders | clients | backup | pick. Возвращает {name, bytes, mime, caption, n} или {err}. */
   async makeExport(kind, b) {
@@ -1060,6 +1212,11 @@ export class Shop {
       const prod = await this.getProd();
       return { name: 'catalog-' + day + '.xlsx', bytes: xlsxBuild(catalogSheets(prod)), mime: XLSX_MIME, n: prod.items.length,
         caption: 'Каталог: товаров ' + prod.items.length + '. Измените цены, сохраните файл и загрузите его в приложении: Каталог → Загрузить прайс.' };
+    }
+    if (kind === 'report') {
+      const r = await this.report(Number(b && b.days));
+      return { name: 'report-' + day + '.xlsx', bytes: xlsxBuild(reportSheets(r)), mime: XLSX_MIME, n: r.tot.n,
+        caption: 'Отчёт за ' + r.days + ' дн.: заказов ' + r.tot.n + ', сумма ' + num(r.tot.sum) + ' сум. Откройте в Excel.' };
     }
     if (kind === 'pick') {
       const p = await this.pickOrders(b || {});
@@ -1207,6 +1364,9 @@ export class Shop {
           return json({ ok: true });
         }
       }
+      if (path === '/api/admin/report' && method === 'GET') {
+        return json({ report: await this.report(Number(new URL(request.url).searchParams.get('days'))) });
+      }
       if (path === '/api/admin/pick' && method === 'POST') {
         const r = await this.readBody(request, 4000);
         if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
@@ -1324,7 +1484,9 @@ export class Shop {
       msgs: []
     };
     if (cl0 && cl0.org) order.org = cl0.org;
-    if (v.fee > 0) { order.fee = v.fee; order.sub = v.sub; }
+    if (v.fee > 0 || v.disc > 0) order.sub = v.sub;
+    if (v.disc > 0) { order.disc = v.disc; order.dpct = v.dpct; }
+    if (v.fee > 0) order.fee = v.fee;
     ids.unshift(id); act.unshift(id);
     // откладываем товар под заказ: пока заказ не выдан и не отменён, эти штуки другим покупателям недоступны
     const upd = { ['o:' + id]: order, ['m:' + uid]: ids.slice(0, 40), act };
@@ -1430,7 +1592,15 @@ export class Shop {
       if (!s0) return json({ error: 'not_tracked' }, 409);
       s0.low = n;
     } else if (b.op === 'in' || b.op === 'set') {
-      const n = intIn(b.n, b.op === 'in' ? 1 : 0, MAX_STOCK);
+      // количество можно прислать в упаковках: u = 'box' (коробки) или 'blk' (блоки), n — их число; на склад идут штуки
+      let nIn = b.n;
+      if (b.u !== undefined && b.u !== null && b.u !== 'pc') {
+        const size = b.u === 'box' || b.u === 'blk' ? packSize(it, b.u) : 0;
+        if (!size) return json({ error: 'no_pack' }, 400);
+        if (typeof b.n !== 'number' || !Number.isInteger(b.n) || b.n < 0 || b.n > MAX_STOCK) return json({ error: 'bad_request' }, 400);
+        nIn = b.n * size;
+      }
+      const n = intIn(nIn, b.op === 'in' ? 1 : 0, MAX_STOCK);
       const lw = b.low === undefined || b.low === null ? null : intIn(b.low, 0, MAX_STOCK);
       if (n === null || (b.low !== undefined && b.low !== null && lw === null)) return json({ error: 'bad_request' }, 400);
       let s = s0;
@@ -1482,6 +1652,7 @@ export class Shop {
   /* Меняет статус без обращений к сети между чтением и записью. */
   async changeStatus(id, to) {
     await this.ensureClients();
+    await this.ensureReports();
     const o = await this.st.get('o:' + id);
     if (!o) return { err: 'not_found' };
     if (o.status === to) return { order: o, same: true };
@@ -1499,6 +1670,20 @@ export class Shop {
       stats = (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 };
       if (to === 'done') { stats.doneSum += Number(o.total) || 0; stats.doneCount += 1; }
       upd.stats = stats;
+      // отчёты: выданный заказ добавляется в запись своего дня
+      if (to === 'done') {
+        const day = dayOf(o.statusAt);
+        const rp = (await this.st.get('rp:' + day)) || newRp();
+        rpAdd(rp, o);
+        upd['rp:' + day] = rp;
+        const idx = (await this.st.get('rpx')) || [];
+        if (!idx.includes(day)) {
+          idx.push(day); idx.sort();
+          const drop = idx.splice(0, Math.max(0, idx.length - RP_KEEP));
+          if (drop.length) await this.st.delete(drop.map(d => 'rp:' + d));
+          upd.rpx = idx;
+        }
+      }
       // счётчики клиента: выдача добавляет сумму, отмена убирает заказ из счёта
       const cl = o.uid ? await this.getClient(o.uid) : null;
       if (cl) {

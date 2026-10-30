@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -1733,6 +1733,7 @@ await t('Excel с заказами: файл приходит продавцу �
   assert.equal(a[col('Телефон')], '+998 91 555 44 33');                    // телефон остался текстом
   assert.equal(a[col('Доставка, сум')], 30000);
   assert.equal(a[col('Товары, сум')], o1.total - 30000);
+  assert.equal(a[col('Скидка, сум')], 0);
   assert.equal(a[col('Итого, сум')], o1.total);
   assert.equal(a[col('Позиций')], 2);
   assert.equal(b[col('Статус')], 'Выдан');
@@ -1746,13 +1747,13 @@ await t('Excel с заказами: файл приходит продавцу �
   assert.equal(a[col('Создан')], cr);
   // лист «Товары в заказах»: по строке на позицию, сумма = цена × количество
   const it = x['Товары в заказах'];
-  assert.deepEqual(it[0], ['№ заказа', 'Статус', 'Когда', 'Клиент', 'Товар', 'Вес / объём', 'Количество', 'Цена, сум', 'Сумма, сум']);
+  assert.deepEqual(it[0], ['№ заказа', 'Статус', 'Когда', 'Клиент', 'Товар', 'Вес / объём', 'Количество', 'В упаковках', 'Цена, сум', 'Сумма, сум']);
   const lines = it.slice(1).filter(r => r[0] === o1.id);
   assert.equal(lines.length, 2);
   const oil = lines.find(r => r[4] === 'Масло подсолнечное');
-  assert.deepEqual([oil[5], oil[6], oil[7], oil[8]], ['5 л', 2, 82000, 164000]);
+  assert.deepEqual([oil[5], oil[6], oil[8], oil[9]], ['5 л', 2, 82000, 164000]);
   const mac = lines.find(r => r[4] === 'Макароны');
-  assert.deepEqual([mac[5], mac[6], mac[7], mac[8]], ['400 г', 10, 7500, 75000]);
+  assert.deepEqual([mac[5], mac[6], mac[8], mac[9]], ['400 г', 10, 7500, 75000]);
   assert.equal(it.slice(1).length, 3);
   // сервер освободился: следующая выгрузка проходит
   assert.equal((await exportReq('orders')).status, 200);
@@ -2205,6 +2206,435 @@ await t('прайс из Excel: больше 300 товаров и 40 катег
   assert.deepEqual([d.summary.added, d.summary.errors], [38, 12]);
   assert.ok(d.errors.every(e => e.msg.includes('40 категорий')));
   assert.equal(prod.items.length, 4 + 38);
+});
+
+/* ============ пакет 4: цены от количества, скидка от суммы, упаковки, отчёты ============ */
+const finish = async id => { for (const to of ['accepted', 'ready', 'done']) assert.equal((await setStatus(id, to)).status, 200); };
+const priceCart = (cart, prod) => cart.reduce((s, c) => { const p = prod.items.find(x => x.id === c.id); return s + S.unitPrice(p, c.qty) * c.qty; }, 0);
+const placeP = async (c, cart, over, mode) => {
+  const prod = await getProd(), cfg = await getCfg();
+  const sub = priceCart(cart, prod), d = S.orderDiscount(cfg, sub), fee = S.deliveryFee(cfg, mode || 'pickup', sub);
+  return place(c, cart, Object.assign({ expectTotal: sub - d.amount + fee }, over || {}), mode);
+};
+const named = (name, mode) => ({ form: formFor(S.DEFAULT, mode || 'pickup', { name }) });
+const putCfgFull = async mut => { const c = await getCfg(); mut(c.shop); return call('PUT', '/api/admin/config', { init: iS(), body: { cfg: c } }); };
+
+await t('цены от количества: ступени чистятся, цену считает сервер, на все штуки товара', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  Object.assign(prod.items[3], { tiers: [{ n: 50, price: 6500 }, { n: 10, price: 7000 }, { n: 10, price: 6900 }, { n: 1, price: 100 }, { n: 600, price: 10 }, { n: 20, price: 8000 }, { n: 30, price: 6800 }] });
+  assert.equal((await putProd(prod)).status, 200);
+  // отсортированы, повтор «от 10», ступень «от 1» и «от 600», цена выше обычной и выше предыдущей ступени отброшены
+  assert.deepEqual((await pubItem('p4')).tiers, [{ n: 10, price: 7000 }, { n: 30, price: 6800 }, { n: 50, price: 6500 }]);
+  assert.deepEqual((await pubItem('p1')).tiers, []);
+  // не больше трёх
+  prod.items[3].tiers = [{ n: 2, price: 7400 }, { n: 3, price: 7300 }, { n: 4, price: 7200 }, { n: 5, price: 7100 }];
+  await putProd(prod);
+  assert.equal((await pubItem('p4')).tiers.length, 3);
+  // мусор
+  prod.items[3].tiers = 'x'; await putProd(prod);
+  assert.deepEqual((await pubItem('p4')).tiers, []);
+  prod.items[3].tiers = [null, 5, { n: 'a', price: 'b' }, { n: 10, price: -1 }]; await putProd(prod);
+  assert.deepEqual((await pubItem('p4')).tiers, []);
+  // цена базовая упала: ступень, которая стала дороже, отбрасывается
+  prod.items[3].tiers = [{ n: 10, price: 7000 }, { n: 50, price: 6500 }]; prod.items[3].price = 6800; await putProd(prod);
+  assert.deepEqual((await pubItem('p4')).tiers, [{ n: 50, price: 6500 }]);
+  prod.items[3].price = 7500; prod.items[3].tiers = [{ n: 10, price: 7000 }, { n: 50, price: 6500 }]; await putProd(prod);
+
+  const A = newUser();
+  for (const [qty, unit] of [[1, 7500], [9, 7500], [10, 7000], [49, 7000], [50, 6500], [500, 6500]]) {
+    const r = await placeP(A, [{ id: 'p4', qty }]);
+    assert.equal(r.status, 200, qty + ' ' + JSON.stringify(await r.clone().json()));
+    const o = (await jsonOf(r)).order;
+    assert.equal(o.items[0].price, unit, 'цена за штуку при ' + qty);
+    assert.equal(o.total, unit * qty);
+    await setStatus(o.id, 'cancelled');
+  }
+  // клиент, считавший по старой цене, получает price_changed со свежим каталогом
+  let r = await place(A, [{ id: 'p4', qty: 10 }], { expectTotal: 75000 });
+  assert.equal(r.status, 409);
+  let d = await jsonOf(r);
+  assert.equal(d.error, 'price_changed');
+  assert.deepEqual(d.prod.items.find(x => x.id === 'p4').tiers, [{ n: 10, price: 7000 }, { n: 50, price: 6500 }]);
+  // ступень считается по каждому товару отдельно: 9 макарон по обычной цене даже при дорогом масле
+  r = await placeP(A, [{ id: 'p1', qty: 20 }, { id: 'p4', qty: 9 }]);
+  assert.equal((await jsonOf(r)).order.total, 82000 * 20 + 7500 * 9);
+  // у ступени своя цена: заказ хранит её, а смена каталога старый заказ не трогает
+  r = await placeP(A, [{ id: 'p4', qty: 10 }]);
+  const o = (await jsonOf(r)).order;
+  prod.items[3].tiers = []; await putProd(prod);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).total, 70000);
+  // общие функции: следующая ступень
+  assert.deepEqual(S.nextTier({ price: 100, tiers: [{ n: 10, price: 90 }, { n: 50, price: 80 }] }, 5), { n: 10, price: 90, left: 5 });
+  assert.equal(S.nextTier({ price: 100, tiers: [{ n: 10, price: 90 }] }, 10), null);
+});
+
+await t('скидка от суммы заказа: ступени чистятся, считается от суммы товаров, на минимум и доставку не влияет', async () => {
+  await stockWorld();
+  assert.deepEqual((await getCfg()).shop.discounts, []);
+  const set = async list => { assert.equal((await putCfgFull(sh => { sh.discounts = list; })).status, 200); return (await getCfg()).shop.discounts; };
+  assert.deepEqual(await set([{ from: 3000000, pct: 5 }, { from: 1000000, pct: 3 }, { from: 2000000, pct: 3 }, { from: 0, pct: 9 }, { from: 5000000, pct: 4 }, { from: 9000000, pct: 7 }]),
+    [{ from: 1000000, pct: 3 }, { from: 3000000, pct: 5 }, { from: 9000000, pct: 7 }]);   // «от 2 млн — 3 %» не выше предыдущей, «от 5 млн — 4 %» ниже, «от 0» не ступень; больше трёх нет
+  assert.deepEqual(await set([{ from: 1000, pct: 99 }, { from: 'x', pct: 5 }, null, { from: 5000, pct: 0 }, { from: 700.4, pct: 2.6 }]), [{ from: 700, pct: 3 }, { from: 1000, pct: 50 }]);
+  assert.deepEqual(await set('мусор'), []);
+  await set([{ from: 1000000, pct: 3 }, { from: 3000000, pct: 5 }]);
+
+  const A = newUser();
+  // ниже первой ступени: скидки нет, лишних полей в заказе нет
+  let r = await placeP(newUser(), [{ id: 'p2', qty: 2 }]);                       // 820 000
+  let o = (await jsonOf(r)).order;
+  assert.equal(o.total, 820000);
+  assert.equal(o.disc, undefined); assert.equal(o.dpct, undefined); assert.equal(o.sub, undefined);
+  // 1 394 000: скидка 3 %
+  r = await placeP(newUser(), CART);
+  assert.equal(r.status, 200);
+  o = (await jsonOf(r)).order;
+  assert.deepEqual([o.sub, o.dpct, o.disc, o.total], [1394000, 3, 41820, 1394000 - 41820]);
+  assert.equal(o.fee, undefined);
+  // клиент не угадал: ждёт сумму без скидки
+  r = await place(newUser(), CART, { expectTotal: 1394000 });
+  assert.equal(r.status, 409);
+  const pc = await jsonOf(r);
+  assert.equal(pc.error, 'price_changed');
+  assert.deepEqual(pc.cfg.shop.discounts, [{ from: 1000000, pct: 3 }, { from: 3000000, pct: 5 }]);
+  // ровно на пороге скидка есть: 1 000 000 = 2 × 410 000 + 180 000 → берём 4 × 250 000
+  const prod = SAMPLE_PROD(); prod.items[0].price = 250000; assert.equal((await putProd(prod)).status, 200);
+  o = (await jsonOf(await placeP(newUser(), [{ id: 'p1', qty: 4 }]))).order;
+  assert.deepEqual([o.sub, o.dpct, o.disc, o.total], [1000000, 3, 30000, 970000]);
+  o = (await jsonOf(await placeP(newUser(), [{ id: 'p1', qty: 3 }, { id: 'p4', qty: 33 }]))).order;       // 750 000 + 247 500 = 997 500
+  assert.equal(o.disc, undefined);
+  // вторая ступень
+  o = (await jsonOf(await placeP(newUser(), [{ id: 'p1', qty: 12 }]))).order;                              // 3 000 000
+  assert.deepEqual([o.dpct, o.disc, o.total], [5, 150000, 2850000]);
+  // округление до сума
+  prod.items[3].price = 7777; await putProd(prod);
+  o = (await jsonOf(await placeP(newUser(), [{ id: 'p4', qty: 129 }]))).order;                             // 1 003 233 → 3 % = 30 096,99
+  assert.deepEqual([o.sub, o.disc, o.total], [1003233, 30097, 973136]);
+
+  // минимальная сумма и бесплатная доставка считаются по сумме ДО скидки
+  prod.items[3].price = 7500; await putProd(prod);
+  await putCfgFull(sh => { sh.minOrder = 1000000; sh.deliveryFee = 30000; sh.freeDeliveryFrom = 1000000; });
+  r = await placeP(newUser(), [{ id: 'p1', qty: 4 }], null, 'delivery');                                   // 1 000 000: минимум пройден, доставка бесплатна, скидка 3 %
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  o = (await jsonOf(r)).order;
+  assert.deepEqual([o.sub, o.disc, o.fee, o.total], [1000000, 30000, undefined, 970000]);
+  r = await placeP(newUser(), [{ id: 'p1', qty: 3 }], null, 'delivery');                                   // 750 000 < минимума
+  assert.equal(r.status, 409);
+  assert.equal((await jsonOf(r)).error, 'min_order');
+  // доставка платная, скидка есть: итог = товары − скидка + доставка
+  await putCfgFull(sh => { sh.minOrder = 0; sh.freeDeliveryFrom = 0; });
+  o = (await jsonOf(await placeP(newUser(), [{ id: 'p1', qty: 4 }], null, 'delivery'))).order;
+  assert.deepEqual([o.sub, o.disc, o.fee, o.total], [1000000, 30000, 30000, 1000000]);
+
+  // продавцу и клиенту приходит строка про скидку
+  const txt = tgAll('sendMessage', p => String(p.text).includes('Скидка 5%')).map(x => norm(x.payload.text));
+  assert.ok(txt.some(x => x.includes('Скидка 5%: −150 000 сум') && x.includes('Итого: 2 850 000 сум')), txt.join('|'));
+  // общие функции
+  assert.deepEqual(S.nextDiscount({ shop: { discounts: [{ from: 1000, pct: 3 }, { from: 5000, pct: 5 }] } }, 1500), { from: 5000, pct: 5, left: 3500 });
+  assert.equal(S.nextDiscount({ shop: { discounts: [{ from: 1000, pct: 3 }] } }, 1500), null);
+});
+
+await t('скидка: выданный заказ учитывается в клиенте и статистике по сумме со скидкой; в Excel и сборочном листе есть скидка', async () => {
+  await stockWorld();
+  await putCfgFull(sh => { sh.discounts = [{ from: 1000000, pct: 5 }]; });
+  const A = newUser();
+  assert.equal((await putProfile(A, { name: 'Анвар', phone: '+998 90 111 22 33' })).status, 200);
+  const o = (await jsonOf(await placeP(A, CART))).order;                 // 1 394 000, скидка 69 700
+  assert.deepEqual([o.disc, o.total], [69700, 1324300]);
+  await finish(o.id);
+  const cl = (await adminClients()).find(c => c.name === 'Анвар');
+  assert.deepEqual([cl.ds, cl.sum], [1, 1324300]);
+  const st = (await jsonOf(await call('GET', '/api/admin/orders', { init: iS() }))).stats;
+  assert.deepEqual([st.doneCount, st.doneSum], [1, 1324300]);
+  // Excel
+  assert.equal((await exportReq('orders')).status, 200);
+  const x = readXlsx(lastDoc().file.bytes)['Заказы'];
+  const col = n => x[0].indexOf(n), row = x.find(r => r[0] === o.id);
+  assert.deepEqual([row[col('Товары, сум')], row[col('Скидка, сум')], row[col('Доставка, сум')], row[col('Итого, сум')]], [1394000, 69700, 0, 1324300]);
+  // сборочный лист
+  const pk = await jsonOf(await call('POST', '/api/admin/pick', { init: iS(), body: { ids: [o.id] } }));
+  assert.ok(pk.html.includes('Скидка 5%') && pk.html.includes('−69') && pk.html.includes('1' + String.fromCharCode(160) + '324' + String.fromCharCode(160) + '300') || norm(pk.html).includes('1 324 300'), 'в листе есть скидка и итог');
+  // у клиента в «моих заказах» тоже есть скидка и сумма
+  const mine = (await meOf(A));
+  assert.ok(mine);
+  const my = (await jsonOf(await call('GET', '/api/my-orders', { init: A.init() }))).orders.find(z => z.id === o.id);
+  assert.deepEqual([my.sub, my.disc, my.dpct, my.total], [1394000, 69700, 5, 1324300]);
+});
+
+await t('блоки и коробки: размеры чистятся, попадают в заказ, сборочный лист и текст пишут «2 кор. × 12 шт»', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  Object.assign(prod.items[3], { box: 48, blk: 12 });
+  Object.assign(prod.items[0], { box: 1, blk: 'x' });
+  Object.assign(prod.items[1], { box: 501, blk: 500.4 });
+  assert.equal((await putProd(prod)).status, 200);
+  let pr = await getProd();
+  assert.deepEqual([pr.items[3].box, pr.items[3].blk], [48, 12]);
+  assert.deepEqual([pr.items[0].box, pr.items[0].blk], [0, 0]);          // 1 и мусор — упаковки нет
+  assert.deepEqual([pr.items[1].box, pr.items[1].blk], [0, 500]);        // больше 500 не бывает, а 500,4 → 500
+  const A = newUser();
+  const o = (await jsonOf(await placeP(A, [{ id: 'p4', qty: 100 }, { id: 'p1', qty: 2 }]))).order;
+  assert.deepEqual([o.items[0].box, o.items[0].blk], [48, 12]);
+  assert.equal(o.items[1].box, undefined);
+  assert.equal(S.packText(o.items[0], 100), '2 кор. + 4 шт');
+  assert.equal(S.packText(o.items[0], 96), '2 кор. × 48 шт');
+  assert.equal(S.packText(o.items[0], 60), '1 кор. + 1 бл.');
+  assert.equal(S.packText(o.items[0], 24), '2 бл. × 12 шт');
+  assert.equal(S.packText(o.items[0], 5), '');
+  assert.equal(S.packText(o.items[1], 2), '');
+  // сообщение продавцу
+  const msg = tgAll('sendMessage', p => String(p.text).includes(o.id)).map(x => x.payload.text).join('\n');
+  assert.ok(msg.includes('× 100 (2 кор. + 4 шт)'), msg);
+  assert.ok(msg.includes('Масло подсолнечное (5 л) × 2 = '), 'у товара без упаковок скобок нет');
+  // сборочный лист: в сводке и в заказе
+  const o2 = (await jsonOf(await placeP(newUser(), [{ id: 'p4', qty: 48 }]))).order;
+  const pk = await jsonOf(await call('POST', '/api/admin/pick', { init: iS(), body: { ids: [o.id, o2.id] } }));
+  assert.ok(pk.html.includes('<small>2 кор. + 4 шт</small>'), 'в заказе');
+  assert.ok(pk.html.includes('<small>3 кор. + 4 шт</small>'), 'в общей сводке 148 шт = 3 коробки и 4 штуки');
+  // Excel: столбец «В упаковках»
+  await exportReq('orders');
+  const it = readXlsx(lastDoc().file.bytes)['Товары в заказах'];
+  assert.equal(it.find(r => r[0] === o.id && r[4] === 'Макароны')[7], '2 кор. + 4 шт');
+  // старый заказ хранит размер упаковки на момент заказа
+  Object.assign(prod.items[3], { box: 24 }); await putProd(prod);
+  assert.equal((await adminOrdersOf()).find(z => z.id === o.id).items[0].box, 48);
+});
+
+await t('приход в коробках и блоках: на склад идут штуки, журнал в штуках, без упаковки отказ', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD(); Object.assign(prod.items[3], { box: 48, blk: 12 });
+  await putProd(prod);
+  let r = await stockOp({ id: 'p4', op: 'set', n: 2, u: 'box', low: 24 });                // начали учёт: 2 коробки = 96 шт
+  assert.equal(r.status, 200);
+  assert.deepEqual((await getStock()).p4, { q: 96, r: 0, low: 24 });
+  r = await stockOp({ id: 'p4', op: 'in', n: 3, u: 'blk' });                             // + 3 блока = 36 шт
+  assert.equal((await getStock()).p4.q, 132);
+  r = await stockOp({ id: 'p4', op: 'in', n: 1, u: 'box' });
+  assert.equal((await getStock()).p4.q, 180);
+  r = await stockOp({ id: 'p4', op: 'in', n: 5, u: 'pc' });                              // штуки как раньше
+  assert.equal((await getStock()).p4.q, 185);
+  r = await stockOp({ id: 'p4', op: 'in', n: 5 });
+  assert.equal((await getStock()).p4.q, 190);
+  r = await stockOp({ id: 'p4', op: 'set', n: 0, u: 'box' });                            // «задать остаток» 0 коробок = 0 штук
+  assert.equal((await getStock()).p4.q, 0);
+  const jr = await getJr();
+  assert.deepEqual(jr.slice(0, 6).map(x => x.d).reverse(), [96, 36, 48, 5, 5, -190]);        // журнал в штуках: что пришло, что исправлено
+  // отказы
+  for (const bad of [{ u: 'box', id: 'p2' }, { u: 'carton' }, { u: 'box', n: -1 }, { u: 'box', n: 1.5 }, { u: 'box', n: '2' }, { u: 'box', n: 100000000 }]) {
+    r = await stockOp(Object.assign({ id: 'p4', op: 'in', n: 2 }, bad));
+    assert.equal(r.status, 400, JSON.stringify(bad));
+  }
+  assert.equal((await jsonOf(await stockOp({ id: 'p2', op: 'in', n: 2, u: 'box' }))).error, 'no_pack');
+  assert.equal((await getStock()).p4.q, 0);
+  // порог в штуках, упаковки на него не действуют
+  assert.equal((await stockOp({ id: 'p4', op: 'low', n: 12 })).status, 200);
+});
+
+await t('отчёты: продажи копятся по дням, считаются суммы, товары, клиенты; доступ только продавцу', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD(); await putProd(prod);
+  const A = newUser(), B = newUser();
+  await putProfile(A, { name: 'Анвар', phone: '+998 90 111 22 33', org: 'Кафе «Чинор»' });
+  await putProfile(B, { name: 'Бобур', phone: '+998 91 111 22 33' });
+  const rep = async (days, init) => call('GET', '/api/admin/report' + (days ? '?days=' + days : ''), { init: init || iS() });
+  assert.equal((await rep(30, A.init())).status, 403);
+  assert.equal((await call('GET', '/api/admin/report')).status, 401);
+  let d = (await jsonOf(await rep())).report;
+  assert.deepEqual([d.days, d.series.length, d.tot.n, d.tot.sum, d.prev, d.prods.length, d.cl.length], [30, 30, 0, 0, null, 0, 0]);
+  const today = new Date(Date.now() + 5 * 3600000).toISOString().slice(0, 10);
+  assert.equal(d.to, today);
+  assert.equal(d.since, today);
+  assert.equal(d.series.at(-1).d, today);
+  const o1 = (await jsonOf(await placeP(A, [{ id: 'p1', qty: 2 }, { id: 'p4', qty: 10 }], named('Анвар')))).order;      // 164 000 + 75 000
+  const o2 = (await jsonOf(await placeP(A, [{ id: 'p2', qty: 1 }], named('Анвар')))).order;                             // 410 000
+  const o3 = (await jsonOf(await placeP(B, [{ id: 'p4', qty: 4 }], named('Бобур')))).order;                             // 30 000
+  const o4 = (await jsonOf(await placeP(B, [{ id: 'p1', qty: 1 }], named('Бобур')))).order;                             // отменён: в отчёт не входит
+  await setStatus(o4.id, 'cancelled');
+  // пока ничего не выдано — в отчёте пусто
+  assert.equal((await jsonOf(await rep())).report.tot.n, 0);
+  for (const o of [o1, o2, o3]) await finish(o.id);
+  d = (await jsonOf(await rep(7))).report;
+  assert.deepEqual([d.days, d.series.length, d.tot.n, d.tot.sum, d.tot.avg], [7, 7, 3, 239000 + 410000 + 30000, Math.round(679000 / 3)]);
+  assert.deepEqual(d.series.at(-1), { d: today, n: 3, sum: 679000 });
+  assert.equal(d.series.slice(0, -1).every(x => x.n === 0 && x.sum === 0), true);
+  assert.deepEqual(d.months, [{ m: today.slice(0, 7), n: 3, sum: 679000 }]);
+  assert.deepEqual(d.prods.map(x => [x.id, x.qty, x.sum]), [['p2', 1, 410000], ['p1', 2, 164000], ['p4', 14, 105000]]);
+  assert.deepEqual(d.prods[0].name, 'Рис');
+  assert.equal(d.prods[0].w, '25 кг');
+  assert.deepEqual(d.cl.map(x => [x.name, x.org, x.n, x.sum]), [['Анвар', 'Кафе «Чинор»', 2, 649000], ['Бобур', '', 1, 30000]]);
+  assert.equal(d.thin, true);
+  // недопустимые периоды заменяются на 30 дней
+  for (const q of ['5', '0', 'abc', '-7', '9999']) assert.equal((await jsonOf(await rep(q))).report.days, 30);
+  assert.equal((await jsonOf(await rep(365))).report.series.length, 365);
+  // заказ, который уже выдан, второй раз не считается (повтор статуса)
+  assert.equal((await setStatus(o1.id, 'done')).status, 200);
+  assert.equal((await jsonOf(await rep(7))).report.tot.n, 3);
+  // отменённый после выдачи нельзя: переход запрещён, отчёт не меняется
+  assert.equal((await setStatus(o1.id, 'cancelled')).status, 409);
+  assert.equal((await jsonOf(await rep(7))).report.tot.sum, 679000);
+});
+
+await t('отчёты: скидка и доставка попадают в итоги; сумма товара считается по цене ступени', async () => {
+  await stockWorld();
+  await putCfgFull(sh => { sh.discounts = [{ from: 1000000, pct: 10 }]; sh.deliveryFee = 30000; });
+  const prod = SAMPLE_PROD(); prod.items[3].tiers = [{ n: 10, price: 7000 }]; await putProd(prod);
+  const A = newUser();
+  const o1 = (await jsonOf(await placeP(A, [{ id: 'p2', qty: 3 }], null, 'delivery'))).order;     // 1 230 000, скидка 123 000, доставка 30 000
+  const o2 = (await jsonOf(await placeP(A, [{ id: 'p4', qty: 10 }]))).order;                      // 70 000 по ступени
+  await finish(o1.id); await finish(o2.id);
+  const d = (await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report;
+  assert.deepEqual([d.tot.n, d.tot.disc, d.tot.fee, d.tot.sum], [2, 123000, 30000, (1230000 - 123000 + 30000) + 70000]);
+  assert.deepEqual(d.prods.map(x => [x.id, x.qty, x.sum]), [['p2', 3, 1230000], ['p4', 10, 70000]]);
+});
+
+await t('отчёты: при первом обращении данные берутся из уже завершённых заказов, второй раз не удваиваются', async () => {
+  await stockWorld();
+  const A = newUser();
+  // «старые» заказы: до обновления отчётов их выдача нигде не записывалась. Ставим их напрямую в хранилище.
+  const day = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString();
+  const mk = (id, ago, total, qty, st) => ({ id, createdAt: day(ago), status: st || 'done', statusAt: day(ago), name: 'Старый клиент', phone: '+998 90 000 00 00', mode: 'pickup', pickupAt: '2026-01-01T10:00', comment: '', uid: 777, items: [{ id: 'p4', name: 'Макароны', amount: 400, unit: 'g', price: 7500, qty }], total, msgs: [] });
+  const olds = [mk('Z-OLD01', 12, 75000, 10), mk('Z-OLD02', 3, 30000, 4), mk('Z-OLD03', 3, 45000, 6), mk('Z-OLD04', 2, 7500, 1, 'cancelled')];
+  const st = W.storage;
+  for (const o of olds) await st.put('o:' + o.id, o);
+  await st.put('hist', olds.map(o => o.id));
+  assert.equal(await st.get('rpx'), undefined);
+  let d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.deepEqual([d.tot.n, d.tot.sum], [3, 150000]);
+  assert.equal(d.since, day(12).slice(0, 10));
+  assert.equal(d.thin, false);
+  assert.deepEqual(d.series.filter(x => x.n).map(x => x.n), [1, 2]);
+  assert.deepEqual(d.cl.map(x => [x.name, x.n, x.sum]), [['Старый клиент', 3, 150000]]);
+  // повторный запрос и новые выдачи ничего не удваивают
+  d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.equal(d.tot.n, 3);
+  const o = (await jsonOf(await placeP(A, [{ id: 'p4', qty: 2 }]))).order;
+  await finish(o.id);
+  d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.deepEqual([d.tot.n, d.tot.sum], [4, 165000]);
+  // прошлый период: учёт идёт не с начала предыдущих 7 дней — сравнивать нечего
+  assert.equal((await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report.prev, null);
+  // а за 7 дней, когда учёт шёл ещё раньше, сравнение есть
+  const r7 = (await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report;
+  assert.equal(r7.since, day(12).slice(0, 10));
+});
+
+await t('отчёты: сравнение с прошлым периодом, когда учёт шёл уже тогда', async () => {
+  await stockWorld();
+  const st = W.storage, ago = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString().slice(0, 10);
+  await st.put('rpx', [ago(9), ago(2)]);
+  await st.put('rp0', ago(40));
+  await st.put('rp:' + ago(9), { n: 2, sum: 100000, disc: 0, fee: 0, items: [], cl: [] });
+  await st.put('rp:' + ago(2), { n: 3, sum: 300000, disc: 0, fee: 0, items: [], cl: [] });
+  const d = (await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report;
+  assert.deepEqual([d.tot.n, d.tot.sum, d.prev], [3, 300000, { n: 2, sum: 100000 }]);
+  const m = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.deepEqual([m.tot.n, m.tot.sum, m.prev], [5, 400000, null]);                // учёт идёт 40 дней, а прошлые 30 дней начались 59 дней назад
+  await st.put('rp0', ago(70));
+  const m2 = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.deepEqual(m2.prev, { n: 0, sum: 0 });
+  assert.equal(m.months.reduce((s, x) => s + x.sum, 0), 400000);
+  assert.deepEqual(m.months.map(x => x.m), [...new Set([ago(9).slice(0, 7), ago(2).slice(0, 7)])]);
+});
+
+await t('отчёты: «что пора закупать» считает по продажам и остатку, только у товаров с учётом', async () => {
+  await stockWorld();
+  const st = W.storage, ago = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString().slice(0, 10);
+  // 10 дней учёта: макароны продаются по 5 шт в день, рис по 1 шт в 2 дня, масло без учёта остатка
+  await st.put('rp0', ago(9));
+  const days = [];
+  for (let i = 9; i >= 0; i--) {
+    days.push(ago(i));
+    await st.put('rp:' + ago(i), { n: 1, sum: 0, disc: 0, fee: 0, items: [{ id: 'p4', name: 'Макароны', qty: 5, sum: 37500 }, { id: 'p1', name: 'Масло', qty: 1, sum: 82000 }].concat(i % 2 ? [{ id: 'p2', name: 'Рис', qty: 1, sum: 410000 }] : []), cl: [] });
+  }
+  await st.put('rpx', days);
+  assert.equal((await setSt('p4', 30, 10)).status, 200);                    // хватит на 6 дней
+  assert.equal((await setSt('p2', 100)).status, 200);                       // 0,5 шт в день, хватит на 200 дней — не показываем
+  let d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.equal(d.buy.window, 10);
+  assert.equal(d.buy.cover, 14);
+  assert.deepEqual(d.buy.list, [{ id: 'p4', name: 'Макароны', w: '400 г', avail: 30, daily: 5, left: 6, need: 40 }]);
+  // товар без учёта остатка в подсказку не попадает, а у товара с нулевым остатком «хватит на 0 дней»
+  assert.equal((await setSt('p1', 0)).status, 200);
+  d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.deepEqual(d.buy.list.map(x => [x.id, x.left, x.need]), [['p1', 0, 14], ['p4', 6, 40]]);
+  // свободный остаток: отложенное под заказ вычитается
+  const A = newUser();
+  const o = await placeP(A, [{ id: 'p4', qty: 10 }]);
+  assert.equal(o.status, 200);
+  d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.deepEqual(d.buy.list.find(x => x.id === 'p4'), { id: 'p4', name: 'Макароны', w: '400 г', avail: 20, daily: 5, left: 4, need: 50 });
+});
+
+await t('отчёты: старше 400 дней записи удаляются, остальные остаются', async () => {
+  await stockWorld();
+  const st = W.storage, ago = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString().slice(0, 10);
+  const days = [];
+  for (let i = 400; i >= 1; i--) { days.push(ago(i)); await st.put('rp:' + ago(i), { n: 1, sum: 1000, disc: 0, fee: 0, items: [], cl: [] }); }
+  await st.put('rpx', days); await st.put('rp0', days[0]);
+  assert.equal(days.length, 400);
+  const o = (await jsonOf(await placeP(newUser(), [{ id: 'p4', qty: 1 }]))).order;
+  await finish(o.id);
+  const idx = await st.get('rpx');
+  assert.equal(idx.length, 400);
+  assert.equal(idx[0], ago(399));
+  assert.equal(idx.at(-1), ago(0));
+  assert.equal(await st.get('rp:' + ago(400)), undefined, 'самый старый день удалён');
+  assert.ok(await st.get('rp:' + ago(399)));
+  assert.equal((await st.get('rp:' + ago(0))).n, 1);
+  // отчёт за год не падает и не больше 365 строк
+  const d = (await jsonOf(await call('GET', '/api/admin/report?days=365', { init: iS() }))).report;
+  assert.equal(d.series.length, 365);
+});
+
+await t('отчёт в Excel приходит файлом в чат: сводка, дни, месяцы, товары, клиенты, что закупать', async () => {
+  await stockWorld();
+  const A = newUser();
+  await putProfile(A, { name: 'Анвар', phone: '+998 90 111 22 33', org: 'Кафе «Чинор»' });
+  const o = (await jsonOf(await placeP(A, [{ id: 'p1', qty: 2 }, { id: 'p4', qty: 10 }], named('Анвар')))).order;
+  await finish(o.id);
+  assert.equal((await exportReq('report', { days: 7 }, A.init())).status, 403);
+  const r = await exportReq('report', { days: 7 });
+  assert.equal(r.status, 200);
+  const doc = lastDoc();
+  dumpFile(doc.file);
+  assert.ok(/^report-\d{4}-\d{2}-\d{2}\.xlsx$/.test(doc.file.name));
+  assert.ok(doc.payload.caption.includes('Отчёт за 7 дн.'));
+  const x = readXlsx(doc.file.bytes);
+  assert.deepEqual(Object.keys(x), ['Сводка', 'По дням', 'По месяцам', 'Товары', 'Клиенты', 'Что закупать']);
+  assert.equal(x['По дням'].length, 1 + 7 + 1);
+  assert.deepEqual(x['По дням'].at(-1), ['Итого', 1, 239000]);
+  assert.deepEqual(x['Товары'][1], ['Масло подсолнечное', '5 л', 2, 164000]);
+  assert.deepEqual(x['Клиенты'][1], ['Анвар', 'Кафе «Чинор»', 1, 239000]);
+  assert.ok(x['Сводка'].flat().some(c => String(c).includes('Заказов: 1.')));
+  assert.equal(x['Что закупать'][0][0], 'Товар');
+  assert.equal((await exportReq('report', { days: 999 })).status, 200);       // неверный период — 30 дней
+  assert.ok(lastDoc().payload.caption.includes('за 30 дн.'));
+});
+
+await t('резервная копия содержит продажи по дням; прайс из Excel не стирает ступени, блоки и коробки', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  Object.assign(prod.items[3], { tiers: [{ n: 10, price: 7000 }], box: 48, blk: 12 });
+  await putProd(prod);
+  const o = (await jsonOf(await placeP(newUser(), [{ id: 'p4', qty: 12 }]))).order;
+  await finish(o.id);
+  assert.equal((await exportReq('backup')).status, 200);
+  const zip = unzip(lastDoc().file.bytes);
+  const bk = JSON.parse(Buffer.from(zip['backup.json']).toString('utf8'));
+  const days = Object.keys(bk.reports.days);
+  assert.equal(days.length, 1);
+  assert.equal(bk.reports.days[days[0]].n, 1);
+  assert.deepEqual(bk.reports.days[days[0]].items, [{ id: 'p4', name: 'Макароны', qty: 12, sum: 84000 }]);
+  assert.ok(bk.reports.since);
+  assert.deepEqual(bk.prod.items[3].tiers, [{ n: 10, price: 7000 }]);
+  // загрузка прайса меняет цену, но ступени и упаковки остаются
+  assert.equal((await importReq(FIX('price-openpyxl.xlsx'), true)).status, 200);
+  const it = (await catalogNow()).items;
+  const p4 = it.find(x => x.id === 'p4');
+  assert.deepEqual([p4.tiers, p4.box, p4.blk], [[{ n: 10, price: 7000 }], 48, 12]);
+  // у вновь добавленных товаров упаковок и ступеней нет
+  const added = it.find(x => x.name === 'Мука высшего сорта');
+  assert.deepEqual([added.tiers, added.box, added.blk], [[], 0, 0]);
 });
 
 await t('без секретов сервер не падает и говорит, что делать', async () => {
