@@ -24,7 +24,7 @@ function stOf(status,mode){
 
 const DEFAULT={
   v:3,
-  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[]}
+  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],home:''}
 };
 const clone=o=>JSON.parse(JSON.stringify(o));
 const pad=n=>String(n).padStart(2,'0');
@@ -151,6 +151,38 @@ function mergeCfg(d){
   return out;
 }
 
+/* Регионы Узбекистана: 12 областей, Каракалпакстан и город Ташкент.
+   Дистрибьютор отмечает, куда доставляет (shop.regions; пустой список — по всей стране) и где его склад (shop.home, для самовывоза).
+   Магазин выбирает свой регион. Самовывоз всегда возможен, ограничена только доставка. */
+const REGIONS=[
+  {id:'kk',ru:'Республика Каракалпакстан',uz:'Qoraqalpogʻiston Respublikasi'},
+  {id:'an',ru:'Андижанская область',uz:'Andijon viloyati'},
+  {id:'bu',ru:'Бухарская область',uz:'Buxoro viloyati'},
+  {id:'ji',ru:'Джизакская область',uz:'Jizzax viloyati'},
+  {id:'qa',ru:'Кашкадарьинская область',uz:'Qashqadaryo viloyati'},
+  {id:'nv',ru:'Навоийская область',uz:'Navoiy viloyati'},
+  {id:'nm',ru:'Наманганская область',uz:'Namangan viloyati'},
+  {id:'sa',ru:'Самаркандская область',uz:'Samarqand viloyati'},
+  {id:'su',ru:'Сурхандарьинская область',uz:'Surxondaryo viloyati'},
+  {id:'si',ru:'Сырдарьинская область',uz:'Sirdaryo viloyati'},
+  {id:'tv',ru:'Ташкентская область',uz:'Toshkent viloyati'},
+  {id:'tk',ru:'Город Ташкент',uz:'Toshkent shahri'},
+  {id:'fa',ru:'Ферганская область',uz:'Fargʻona viloyati'},
+  {id:'xo',ru:'Хорезмская область',uz:'Xorazm viloyati'}
+];
+const REGION_IDS=REGIONS.map(r=>r.id);
+const regionName=id=>{const r=REGIONS.find(x=>x.id===id);return r?(LANG==='uz'?r.uz:r.ru):''};
+/* один регион: его номер или пустая строка */
+const cleanRegion=v=>typeof v==='string'&&REGION_IDS.includes(v)?v:'';
+/* список регионов без повторов и лишнего, в порядке справочника */
+const cleanRegions=a=>{const set=new Set(Array.isArray(a)?a:[]);return REGION_IDS.filter(id=>set.has(id))};
+/* Ограничена ли доставка: отмечены не все регионы, а часть. Пустой список и «все четырнадцать» — по всей стране. */
+const hasZone=a=>{const n=cleanRegions(a).length;return n>0&&n<REGION_IDS.length};
+/* Доставляет ли дистрибьютор (запись из списка или настройки) в регион. Нет региона у клиента — считаем, что доставляет. */
+const deliversTo=(sh,reg)=>!!sh&&sh.delivery!==false&&(!hasZone(sh.regions)||!reg||cleanRegions(sh.regions).includes(reg));
+/* Подходит ли дистрибьютор клиенту из региона reg: доставляет к нему или находится в его регионе (самовывоз). */
+const servesRegion=(sh,reg)=>!!sh&&(deliversTo(sh,reg)||(!!reg&&sh.home===reg));
+
 /* Время склада: Узбекистан, UTC+5. Возвращает Date, у которого локальные часы совпадают со стенными часами склада. */
 const SHOP_TZ=5;
 function shopNow(){return new Date(Date.now()+SHOP_TZ*3600000+new Date().getTimezoneOffset()*60000)}
@@ -205,6 +237,7 @@ function orderText(o,shop,maxItems){
   }
   if(o.mode==='delivery'){
     P.push(L('Доставка: ','Yetkazib berish: ')+fmtWhen(o.pickupAt));
+    if(o.region&&regionName(o.region))P.push(L('Регион: ','Hudud: ')+regionName(o.region));
     P.push(L('Адрес: ','Manzil: ')+(o.address||''));
   }else P.push(L('Самовывоз: ','Olib ketish: ')+fmtWhen(o.pickupAt));
   P.push(L('Имя: ','Ism: ')+o.name+L(', тел.: ',', tel.: ')+o.phone);

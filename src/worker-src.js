@@ -23,7 +23,12 @@ const MAX_ADDRS = 5;
 const MAX_FAV = 100;          // товаров в избранном у одного клиента          // адресов доставки у одного клиента
 const TEXT_MAX = 4000;        // сообщение Telegram до 4096 знаков, берём с запасом
 const INIT_MAX_AGE = 2 * 24 * 3600; // initData старше двух суток не принимаем
-const NEXT = { new: ['accepted', 'cancelled'], accepted: ['ready', 'cancelled'], ready: ['done', 'cancelled'] };
+const MAIN = 'main';          // первый дистрибьютор: его данные лежали в хранилище ещё до появления площадки
+const MAX_SHOPS = 50;         // дистрибьюторов на площадке
+const MIN_CODE = 12;          // короткий код продавца не принимаем
+const HUB_TITLE = 'VIVA Distribution';
+const validDid = d => typeof d === 'string' && /^[a-z0-9]{2,12}$/.test(d);
+const NEXT ={ new: ['accepted', 'cancelled'], accepted: ['ready', 'cancelled'], ready: ['done', 'cancelled'] };
 
 /* ---------- утилиты ---------- */
 const enc = new TextEncoder();
@@ -73,6 +78,21 @@ const html = (body, status) => new Response(body, {
   status: status || 200,
   headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
 });
+/* Запрос к Telegram Bot API. Сбой сети не бросает ошибку, а возвращается как {ok:false}. */
+async function tgApi(token, method, payload) {
+  if (!token) return { ok: false, description: 'BOT_TOKEN не задан' };
+  try {
+    const r = await fetch(TG_API + token + '/' + method, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+      signal: AbortSignal.timeout(6000)
+    });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, description: String(e && e.message || e) };
+  }
+}
 const ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function randId(n) {
   const a = new Uint8Array(n);
@@ -123,6 +143,8 @@ function sanitizeCfg(d) {
   s.deliveryFee = Math.round(clampN(s.deliveryFee, 0, 1e9, 0));
   s.freeDeliveryFrom = Math.round(clampN(s.freeDeliveryFrom, 0, 1e9, 0));
   s.discounts = cleanDiscounts(s.discounts);
+  s.regions = cleanRegions(s.regions);
+  s.home = cleanRegion(s.home);
   return out;
 }
 
@@ -208,9 +230,15 @@ function validateForm(f, cfg) {
   const comment = cleanStr(f.comment, 500, true);
   if (!name || digits < 9 || digits > 15) return { err: 'bad_request' };
   const mode = f.mode === 'delivery' ? 'delivery' : 'pickup';
-  let address = '';
+  let address = '', region = '';
   if (mode === 'delivery') {
     if (cfg.shop.delivery === false) return { err: 'no_delivery' };
+    // доставка только в отмеченные регионы: регион нужен, и он должен быть из списка. Самовывоз не ограничен.
+    region = cleanRegion(f.region);
+    if (hasZone(cfg.shop.regions)) {
+      if (!region) return { err: 'region_need' };
+      if (!cleanRegions(cfg.shop.regions).includes(region)) return { err: 'no_region' };
+    }
     address = cleanStr(f.address, 200);
     if (address.length < 5) return { err: 'bad_request' };
   }
@@ -219,7 +247,7 @@ function validateForm(f, cfg) {
   // час запаса, чтобы не спорить с клиентскими часами
   const pk = pickupInfo(cfg, new Date(shopNow().getTime() - 3600000), leadFor(cfg, mode));
   if (date > pk.max || !pk.slots(date).includes(time)) return { err: 'pickup' };
-  return { name, phone, comment, mode, address, pickupAt: date + 'T' + time };
+  return { name, phone, comment, mode, address, region, pickupAt: date + 'T' + time };
 }
 
 /* Заказ: цены и названия берём только из каталога на сервере. */
@@ -257,7 +285,7 @@ function validateOrder(b, cfg, prod, stk) {
   if (min > 0 && total < min) return { err: 'min_order', min };
   const fee = deliveryFee(cfg, fm.mode, total);
   const dc = orderDiscount(cfg, total);
-  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, pickupAt: fm.pickupAt };
+  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt };
 }
 
 const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; return x; };
@@ -309,8 +337,14 @@ function clientLines(cl) {
 /* ---------- тексты для Telegram ---------- */
 const STATUS_ICON = { new: '🆕', accepted: '🛠', ready: '✅', done: '📦', cancelled: '❌' };
 
-function adminCard(o, shop, origin, confirm, cl) {
+/* Кнопки под заказом несут номер дистрибьютора, чтобы нажатие дошло до его хранилища. У первого дистрибьютора формат прежний: так работают и старые сообщения в чате. */
+const cbPrefix = did => (did && did !== MAIN ? did + ':' : '');
+/* Адреса, которые открывает кнопка в Telegram: каталог дистрибьютора и его панель продавца. */
+const shopUrl = (origin, did) => origin + '/' + (did ? '?d=' + did : '');
+const sellerUrl = (origin, did) => origin + '/?d=' + (did || MAIN) + '&v=seller';
+function adminCard(o, shop, origin, confirm, cl, did) {
   setLang('ru');
+  const px = cbPrefix(did);
   const who = o.tg && o.tg.username ? '@' + o.tg.username : 'без username';
   const cLines = clientLines(cl);
   const tail = '\n\n' + (cLines ? cLines + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
@@ -324,14 +358,14 @@ function adminCard(o, shop, origin, confirm, cl) {
   const btn = (t, d) => ({ text: t, callback_data: d });
   const del = o.mode === 'delivery';
   if (confirm) {
-    rows.push([btn('Да, отменить заказ', 's:' + o.id + ':cancelled')]);
-    rows.push([btn('Назад', 'b:' + o.id)]);
+    rows.push([btn('Да, отменить заказ', 's:' + px + o.id + ':cancelled')]);
+    rows.push([btn('Назад', 'b:' + px + o.id)]);
   } else {
-    if (o.status === 'new') rows.push([btn('✅ Принять в работу', 's:' + o.id + ':accepted')]);
-    if (o.status === 'accepted') rows.push([btn(del ? '📦 Готов к отправке' : '📦 Готов к выдаче', 's:' + o.id + ':ready')]);
-    if (o.status === 'ready') rows.push([btn(del ? '🚚 Доставлен клиенту' : '🤝 Выдан клиенту', 's:' + o.id + ':done')]);
-    if (NEXT[o.status]) rows.push([btn('❌ Отменить', 'c:' + o.id)]);
-    rows.push([{ text: 'Открыть панель продавца', web_app: { url: origin + '/' } }]);
+    if (o.status === 'new') rows.push([btn('✅ Принять в работу', 's:' + px + o.id + ':accepted')]);
+    if (o.status === 'accepted') rows.push([btn(del ? '📦 Готов к отправке' : '📦 Готов к выдаче', 's:' + px + o.id + ':ready')]);
+    if (o.status === 'ready') rows.push([btn(del ? '🚚 Доставлен клиенту' : '🤝 Выдан клиенту', 's:' + px + o.id + ':done')]);
+    if (NEXT[o.status]) rows.push([btn('❌ Отменить', 'c:' + px + o.id)]);
+    rows.push([{ text: 'Открыть панель продавца', web_app: { url: sellerUrl(origin, did) } }]);
   }
   return { text, reply_markup: { inline_keyboard: rows } };
 }
@@ -378,7 +412,7 @@ function welcomeText(lang, isAdmin, shop) {
     'Assalomu alaykum! Bu ' + name + ' 🛒\nKatalogni oching, mahsulotlarni tanlang va buyurtma bering: olib ketish yoki yetkazib berish. Toʻlov faqat olganda.')
     + (isAdmin ? '\n\nВы подключены как продавец: новые заказы приходят сюда, их можно принимать кнопками.' : '');
 }
-const openBtn = (origin, text) => ({ inline_keyboard: [[{ text, web_app: { url: origin + '/' } }]] });
+const openBtn = (origin, text, url) => ({ inline_keyboard: [[{ text, web_app: { url: url || origin + '/' } }]] });
 
 /* ---------- выгрузки: Excel, сборочный лист, резервная копия ---------- */
 const PICK_MAX = 100;                  // заказов в одном сборочном листе
@@ -868,9 +902,25 @@ const RP_RANGES = [7, 30, 90, 365];
 const RP_COVER = 14;          // на сколько дней считаем запас в подсказке «что пора закупать»
 const dayOf = iso => { const t = Date.parse(iso); return new Date((Number.isFinite(t) ? t : Date.now()) + SHOP_TZ * 3600000).toISOString().slice(0, 10); };
 const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
-const newRp = () => ({ n: 0, sum: 0, disc: 0, fee: 0, items: [], cl: [] });
-function rpAdd(rp, o) {
+const newRp = () => ({ n: 0, sum: 0, disc: 0, fee: 0, cb: 0, cm: 0, items: [], cl: [] });
+/* Комиссия площадки: считается с суммы товаров после скидки, без доставки (итог заказа минус доставка), только с выданных заказов.
+   В записи дня cb — эта сумма, cm — комиссия, начисленная по проценту на момент выдачи (позже процент меняют только для новых заказов). */
+const COMM_DEFAULT = 2, COMM_MAX = 50;
+const cleanPct = v => { const n = Number(String(v).replace(',', '.')); return Number.isFinite(n) && n >= 0 && n <= COMM_MAX ? Math.round(n * 100) / 100 : null; };
+const commBase = r => r.cb !== undefined ? r.cb : Math.max(0, (Number(r.sum) || 0) - (Number(r.fee) || 0));
+function statRange(period) {
+  const today = dayOf(new Date().toISOString());
+  const first = today.slice(0, 7) + '-01';
+  if (period === '7d') return { period, from: addDays(today, -6), to: today };
+  if (period === '30d') return { period, from: addDays(today, -29), to: today };
+  if (period === 'prev') { const last = addDays(first, -1); return { period, from: last.slice(0, 7) + '-01', to: last }; }
+  return { period: 'month', from: first, to: today };
+}
+function rpAdd(rp, o, pct) {
   const total = Number(o.total) || 0;
+  if (rp.cb === undefined) rp.cb = Math.max(0, (Number(rp.sum) || 0) - (Number(rp.fee) || 0));   // запись дня, начатая до комиссии
+  const base = Math.max(0, total - (Number(o.fee) || 0));
+  rp.cb += base; rp.cm = (Number(rp.cm) || 0) + Math.round(base * (Number(pct) || 0) / 100);
   rp.n += 1; rp.sum += total; rp.disc += Number(o.disc) || 0; rp.fee += Number(o.fee) || 0;
   for (const it of o.items || []) {
     const qty = Number(it.qty) || 0;
@@ -968,15 +1018,58 @@ function setupPage(inner) {
     + '<h1>Настройка бота</h1>' + inner + '</body></html>');
 }
 
+/* ---------- связь между Worker, площадкой (Hub) и дистрибьюторами (Shop) ---------- */
+const stubOf = (ns, name) => ns.get(ns.idFromName(name));
+/* Служебный запрос внутри сервера: идёт напрямую в хранилище, снаружи такие адреса (/__/…) недоступны. */
+async function internalCall(stub, did, path, body) {
+  const r = await stub.fetch(new Request('https://internal' + path, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-did': did }, body: JSON.stringify(body || {})
+  }));
+  let data = null;
+  try { data = await r.json(); } catch (e) { /* пустой ответ */ }
+  return { ok: r.ok, status: r.status, data };
+}
+const hubCall = async (env, path, body) => (await internalCall(stubOf(env.HUB, 'hub'), MAIN, path, body)).data;
+const shopCall = (env, did, path, body) => internalCall(stubOf(env.SHOP, did), did, path, body);
+const withDid = (request, did) => {
+  const h = new Headers(request.headers);
+  h.set('x-did', did);
+  return new Request(request, { headers: h });
+};
+
 /* ---------- Worker ---------- */
+/* Worker отдаёт страницу и раздаёт запросы: бот и список дистрибьюторов идут в Hub, всё остальное — в хранилище нужного дистрибьютора
+   (его номер приложение присылает в заголовке x-shop; без заголовка работает первый дистрибьютор, как до появления площадки). */
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+    const p = url.pathname;
+    if (request.method === 'GET' && (p === '/' || p === '/index.html')) {
       return new Response(APP_HTML, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' } });
     }
-    if (url.pathname === '/favicon.ico') return new Response(null, { status: 204 });
-    return env.SHOP.get(env.SHOP.idFromName('main')).fetch(request);
+    if (p === '/favicon.ico') return new Response(null, { status: 204 });
+    if (p === '/webhook' || p === '/api/shops' || p.startsWith('/api/hub/')) {
+      if (!env.HUB) {
+        // площадка не подключена (в wrangler.toml нет привязки HUB): каталог и заказы первого дистрибьютора, как раньше, и кнопки под заказами работают
+        if (p === '/webhook') return stubOf(env.SHOP, MAIN).fetch(withDid(request, MAIN));
+        return json({ error: 'no_hub' }, 503);
+      }
+      return stubOf(env.HUB, 'hub').fetch(request);
+    }
+    if (p === '/setup') return stubOf(env.SHOP, MAIN).fetch(withDid(request, MAIN));
+    if (p.startsWith('/img/')) {
+      // /img/<дистрибьютор>/<товар>; без номера дистрибьютора (старые адреса) это первый дистрибьютор
+      const rest = p.slice(5).split('/');
+      const did = rest.length > 1 ? rest[0] : MAIN, pid = rest[rest.length - 1];
+      if (rest.length > 2 || !validDid(did)) return new Response('not found', { status: 404 });
+      return stubOf(env.SHOP, did).fetch(withDid(new Request(url.origin + '/img/' + pid + url.search, request), did));
+    }
+    if (p.startsWith('/api/')) {
+      const did = request.headers.get('x-shop') || MAIN;
+      if (!validDid(did)) return json({ error: 'bad_shop' }, 400);
+      return stubOf(env.SHOP, did).fetch(withDid(request, did));
+    }
+    return json({ error: 'not_found' }, 404);
   }
 };
 
@@ -987,6 +1080,8 @@ export class Shop {
     this.st = state.storage;
     this.env = env;
     this.origin = '';
+    this.did = MAIN;      // номер дистрибьютора: его присылает Worker в заголовке x-did
+    this.born = undefined; // хранилище создано площадкой (у первого дистрибьютора есть всегда)
   }
 
   /* --- хранилище --- */
@@ -1006,7 +1101,7 @@ export class Shop {
   async getClient(uid) { const c = await this.st.get('c:' + uid); return c && typeof c === 'object' ? c : null; }
   async clientsIdx() { const x = await this.st.get('cx'); return Array.isArray(x) ? x : []; }
   /* Карточка заказа для продавца вместе с группой и заметкой клиента. */
-  async card(o, shop, confirm) { return adminCard(o, shop, this.origin, confirm, o.uid ? await this.getClient(o.uid) : null); }
+  async card(o, shop, confirm) { return adminCard(o, shop, this.origin, confirm, o.uid ? await this.getClient(o.uid) : null, this.did); }
   /* Один раз собирает базу клиентов из уже оформленных заказов (активных и в истории). Дальше база живёт сама. */
   async ensureClients() {
     if (await this.st.get('cxb')) return;
@@ -1056,7 +1151,28 @@ export class Shop {
     const map = await this.getMany(idx.filter(d => d >= need).map(d => 'rp:' + d));
     const rp = new Map();
     map.forEach((v, k) => rp.set(k.slice(3), v));
-    return reportBuild({ days, today, rp, rp0: await this.st.get('rp0'), prod: await this.getProd(), stk: await this.getStk() });
+    const rep = reportBuild({ days, today, rp, rp0: await this.st.get('rp0'), prod: await this.getProd(), stk: await this.getStk() });
+    rep.comm = await this.commSummary();
+    return rep;
+  }
+  /* Процент комиссии площадки: у первого дистрибьютора по умолчанию 0, у остальных его ставит площадка при создании. */
+  async getPct() { const p = await this.st.get('cpct'); return typeof p === 'number' && p >= 0 && p <= COMM_MAX ? p : 0; }
+  /* Выданные заказы за период (дни включительно): сколько, на какую сумму товаров, какая комиссия, сколько заказов сейчас в работе. */
+  async commRange(from, to) {
+    await this.ensureReports();
+    const days = ((await this.st.get('rpx')) || []).filter(d => d >= from && d <= to);
+    const map = await this.getMany(days.map(d => 'rp:' + d));
+    const out = { pct: await this.getPct(), n: 0, base: 0, cm: 0, active: ((await this.st.get('act')) || []).length };
+    map.forEach(r => { out.n += Number(r.n) || 0; out.base += commBase(r); out.cm += Number(r.cm) || 0; });
+    return out;
+  }
+  /* Для отчётов дистрибьютора: комиссия за этот и прошлый месяц. */
+  async commSummary() {
+    const today = dayOf(new Date().toISOString());
+    const first = today.slice(0, 7) + '-01', last = addDays(first, -1), pfirst = last.slice(0, 7) + '-01';
+    const cur = await this.commRange(first, today), prev = await this.commRange(pfirst, last);
+    const pick = (m, x) => ({ m, n: x.n, base: x.base, cm: x.cm });
+    return { pct: cur.pct, cur: pick(first.slice(0, 7), cur), prev: pick(last.slice(0, 7), prev) };
   }
   async getProd() { return normProd(await this.st.get('prod')); }
   async getStk() { const s = await this.st.get('stk'); return s && typeof s === 'object' ? s : {}; }
@@ -1086,20 +1202,7 @@ export class Shop {
   async isAdmin(uid) { return ((await this.st.get('admins')) || []).includes(uid); }
 
   /* --- Telegram --- */
-  async tg(method, payload) {
-    if (!this.env.BOT_TOKEN) return { ok: false, description: 'BOT_TOKEN не задан' };
-    try {
-      const r = await fetch(TG_API + this.env.BOT_TOKEN + '/' + method, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload || {}),
-        signal: AbortSignal.timeout(6000)
-      });
-      return await r.json();
-    } catch (e) {
-      return { ok: false, description: String(e && e.message || e) };
-    }
-  }
+  tg(method, payload) { return tgApi(this.env.BOT_TOKEN, method, payload); }
   editCard(m, card) {
     return this.tg('editMessageText', { chat_id: m.chat_id, message_id: m.message_id, text: card.text, reply_markup: card.reply_markup });
   }
@@ -1249,17 +1352,97 @@ export class Shop {
     const url = new URL(request.url);
     this.origin = url.origin;
     const path = url.pathname, method = request.method;
+    const did = request.headers.get('x-did') || MAIN;
+    this.did = validDid(did) ? did : MAIN;
     try {
+      // служебные запросы площадки (Hub): снаружи до них не добраться, Worker такие пути не пропускает
+      if (path.startsWith('/__/')) return await this.internal(request, path);
+      // хранилище, которое площадка не создавала, ничего не отдаёт (так нельзя «наплодить» пустых дистрибьюторов)
+      if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
       if (path === '/webhook' && method === 'POST') return await this.webhook(request);
       if (path === '/setup') return await this.setup(request);
       if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5));
-      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd() });
+      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd(), off: await this.isOff() });
       if (path.startsWith('/api/')) return await this.api(request, path, method);
       return json({ error: 'not_found' }, 404);
     } catch (e) {
       console.error('shop error', path, e && e.stack || e);
       return json({ error: 'server' }, 500);
     }
+  }
+
+  async isBorn() {
+    if (this.born === undefined) this.born = !!(await this.st.get('born'));
+    return this.born;
+  }
+  async isOff() { return !!(await this.st.get('off')); }
+
+  /* --- связь с площадкой --- */
+  /* Краткая карточка дистрибьютора для списка: название, сколько товаров, категории, есть ли доставка. */
+  async summary() {
+    const cfg = await this.getCfg(), prod = await this.getProd();
+    const cats = prod.cats.filter(c => prod.items.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
+    return {
+      name: cfg.shop.name || DEFAULT.shop.name, items: prod.items.length, cats,
+      delivery: cfg.shop.delivery !== false, minOrder: Number(cfg.shop.minOrder) || 0,
+      regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home)
+    };
+  }
+  /* Сообщает площадке о новом названии и составе каталога. Сбой не мешает продавцу: список обновится при следующем изменении. */
+  async hubSync() {
+    if (!this.env.HUB) return;
+    try { await hubCall(this.env, '/__/sync', { did: this.did, summary: await this.summary() }); }
+    catch (e) { console.error('hub sync failed', e && e.message || e); }
+  }
+  async hubOrdered(uid) {
+    if (!this.env.HUB) return;
+    try { await hubCall(this.env, '/__/ordered', { did: this.did, uid }); }
+    catch (e) { console.error('hub ordered failed', e && e.message || e); }
+  }
+  async internal(request, path) {
+    if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
+    const r = await this.readBody(request, 8000);
+    const b = r.body && typeof r.body === 'object' ? r.body : {};
+    if (path === '/__/init') {
+      // площадка создаёт дистрибьютора: помечаем хранилище и ставим название
+      const cfg = await this.getCfg();
+      cfg.shop.name = cleanStr(b.name, 60) || DEFAULT.shop.name;
+      const upd = { born: 1, cfg: sanitizeCfg(cfg) };
+      const pct = b.pct === undefined ? null : cleanPct(b.pct);
+      if (pct !== null) upd.cpct = pct;
+      await this.st.put(upd);
+      this.born = true;
+      return json({ ok: true });
+    }
+    if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
+    if (path === '/__/summary') return json(await this.summary());
+    if (path === '/__/stats') return json(await this.commRange(String(b.from || ''), String(b.to || '')));
+    if (path === '/__/cpct') {
+      const pct = cleanPct(b.pct);
+      if (pct === null) return json({ error: 'bad_pct' }, 400);
+      await this.st.put('cpct', pct);
+      return json({ ok: true, pct });
+    }
+    if (path === '/__/admins') return json({ admins: (await this.st.get('admins')) || [] });
+    if (path === '/__/admin-add') {
+      const uid = Number(b.uid);
+      if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
+      const admins = (await this.st.get('admins')) || [];
+      if (!admins.includes(uid)) { admins.push(uid); await this.st.put('admins', admins); }
+      return json({ ok: true, admins });
+    }
+    if (path === '/__/admin-clear') {
+      const admins = (await this.st.get('admins')) || [];
+      await this.st.put('admins', []);
+      return json({ ok: true, removed: admins });
+    }
+    if (path === '/__/off') { if (b.off) await this.st.put('off', 1); else await this.st.delete('off'); return json({ ok: true }); }
+    if (path === '/__/my-orders') {
+      const uid = Number(b.uid);
+      if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
+      return json({ orders: await this.myOrders(uid) });
+    }
+    return json({ error: 'not_found' }, 404);
   }
 
   async readBody(request, limit) {
@@ -1278,7 +1461,7 @@ export class Shop {
     if (path === '/api/bootstrap' && method === 'GET') {
       await this.ensureClients();
       const cl = await this.getClient(uid);
-      return json({ cfg: await this.getCfg(), prod: await this.pubProd(), me: { id: uid, name: u.first_name || '', admin, profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
+      return json({ did: this.did, off: await this.isOff(), cfg: await this.getCfg(), prod: await this.pubProd(), me: { id: uid, name: u.first_name || '', admin, profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
     }
     if (path === '/api/profile' && method === 'PUT') {
       const r = await this.readBody(request, 6000);
@@ -1324,6 +1507,7 @@ export class Shop {
         if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
         const cfg = sanitizeCfg(r.body.cfg);
         await this.st.put('cfg', cfg);
+        await this.hubSync();
         return json({ cfg });
       }
       if (path === '/api/admin/products' && method === 'PUT') {
@@ -1453,6 +1637,7 @@ export class Shop {
 
   /* --- заказы --- */
   async placeOrder(u, body) {
+    if (await this.isOff()) return json({ error: 'shop_off' }, 403);
     await this.ensureClients();
     const cl0 = await this.getClient(u.id);
     if (cl0 && cl0.blocked) return json({ error: 'blocked' }, 403);
@@ -1461,7 +1646,7 @@ export class Shop {
     const stk = await this.getStk();
     const v = validateOrder(body, cfg, prod, stk);
     if (v.err) {
-      const fresh = v.err === 'unavailable' || v.err === 'no_delivery' || v.err === 'stock' || v.err === 'min_order';
+      const fresh = v.err === 'unavailable' || v.err === 'no_delivery' || v.err === 'no_region' || v.err === 'region_need' || v.err === 'stock' || v.err === 'min_order';
       return json({ error: v.err, short: v.short, min: v.min, cfg: fresh ? cfg : undefined, prod: fresh ? publicProd(prod, stk) : undefined }, fresh ? 409 : 400);
     }
     if (body.expectTotal !== undefined && Number(body.expectTotal) !== v.total) {
@@ -1484,6 +1669,7 @@ export class Shop {
       msgs: []
     };
     if (cl0 && cl0.org) order.org = cl0.org;
+    if (v.mode === 'delivery' && v.region) order.region = v.region;
     if (v.fee > 0 || v.disc > 0) order.sub = v.sub;
     if (v.disc > 0) { order.disc = v.disc; order.dpct = v.dpct; }
     if (v.fee > 0) order.fee = v.fee;
@@ -1517,10 +1703,11 @@ export class Shop {
       upd['c:' + uid] = cl;
     }
     await this.st.put(upd);
+    await this.hubOrdered(uid);
 
     // уведомления: ошибки Telegram не должны ломать приём заказа
     const sent = [];
-    const card = adminCard(order, cfg.shop, this.origin, false, cl);
+    const card = adminCard(order, cfg.shop, this.origin, false, cl, this.did);
     for (const aid of (await this.st.get('admins')) || []) {
       const t = await this.tg('sendMessage', { chat_id: aid, text: card.text, reply_markup: card.reply_markup });
       if (t.ok && t.result) sent.push({ chat_id: aid, message_id: t.result.message_id });
@@ -1532,7 +1719,7 @@ export class Shop {
         await this.st.put('o:' + id, cur);
       }
     }
-    await this.tg('sendMessage', { chat_id: uid, text: customerText(order, 'placed', cfg.shop), reply_markup: openBtn(this.origin, order.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы') });
+    await this.tg('sendMessage', { chat_id: uid, text: customerText(order, 'placed', cfg.shop), reply_markup: openBtn(this.origin, order.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
     await this.stockAlert(low);
     return json({ order: publicOrder(order) });
   }
@@ -1550,6 +1737,7 @@ export class Shop {
     if (gone.some(id => stk[id])) { gone.forEach(id => { delete stk[id]; }); upd.stk = stk; }   // остаток удалённого товара не копим
     await this.st.put(upd);
     if (gone.length) await this.st.delete(gone.map(id => 'p:' + id));   // фото удалённых товаров не копим
+    await this.hubSync();
     return publicProd(prod, stk);
   }
   /* Прайс из Excel: apply=false только показывает, что изменится; apply=true записывает. */
@@ -1674,7 +1862,7 @@ export class Shop {
       if (to === 'done') {
         const day = dayOf(o.statusAt);
         const rp = (await this.st.get('rp:' + day)) || newRp();
-        rpAdd(rp, o);
+        rpAdd(rp, o, await this.getPct());
         upd['rp:' + day] = rp;
         const idx = (await this.st.get('rpx')) || [];
         if (!idx.includes(day)) {
@@ -1726,7 +1914,7 @@ export class Shop {
     }
     if (by === 'admin') {
       const text = customerText(o, o.status, cfg.shop);
-      if (text) await this.tg('sendMessage', { chat_id: o.uid, text, reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы') });
+      if (text) await this.tg('sendMessage', { chat_id: o.uid, text, reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
     } else if (by === 'customer') {
       for (const aid of (await this.st.get('admins')) || []) {
         await this.tg('sendMessage', { chat_id: aid, text: '❌ Клиент отменил заказ ' + o.id + ' (' + o.name + ').' });
@@ -1742,56 +1930,22 @@ export class Shop {
     let up = null;
     try { up = await request.json(); } catch (e) { return json({ ok: true }); }
     try {
-      if (up && up.message) await this.onMessage(up.message);
-      else if (up && up.callback_query) await this.onCallback(up.callback_query);
+      // сообщения («/start», «/admin КОД») разбирает площадка (Hub), сюда доходят только нажатия кнопок под заказами
+      if (up && up.callback_query) await this.onCallback(up.callback_query);
     } catch (e) {
       console.error('webhook handler error', e && e.stack || e);
     }
     return json({ ok: true });
   }
 
-  async onMessage(msg) {
-    if (!msg.from || !msg.chat || msg.chat.type !== 'private') return;
-    const text = String(msg.text || '').trim();
-    const lang = String(msg.from.language_code || '').toLowerCase().startsWith('uz') ? 'uz' : 'ru';
-    const cmd = text.split(/\s+/)[0].split('@')[0].toLowerCase();
-    const chat = msg.chat.id;
-    const cfg = await this.getCfg();
-    const openText = lang === 'uz' ? '🛒 Katalogni ochish' : '🛒 Открыть каталог';
-
-    if (cmd === '/admin') {
-      const code = text.replace(/^\S+\s*/, '');
-      if (!code) {
-        const isAdm = await this.isAdmin(msg.from.id);
-        await this.tg('sendMessage', { chat_id: chat, text: isAdm ? 'Вы подключены как продавец. Новые заказы приходят в этот чат.' : welcomeText(lang, false, cfg.shop), reply_markup: openBtn(this.origin, openText) });
-        return;
-      }
-      const r = await this.checkCode(code);
-      // код не должен оставаться в переписке
-      await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });
-      if (r === 'ok') {
-        const admins = (await this.st.get('admins')) || [];
-        if (!admins.includes(msg.from.id)) { admins.push(msg.from.id); await this.st.put('admins', admins); }
-        await this.tg('sendMessage', { chat_id: chat, text: 'Готово, вы продавец. Новые заказы будут приходить сюда с кнопками «Принять», «Готов», «Выдан». Каталог, цены и настройки меняются в приложении, вкладка «Продавец».', reply_markup: openBtn(this.origin, 'Открыть приложение') });
-      } else if (r === 'locked') {
-        await this.tg('sendMessage', { chat_id: chat, text: 'Слишком много неверных попыток. Попробуйте через час.' });
-      } else if (r === 'nocode') {
-        await this.tg('sendMessage', { chat_id: chat, text: 'На сервере не задан ADMIN_CODE.' });
-      } else {
-        await this.tg('sendMessage', { chat_id: chat, text: 'Неверный код.' });
-      }
-      return;
-    }
-
-    const isAdm = await this.isAdmin(msg.from.id);
-    await this.tg('sendMessage', { chat_id: chat, text: welcomeText(lang, isAdm, cfg.shop), reply_markup: openBtn(this.origin, openText) });
-  }
-
   async onCallback(cq) {
     const answer = (text, alert) => this.tg('answerCallbackQuery', { callback_query_id: cq.id, text: text ? String(text).slice(0, 190) : undefined, show_alert: !!alert });
     if (!cq.from || !(await this.isAdmin(cq.from.id))) return answer('Нет доступа', true);
+    // «s:<заказ>:<статус>», «c:<заказ>», «b:<заказ>»; у дистрибьюторов кроме первого после буквы идёт ещё его номер
     const parts = String(cq.data || '').split(':');
-    const kind = parts[0], id = parts[1], to = parts[2];
+    const kind = parts[0];
+    const withDid = kind === 's' ? parts.length >= 4 : parts.length >= 3;
+    const id = withDid ? parts[2] : parts[1], to = withDid ? parts[3] : parts[2];
     const o = id ? await this.st.get('o:' + id) : null;
     if (!o) return answer('Заказ не найден', true);
     const cfg = await this.getCfg();
@@ -1836,10 +1990,428 @@ export class Shop {
       steps.push(['Кнопка меню в боте', menu.ok, menu.ok ? 'установлена' : menu.description]);
       const cmds = await this.tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть каталог' }] });
       steps.push(['Команды бота', cmds.ok, cmds.ok ? 'установлены' : cmds.description]);
+      // площадка дистрибьюторов: реестр создаётся при первом обращении, имя бота нужно для ссылок на каталоги
+      try {
+        await hubCall(this.env, '/__/bot', { username: me.result.username });
+        const hub = await hubCall(this.env, '/__/ensure', {});
+        steps.push(['Площадка дистрибьюторов', !!(hub && hub.ok), hub && hub.ok ? 'готова, дистрибьюторов: ' + hub.shops : 'не отвечает']);
+      } catch (e) {
+        steps.push(['Площадка дистрибьюторов', false, 'не подключена: проверьте wrangler.toml (привязка HUB) и опубликуйте приложение заново']);
+      }
     }
     const allOk = steps.every(s => s[1]);
     return setupPage('<ul>' + steps.map(s => '<li class="' + (s[1] ? 'ok' : 'bad') + '">' + (s[1] ? '✔ ' : '✘ ') + esc(s[0]) + ': ' + esc(s[2]) + '</li>').join('') + '</ul>'
       + (allOk ? '<p>Готово. Теперь откройте бота' + (me.ok ? ' <b>@' + esc(me.result.username) + '</b>' : '') + ' в Telegram и отправьте ему сообщение <code>/admin ВАШ_КОД</code>. После этого заказы будут приходить вам.</p>'
         : '<p class="bad">Не всё получилось. Проверьте токен бота и повторите.</p>'));
+  }
+}
+
+/* ---------- Площадка: реестр дистрибьюторов, их коды, вход продавцов, заказы клиента по всем компаниям ---------- */
+const newRec = (id, name, hash, sum) => ({
+  id, name: cleanStr(name, 60) || DEFAULT.shop.name, on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
+  items: sum && Number(sum.items) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
+  regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home)
+});
+/* Что видит клиент в списке. Код и служебные поля не уходят. */
+const pubRec = r => ({ id: r.id, name: r.name, items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home) });
+const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
+
+export class Hub {
+  constructor(state, env) {
+    this.st = state.storage;
+    this.env = env;
+    this.origin = '';
+    this.ready = false;
+  }
+  tg(method, payload) { return tgApi(this.env.BOT_TOKEN, method, payload); }
+  webhookSecret() { return sha256hex('shop-webhook:' + this.env.BOT_TOKEN); }
+
+  /* --- реестр --- */
+  /* Один раз при первом обращении: первый дистрибьютор (то, что бот хранил до площадки) вносится в реестр, а его продавцы становятся владельцами. */
+  async ensure() {
+    if (this.ready) return;
+    if (!(await this.st.get('init'))) {
+      const sum = (await shopCall(this.env, MAIN, '/__/summary')).data || {};
+      const adm = (await shopCall(this.env, MAIN, '/__/admins')).data;
+      const admins = adm && Array.isArray(adm.admins) ? adm.admins.filter(Number.isSafeInteger) : [];
+      const rec = newRec(MAIN, sum.name, '', sum);
+      rec.sellers = admins.length;
+      const upd = { init: 1, dx: [MAIN], ['d:' + MAIN]: rec, owners: admins };
+      admins.forEach(uid => { upd['adm:' + uid] = [MAIN]; });
+      await this.st.put(upd);
+    }
+    this.ready = true;
+  }
+  async getRec(did) { const r = await this.st.get('d:' + did); return r && typeof r === 'object' ? r : null; }
+  async allRecs() {
+    const idx = (await this.st.get('dx')) || [];
+    const map = await this.st.get(idx.map(x => 'd:' + x));
+    return idx.map(x => map.get('d:' + x)).filter(Boolean);
+  }
+  async owners() { const o = await this.st.get('owners'); return Array.isArray(o) ? o : []; }
+  async sellsOf(uid) { const a = await this.st.get('adm:' + uid); return Array.isArray(a) ? a : []; }
+  async title() { return (await this.st.get('title')) || HUB_TITLE; }
+  async botName() {
+    let b = await this.st.get('bot');
+    if (!b) {
+      const me = await this.tg('getMe', {});
+      if (me.ok && me.result && me.result.username) { b = String(me.result.username); await this.st.put('bot', b); }
+    }
+    return b || '';
+  }
+  async link(did) { const b = await this.botName(); return b ? 'https://t.me/' + b + '?start=d_' + did : ''; }
+  /* Запись дистрибьютора для владельца: всё, кроме хэша кода. */
+  async ownerRec(r) { return Object.assign(pubRec(r), { on: r.on, sellers: r.sellers, since: r.since, own: !!r.hash, link: await this.link(r.id) }); }
+
+  /* --- вход продавцов по коду --- */
+  /* Код продавца ищется среди кода владельца (ADMIN_CODE) и кодов дистрибьюторов. Ошибки считаются по человеку: 8 подряд закрывают ввод на час. */
+  async tryCode(code, uid) {
+    if (!this.env.ADMIN_CODE) return { r: 'nocode' };
+    const f = (await this.st.get('fail:' + uid)) || { n: 0, until: 0 };
+    if (f.until > Date.now()) return { r: 'locked' };
+    const h = await sha256hex('code:' + String(code || ''));
+    let did = '', owner = false;
+    if (safeEq(h, await sha256hex('code:' + this.env.ADMIN_CODE))) { did = MAIN; owner = true; }
+    for (const rec of await this.allRecs()) if (rec.hash && safeEq(h, rec.hash) && !did) did = rec.id;
+    if (!did) {
+      f.n += 1;
+      if (f.n >= 8) { f.n = 0; f.until = Date.now() + 3600 * 1000; }
+      await this.st.put('fail:' + uid, f);
+      return { r: 'bad' };
+    }
+    if (f.n || f.until) await this.st.delete('fail:' + uid);
+    const res = await shopCall(this.env, did, '/__/admin-add', { uid });
+    if (!res.ok || !res.data) return { r: 'error' };
+    await this.setSeller(uid, did, true, res.data.admins);
+    if (owner) {
+      const own = await this.owners();
+      if (!own.includes(uid)) { own.push(uid); await this.st.put('owners', own); }
+    }
+    return { r: 'ok', did, owner };
+  }
+  /* Запоминает, у каких дистрибьюторов человек продавец, и сколько продавцов у дистрибьютора. */
+  async setSeller(uid, did, on, admins) {
+    const list = await this.sellsOf(uid);
+    const has = list.includes(did);
+    if (on && !has) await this.st.put('adm:' + uid, list.concat([did]));
+    if (!on && has) { const rest = list.filter(x => x !== did); if (rest.length) await this.st.put('adm:' + uid, rest); else await this.st.delete('adm:' + uid); }
+    const rec = await this.getRec(did);
+    if (rec && Array.isArray(admins)) { rec.sellers = admins.length; await this.st.put('d:' + did, rec); }
+  }
+
+  /* --- маршрутизация --- */
+  async fetch(request) {
+    const url = new URL(request.url);
+    this.origin = url.origin;
+    const path = url.pathname, method = request.method;
+    try {
+      if (path === '/webhook' && method === 'POST') return await this.webhook(request);
+      await this.ensure();
+      if (path.startsWith('/__/')) return await this.internal(request, path);
+      if (path === '/api/shops' && method === 'GET') return await this.publicList(request);
+      if (path.startsWith('/api/hub/')) return await this.api(request, path, method);
+      return json({ error: 'not_found' }, 404);
+    } catch (e) {
+      console.error('hub error', path, e && e.stack || e);
+      return json({ error: 'server' }, 500);
+    }
+  }
+  async readBody(request, limit) {
+    const text = await request.text();
+    if (text.length > limit) return { err: 413 };
+    try { return { body: JSON.parse(text || 'null') }; } catch (e) { return { err: 400 }; }
+  }
+
+  /* Запросы от дистрибьюторов: новое название и каталог, новый заказ клиента. */
+  async internal(request, path) {
+    if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
+    const r = await this.readBody(request, 20000);
+    const b = r.body && typeof r.body === 'object' ? r.body : {};
+    if (path === '/__/ensure') return json({ ok: true, shops: ((await this.st.get('dx')) || []).length });
+    if (path === '/__/bot') { if (typeof b.username === 'string' && /^[A-Za-z0-9_]{3,64}$/.test(b.username)) await this.st.put('bot', b.username); return json({ ok: true }); }
+    if (path === '/__/sync') {
+      const rec = validDid(b.did) ? await this.getRec(b.did) : null;
+      if (!rec || !b.summary || typeof b.summary !== 'object') return json({ ok: false });
+      const s = b.summary;
+      rec.name = cleanStr(s.name, 60) || rec.name;
+      rec.items = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.items) || 0)));
+      rec.cats = (Array.isArray(s.cats) ? s.cats : []).slice(0, 6).map(c => ({ name: cleanStr(c && c.name, 40), uz: cleanStr(c && c.uz, 40) })).filter(c => c.name);
+      rec.delivery = s.delivery !== false;
+      rec.minOrder = Math.max(0, Math.round(Number(s.minOrder) || 0));
+      rec.regions = cleanRegions(s.regions);
+      rec.home = cleanRegion(s.home);
+      await this.st.put('d:' + rec.id, rec);
+      return json({ ok: true });
+    }
+    if (path === '/__/ordered') {
+      const uid = Number(b.uid);
+      if (!validDid(b.did) || !Number.isSafeInteger(uid)) return json({ ok: false });
+      const list = await this.userShops(uid, b.did);
+      if (!list.includes(b.did)) await this.st.put('u:' + uid, list.concat([b.did]));
+      return json({ ok: true });
+    }
+    return json({ error: 'not_found' }, 404);
+  }
+  /* У каких дистрибьюторов у человека есть заказы. Кто заказывал до площадки, найдётся у первого: это проверяется один раз. */
+  async userShops(uid, skip) {
+    const have = await this.st.get('u:' + uid);
+    if (Array.isArray(have)) return have;
+    let list = [];
+    if (skip !== MAIN) {
+      const r = await shopCall(this.env, MAIN, '/__/my-orders', { uid });
+      if (r.data && Array.isArray(r.data.orders) && r.data.orders.length) list = [MAIN];
+    }
+    await this.st.put('u:' + uid, list);
+    return list;
+  }
+
+  /* --- приложение --- */
+  async auth(request) {
+    if (!this.env.BOT_TOKEN) return { err: 'no_token' };
+    return verifyInitData(request.headers.get('x-init-data') || '', this.env.BOT_TOKEN);
+  }
+  /* Главный экран: дистрибьюторы, у которых есть товары и которые не отключены. Без входа через Telegram виден только список. */
+  async publicList(request) {
+    const recs = (await this.allRecs()).filter(r => r.on && r.items > 0);
+    const out = { title: await this.title(), shops: recs.map(pubRec) };
+    const au = await this.auth(request);
+    if (au.user) {
+      const sells = await this.sellsOf(au.user.id);
+      const all = await this.allRecs();
+      const mine = sells.map(id => all.find(r => r.id === id)).filter(Boolean);
+      out.me = {
+        id: au.user.id, owner: (await this.owners()).includes(au.user.id), region: cleanRegion(await this.st.get('reg:' + au.user.id)),
+        // ссылка на каталог нужна продавцу, чтобы раздать её клиентам
+        sells: await Promise.all(mine.map(async r => ({ id: r.id, name: r.name, link: await this.link(r.id) })))
+      };
+    }
+    return json(out);
+  }
+  async api(request, path, method) {
+    const au = await this.auth(request);
+    if (au.err) return json({ error: au.err }, au.err === 'no_token' ? 500 : 401);
+    const uid = au.user.id;
+
+    if (path === '/api/hub/orders' && method === 'GET') {
+      const all = await this.allRecs();
+      const list = await this.userShops(uid);
+      const got = await Promise.all(list.map(async did => {
+        const r = await shopCall(this.env, did, '/__/my-orders', { uid });
+        const rec = all.find(x => x.id === did);
+        return ((r.data && r.data.orders) || []).map(o => Object.assign({}, o, { did, shopName: rec ? rec.name : did }));
+      }));
+      const orders = [].concat(...got).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      return json({ orders });
+    }
+
+    // регион магазина: запоминается, чтобы на другом телефоне список был тем же
+    if (path === '/api/hub/region' && method === 'PUT') {
+      const r = await this.readBody(request, 500);
+      const reg = r.body && typeof r.body === 'object' ? r.body.region : undefined;
+      if (r.err || (reg !== '' && !cleanRegion(reg))) return json({ error: 'bad_request' }, 400);
+      if (reg) await this.st.put('reg:' + uid, reg); else await this.st.delete('reg:' + uid);
+      return json({ region: reg });
+    }
+
+    // дальше только владелец площадки
+    if (!path.startsWith('/api/hub/admin/')) return json({ error: 'not_found' }, 404);
+    if (!(await this.owners()).includes(uid)) return json({ error: 'forbidden' }, 403);
+    if (path === '/api/hub/admin/shops' && method === 'GET') {
+      const recs = await this.allRecs();
+      return json({ title: await this.title(), max: MAX_SHOPS, shops: await Promise.all(recs.map(r => this.ownerRec(r))) });
+    }
+    if (path === '/api/hub/admin/shops' && method === 'POST') {
+      const r = await this.readBody(request, 2000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      return await this.createShop(r.body);
+    }
+    if (path === '/api/hub/admin/title' && method === 'PUT') {
+      const r = await this.readBody(request, 2000);
+      if (r.err || !r.body || typeof r.body.title !== 'string') return json({ error: 'bad_request' }, 400);
+      const t = cleanStr(r.body.title, 60) || HUB_TITLE;
+      await this.st.put('title', t);
+      return json({ title: t });
+    }
+    if (path === '/api/hub/admin/stats' && method === 'GET') {
+      const rg = statRange(new URL(request.url).searchParams.get('period') || 'month');
+      const recs = await this.allRecs();
+      const rows = await Promise.all(recs.map(async rec => {
+        const r = await shopCall(this.env, rec.id, '/__/stats', { from: rg.from, to: rg.to });
+        const d = r.ok && r.data ? r.data : null;
+        return { id: rec.id, name: rec.name, on: rec.on, pct: d ? d.pct : 0, n: d ? d.n : 0, base: d ? d.base : 0, cm: d ? d.cm : 0, active: d ? d.active : 0, err: !d };
+      }));
+      const total = rows.reduce((t, x) => ({ n: t.n + x.n, base: t.base + x.base, cm: t.cm + x.cm, active: t.active + x.active }), { n: 0, base: 0, cm: 0, active: 0 });
+      return json({ period: rg.period, from: rg.from, to: rg.to, rows, total });
+    }
+    const m = path.match(/^\/api\/hub\/admin\/shops\/([a-z0-9]{2,12})(\/code)?$/);
+    if (m) {
+      const rec = await this.getRec(m[1]);
+      if (!rec) return json({ error: 'not_found' }, 404);
+      const r = await this.readBody(request, 2000);
+      if (r.err) return json({ error: 'bad_request' }, 400);
+      if (m[2] && method === 'POST') return await this.resetCode(rec, r.body || {});
+      if (!m[2] && method === 'PUT') {
+        const b = r.body && typeof r.body === 'object' ? r.body : {};
+        const hasOn = typeof b.on === 'boolean', hasPct = b.pct !== undefined;
+        if (!hasOn && !hasPct) return json({ error: 'bad_request' }, 400);
+        let pct;
+        if (hasPct) {
+          pct = cleanPct(b.pct);
+          if (pct === null) return json({ error: 'bad_pct' }, 400);
+          const sp = await shopCall(this.env, rec.id, '/__/cpct', { pct });
+          if (!sp.ok) return json({ error: 'server' }, 500);
+        }
+        if (hasOn) {
+          rec.on = b.on;
+          await this.st.put('d:' + rec.id, rec);
+          await shopCall(this.env, rec.id, '/__/off', { off: !rec.on });
+        }
+        return json(Object.assign({ shop: await this.ownerRec(rec) }, hasPct ? { pct } : {}));
+      }
+    }
+    return json({ error: 'not_found' }, 404);
+  }
+  /* Проверяет код, который задал владелец, или придумывает новый. Возвращает {code, hash} или {err}. */
+  async pickCode(want, except) {
+    let code;
+    if (want === undefined || want === null || want === '') code = newCode();
+    else {
+      if (typeof want !== 'string') return { err: 'bad_request' };
+      code = cleanStr(want, 64);
+      if (code.length < MIN_CODE) return { err: 'weak_code' };
+    }
+    const hash = await sha256hex('code:' + code);
+    if (this.env.ADMIN_CODE && safeEq(hash, await sha256hex('code:' + this.env.ADMIN_CODE))) return { err: 'code_taken' };
+    for (const x of await this.allRecs()) if (x.hash && x.id !== except && safeEq(hash, x.hash)) return { err: 'code_taken' };
+    return { code, hash };
+  }
+  async createShop(b) {
+    const name = cleanStr(b.name, 60);
+    if (name.length < 2) return json({ error: 'bad_name' }, 400);
+    const idx = (await this.st.get('dx')) || [];
+    if (idx.length >= MAX_SHOPS) return json({ error: 'too_many' }, 409);
+    const c = await this.pickCode(b.code);
+    if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
+    let id;
+    do { id = 's' + randId(5).toLowerCase(); } while (idx.includes(id));
+    const init = await shopCall(this.env, id, '/__/init', { name, pct: COMM_DEFAULT });
+    if (!init.ok) return json({ error: 'server' }, 500);
+    const rec = newRec(id, name, c.hash);
+    await this.st.put({ ['d:' + id]: rec, dx: idx.concat([id]) });
+    return json({ shop: await this.ownerRec(rec), code: c.code });
+  }
+  /* Новый код дистрибьютора. Прежние продавцы теряют доступ и входят заново по новому коду. */
+  async resetCode(rec, b) {
+    const c = await this.pickCode(b.code, rec.id);
+    if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
+    const cleared = await shopCall(this.env, rec.id, '/__/admin-clear', {});
+    const removed = cleared.data && Array.isArray(cleared.data.removed) ? cleared.data.removed : [];
+    for (const uid of removed) await this.setSeller(uid, rec.id, false);
+    rec.hash = c.hash;
+    rec.sellers = 0;
+    await this.st.put('d:' + rec.id, rec);
+    // владельцы площадки остаются продавцами первого дистрибьютора: у них свой код (ADMIN_CODE)
+    if (rec.id === MAIN) for (const uid of await this.owners()) {
+      const res = await shopCall(this.env, MAIN, '/__/admin-add', { uid });
+      await this.setSeller(uid, MAIN, true, res.data && res.data.admins);
+    }
+    return json({ shop: await this.ownerRec(rec), code: c.code });
+  }
+
+  /* --- бот --- */
+  async webhook(request) {
+    if (!this.env.BOT_TOKEN) return new Response('no token', { status: 500 });
+    const secret = await this.webhookSecret();
+    const given = request.headers.get('x-telegram-bot-api-secret-token') || '';
+    if (!safeEq(given, secret)) return new Response('forbidden', { status: 403 });
+    let up = null;
+    try { up = await request.json(); } catch (e) { return json({ ok: true }); }
+    try {
+      await this.ensure();
+      if (up && up.message) await this.onMessage(up.message);
+      else if (up && up.callback_query) await this.onCallback(request, up, given);
+    } catch (e) {
+      console.error('webhook handler error', e && e.stack || e);
+    }
+    return json({ ok: true });
+  }
+  /* Нажатие кнопки под заказом уходит в хранилище того дистрибьютора, чей это заказ. */
+  async onCallback(request, up, secret) {
+    const parts = String(up.callback_query.data || '').split(':');
+    const withDid = parts[0] === 's' ? parts.length >= 4 : parts.length >= 3;
+    const did = withDid ? parts[1] : MAIN;
+    if (!validDid(did) || !(await this.getRec(did))) return;
+    await stubOf(this.env.SHOP, did).fetch(new Request(request.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-did': did, 'x-telegram-bot-api-secret-token': secret },
+      body: JSON.stringify(up)
+    }));
+  }
+  async onMessage(msg) {
+    if (!msg.from || !msg.chat || msg.chat.type !== 'private') return;
+    const uid = msg.from.id, chat = msg.chat.id;
+    const text = String(msg.text || '').trim();
+    const lang = String(msg.from.language_code || '').toLowerCase().startsWith('uz') ? 'uz' : 'ru';
+    const cmd = text.split(/\s+/)[0].split('@')[0].toLowerCase();
+    const openText = lang === 'uz' ? '🛒 Katalogni ochish' : '🛒 Открыть каталог';
+    const isSeller = async () => (await this.sellsOf(uid)).length > 0;
+
+    if (cmd === '/admin') {
+      const code = text.replace(/^\S+\s*/, '');
+      if (!code) {
+        const adm = await isSeller();
+        await this.tg('sendMessage', { chat_id: chat, text: adm ? 'Вы подключены как продавец. Новые заказы приходят в этот чат.' : await this.welcome(lang, false, ''), reply_markup: openBtn(this.origin, openText) });
+        return;
+      }
+      const res = await this.tryCode(code, uid);
+      // код не должен оставаться в переписке
+      await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });
+      if (res.r === 'ok') {
+        const rec = await this.getRec(res.did);
+        const who = res.did === MAIN && res.owner ? 'Готово, вы продавец.' : 'Готово, вы продавец «' + (rec ? rec.name : res.did) + '».';
+        await this.tg('sendMessage', {
+          chat_id: chat,
+          text: who + ' Новые заказы будут приходить сюда с кнопками «Принять», «Готов», «Выдан». Каталог, цены и настройки меняются в приложении, вкладка «Продавец».'
+            + (res.owner ? '\n\nВы также владелец площадки: дистрибьюторов можно добавлять в приложении, кнопка «Дистрибьюторы» в панели продавца.' : ''),
+          reply_markup: openBtn(this.origin, 'Открыть приложение', sellerUrl(this.origin, res.did))
+        });
+      } else if (res.r === 'locked') {
+        await this.tg('sendMessage', { chat_id: chat, text: 'Слишком много неверных попыток. Попробуйте через час.' });
+      } else if (res.r === 'nocode') {
+        await this.tg('sendMessage', { chat_id: chat, text: 'На сервере не задан ADMIN_CODE.' });
+      } else if (res.r === 'error') {
+        await this.tg('sendMessage', { chat_id: chat, text: 'Не получилось подключить. Попробуйте ещё раз.' });
+      } else {
+        await this.tg('sendMessage', { chat_id: chat, text: 'Неверный код.' });
+      }
+      return;
+    }
+
+    // «/start d_<номер>» — ссылка на каталог конкретного дистрибьютора; всё остальное — общее приветствие
+    const payload = cmd === '/start' ? (text.split(/\s+/)[1] || '') : '';
+    let target = null;
+    const m = payload.match(/^d_([a-z0-9]{2,12})$/);
+    if (m) { const rec = await this.getRec(m[1]); if (rec && rec.on) target = rec; }
+    await this.tg('sendMessage', {
+      chat_id: chat,
+      text: await this.welcome(lang, await isSeller(), target ? target.name : ''),
+      reply_markup: openBtn(this.origin, openText, target ? shopUrl(this.origin, target.id) : this.origin + '/')
+    });
+  }
+  /* Приветствие: если дистрибьютор один (или клиент пришёл по ссылке на него), говорим от его имени, иначе от имени площадки. */
+  async welcome(lang, isAdmin, shopName) {
+    let name = shopName;
+    let several = false;
+    if (!name) {
+      const vis = (await this.allRecs()).filter(r => r.on && r.items > 0);
+      if (vis.length === 1) name = vis[0].name;
+      else { name = await this.title(); several = vis.length > 1; }
+    }
+    if (!several) return welcomeText(lang, isAdmin, { name });
+    setLang(lang);
+    return L(
+      'Здравствуйте! Это ' + name + ' 🛒\nОткройте каталог, выберите дистрибьютора и товары, оформите заказ: самовывоз или доставка. Оплата только при получении.',
+      'Assalomu alaykum! Bu ' + name + ' 🛒\nKatalogni oching, distribyutor va mahsulotlarni tanlang, buyurtma bering: olib ketish yoki yetkazib berish. Toʻlov faqat olganda.')
+      + (isAdmin ? '\n\nВы подключены как продавец: новые заказы приходят сюда, их можно принимать кнопками.' : '');
   }
 }

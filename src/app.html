@@ -374,6 +374,30 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .eyebrow{font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
 .stack{display:grid;gap:12px}
 .row-btns{display:flex;flex-wrap:wrap;gap:8px}
+/* список дистрибьюторов и раздел владельца */
+.dgrid{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:14px}
+@media (max-width:540px){.dgrid{grid-template-columns:minmax(0,1fr)}}
+.dcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;display:grid;gap:8px;align-content:start;min-width:0}
+.dcard h2{font:700 16px/1.25 var(--f-display);overflow-wrap:anywhere}
+.dmeta{font-size:13px;color:var(--ink-2)}
+.dcats{display:flex;flex-wrap:wrap;gap:6px}
+.dcats span{background:var(--surface-2);border-radius:999px;padding:3px 9px;font-size:12px}
+.dtag{font-size:12px;font-weight:600;color:var(--accent)}
+.mono{font:700 19px/1.35 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;background:var(--surface-2);padding:10px 12px;border-radius:10px;overflow-wrap:anywhere;user-select:all}
+.mono.small{font-size:13px;letter-spacing:0;font-weight:600}
+.codebox{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.regs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;margin-top:10px}
+@media (max-width:540px){.regs{grid-template-columns:minmax(0,1fr)}}
+.regs[hidden]{display:none}
+.regs .chk{min-height:34px}
+.regbar{margin-bottom:14px}
+.regbar select{width:100%}
+.hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.hrow h1{margin-bottom:0}
+.pctrow{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
+.pctrow>div{flex:0 0 auto}
+.pctrow input[type=text]{width:96px}
+.sum small.sub{display:block;font-size:12px;color:var(--ink-2)}
 @media (prefers-reduced-motion:no-preference){.chip,.seg button{transition:border-color .12s,background-color .12s}}
 </style>
 </head><body>
@@ -398,9 +422,10 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 const $=(s,r)=>(r||document).querySelector(s);
 const MAX_QTY=500,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
-  view:'shop',sellerTab:'orders',filter:'active',
+  view:'shops',sellerTab:'orders',filter:'active',
   cfg:clone(DEFAULT),
-  form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:''},
+  form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:''},
+  region:'',showFar:false,regSent:false,regOnly:null,
   myOrders:[],allOrders:[],stats:{doneSum:0,doneCount:0},
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
   busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,
@@ -411,7 +436,10 @@ const S={
   cl:[],clLoaded:false,cq:'',cg:'all',cOpen:null,cDet:{},cBusy:false,cDel:null,
   pm:false,xbusy:'',pick:null,pickBusy:false,
   fav:[],favT:null,favSeq:0,imp:null,impBusy:false,
-  rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
+  rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0},
+  did:'',epoch:0,switching:false,off:false,otherCart:null,
+  hub:{title:'',shops:[],me:null,loaded:false,err:false},
+  own:{shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{}}
 };
 const view=$('#view');
 let toastT=null,saveT=null;
@@ -421,17 +449,111 @@ function toast(msg){
   clearTimeout(toastT);toastT=setTimeout(()=>{t.hidden=true},Math.min(8000,Math.max(3200,String(msg).length*55)));
 }
 const waitMs=ms=>new Promise(r=>setTimeout(r,ms));
+const QS=new URLSearchParams(location.search);
+const validDid=d=>/^[a-z0-9]{2,12}$/.test(String(d||''));
+const okey=(id,d)=>d+'|'+id;
+const plTovar=n=>{const a=n%100,b=n%10;return a>=11&&a<=14?'товаров':b===1?'товар':b>=2&&b<=4?'товара':'товаров'};
+const hubTitle=()=>S.hub.title||'VIVA Distribution';
+const isOwner=()=>!!(S.hub.me&&S.hub.me.owner);
+const canList=()=>S.hub.shops.length>1||!!(S.hub.me&&(S.hub.me.owner||S.hub.me.sells.length>1));
+const backHTML=()=>canList()?'<button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все дистрибьюторы','Barcha distribyutorlar')+'</button>':'';
+const offTxt=()=>L('Этот дистрибьютор сейчас не принимает заказы.','Bu distribyutor hozir buyurtma qabul qilmayapti.');
+const offHTML=()=>S.off?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(offTxt())+'</div>':'';
+const sellLink=()=>{const m=S.hub.me&&S.hub.me.sells.find(x=>x.id===S.did);return m&&m.link||''};
+const shopNameOf=did=>{const s=S.hub.shops.find(x=>x.id===did);return s?s.name:''};
+/* Вопрос «да/нет»: окно Telegram, а вне Telegram обычное окно браузера. */
+function askConfirm(msg,cb){
+  try{if(S.tg&&S.tg.showConfirm&&S.tg.isVersionAtLeast&&S.tg.isVersionAtLeast('6.2')){S.tg.showConfirm(msg,ok=>{if(ok)cb()});return}}catch(e){}
+  if(window.confirm(msg))cb();
+}
+/* Всё, что относится к одному дистрибьютору, сбрасывается при переходе к другому. */
+function resetShopState(){
+  Object.assign(S,{
+    cfg:clone(DEFAULT),prod:{cats:[],items:[]},cart:{},otherCart:null,shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
+    admin:false,off:false,profile:null,blocked:false,fav:[],allOrders:[],stats:{doneSum:0,doneCount:0},
+    sellerTab:'orders',pfilter:'all',upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
+    stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,
+    cl:[],clLoaded:false,cq:'',cg:'all',cOpen:null,cDet:{},cBusy:false,cDel:null,
+    pm:false,xbusy:'',pick:null,pickBusy:false,imp:null,impBusy:false,regOnly:null,
+    rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
+  });
+  S.form.region='';
+}
 /* способ получения: доставка доступна, только если продавец её включил */
 const mode=()=>S.cfg.shop.delivery!==false&&S.form.mode==='delivery'?'delivery':'pickup';
 const pickup=()=>pickupInfo(S.cfg,shopNow(),leadFor(S.cfg,mode()));
 function normalizeMode(){if(S.cfg.shop.delivery===false)S.form.mode='pickup'}
+/* Регион магазина запоминается на телефоне и на площадке (чтобы на другом телефоне список был тем же). */
+function loadRegion(){try{S.region=cleanRegion(localStorage.getItem('sh-region'))}catch(e){}}
+function saveRegionLocal(){try{if(S.region)localStorage.setItem('sh-region',S.region);else localStorage.removeItem('sh-region')}catch(e){}}
+function setRegion(id){
+  id=cleanRegion(id);
+  if(id===S.region)return;
+  S.region=id;S.form.region='';saveRegionLocal();
+  if(S.auth)api('PUT','/api/hub/region',{region:id});
+  if(S.view==='shops')renderShops();
+}
+/* Доставка у открытого дистрибьютора ограничена регионами: список, регион для заказа, подсказки */
+const zoneOn=()=>hasZone(S.cfg.shop.regions)&&S.cfg.shop.delivery!==false;
+const zone=()=>cleanRegions(S.cfg.shop.regions);
+const orderRegion=()=>{const c=cleanRegion(S.form.region);return zoneOn()?(zone().includes(c)?c:''):(c||S.region)};
+/* в форму заказа подставляем регион магазина, если дистрибьютор в него доставляет */
+function normalizeRegion(){
+  if(!zoneOn()){return}
+  if(!zone().includes(S.form.region))S.form.region=zone().includes(S.region)?S.region:'';
+}
+function regionFieldHTML(){
+  const z=zone(),cur=orderRegion(),off=S.region&&!z.includes(S.region);
+  return '<div class="full"><label class="lab" for="f-region">'+L('Регион доставки','Yetkazib berish hududi')+'</label><select id="f-region" data-f="region"><option value="">'+L('Выберите регион','Hududni tanlang')+'</option>'
+    +z.map(id=>'<option value="'+id+'"'+(id===cur?' selected':'')+'>'+esc(regionName(id))+'</option>').join('')+'</select><div class="err" id="e-region"></div>'
+    +(off?'<div class="note warnnote" role="status" style="margin-top:8px">'+esc(L('Этот дистрибьютор не доставляет в ваш регион ('+regionName(S.region)+'). Выберите самовывоз или регион из списка.','Bu distribyutor sizning hududingizga ('+regionName(S.region)+') yetkazib bermaydi. Olib ketishni yoki roʻyxatdagi hududni tanlang.'))+'</div>':'')+'</div>';
+}
+/* в каталоге: куда доставляет этот дистрибьютор, и предупреждение, если не в регион магазина */
+function regionNoteHTML(){
+  if(!zoneOn())return '';
+  const z=zone(),names=z.slice(0,3).map(regionName).join(', ')+(z.length>3?L(' и ещё '+(z.length-3),' va yana '+(z.length-3)):'');
+  const off=S.region&&!z.includes(S.region);
+  return '<div class="note'+(off?' warnnote':'')+'" role="status" style="margin-bottom:12px">'+esc(off
+    ?L('Доставка в ваш регион ('+regionName(S.region)+') не работает, но можно заказать с самовывозом. Доставляют: '+names+'.','Sizning hududingizga ('+regionName(S.region)+') yetkazib berilmaydi, lekin olib ketish mumkin. Yetkazib berish: '+names+'.')
+    :L('Доставка: '+names+'. В остальные регионы — самовывоз.','Yetkazib berish: '+names+'. Boshqa hududlar uchun — olib ketish.'))+'</div>';
+}
 
 /* ---------- каталог: данные и корзина ---------- */
 const normProd=d=>{const o={cats:[],items:[]};if(d&&typeof d==='object'){if(Array.isArray(d.cats))o.cats=d.cats.filter(x=>x&&typeof x==='object');if(Array.isArray(d.items))o.items=d.items.filter(x=>x&&typeof x==='object')}return o};
-const imgUrl=p=>'/img/'+encodeURIComponent(p.id)+'?v='+encodeURIComponent(p.pv||'');
+const imgUrl=p=>'/img/'+encodeURIComponent(S.did||'main')+'/'+encodeURIComponent(p.id)+'?v='+encodeURIComponent(p.pv||'');
 const pimg=p=>p.pv?'<img src="'+imgUrl(p)+'" alt="'+esc(nm(p))+'" loading="lazy" decoding="async">':'<span class="ph" aria-hidden="true">📦</span>';
-function loadCart(){try{const c=JSON.parse(localStorage.getItem('sh-cart')||'{}');if(c&&typeof c==='object'&&!Array.isArray(c))S.cart=c}catch(e){}}
-function saveCart(){try{localStorage.setItem('sh-cart',JSON.stringify(S.cart))}catch(e){}}
+/* Корзина одна на всё приложение и принадлежит одному дистрибьютору: {did, name, items}. Прежний формат (просто {товар: штуки}) — это первый дистрибьютор. */
+function loadCart(){
+  S.cart={};S.otherCart=null;
+  try{
+    const c=JSON.parse(localStorage.getItem('sh-cart')||'{}');
+    if(!c||typeof c!=='object'||Array.isArray(c))return;
+    const nw=typeof c.did==='string'&&c.items&&typeof c.items==='object'&&!Array.isArray(c.items);
+    const did=nw?c.did:'main',items=nw?c.items:c;
+    if(!Object.keys(items).length)return;
+    if(did===S.did)S.cart=items;
+    else S.otherCart={did,name:nw&&typeof c.name==='string'?c.name:'',items};
+  }catch(e){}
+}
+function saveCart(){
+  if(S.otherCart)return;   // пока открыт другой дистрибьютор, его корзину не трогаем
+  try{
+    if(Object.keys(S.cart).length)localStorage.setItem('sh-cart',JSON.stringify({did:S.did,name:S.cfg.shop.name||'',items:S.cart}));
+    else localStorage.removeItem('sh-cart');
+  }catch(e){}
+}
+const otherCartName=()=>S.otherCart?(S.otherCart.name||shopNameOf(S.otherCart.did)):'';
+const otherCartCount=()=>S.otherCart?Object.keys(S.otherCart.items).length:0;
+/* Товар добавляют у одного дистрибьютора, а в корзине уже товары другого: спрашиваем, очистить ли её. */
+function askOtherCart(cb){
+  if(!S.otherCart){cb();return}
+  const n=otherCartName(),q=n?' («'+n+'»)':'';
+  askConfirm(L('В корзине товары другого дистрибьютора'+q+'. Очистить корзину и добавить этот товар?','Savatda boshqa distribyutor'+q+' mahsulotlari bor. Savatni tozalab, bu mahsulotni qoʻshamizmi?'),()=>{
+    S.otherCart=null;
+    try{localStorage.removeItem('sh-cart')}catch(e){}
+    cb();
+  });
+}
 /* имя, телефон, способ и адрес запоминаем на телефоне, чтобы повторный заказ был быстрее */
 function loadForm(){
   try{
@@ -516,12 +638,15 @@ function switchLang(){
 /* nav */
 function renderNav(){
   const items=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
-  if(S.auth)items.push(['profile',L('Профиль','Profil')]);
-  if(S.admin)items.push(['seller',L('Продавец','Sotuvchi'),newCount()]);
+  if(S.auth&&S.did)items.push(['profile',L('Профиль','Profil')]);
+  if(S.admin&&S.did)items.push(['seller',L('Продавец','Sotuvchi'),newCount()]);
+  const cur=S.view==='shops'?'shop':S.view;
   const nav=$('#nav');
   nav.setAttribute('aria-label',L('Разделы','Boʻlimlar'));
-  nav.innerHTML=items.map(i=>'<button type="button" data-act="nav" data-v="'+i[0]+'"'+(S.view===i[0]?' aria-current="page"':'')+'>'+i[1]+(i[2]?' <span class="badge">'+i[2]+'</span>':'')+'</button>').join('');
-  const name=S.cfg.shop.name||DEFAULT.shop.name;
+  nav.innerHTML=items.map(i=>'<button type="button" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'>'+i[1]+(i[2]?' <span class="badge">'+i[2]+'</span>':'')+'</button>').join('');
+  // внутри дистрибьютора в шапке его название, на общих экранах название площадки
+  const inShop=S.did&&(S.view==='shop'||S.view==='seller'||S.view==='profile');
+  const name=inShop?(S.cfg.shop.name||DEFAULT.shop.name):hubTitle();
   $('#brandName').textContent=name;
   document.title=name;
   const lb=$('#langbtn');
@@ -620,7 +745,7 @@ function paintShopBar(){
 function renderShop(){
   if(S.shopPlaced)return renderShopPlaced();
   if(!S.prod.items.length){
-    view.innerHTML='<div class="wrap page"><div class="empty"><b>'+L('Каталог пока пуст','Katalog hozircha boʻsh')+'</b>'+L('Загляните позже.','Keyinroq qaytib keling.')+'</div></div>';
+    view.innerHTML='<div class="wrap page">'+backHTML()+offHTML()+'<div class="empty"><b>'+L('Каталог пока пуст','Katalog hozircha boʻsh')+'</b>'+L('Загляните позже.','Keyinroq qaytib keling.')+'</div></div>';
     return;
   }
   if(S.shopStep==='cart'&&cartCount()>0)return renderCart();
@@ -631,7 +756,7 @@ function renderShop(){
   const chips=cats.length>1||specials.length?'<div class="pchips" role="group" aria-label="'+esc(L('Категории','Kategoriyalar'))+'">'
     +[['all',L('Все','Barchasi')]].concat(specials,cats.length>1?cats.map(c=>[c.id,nm(c)]):[]).map(c=>'<button type="button" class="chip" data-act="scat" data-id="'+esc(c[0])+'" aria-pressed="'+(S.shopCat===c[0])+'">'+esc(c[1])+'</button>').join('')+'</div>':'';
   const search=S.prod.items.length>8?'<div class="search"><input type="search" id="q" value="'+esc(S.q)+'" placeholder="'+esc(L('Поиск по названию и описанию','Nomi va tavsifi boʻyicha qidirish'))+'" autocomplete="off" aria-label="'+esc(L('Поиск по названию и описанию','Nomi va tavsifi boʻyicha qidirish'))+'"></div>':'';
-  view.innerHTML='<div class="wrap shop"><div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</h1>'+search+chips+'<div id="pgrid"></div></div><div class="bar" id="bar"></div>';
+  view.innerHTML='<div class="wrap shop">'+backHTML()+offHTML()+regionNoteHTML()+'<div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</h1>'+search+chips+'<div id="pgrid"></div></div><div class="bar" id="bar"></div>';
   paintGrid();paintShopBar();
 }
 function toggleFav(id){
@@ -707,6 +832,7 @@ function formHTML(pk){
   const del=mode()==='delivery',canDel=S.cfg.shop.delivery!==false;
   return '<div class="form">'
     +(canDel?'<div class="full"><div class="seg" role="group" aria-label="'+esc(L('Способ получения','Olish usuli'))+'"><button type="button" data-act="mode" data-v="pickup" aria-pressed="'+(!del)+'">'+L('Самовывоз','Olib ketish')+'</button><button type="button" data-act="mode" data-v="delivery" aria-pressed="'+del+'">'+L('Доставка','Yetkazib berish')+'</button></div></div>':'')
+    +(del&&zoneOn()?regionFieldHTML():'')
     +'<div><label class="lab" for="f-name">'+L('Ваше имя или название компании','Ismingiz yoki kompaniya nomi')+'</label><input type="text" id="f-name" data-f="name" value="'+esc(S.form.name)+'" autocomplete="name"><div class="err" id="e-name"></div></div>'
     +'<div><label class="lab" for="f-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="f-phone" data-f="phone" value="'+esc(S.form.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel"><div class="err" id="e-phone"></div></div>'
     +(del?'<div class="full"><label class="lab" for="f-address">'+L('Адрес доставки','Yetkazib berish manzili')+'</label><textarea id="f-address" data-f="address" rows="2" maxlength="200" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'" autocomplete="street-address">'+esc(S.form.address)+'</textarea><div class="err" id="e-address"></div>'+addrChips()+'</div>':'')
@@ -739,11 +865,11 @@ function cartNote(){
     'Toʻlov faqat buyurtmani olganda'+(addr?': '+esc(addr):'')+'. Buyurtmani kamida '+esc(sh.leadHours)+' soatdan keyin olish mumkin, topshirish vaqti '+esc(sh.openFrom)+':00–'+esc(sh.openTo)+':00.');
 }
 function renderCart(){
-  normalizeMode();
+  normalizeMode();normalizeRegion();
   const pk=pickup();
   if(!S.form.date||S.form.date<pk.min)S.form.date=pk.min;
   S.shopStep='cart';
-  view.innerHTML='<div class="wrap shop"><button type="button" class="btn ghost sm backlink" data-act="shoplist">← '+L('К каталогу','Katalogga')+'</button><h1>'+L('Корзина','Savat')+'</h1><div class="stack">'
+  view.innerHTML='<div class="wrap shop"><button type="button" class="btn ghost sm backlink" data-act="shoplist">← '+L('К каталогу','Katalogga')+'</button><h1>'+L('Корзина','Savat')+'</h1>'+offHTML()+'<div class="stack">'
     +'<div class="card" id="clines" style="margin-bottom:0"></div>'
     +'<div class="sum" id="csum"></div><div id="cmin"></div>'
     +'<section class="sec" style="padding-top:6px"><h2>'+L('Получение заказа','Buyurtmani olish')+'</h2><div class="stack">'
@@ -766,6 +892,7 @@ function renderShopPlaced(){
   view.innerHTML='<div class="wrap page"><div class="stack" style="max-width:560px"><div><div class="eyebrow">'+L('Заказ отправлен','Buyurtma yuborildi')+'</div><h1>'+L('Номер ','Raqam ')+esc(o.id)+'</h1></div>'
     +'<div class="note">'+L('Продавец получил заказ и скоро подтвердит его. Мы напишем вам в этом чате, когда статус изменится. Оплата только при получении.','Sotuvchi buyurtmani oldi va tez orada tasdiqlaydi. Holat oʻzgarganda shu chatda yozamiz. Toʻlov faqat olganda.')+'</div>'
     +'<div class="sum"><div class="r"><span>'+(del?L('Доставка','Yetkazib berish'):L('Самовывоз','Olib ketish'))+'</span><span>'+esc(fmtWhen(o.pickupAt))+'</span></div>'
+    +(del&&o.region&&regionName(o.region)?'<div class="r"><span>'+L('Регион','Hudud')+'</span><span style="white-space:normal;text-align:right">'+esc(regionName(o.region))+'</span></div>':'')
     +(del?'<div class="r"><span>'+L('Адрес','Manzil')+'</span><span style="white-space:normal;text-align:right">'+esc(o.address)+'</span></div>':'')
     +(o.items||[]).map(it=>'<div class="r">'+itemRow(it)+'</div>').join('')
     +discRow(o,'r disc')
@@ -779,12 +906,13 @@ function validate(){
   const e={},f=S.form;
   if(!f.name.trim())e.name=L('Укажите имя','Ismingizni kiriting');
   if(f.phone.replace(/\D/g,'').length<9)e.phone=L('Укажите номер телефона','Telefon raqamini kiriting');
+  if(mode()==='delivery'&&zoneOn()&&!orderRegion())e.region=L('Выберите регион доставки','Yetkazib berish hududini tanlang');
   if(mode()==='delivery'&&f.address.trim().length<5)e.address=L('Укажите адрес доставки','Yetkazib berish manzilini kiriting');
   if(!f.date)e.date=L('Выберите дату','Sanani tanlang');
   if(f.date&&!f.time)e.time=L('Выберите время','Vaqtni tanlang');
   return e;
 }
-const FIELDS=['name','phone','address','date','time'];
+const FIELDS=['region','name','phone','address','date','time'];
 function orderErrText(er){
   return {
     too_many:L('У вас уже есть несколько неподтверждённых заказов. Дождитесь ответа продавца.','Sizda tasdiqlanmagan buyurtmalar bor. Sotuvchi javobini kuting.'),
@@ -792,6 +920,7 @@ function orderErrText(er){
     auth:L('Сессия устарела. Закройте и снова откройте приложение в боте.','Seans eskirdi. Ilovani yopib, botdan qayta oching.'),
     expired:L('Сессия устарела. Закройте и снова откройте приложение в боте.','Seans eskirdi. Ilovani yopib, botdan qayta oching.'),
     busy:L('Сейчас много заказов. Попробуйте чуть позже.','Hozir buyurtmalar koʻp. Birozdan keyin urinib koʻring.'),
+    shop_off:offTxt(),
     blocked:blockedTxt()
   }[er]||L('Не удалось отправить заказ. Проверьте соединение и попробуйте ещё раз.','Buyurtmani yuborib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.');
 }
@@ -809,6 +938,7 @@ async function submitOrder(){
   if(first){const inp=$('#f-'+first);if(inp){inp.focus();try{inp.scrollIntoView({block:'center',behavior:'smooth'})}catch(x){}}return}
   if(!S.auth){toast(L('Откройте приложение через бота в Telegram, чтобы оформить заказ','Buyurtma berish uchun ilovani Telegramdagi bot orqali oching'));return}
   if(S.blocked){toast(blockedTxt());return}
+  if(S.off){toast(offTxt());return}
   if(minOrder()>0&&cartTotal()<minOrder()){
     toast(L('Минимальная сумма заказа: '+money(minOrder()),'Buyurtmaning minimal summasi: '+money(minOrder())));
     const m=$('#cmin');if(m)try{m.scrollIntoView({block:'center',behavior:'smooth'})}catch(x){}
@@ -819,7 +949,7 @@ async function submitOrder(){
   const f=S.form,del=mode()==='delivery';
   const r=await api('POST','/api/order',{
     cart:lines.map(l=>({id:l.p.id,qty:l.qty})),
-    form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',date:f.date,time:f.time,comment:f.comment.trim()},
+    form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',region:del?orderRegion():'',date:f.date,time:f.time,comment:f.comment.trim()},
     lang:LANG,expectTotal:cartPay()
   });
   S.busy=false;
@@ -849,6 +979,12 @@ async function submitOrder(){
       toast(L('Минимальная сумма заказа: '+money(Number(r.data.min)||minOrder()),'Buyurtmaning minimal summasi: '+money(Number(r.data.min)||minOrder())));
       return;
     }
+    if(er==='no_region'||er==='region_need'){
+      normalizeRegion();renderShop();
+      toast(er==='region_need'?L('Выберите регион доставки.','Yetkazib berish hududini tanlang.')
+        :L('Дистрибьютор не доставляет в этот регион. Выберите самовывоз или регион из списка.','Distribyutor bu hududga yetkazib bermaydi. Olib ketishni yoki roʻyxatdagi hududni tanlang.'));
+      return;
+    }
     if(er==='price_changed'||er==='unavailable'||er==='no_delivery'){
       pruneCart();
       S.shopStep=cartCount()?'cart':'list';
@@ -859,13 +995,15 @@ async function submitOrder(){
       return;
     }
     if(er==='blocked')S.blocked=true;
+    if(er==='shop_off')S.off=true;
     renderShop();toast(orderErrText(er));
     return;
   }
   const order=r.data.order;
+  order.did=S.did;order.shopName=S.cfg.shop.name||'';
   S.cart={};saveCart();
   S.shopPlaced={order};S.shopStep='list';
-  S.myOrders=[order].concat(S.myOrders.filter(o=>o.id!==order.id));
+  S.myOrders=[order].concat(S.myOrders.filter(o=>!(o.id===order.id&&(o.did||S.did)===S.did)));
   S.form.comment='';
   if(!S.profile)S.profile={name:order.name,phone:order.phone,org:'',addrs:order.mode==='delivery'&&order.address?[order.address]:[]};
   else{
@@ -890,18 +1028,21 @@ function sellerActs(o){
   return o.status==='done'?pk:'';
 }
 function cancelBtn(o){
-  const sure=S.cc===o.id;
+  const sure=S.cc===okey(o.id,S.did);
   return '<button type="button" class="btn ghost sm" data-act="scancel" data-id="'+esc(o.id)+'">'+(sure?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить','Bekor qilish'))+'</button>';
 }
 function orderCard(o,m){
-  const rep=m==='mine'?'<button type="button" class="btn ghost sm" data-act="repeat" data-id="'+esc(o.id)+'">'+L('Повторить заказ','Buyurtmani takrorlash')+'</button>':'';
-  const acts=m==='seller'?sellerActs(o):rep+(o.status==='new'?'<button type="button" class="btn ghost sm" data-act="mycancel" data-id="'+esc(o.id)+'">'+(S.cc===o.id?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить заказ','Buyurtmani bekor qilish'))+'</button>':'');
-  const first=(o.items||[]).map(i=>S.prod.items.find(p=>p.id===i.id)).find(p=>p&&p.pv);
+  const od=o.did||S.did,key=okey(o.id,od),dd=m==='mine'?' data-d="'+esc(od)+'"':'';
+  const rep=m==='mine'?'<button type="button" class="btn ghost sm" data-act="repeat" data-id="'+esc(o.id)+'"'+dd+'>'+L('Повторить заказ','Buyurtmani takrorlash')+'</button>':'';
+  const acts=m==='seller'?sellerActs(o):rep+(o.status==='new'?'<button type="button" class="btn ghost sm" data-act="mycancel" data-id="'+esc(o.id)+'"'+dd+'>'+(S.cc===key?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить заказ','Buyurtmani bekor qilish'))+'</button>':'');
+  // картинки товаров есть только у открытого сейчас дистрибьютора
+  const first=od===S.did?(o.items||[]).map(i=>S.prod.items.find(p=>p.id===i.id)).find(p=>p&&p.pv):null;
   const del=o.mode==='delivery';
   return '<article class="ord'+(m==='seller'&&o.status==='new'?' is-new':'')+'"><div class="th">'+(first?'<img src="'+imgUrl(first)+'" alt="" loading="lazy">':'<span class="ph" aria-hidden="true">📦</span>')+'</div><div class="ob">'
     +'<div class="oh"><span class="oid">'+esc(o.id)+'</span>'+pill(o)+'</div>'
+    +(m==='mine'&&o.shopName?'<div class="dtag">'+esc(o.shopName)+'</div>':'')
     +'<div class="when">'+esc(fmtWhen(o.pickupAt))+'</div>'
-    +'<div class="spec">'+(del?L('Доставка: ','Yetkazib berish: ')+esc(o.address||''):L('Самовывоз','Olib ketish'))+'</div>'
+    +'<div class="spec">'+(del?L('Доставка: ','Yetkazib berish: ')+esc((o.region&&regionName(o.region)?regionName(o.region)+', ':'')+(o.address||'')):L('Самовывоз','Olib ketish'))+'</div>'
     +(o.items||[]).map(it=>'<div class="pl">'+itemRow(it)+'</div>').join('')
     +discRow(o,'pl')
     +(o.fee>0?'<div class="pl"><span>'+L('Стоимость доставки','Yetkazib berish narxi')+'</span><span>'+money(o.fee)+'</span></div>':'')
@@ -918,7 +1059,7 @@ function renderMine(){
   else if(!S.myOrders.length)h+='<div class="empty"><b>'+L('Пока нет заказов','Hozircha buyurtma yoʻq')+'</b>'+L('Выберите товары в каталоге, и заказ появится здесь со статусом.','Katalogdan mahsulot tanlang, buyurtma shu yerda holati bilan koʻrinadi.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="nav" data-v="shop">'+L('Открыть каталог','Katalogni ochish')+'</button></div>';
   else{
     const list=S.myOrders.slice().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
-    h+='<p class="lead">'+L('Статус обновляется, когда продавец принимает и собирает заказ.','Sotuvchi buyurtmani qabul qilib yigʻganda holat yangilanadi.')+'</p><div class="ordlist">'+list.map(o=>orderCard(o,'mine')).join('')+'</div>';
+    h+='<p class="lead">'+L('Заказы у всех дистрибьюторов. Статус обновляется, когда продавец принимает и собирает заказ.','Barcha distribyutorlardagi buyurtmalar. Sotuvchi buyurtmani qabul qilib yigʻganda holat yangilanadi.')+'</p><div class="ordlist">'+list.map(o=>orderCard(o,'mine')).join('')+'</div>';
   }
   view.innerHTML=h+'</div>';
 }
@@ -927,6 +1068,7 @@ function renderMine(){
 function renderProfile(){
   let h='<div class="wrap page"><h1>'+L('Мой профиль','Mening profilim')+'</h1>';
   if(!S.ready)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else if(!S.did)h+='<div class="empty"><b>'+L('Выберите дистрибьютора','Distribyutorni tanlang')+'</b>'+L('Профиль хранится у каждого дистрибьютора отдельно.','Profil har bir distribyutorda alohida saqlanadi.')+'</div>';
   else if(!S.auth)h+='<div class="empty"><b>'+L('Откройте через бота','Bot orqali oching')+'</b>'+L('Профиль доступен, если открыть приложение из бота в Telegram.','Profil ilovani Telegramdagi botdan ochganda mavjud.')+'</div>';
   else{
     const p=S.profile||{name:'',phone:'',org:'',addrs:[]};
@@ -982,7 +1124,10 @@ async function saveProfile(){
 /* ---------- seller ---------- */
 function renderSeller(){
   if(!S.admin){view.innerHTML='<div class="wrap page"><div class="empty"><b>'+L('Раздел для продавца','Sotuvchi boʻlimi')+'</b>'+L('Откройте приложение с правами редактора.','Ilovani muharrir huquqi bilan oching.')+'</div></div>';return}
-  view.innerHTML='<div class="wrap page"><h1>'+L('Панель продавца','Sotuvchi paneli')+'</h1><div class="tabs" role="tablist" id="stabs"></div><div id="sbody"></div></div>';
+  view.innerHTML='<div class="wrap page">'+backHTML()+'<div class="hrow"><div><div class="eyebrow">'+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</div><h1>'+L('Панель продавца','Sotuvchi paneli')+'</h1></div>'
+    +(isOwner()?'<button type="button" class="btn ghost sm" data-act="owner">'+L('Дистрибьюторы','Distribyutorlar')+'</button>':'')+'</div>'
+    +(S.off?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(L('Владелец площадки скрыл ваш каталог: клиенты его не видят и не могут заказать.','Platforma egasi katalogingizni yashirgan: mijozlar uni koʻrmaydi va buyurtma bera olmaydi.'))+'</div>':'')
+    +'<div class="tabs" role="tablist" id="stabs"></div><div id="sbody"></div></div>';
   paintTabs();
   paintSeller();
 }
@@ -1473,6 +1618,15 @@ function buyHTML(r){
   }).join('')+'</div></div>';
   return h;
 }
+/* Комиссия площадки в отчётах дистрибьютора: сколько он должен площадке за этот и прошлый месяц (видна, если процент больше нуля) */
+function commHTML(r){
+  const c=r.comm;
+  if(!c||!(c.pct>0||c.cur.cm>0||c.prev.cm>0))return '';
+  const row=(lab,x)=>'<div class="r"><span>'+esc(lab+' ('+mFull(x.m)+')')+'<small class="sub">'+esc(ordTxt(x.n)+' · '+L('товаров на ','mahsulotlar: ')+money(x.base))+'</small></span><span>'+esc(money(x.cm))+'</span></div>';
+  return '<div class="card"><h3>'+L('Комиссия площадки','Platforma komissiyasi')+'</h3><div class="unit">'
+    +L('Площадка берёт '+fmtPct(c.pct)+'% от суммы товаров (после скидки, без доставки) по выданным заказам. Это сумма, которую вы платите площадке за месяц.','Platforma topshirilgan buyurtmalarda mahsulotlar summasidan (chegirmadan keyin, yetkazib berishsiz) '+fmtPct(c.pct)+'% oladi. Bu siz platformaga oylik toʻlaydigan summa.')
+    +'</div><div class="sum">'+row(L('Этот месяц','Shu oy'),c.cur)+row(L('Прошлый месяц','Oʻtgan oy'),c.prev)+'</div></div>';
+}
 function repHTML(){
   const R=S.rep,r=R.data;
   let h='<div class="filters">'+RP_DAYS.map(d=>'<button type="button" class="chip" data-act="rdays" data-v="'+d+'" aria-pressed="'+(R.days===d)+'">'+esc(rpRange(d))+'</button>').join('')+'</div>';
@@ -1480,6 +1634,7 @@ function repHTML(){
     if(R.err)return h+'<div class="empty"><b>'+L('Не удалось загрузить отчёт','Hisobotni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение.','Ulanishni tekshiring.')+'<div style="margin-top:10px"><button type="button" class="btn sm" data-act="rretry">'+L('Повторить','Qayta urinish')+'</button></div></div>';
     return h+'<div class="empty"><b>'+L('Считаем отчёт','Hisobot tayyorlanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   }
+  h+=commHTML(r);
   h+='<div class="xtools">'+xbtn('report')+'</div>'
     +'<p class="rnote" style="margin:0 0 4px">'+L('Период: '+fDay(r.from)+' — '+fDay(r.to)+'. В отчёт попадают заказы со статусом «Выдан» или «Доставлен», по дню завершения.','Davr: '+fDay(r.from)+' — '+fDay(r.to)+'. Hisobotga «Topshirildi» yoki «Yetkazildi» holatidagi buyurtmalar kiradi, yakunlangan kun boʻyicha.')+'</p>';
   if(r.since>r.from)h+='<p class="rnote">'+L('Отчёт ведётся с '+fDay(r.since)+', раньше данных нет.','Hisobot '+fDay(r.since)+' dan yuritiladi, undan oldin maʼlumot yoʻq.')+'</p>';
@@ -1692,11 +1847,14 @@ async function shrinkPhoto(file){
   }finally{URL.revokeObjectURL(url)}
 }
 async function apiBin(method,path,blob,ctype){
+  const ep=S.epoch;
+  if(!S.did)return {ok:false,status:0,data:null,stale:true};
   try{
-    const h={'content-type':ctype||'image/jpeg'};
+    const h={'content-type':ctype||'image/jpeg','x-shop':S.did};
     if(S.initData)h['x-init-data']=S.initData;
     const r=await fetch(path,{method,headers:h,body:blob,cache:'no-store'});
     let data=null;try{data=await r.json()}catch(e){}
+    if(S.epoch!==ep)return {ok:false,status:0,data:null,stale:true};
     return {ok:r.ok,status:r.status,data};
   }catch(e){return {ok:false,status:0,data:null}}
 }
@@ -1750,6 +1908,23 @@ function syncDisc(){
     :rows.some(r=>Math.round(r.pct)>50)?L('Скидка не больше 50%.','Chegirma 50% dan oshmasligi kerak.'):'';
   queueSave();
 }
+function sellLinkHTML(){
+  const l=sellLink();
+  if(!l)return '';
+  return '<div class="card"><h3>'+L('Ссылка для клиентов','Mijozlar uchun havola')+'</h3><div class="unit">'+L('Отправьте её клиентам: она сразу открывает ваш каталог в боте.','Uni mijozlarga yuboring: u botda darhol katalogingizni ochadi.')+'</div>'
+    +'<div class="mono small">'+esc(l)+'</div><div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="copy" data-v="'+esc(l)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Копировать ссылку','Havolani nusxalash')+'</button></div></div>';
+}
+/* Куда дистрибьютор доставляет и где его склад. Самовывоз доступен всем, ограничивается только доставка. */
+function regionsEditHTML(){
+  const s=S.cfg.shop,z=cleanRegions(s.regions),only=S.regOnly===null?z.length>0:S.regOnly;
+  return '<div class="full"><div class="lab">'+L('Куда вы доставляете','Qayerga yetkazib berasiz')+'</div>'
+    +'<label class="chk"><input type="checkbox" id="s-regonly" data-s="regonly"'+(only?' checked':'')+'> '+L('Доставляю только в отмеченные регионы','Faqat belgilangan hududlarga yetkazaman')+'</label>'
+    +'<div class="regs" id="regbox"'+(only?'':' hidden')+'>'+REGIONS.map(r=>'<label class="chk"><input type="checkbox" data-sreg="'+r.id+'"'+(z.includes(r.id)?' checked':'')+'> '+esc(regionName(r.id))+'</label>').join('')+'</div>'
+    +'<div class="note" style="margin-top:8px">'+L('Магазин из неотмеченного региона не сможет заказать доставку, но самовывоз ему доступен. Если не отметить ни одного региона, доставка будет по всей стране.','Belgilanmagan hududdagi doʻkon yetkazib berishni tanlay olmaydi, lekin olib ketish unga ochiq. Birorta hudud belgilanmasa, yetkazib berish butun mamlakat boʻylab boʻladi.')+'</div>'
+    +'<div style="margin-top:12px"><label class="lab" for="s-home">'+L('Регион вашего склада (где самовывоз)','Omboringiz hududi (olib ketish joyi)')+'</label><select id="s-home" data-s="home"><option value="">'+L('Не указывать','Koʻrsatilmasin')+'</option>'
+    +REGIONS.map(r=>'<option value="'+r.id+'"'+(s.home===r.id?' selected':'')+'>'+esc(regionName(r.id))+'</option>').join('')+'</select>'
+    +'<div class="unit">'+L('Магазины этого региона увидят вас в списке первыми, даже если вы туда не доставляете.','Shu hududdagi doʻkonlar sizni roʻyxatda birinchi koʻradi, hatto yetkazib bermasangiz ham.')+'</div></div></div>';
+}
 function settingsHTML(){
   const s=S.cfg.shop;
   const num=(id,lab,k,min,max)=>'<div><label class="lab" for="s-'+id+'">'+lab+'</label><input type="number" id="s-'+id+'" inputmode="numeric" min="'+min+'" max="'+max+'" data-s="'+k+'" value="'+esc(s[k])+'"></div>';
@@ -1767,10 +1942,12 @@ function settingsHTML(){
     +num('dfee',L('Стоимость доставки, сум (0 — бесплатно)','Yetkazib berish narxi, soʻm (0 — bepul)'),'deliveryFee',0,1000000000)
     +num('dfree',L('Доставка бесплатна от суммы, сум (0 — нет порога)','Yetkazib berish bepul boʻladigan summa, soʻm (0 — chegarasiz)'),'freeDeliveryFrom',0,1000000000)
     +'<div class="full"><div class="note">'+L('Минимальная сумма считается по товарам и действует и на самовывоз, и на доставку. Стоимость доставки добавляется к заказу только при доставке; если указан порог, при сумме товаров от него доставка бесплатна.','Minimal summa mahsulotlar boʻyicha hisoblanadi va olib ketishga ham, yetkazib berishga ham taalluqli. Yetkazib berish narxi faqat yetkazishda qoʻshiladi; chegara koʻrsatilsa, mahsulotlar shu summadan oshganda yetkazish bepul.')+'</div></div>'
+    +regionsEditHTML()
     +discEditHTML()
     +num('from',L('Время работы с, часов','Ish vaqti: dan, soat'),'openFrom',0,22)
     +num('to',L('Время работы до, часов','Ish vaqti: gacha, soat'),'openTo',1,23)
     +'</div></div>'
+    +sellLinkHTML()
     +'<div class="card"><h3>'+L('Резервная копия','Zaxira nusxasi')+'</h3><div class="unit">'+L('Один файл со всем: настройки, каталог с фото, остатки, заказы и клиенты. Он придёт вам в чат с ботом. Храните его в надёжном месте: в нём телефоны и адреса клиентов. Токен бота и код продавца в файл не попадают.','Hammasi bitta faylda: sozlamalar, rasmli katalog, qoldiqlar, buyurtmalar va mijozlar. U botdagi chatingizga keladi. Uni ishonchli joyda saqlang: unda mijozlarning telefon va manzillari bor. Bot tokeni va sotuvchi kodi faylga kirmaydi.')+'</div>'+xbtn('backup')+'</div>';
 }
 function paintSave(){
@@ -1793,11 +1970,12 @@ function queueSave(kind){
 async function doSave(){
   if(S.saving){S.again=true;return}
   S.saving=true;
+  const ep=S.epoch;
   do{
     S.again=false;
     const jobs=[];
-    if(S.dirtyC){S.dirtyC=false;jobs.push(api('PUT','/api/admin/config',{cfg:clone(S.cfg)}).then(r=>{if(!r.ok)S.dirtyC=true;return r.ok}))}
-    if(S.dirtyP){S.dirtyP=false;jobs.push(api('PUT','/api/admin/products',{prod:clone(S.prod)}).then(r=>{if(!r.ok)S.dirtyP=true;return r.ok}))}
+    if(S.dirtyC){S.dirtyC=false;jobs.push(api('PUT','/api/admin/config',{cfg:clone(S.cfg)}).then(r=>{if(!r.ok&&S.epoch===ep)S.dirtyC=true;return r.ok}))}
+    if(S.dirtyP){S.dirtyP=false;jobs.push(api('PUT','/api/admin/products',{prod:clone(S.prod)}).then(r=>{if(!r.ok&&S.epoch===ep)S.dirtyP=true;return r.ok}))}
     const res=await Promise.all(jobs);
     S.saveState=res.every(Boolean)?'saved':'error';
   }while(S.again&&S.saveState!=='error');
@@ -1811,11 +1989,12 @@ async function flushSave(){
   while(S.saving)await waitMs(80);
   if(S.dirtyC||S.dirtyP)await doSave();
 }
-function applyOrder(o,stats){
+function applyOrder(o,stats,did){
   if(!o)return;
-  const upd=list=>list.map(x=>x.id===o.id?Object.assign({},x,o):x);
-  S.allOrders=upd(S.allOrders);S.myOrders=upd(S.myOrders);
-  if(stats)S.stats=stats;
+  did=did||S.did;
+  const upd=(list,hub)=>list.map(x=>x.id===o.id&&(!hub||(x.did||S.did)===did)?Object.assign({},x,o):x);
+  if(did===S.did){S.allOrders=upd(S.allOrders,false);if(stats)S.stats=stats}
+  S.myOrders=upd(S.myOrders,true);
   renderNav();
   if(S.view==='seller'&&S.sellerTab==='orders')paintSeller();
   else if(S.view==='mine')renderMine();
@@ -1830,10 +2009,16 @@ async function setStatus(id,to){
   applyOrder(r.data.order,r.data.stats);
   loadStock();   // выдача списывает товар, отмена возвращает
 }
-/* «Повторить заказ»: кладёт в корзину всё из прошлого заказа, что сейчас есть в продаже (по сегодняшним ценам и остаткам). */
-function repeatOrder(id){
-  const o=S.myOrders.find(x=>x.id===id);
+/* «Повторить заказ»: открывает дистрибьютора этого заказа и кладёт в корзину всё, что сейчас есть в продаже (по сегодняшним ценам и остаткам). */
+async function repeatOrder(id,d){
+  const od=d||S.did;
+  const o=S.myOrders.find(x=>x.id===id&&(x.did||S.did)===od);
   if(!o)return;
+  if(od!==S.did&&!(await openShop(od)))return;
+  doRepeat(o);
+}
+function doRepeat(o){
+  if(S.otherCart){askOtherCart(()=>doRepeat(o));return}
   let added=0,cut=0;const skipped=[];
   (o.items||[]).forEach(it=>{
     const p=S.prod.items.find(x=>x.id===it.id),qty=Number(it.qty)||0;
@@ -1845,37 +2030,334 @@ function repeatOrder(id){
     if(got>cur){S.cart[p.id]=got;added++}
   });
   saveCart();
-  if(!added){toast(L('Этих товаров сейчас нет в наличии','Bu mahsulotlar hozir mavjud emas'));return}
+  if(!added){toast(L('Этих товаров сейчас нет в наличии','Bu mahsulotlar hozir mavjud emas'));go('shop');return}
   S.shopPlaced=null;S.shopStep='cart';
   go('shop');
-  toast(L('Товары из заказа '+id+' добавлены в корзину. Проверьте количество и цены.','Buyurtma '+id+' mahsulotlari savatga qoʻshildi. Miqdor va narxlarni tekshiring.')
+  toast(L('Товары из заказа '+o.id+' добавлены в корзину. Проверьте количество и цены.','Buyurtma '+o.id+' mahsulotlari savatga qoʻshildi. Miqdor va narxlarni tekshiring.')
     +(skipped.length?L(' Нет в наличии: ',' Mavjud emas: ')+skipped.slice(0,3).join(', ')+(skipped.length>3?'…':'')+'.':'')
     +(cut?L(' Количество уменьшено по остатку.',' Miqdor qoldiqqa qarab kamaytirildi.'):''));
 }
-async function cancelMine(id){
-  const r=await api('POST','/api/cancel',{id});
+async function cancelMine(id,d){
+  const od=d||S.did;
+  const r=await api('POST','/api/cancel',{id},od);
   if(!r.ok){
     toast(L('Не удалось отменить: продавец уже принял заказ. Напишите ему.','Bekor qilib boʻlmadi: sotuvchi buyurtmani qabul qilgan. Unga yozing.'));
-    if(r.data&&r.data.order)applyOrder(r.data.order);
+    if(r.data&&r.data.order)applyOrder(r.data.order,undefined,od);
     return;
   }
-  applyOrder(r.data.order);
+  applyOrder(r.data.order,undefined,od);
 }
 
 /* ---------- views ---------- */
 function render(){
   renderNav();
-  if(S.view==='shop')renderShop();
+  if(S.view==='shops')renderShops();
+  else if(S.view==='owner')renderOwner();
+  else if(S.view==='shop')renderShop();
   else if(S.view==='mine')renderMine();
   else if(S.view==='profile')renderProfile();
   else renderSeller();
 }
 function go(v){
+  // каталог, профиль и панель продавца есть только внутри дистрибьютора
+  if(!S.did&&(v==='shop'||v==='profile'||v==='seller'))v='shops';
+  if(v==='owner'&&!isOwner())v='shops';
   S.view=v;S.cc=null;
   render();window.scrollTo(0,0);
   if(v==='mine')loadMine();
   if(v==='shop')loadCfg();
   if(v==='seller')loadAdmin();
+  if(v==='shops')loadHub();
+  if(v==='owner')loadOwner();
+}
+/* ---------- дистрибьюторы: список, переход, раздел владельца ---------- */
+/* Региональный фильтр работает, только если кто-то из дистрибьюторов уже отметил регионы или склад */
+const regionsInUse=()=>S.hub.shops.some(r=>hasZone(r.regions)||r.home);
+function shopCardHTML(r){
+  const meta=[],reg=S.region&&regionsInUse()?S.region:'';
+  if(r.items)meta.push(L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'));
+  if(!r.delivery)meta.push(L('только самовывоз','faqat olib ketish'));
+  else if(hasZone(r.regions)){
+    const n=cleanRegions(r.regions).length;
+    meta.push(reg?(deliversTo(r,reg)?L('доставка к вам','sizga yetkazib beradi'):L('к вам не доставляет, самовывоз','sizga yetkazmaydi, olib ketish')):L('доставка в '+n+' рег.','yetkazib berish: '+n+' ta hudud'));
+  }
+  else meta.push(L('есть доставка','yetkazib berish bor'));
+  if(r.home&&regionName(r.home))meta.push(L('склад: ','ombor: ')+regionName(r.home));
+  if(r.minOrder>0)meta.push(L('мин. заказ ','min. buyurtma ')+money(r.minOrder));
+  return '<article class="dcard"><h2>'+esc(r.name)+'</h2><div class="dmeta">'+esc(meta.join(' · '))+'</div>'
+    +((r.cats||[]).length?'<div class="dcats">'+r.cats.map(c=>'<span>'+esc(nm(c))+'</span>').join('')+'</div>':'')
+    +'<button type="button" class="btn" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button></article>';
+}
+/* что лежит в корзине сейчас: у открытого дистрибьютора или у другого */
+function pendingCart(){
+  if(S.otherCart)return {did:S.otherCart.did,name:otherCartName(),n:otherCartCount()};
+  const n=Object.keys(S.cart).length;
+  return n&&S.did?{did:S.did,name:S.cfg.shop.name||shopNameOf(S.did),n}:null;
+}
+/* Выбор региона магазина */
+function regionBarHTML(){
+  return '<div class="card regbar"><label class="lab" for="reg-sel">'+L('Ваш регион','Sizning hududingiz')+'</label><select id="reg-sel" data-reg="1"><option value="">'+L('Выберите регион','Hududni tanlang')+'</option>'
+    +REGIONS.map(r=>'<option value="'+r.id+'"'+(r.id===S.region?' selected':'')+'>'+esc(regionName(r.id))+'</option>').join('')+'</select>'
+    +'<div class="unit">'+(S.region?L('Сначала показываем тех, кто доставляет к вам или находится в вашем регионе.','Avval sizga yetkazib beradigan yoki hududingizdagi distribyutorlar koʻrsatiladi.'):L('Выберите регион, и мы покажем тех, кто доставляет к вам.','Hududni tanlang, sizga yetkazib beradiganlarni koʻrsatamiz.'))+'</div></div>';
+}
+/* Список: сначала те, кто доставляет в регион магазина или находится в нём; остальные (у них можно заказать с самовывозом) спрятаны за кнопкой */
+function shopsListHTML(){
+  const all=S.hub.shops;
+  if(!all.length)return '<div class="empty"><b>'+L('Пока нет дистрибьюторов с товарами','Hozircha mahsulotli distribyutorlar yoʻq')+'</b>'+L('Загляните позже.','Keyinroq qaytib keling.')+'</div>';
+  const grid=a=>'<div class="dgrid">'+a.map(shopCardHTML).join('')+'</div>';
+  if(!regionsInUse())return grid(all);
+  const bar=regionBarHTML();
+  if(!S.region)return bar+grid(all);
+  const near=all.filter(r=>servesRegion(r,S.region)),far=all.filter(r=>!servesRegion(r,S.region));
+  if(!far.length)return bar+grid(near);
+  if(!near.length)return bar+'<div class="note warnnote" role="status" style="margin-bottom:12px">'+esc(L('В вашем регионе ('+regionName(S.region)+') пока нет дистрибьюторов с доставкой. Ниже те, у кого можно заказать с самовывозом.','Sizning hududingizda ('+regionName(S.region)+') yetkazib beradigan distribyutorlar hozircha yoʻq. Quyida olib ketish bilan buyurtma berish mumkin boʻlganlar.'))+'</div>'+grid(far);
+  return bar+grid(near)
+    +'<div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn ghost" data-act="showfar" aria-expanded="'+S.showFar+'">'
+    +(S.showFar?L('Скрыть тех, кто не доставляет к вам','Sizga yetkazib bermaydiganlarni yashirish'):L('Показать и тех, кто не доставляет к вам ('+far.length+')','Sizga yetkazib bermaydiganlarni ham koʻrsatish ('+far.length+')'))+'</button></div>'
+    +(S.showFar?'<p class="lead">'+L('Эти дистрибьюторы не доставляют в ваш регион, но у них можно заказать с самовывозом.','Bu distribyutorlar sizning hududingizga yetkazib bermaydi, lekin olib ketish bilan buyurtma berish mumkin.')+'</p>'+grid(far):'');
+}
+function renderShops(){
+  const h=S.hub,me=h.me;
+  let out='<div class="wrap page"><div class="hrow"><div><div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(hubTitle())+'</h1></div>'
+    +(isOwner()?'<button type="button" class="btn ghost sm" data-act="owner">'+L('Управление дистрибьюторами','Distribyutorlarni boshqarish')+'</button>':'')+'</div>';
+  if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
+  else{
+    out+='<p class="lead">'+L('Выберите дистрибьютора, чтобы посмотреть каталог и заказать товары. В одной корзине товары только одного дистрибьютора.','Katalog va buyurtma uchun distribyutorni tanlang. Bitta savatda faqat bitta distribyutorning mahsulotlari boʻladi.')+'</p>';
+    const pc=pendingCart();
+    if(pc)out+='<div class="note" style="margin-bottom:12px">🛒 '+esc(L('В корзине '+pc.n+' поз.'+(pc.name?' · «'+pc.name+'»':''),'Savatda '+pc.n+' ta mahsulot'+(pc.name?' · «'+pc.name+'»':'')))+' <button type="button" class="btn ghost sm" data-act="opencartshop" data-id="'+esc(pc.did)+'">'+L('Открыть корзину','Savatni ochish')+'</button></div>';
+    const sells=me&&me.sells||[];
+    if(sells.length)out+='<div class="row-btns" style="margin-bottom:14px">'+sells.map(x=>'<button type="button" class="btn ghost sm" data-act="sellerof" data-id="'+esc(x.id)+'">'+esc(L('Панель продавца: ','Sotuvchi paneli: ')+x.name)+'</button>').join('')+'</div>';
+    out+=shopsListHTML();
+  }
+  view.innerHTML=out+'</div>';
+}
+async function loadHub(){
+  const r=await api('GET','/api/shops');
+  if(!r.ok||!r.data){
+    if(!S.hub.loaded){S.hub.err=true;if(S.view==='shops')renderShops()}
+    return false;
+  }
+  const d=r.data,h=S.hub;
+  const next={title:d.title||'',shops:Array.isArray(d.shops)?d.shops:[],me:d.me||null};
+  if(d.me){
+    S.auth=true;S.uid=d.me.id;
+    // регион: что выбрано на этом телефоне, то главнее; если здесь пусто, берём с площадки
+    const sr=cleanRegion(d.me.region);
+    if(sr&&!S.region){S.region=sr;saveRegionLocal()}
+    else if(S.region&&sr!==S.region&&!S.regSent){S.regSent=true;api('PUT','/api/hub/region',{region:S.region})}
+  }
+  const same=h.loaded&&JSON.stringify([h.title,h.shops,h.me])===JSON.stringify([next.title,next.shops,next.me]);
+  Object.assign(h,next,{loaded:true,err:false});
+  if(same)return true;
+  renderNav();
+  if(S.view==='shops')renderShops();
+  return true;
+}
+/* Открывает каталог дистрибьютора: всё, что относилось к прежнему, сбрасывается. Возвращает true, если получилось. */
+async function openShop(did){
+  if(!validDid(did)||S.switching)return false;
+  if(S.did===did)return true;
+  S.switching=true;
+  try{
+    if(S.did&&(S.dirty||S.saving))await flushSave();
+    view.innerHTML='<div class="wrap page"><div class="empty"><b>'+L('Загружаем каталог','Katalog yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div></div>';
+    let r=S.initData?await api('GET','/api/bootstrap',undefined,did):null;
+    if(!r||r.status===401)r=await api('GET','/api/config',undefined,did);
+    if(!r.ok||!r.data){
+      toast(L('Не удалось открыть каталог. Проверьте соединение.','Katalogni ochib boʻlmadi. Ulanishni tekshiring.'));
+      render();
+      return false;
+    }
+    const d=r.data;
+    S.epoch++;
+    resetShopState();
+    S.did=did;
+    S.cfg=mergeCfg(d.cfg);S.prod=normProd(d.prod);S.off=!!d.off;
+    if(d.me){
+      S.admin=!!d.me.admin;S.profile=d.me.profile||null;S.blocked=!!d.me.blocked;
+      S.fav=Array.isArray(d.me.fav)?d.me.fav:[];
+    }
+    loadCart();pruneCart();normalizeMode();applyProfile();
+    return true;
+  }finally{S.switching=false}
+}
+async function enterShop(did,v,cart){
+  if(!(await openShop(did))){if(!S.did)S.view='shops';render();return false}
+  S.shopPlaced=null;S.shopStep=cart&&cartCount()>0?'cart':'list';
+  go(v==='seller'&&S.admin?'seller':'shop');
+  return true;
+}
+const ownErr=e=>({
+  bad_name:L('Название — от 2 символов','Nomi kamida 2 belgi boʻlsin'),
+  too_many:L('Больше дистрибьюторов добавить нельзя','Boshqa distribyutor qoʻshib boʻlmaydi'),
+  bad_pct:L('Процент — число от 0 до 50','Foiz — 0 dan 50 gacha son'),
+  weak_code:L('Код должен быть не короче 12 символов','Kod kamida 12 belgidan iborat boʻlsin'),
+  code_taken:L('Такой код уже занят, придумайте другой','Bu kod band, boshqasini oʻylab toping'),
+  forbidden:L('Раздел только для владельца','Boʻlim faqat egasi uchun')
+}[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
+/* перерисовывает раздел владельца, но не сбивает того, кто сейчас печатает в поле */
+function ownRefresh(){
+  if(S.view!=='owner')return;
+  const ae=document.activeElement;
+  if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&view.contains(ae))return;
+  renderOwner();
+}
+async function loadOwner(){
+  if(!isOwner())return;
+  loadOwnerStats();
+  const r=await api('GET','/api/hub/admin/shops');
+  const o=S.own;
+  if(!r.ok||!r.data){o.err=true;o.loaded=true;if(S.view==='owner')renderOwner();return}
+  o.shops=r.data.shops||[];o.title=r.data.title||'';o.max=r.data.max||50;o.err=false;o.loaded=true;
+  ownRefresh();
+}
+async function loadOwnerStats(){
+  if(!isOwner())return;
+  const o=S.own,per=o.period;
+  const r=await api('GET','/api/hub/admin/stats?period='+encodeURIComponent(per));
+  if(per!==o.period)return;   // пока грузилось, выбрали другой период
+  if(r.ok&&r.data&&Array.isArray(r.data.rows)){o.stats=r.data;o.serr=false}
+  else o.serr=true;
+  ownRefresh();
+}
+const fmtPct=p=>String(p).replace('.',',');
+/* «Заказы и комиссия»: сводка по всем дистрибьюторам за выбранный период. Составы заказов и клиенты здесь не показываются. */
+function ownStatsHTML(){
+  const o=S.own,st=o.stats;
+  const per=[['7d',L('7 дней','7 kun')],['30d',L('30 дней','30 kun')],['month',L('Этот месяц','Shu oy')],['prev',L('Прошлый месяц','Oʻtgan oy')]];
+  let h='<div class="card"><h3>'+L('Заказы и комиссия','Buyurtmalar va komissiya')+'</h3>'
+    +'<div class="filters" style="margin:8px 0">'+per.map(p=>'<button type="button" class="chip" data-act="ownper" data-v="'+p[0]+'" aria-pressed="'+(o.period===p[0])+'">'+esc(p[1])+'</button>').join('')+'</div>';
+  if(!st||st.period!==o.period){
+    h+=o.serr?'<div class="note">'+L('Не удалось загрузить сводку. Проверьте соединение.','Hisobotni yuklab boʻlmadi. Ulanishni tekshiring.')+' <button type="button" class="btn ghost sm" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>'
+      :'<div class="unit">'+L('Считаем…','Hisoblanmoqda…')+'</div>';
+    return h+'</div>';
+  }
+  const t=st.total;
+  h+='<div class="unit">'+esc(fDay(st.from)+' — '+fDay(st.to))+'</div><div class="sum">'
+    +'<div class="r"><span>'+L('Выдано заказов','Topshirilgan buyurtmalar')+'</span><span>'+num(t.n)+'</span></div>'
+    +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(t.base))+'</span></div>'
+    +(t.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(t.active)+'</span></div>':'')
+    +'<div class="r t"><span>'+L('Комиссия к получению','Olinadigan komissiya')+'</span><span>'+esc(money(t.cm))+'</span></div></div>'
+    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого дистрибьютора свой, его можно менять ниже. Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: клиенты платят дистрибьютору при получении, а комиссию вы получаете с него сами.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir distribyutorning foizi alohida, uni quyida oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: mijozlar distribyutorga olganda toʻlaydi, komissiyani esa siz undan oʻzingiz olasiz.')+'</div></div>';
+  return h;
+}
+async function ownPct(id){
+  const o=S.own;if(o.busy)return;
+  const row=o.stats&&o.stats.rows.find(x=>x.id===id);
+  const raw=String(o.pcts[id]!==undefined?o.pcts[id]:(row?row.pct:'')).trim().replace(',','.');
+  const v=Number(raw);
+  if(raw===''||!isFinite(v)||v<0||v>50){toast(ownErr('bad_pct'));return}
+  o.busy='pct';renderOwner();
+  const r=await api('PUT','/api/hub/admin/shops/'+encodeURIComponent(id),{pct:v});
+  o.busy='';
+  if(r.ok&&r.data&&typeof r.data.pct==='number'){
+    delete o.pcts[id];
+    toast(L('Процент сохранён: '+fmtPct(r.data.pct)+'%. Он действует на заказы, которые выдаются с этого момента.','Foiz saqlandi: '+fmtPct(r.data.pct)+'%. U shu paytdan topshiriladigan buyurtmalarga amal qiladi.'));
+  }else toast(ownErr(r.data&&r.data.error));
+  renderOwner();
+  loadOwnerStats();
+}
+function renderOwner(){
+  const o=S.own;
+  let h='<div class="wrap page"><button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все дистрибьюторы','Barcha distribyutorlar')+'</button><h1>'+L('Дистрибьюторы','Distribyutorlar')+'</h1>';
+  if(!o.loaded)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
+  else{
+    h+='<p class="lead">'+L('Каждому дистрибьютору вы даёте личный код. Он пишет боту «/admin КОД», становится продавцом и сам добавляет товары в приложении.','Har bir distribyutorga shaxsiy kod berasiz. U botga «/admin KOD» deb yozadi, sotuvchi boʻladi va mahsulotlarni ilovada oʻzi qoʻshadi.')+'</p>';
+    if(o.made){
+      const m=o.made;
+      h+='<div class="card codebox"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Дистрибьютор добавлен: ','Distribyutor qoʻshildi: ')+m.name)+'</h3>'
+        +'<div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его дистрибьютору.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni distribyutorga yuboring.')+'</div>'
+        +'<div class="mono">'+esc(m.code)+'</div>'
+        +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="'+esc(L('Код: ','Kod: '))+'">'+L('Копировать код','Kodni nusxalash')+'</button>'
+        +'<button type="button" class="btn ghost" data-act="copy" data-v="/admin '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/admin КОД»','«/admin KOD» nusxalash')+'</button></div>'
+        +'<div class="note">'+L('Дистрибьютор открывает бота, отправляет «/admin КОД» (бот сразу удалит сообщение с кодом) и нажимает «Открыть приложение». Заказы будут приходить ему в бот.','Distribyutor botni ochib, «/admin KOD» yuboradi (bot kod yozilgan xabarni darhol oʻchiradi) va «Ilovani ochish» tugmasini bosadi. Buyurtmalar botga keladi.')+'</div>'
+        +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="ownmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
+    }
+    h+=ownStatsHTML();
+    const full=o.shops.length>=o.max;
+    h+='<div class="card"><h3>'+L('Добавить дистрибьютора','Distribyutor qoʻshish')+'</h3><div class="form">'
+      +'<div><label class="lab" for="o-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="o-name" data-own="fname" maxlength="60" value="'+esc(o.fname)+'" autocomplete="off"></div>'
+      +'<div><label class="lab" for="o-code">'+L('Свой код (от 12 символов) или пусто — придумаем','Oʻz kodingiz (12 belgidan) yoki boʻsh — oʻzimiz yaratamiz')+'</label><input type="text" id="o-code" data-own="fcode" maxlength="64" value="'+esc(o.fcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false"></div>'
+      +'</div><div class="err" id="o-err" role="alert">'+esc(o.err2||'')+'</div>'
+      +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="ownadd" data-act="ownadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='add'?L('Добавляем…','Qoʻshilmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
+      +(full?'<div class="note" style="margin-top:10px">'+esc(ownErr('too_many'))+'</div>':'')+'</div>';
+    h+=o.shops.map(r=>{
+      const sure=o.rc===r.id;
+      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('продавцов: '+r.sellers,'sotuvchilar: '+r.sellers),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
+      return '<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></div>'
+        +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div>'+ownShopStatsHTML(r.id)+'<div class="row-btns">'
+        +'<button type="button" class="btn ghost sm" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button>'
+        +'<button type="button" class="btn ghost sm" data-act="owntoggle" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(r.on?L('Скрыть и закрыть заказы','Yashirish va buyurtmani yopish'):L('Вернуть в список','Roʻyxatga qaytarish'))+'</button>'
+        +'<button type="button" class="btn ghost sm" data-act="ownreset" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(sure?L('Точно? Прежние продавцы потеряют доступ','Aniqmi? Avvalgi sotuvchilar kirolmaydi'):L('Новый код','Yangi kod'))+'</button>'
+        +(r.link?'<button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(r.link)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Ссылка для клиентов','Mijozlar uchun havola')+'</button>':'')
+        +'</div></div>';
+    }).join('');
+    const tv=o.ftitle===null?o.title:o.ftitle;
+    h+='<div class="card"><h3>'+L('Название площадки','Platforma nomi')+'</h3><div class="unit">'+L('Показывается наверху списка дистрибьюторов.','Distribyutorlar roʻyxati tepasida koʻrsatiladi.')+'</div><div class="form"><div class="full"><input type="text" id="o-title" data-own="ftitle" maxlength="60" value="'+esc(tv)+'" aria-label="'+esc(L('Название площадки','Platforma nomi'))+'"></div></div>'
+      +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="owntitle"'+(o.busy?' disabled':'')+'>'+L('Сохранить название','Nomni saqlash')+'</button></div></div>';
+  }
+  view.innerHTML=h+'</div>';
+}
+/* у каждого дистрибьютора: выданные заказы за период, комиссия и поле процента */
+function ownShopStatsHTML(id){
+  const o=S.own,st=o.stats,x=st&&st.period===o.period?st.rows.find(y=>y.id===id):null;
+  if(!x)return '';
+  if(x.err)return '<div class="note" style="margin-bottom:12px">'+L('Нет данных по этому дистрибьютору.','Bu distribyutor boʻyicha maʼlumot yoʻq.')+'</div>';
+  const pv=o.pcts[id]!==undefined?o.pcts[id]:fmtPct(x.pct);
+  return '<div class="sum" style="margin-bottom:6px">'
+    +'<div class="r"><span>'+L('Выдано заказов','Topshirilgan buyurtmalar')+'</span><span>'+num(x.n)+'</span></div>'
+    +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(x.base))+'</span></div>'
+    +(x.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(x.active)+'</span></div>':'')
+    +'<div class="r t"><span>'+L('Комиссия ','Komissiya ')+esc(fmtPct(x.pct))+'%</span><span>'+esc(money(x.cm))+'</span></div></div>'
+    +'<div class="pctrow"><div><label class="lab" for="pc-'+esc(id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(id)+'" data-opct="'+esc(id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off"></div>'
+    +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>';
+}
+async function ownAdd(){
+  const o=S.own;if(o.busy)return;
+  const name=o.fname.trim(),code=o.fcode.trim();
+  if(name.length<2){o.err2=ownErr('bad_name');renderOwner();return}
+  if(code&&code.length<12){o.err2=ownErr('weak_code');renderOwner();return}
+  o.busy='add';o.err2='';renderOwner();
+  const r=await api('POST','/api/hub/admin/shops',code?{name,code}:{name});
+  o.busy='';
+  if(!r.ok||!r.data){o.err2=ownErr(r.data&&r.data.error);renderOwner();return}
+  o.shops=o.shops.concat([r.data.shop]);
+  o.made={name:r.data.shop.name,code:r.data.code,reset:false};
+  o.fname='';o.fcode='';
+  renderOwner();window.scrollTo(0,0);
+  loadHub();
+}
+async function ownToggle(id){
+  const o=S.own,rec=o.shops.find(x=>x.id===id);if(!rec||o.busy)return;
+  o.busy='tg';renderOwner();
+  const r=await api('PUT','/api/hub/admin/shops/'+encodeURIComponent(id),{on:!rec.on});
+  o.busy='';
+  if(r.ok&&r.data&&r.data.shop)o.shops=o.shops.map(x=>x.id===id?r.data.shop:x);
+  else toast(ownErr(r.data&&r.data.error));
+  renderOwner();
+  loadHub();
+}
+async function ownReset(id){
+  const o=S.own,rec=o.shops.find(x=>x.id===id);if(!rec||o.busy)return;
+  o.busy='rc';o.rc='';renderOwner();
+  const r=await api('POST','/api/hub/admin/shops/'+encodeURIComponent(id)+'/code',{});
+  o.busy='';
+  if(!r.ok||!r.data){toast(ownErr(r.data&&r.data.error));renderOwner();return}
+  o.shops=o.shops.map(x=>x.id===id?r.data.shop:x);
+  o.made={name:rec.name,code:r.data.code,reset:true};
+  renderOwner();window.scrollTo(0,0);
+}
+async function ownTitle(){
+  const o=S.own;if(o.busy)return;
+  const t=(o.ftitle===null?o.title:o.ftitle).trim();
+  o.busy='tt';renderOwner();
+  const r=await api('PUT','/api/hub/admin/title',{title:t});
+  o.busy='';
+  if(r.ok&&r.data){o.title=r.data.title;o.ftitle=null;S.hub.title=r.data.title;renderNav();toast(L('Название сохранено','Nom saqlandi'))}
+  else toast(ownErr(r.data&&r.data.error));
+  renderOwner();
 }
 /* поле количества потеряло фокус: пустое или 0 убирает товар, слишком большое число обрезается */
 function qtyDone(t){
@@ -1899,8 +2381,30 @@ document.addEventListener('click',e=>{
   const a=t.dataset.act;
   if(a==='lang')switchLang();
   else if(a==='nav'){
-    if(t.dataset.v==='shop'&&S.view!=='shop'){S.shopPlaced=null;S.shopStep='list'}
+    if(t.dataset.v==='shop'&&S.did&&S.view!=='shop'){S.shopPlaced=null;S.shopStep='list'}
     go(t.dataset.v);
+  }
+  else if(a==='shops')go('shops');
+  else if(a==='owner')go('owner');
+  else if(a==='hubreload'){S.hub.err=false;renderShops();loadHub()}
+  else if(a==='showfar'){S.showFar=!S.showFar;renderShops()}
+  else if(a==='ownreload'){S.own.loaded=false;S.own.err=false;renderOwner();loadOwner()}
+  else if(a==='openshop')enterShop(t.dataset.id,'shop');
+  else if(a==='opencartshop')enterShop(t.dataset.id,'shop',true);
+  else if(a==='sellerof')enterShop(t.dataset.id,'seller');
+  else if(a==='ownadd')ownAdd();
+  else if(a==='owntoggle')ownToggle(t.dataset.id);
+  else if(a==='owntitle')ownTitle();
+  else if(a==='ownper'){S.own.period=t.dataset.v;renderOwner();loadOwnerStats()}
+  else if(a==='ownpct')ownPct(t.dataset.id);
+  else if(a==='ownmadeclose'){S.own.made=null;renderOwner()}
+  else if(a==='ownreset'){
+    const id=t.dataset.id;
+    if(S.own.rc===id)ownReset(id);
+    else{
+      S.own.rc=id;renderOwner();
+      setTimeout(()=>{if(S.own.rc===id){S.own.rc='';if(S.view==='owner')renderOwner()}},5000);
+    }
   }
   else if(a==='submitorder')submitOrder();
   else if(a==='mode'){
@@ -1913,16 +2417,19 @@ document.addEventListener('click',e=>{
   else if(a==='padd'||a==='pplus'||a==='pminus'){
     const id=t.dataset.id,cur=S.cart[id]||0;
     if(a==='padd'&&!cur&&cartLines().length>=MAX_LINES){toast(L('В корзине не больше '+MAX_LINES+' разных товаров','Savatda '+MAX_LINES+' tadan ortiq turli mahsulot boʻlmaydi'));return}
-    cartSet(id,a==='pminus'?cur-1:cur+1);
-    paintShopCtl(id);
+    const run=()=>{cartSet(id,a==='pminus'?cur-1:cur+1);paintShopCtl(id)};
+    if(a==='padd'&&S.otherCart)askOtherCart(run);else run();
   }
   else if(a==='ppack'||a==='cpack'){
     const id=t.dataset.id,p=S.prod.items.find(x=>x.id===id),size=p?packSize(p,t.dataset.k):0,cur=S.cart[id]||0;
     if(!p||!size)return;
     if(!cur&&cartLines().length>=MAX_LINES){toast(L('В корзине не больше '+MAX_LINES+' разных товаров','Savatda '+MAX_LINES+' tadan ortiq turli mahsulot boʻlmaydi'));return}
-    cartSet(id,cur+size);
-    if(a==='ppack')paintShopCtl(id);
-    else{paintCartLines();paintShopBar();renderNav()}
+    const run=()=>{
+      cartSet(id,cur+size);
+      if(a==='ppack')paintShopCtl(id);
+      else{paintCartLines();paintShopBar();renderNav()}
+    };
+    if(a==='ppack'&&S.otherCart)askOtherCart(run);else run();
   }
   else if(a==='cplus'||a==='cminus'){
     const id=t.dataset.id,cur=S.cart[id]||0;
@@ -1978,8 +2485,9 @@ document.addEventListener('click',e=>{
   else if(a==='phdel')removePhoto(t.dataset.id);
   else if(a==='copy'){
     const v=t.dataset.v||'';
-    const lab=L('Номер: ','Raqam: ')+v;
-    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(v).then(()=>toast(L('Номер скопирован','Raqam nusxalandi')),()=>toast(lab));
+    const ok=t.dataset.ok||L('Номер скопирован','Raqam nusxalandi');
+    const lab=(t.dataset.lab!==undefined?t.dataset.lab:L('Номер: ','Raqam: '))+v;
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(v).then(()=>toast(ok),()=>toast(lab));
     else toast(lab);
   }
   else if(a==='stab'){
@@ -2049,7 +2557,7 @@ document.addEventListener('click',e=>{
   else if(a==='xport')doExport(t.dataset.k,t.dataset.k==='report'?{days:S.rep.days}:undefined);
   else if(a==='xpick'){if(S.pick)doExport('pick',S.pick.body)}
   else if(a==='pfsave')saveProfile();
-  else if(a==='repeat')repeatOrder(t.dataset.id);
+  else if(a==='repeat')repeatOrder(t.dataset.id,t.dataset.d);
   else if(a==='addr'){
     const x=S.profile&&S.profile.addrs[Number(t.dataset.i)];
     if(!x)return;
@@ -2063,15 +2571,15 @@ document.addEventListener('click',e=>{
   else if(a==='status'){setStatus(t.dataset.id,t.dataset.to)}
   else if(a==='contact'){try{if(S.tg&&S.initData&&S.tg.openTelegramLink){e.preventDefault();S.tg.openTelegramLink(t.href)}}catch(err){}}
   else if(a==='scancel'||a==='mycancel'){
-    const id=t.dataset.id;
-    if(S.cc===id){
+    const id=t.dataset.id,d=t.dataset.d||S.did,k=okey(id,d);
+    if(S.cc===k){
       S.cc=null;
       if(a==='scancel')setStatus(id,'cancelled');
-      else cancelMine(id);
+      else cancelMine(id,d);
     }else{
-      S.cc=id;
+      S.cc=k;
       if(S.view==='seller')paintSeller();else renderMine();
-      setTimeout(()=>{if(S.cc===id){S.cc=null;if(S.view==='seller')paintSeller();else if(S.view==='mine')renderMine()}},4000);
+      setTimeout(()=>{if(S.cc===k){S.cc=null;if(S.view==='seller')paintSeller();else if(S.view==='mine')renderMine()}},4000);
     }
   }
 });
@@ -2079,6 +2587,8 @@ document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='q'){S.q=t.value;paintGrid()}
   else if(t.id==='cq'){S.cq=t.value;paintClientList()}
+  else if(t.dataset.opct!==undefined)S.own.pcts[t.dataset.opct]=t.value;
+  else if(t.dataset.own!==undefined){S.own[t.dataset.own]=t.value;if(t.dataset.own!=='ftitle'&&S.own.err2){S.own.err2='';const er=$('#o-err');if(er)er.textContent=''}}
   else if(t.dataset.qty!==undefined){
     /* количество вводят с клавиатуры: пока клиент печатает, обновляем только суммы */
     const id=t.dataset.qty;let v=Math.floor(Number(t.value));
@@ -2112,9 +2622,21 @@ document.addEventListener('input',e=>{
     queueSave('prod');
   }
   else if(t.dataset.sd!==undefined)syncDisc();
+  else if(t.dataset.sreg!==undefined){
+    const set=new Set(cleanRegions(S.cfg.shop.regions));
+    if(t.checked)set.add(t.dataset.sreg);else set.delete(t.dataset.sreg);
+    S.cfg.shop.regions=cleanRegions([...set]);
+    queueSave();
+  }
   else if(t.dataset.s){
     const k=t.dataset.s;
-    if(k==='delivery')S.cfg.shop.delivery=t.checked;
+    if(k==='regonly'){
+      S.regOnly=t.checked;
+      if(!t.checked){S.cfg.shop.regions=[];document.querySelectorAll('[data-sreg]').forEach(x=>{x.checked=false})}
+      const b=$('#regbox');if(b)b.hidden=!t.checked;
+    }
+    else if(k==='home')S.cfg.shop.home=cleanRegion(t.value);
+    else if(k==='delivery')S.cfg.shop.delivery=t.checked;
     else if(['leadHours','deliveryLeadHours','openFrom','openTo','minOrder','deliveryFee','freeDeliveryFrom'].includes(k)){const v=Number(t.value);S.cfg.shop[k]=isFinite(v)&&v>=0?v:0}
     else S.cfg.shop[k]=t.value;
     if(k==='name'){$('#brandName').textContent=t.value||DEFAULT.shop.name;document.title=t.value||DEFAULT.shop.name}
@@ -2134,6 +2656,7 @@ document.addEventListener('change',e=>{
     if(f)uploadPhoto(t.dataset.photo,f);
     try{t.value=''}catch(x){}
   }
+  else if(t&&t.dataset&&t.dataset.reg!==undefined)setRegion(t.value);
   else if(t&&t.dataset&&t.dataset.qty!==undefined)qtyDone(t);
   else if(t&&t.dataset&&t.dataset.sl!==undefined){
     /* порог «мало» у товара, по которому уже ведётся учёт, сохраняется сразу */
@@ -2154,25 +2677,32 @@ document.addEventListener('error',e=>{
 },true);
 
 /* ---------- network ---------- */
-async function api(method,path,body){
+/* Запросы к дистрибьютору идут с его номером в заголовке x-shop (по умолчанию открытый сейчас). Ответ, пришедший уже после перехода к другому дистрибьютору, отбрасывается. */
+const isHubPath=path=>path==='/api/shops'||path.indexOf('/api/hub/')===0;
+async function api(method,path,body,did){
+  const ep=S.epoch,hub=isHubPath(path),d=did||S.did;
+  if(!hub&&!d)return {ok:false,status:0,data:null,stale:true};
   try{
     const h={'content-type':'application/json'};
     if(S.initData)h['x-init-data']=S.initData;
+    if(!hub)h['x-shop']=d;
     const r=await fetch(path,{method,headers:h,body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
     let data=null;try{data=await r.json()}catch(e){}
+    if(!hub&&!did&&S.epoch!==ep)return {ok:false,status:0,data:null,stale:true};
     return {ok:r.ok,status:r.status,data};
   }catch(e){return {ok:false,status:0,data:null}}
 }
+/* «Мои заказы» — заказы клиента у всех дистрибьюторов сразу (каждый с полями did и shopName) */
 async function loadMine(){
   if(!S.auth)return;
-  const r=await api('GET','/api/my-orders');
-  if(!r.ok||!r.data)return;
+  const r=await api('GET','/api/hub/orders');
+  if(!r.ok||!r.data||!Array.isArray(r.data.orders))return;
   if(JSON.stringify(r.data.orders)===JSON.stringify(S.myOrders))return;
   S.myOrders=r.data.orders;renderNav();
   if(S.view==='mine')renderMine();
 }
 async function loadAdmin(){
-  if(!S.admin)return;
+  if(!S.admin||!S.did)return;
   loadStock();
   if(S.sellerTab==='clients')loadClients();
   const r=await api('GET','/api/admin/orders');
@@ -2182,14 +2712,14 @@ async function loadAdmin(){
   if(S.view==='seller'&&S.sellerTab==='orders')paintSeller();
 }
 async function loadCfg(){
-  if(S.dirty||S.saving||!S.ready)return;
+  if(!S.did||S.dirty||S.saving||!S.ready)return;
   const r=await api('GET','/api/config');
   if(!r.ok||!r.data)return;
-  const next=mergeCfg(r.data.cfg),nextP=normProd(r.data.prod);
-  if(JSON.stringify(next)===JSON.stringify(S.cfg)&&JSON.stringify(nextP)===JSON.stringify(S.prod))return;
+  const next=mergeCfg(r.data.cfg),nextP=normProd(r.data.prod),off=!!r.data.off;
+  if(JSON.stringify(next)===JSON.stringify(S.cfg)&&JSON.stringify(nextP)===JSON.stringify(S.prod)&&off===S.off)return;
   const ae=document.activeElement;
   if(S.view==='shop'&&ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))return;
-  S.cfg=next;S.prod=nextP;normalizeMode();
+  S.cfg=next;S.prod=nextP;S.off=off;normalizeMode();
   const pruned=pruneCart();
   renderNav();
   if(S.view==='shop'&&!S.shopPlaced){
@@ -2212,8 +2742,9 @@ function tick(){
   if(document.visibilityState==='hidden'||!S.ready)return;
   tickN++;
   if(S.auth&&S.view==='mine')loadMine();
-  if(S.admin&&(S.view==='seller'||tickN%2===0))loadAdmin();
-  if(tickN%4===0)loadCfg();
+  if(S.view==='shops'&&tickN%2===0)loadHub();
+  if(S.admin&&S.did&&(S.view==='seller'||tickN%2===0))loadAdmin();
+  if(S.did&&tickN%4===0)loadCfg();
 }
 (async function init(){
   const tg=window.Telegram&&window.Telegram.WebApp;
@@ -2225,26 +2756,32 @@ function tick(){
   initLang();applyTheme();
   renderNav();
   view.innerHTML='<div class="wrap page"><div class="empty"><b>'+L('Загружаем каталог','Katalog yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div></div>';
-  if(S.initData){
-    const r=await api('GET','/api/bootstrap');
-    if(r.ok&&r.data){
-      S.auth=true;S.uid=r.data.me.id;S.admin=!!r.data.me.admin;
-      S.cfg=mergeCfg(r.data.cfg);S.prod=normProd(r.data.prod);S.myOrders=r.data.orders||[];
-      S.profile=r.data.me.profile||null;S.blocked=!!r.data.me.blocked;S.fav=Array.isArray(r.data.me.fav)?r.data.me.fav:[];
-    }else S.authErr=(r.data&&r.data.error)||'net';
-  }
-  if(!S.auth){
-    const r=await api('GET','/api/config');
-    if(r.ok&&r.data){S.cfg=mergeCfg(r.data.cfg);S.prod=normProd(r.data.prod)}
-  }
-  loadCart();pruneCart();loadForm();applyProfile();normalizeMode();
+  /* адрес: ?d=<дистрибьютор> открывает его каталог, ?v=mine|seller|owner — нужный раздел */
+  const want=QS.get('d')||'',vw=QS.get('v')||'';
+  loadRegion();
+  await loadHub();
+  if(S.initData&&!S.auth)S.authErr='auth';
+  loadForm();loadCart();
+  const me=S.hub.me;
+  let did=validDid(want)?want:'';
+  if(!did&&!vw&&S.hub.shops.length===1)did=S.hub.shops[0].id;   // дистрибьютор один: список выбирать не из чего
+  if(!did&&!S.hub.loaded&&vw!=='owner')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым дистрибьютором
+  if(!did&&vw==='seller'&&me&&me.sells.length===1)did=me.sells[0].id;
   S.ready=true;
+  let v='shops';
+  if(did&&await openShop(did))v=vw==='seller'&&S.admin?'seller':vw==='mine'?'mine':'shop';
+  else if(vw==='mine')v='mine';
+  else if(vw==='owner'&&isOwner())v='owner';
+  S.view=v;
   render();
-  if(S.admin)loadAdmin();
+  if(v==='owner')loadOwner();
+  if(S.admin&&S.did)loadAdmin();
+  loadMine();
   setInterval(tick,15000);
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState!=='visible')return;
     loadCfg();loadMine();loadAdmin();
+    if(S.view==='shops')loadHub();
   });
 })();
 </script>
