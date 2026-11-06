@@ -59,11 +59,20 @@ globalThis.fetch = async (url, init) => {
 };
 
 function makeWorld(envExtra) {
-  const storage = new MockStorage();
-  const shop = new mod.Shop({ storage }, Object.assign({ BOT_TOKEN: TOKEN, ADMIN_CODE: CODE }, envExtra));
-  const env = { BOT_TOKEN: TOKEN, ADMIN_CODE: CODE, SHOP: { idFromName: () => 'main', get: () => ({ fetch: r => shop.fetch(r) }) } };
+  const env = { BOT_TOKEN: TOKEN, ADMIN_CODE: CODE };
   Object.assign(env, envExtra);
-  return { storage, shop, env };
+  // у каждого дистрибьютора своё хранилище (как отдельные Durable Object), плюс хранилище площадки
+  const shops = new Map();
+  const getShop = name => {
+    if (!shops.has(name)) { const storage = new MockStorage(); shops.set(name, { storage, shop: new mod.Shop({ storage }, env) }); }
+    return shops.get(name);
+  };
+  env.SHOP = { idFromName: n => n, get: id => ({ fetch: r => getShop(id).shop.fetch(r) }) };
+  const hubStorage = new MockStorage();
+  const hub = new mod.Hub({ storage: hubStorage }, env);
+  env.HUB = { idFromName: n => n, get: () => ({ fetch: r => hub.fetch(r) }) };
+  const main = getShop('main');
+  return { storage: main.storage, shop: main.shop, env, hub, hubStorage, shops, getShop };
 }
 let W = makeWorld();
 const HOST = 'https://distro.example.workers.dev';
@@ -918,10 +927,19 @@ await t('перебор кода: после 8 ошибок вход блоки�
   const post = code => call('POST', '/setup', { body: 'code=' + code, headers: { 'content-type': 'application/x-www-form-urlencoded' } }).then(r => r.text());
   for (let i = 0; i < 8; i++) assert.ok((await post('guess' + i)).includes('Неверный код'));
   assert.ok((await post(CODE)).includes('Слишком много'));
+  // то же в боте: ошибки считаются по человеку, 8 подряд закрывают ввод кода на час, и верный код тоже не проходит
+  W = makeWorld();
+  tgLog = [];
+  const bad = (from, n) => send({ update_id: 100 + n, message: { message_id: 100 + n, from, chat: { id: from.id, type: 'private' }, text: '/admin guess' + n } });
+  for (let i = 0; i < 8; i++) await bad(SELLER, i);
   tgLog = [];
   await send({ update_id: 1, message: { message_id: 1, from: SELLER, chat: { id: SELLER.id, type: 'private' }, text: '/admin ' + CODE } });
   assert.ok(lastTg('sendMessage').payload.text.includes('Слишком много'));
   assert.equal((await call('GET', '/api/admin/orders', { init: iS() })).status, 403);
+  // чужие ошибки другого человека не мешают: у него счёт свой
+  tgLog = [];
+  await send({ update_id: 2, message: { message_id: 2, from: ANNA, chat: { id: ANNA.id, type: 'private' }, text: '/admin ' + CODE } });
+  assert.ok(lastTg('sendMessage').payload.text.includes('вы продавец'));
 });
 
 await t('пустое хранилище и неполные данные работают: настройки дополняются значениями по умолчанию', async () => {
@@ -2649,6 +2667,391 @@ await t('без секретов сервер не падает и говори�
   W.shop.env.ADMIN_CODE = undefined;
   const s2 = await call('POST', '/setup', { body: 'code=x', headers: { 'content-type': 'application/x-www-form-urlencoded' } });
   assert.ok((await s2.text()).includes('ADMIN_CODE'));
+});
+
+/* ---------- площадка: несколько дистрибьюторов ---------- */
+const DIL = { id: 9101, first_name: 'Dilshod', username: 'dil_alfa', language_code: 'ru' };
+const JAS2 = { id: 9102, first_name: 'Sardor', username: 'sardor_b', language_code: 'ru' };
+const iD = () => initDataFor(DIL);
+const sx = sid => ({ 'x-shop': sid });
+const adminMsg = (from, code, mid) => ({ update_id: 5000 + mid, message: { message_id: mid, from, chat: { id: from.id, type: 'private' }, text: '/admin ' + code } });
+async function hubWorld() {
+  W = makeWorld();
+  await send(adminMsg(SELLER, CODE, 1));
+  tgLog = [];
+}
+const createShop = (body, init) => call('POST', '/api/hub/admin/shops', { init: init || iS(), body });
+const addShop = async (name, code) => { const r = await createShop({ name, code }); assert.equal(r.status, 200); return jsonOf(r); };
+/* дистрибьютор с каталогом и продавцом DIL */
+async function shopWorld(name) {
+  await hubWorld();
+  const d = await addShop(name || 'Альфа Трейд');
+  await send(adminMsg(DIL, d.code, 2));
+  const put = await call('PUT', '/api/admin/products', { init: iD(), headers: sx(d.shop.id), body: { prod: SAMPLE_PROD() } });
+  assert.equal(put.status, 200);
+  tgLog = [];
+  return { sid: d.shop.id, code: d.code };
+}
+const callS = (sid, method, p, o) => call(method, p, Object.assign({}, o, { headers: Object.assign({}, sx(sid), (o && o.headers) || {}) }));
+
+await t('площадка: первый дистрибьютор вносится в реестр сам, а прежние продавцы становятся владельцами', async () => {
+  W = makeWorld();
+  await W.storage.put({ cfg: { shop: { name: 'Старое имя' } }, admins: [SELLER.id], prod: { cats: [{ id: 'c', name: 'Крупы' }], items: [{ id: 'p1', cat: 'c', name: 'Рис', amount: 1, unit: 'kg', price: 100, on: true }] } });
+  const d = await jsonOf(await call('GET', '/api/shops', { init: iS() }));
+  assert.equal(d.me.owner, true);
+  assert.deepEqual(d.me.sells.map(x => ({ id: x.id, name: x.name })), [{ id: 'main', name: 'Старое имя' }]);
+  assert.equal(typeof d.me.sells[0].link, 'string');
+  assert.deepEqual(d.shops.map(x => x.id), ['main']);
+  assert.equal(d.shops[0].name, 'Старое имя');
+  assert.equal(d.shops[0].items, 1);
+  assert.equal(JSON.stringify(d).includes('hash'), false);
+  const a = await jsonOf(await call('GET', '/api/shops', { init: iA() }));
+  assert.equal(a.me.owner, false);
+  assert.deepEqual(a.me.sells, []);
+  const g = await jsonOf(await call('GET', '/api/shops'));
+  assert.equal(g.me, undefined);
+  assert.ok(g.title);
+  assert.equal((await call('GET', '/api/shops', { init: initDataFor(ANNA, { tamper: true }) })).status, 200, 'с неверной подписью это просто список без входа');
+  assert.equal((await jsonOf(await call('GET', '/api/shops', { init: initDataFor(ANNA, { tamper: true }) }))).me, undefined);
+});
+
+await t('площадка: дистрибьюторов добавляет только владелец; код виден один раз и нигде не хранится открытым', async () => {
+  await hubWorld();
+  assert.equal((await createShop({ name: 'Альфа' }, iA())).status, 403);
+  assert.equal((await call('POST', '/api/hub/admin/shops', { body: { name: 'Альфа' } })).status, 401);
+  assert.equal((await createShop({ name: 'Я' })).status, 400);
+  assert.equal((await createShop({ name: 'Альфа', code: 'short' })).status, 400);
+  assert.equal((await createShop({ name: 'Альфа', code: CODE })).status, 409, 'код владельца занят');
+  const r = await createShop({ name: '  Альфа Трейд  ' });
+  const d = await jsonOf(r);
+  assert.equal(r.status, 200);
+  assert.match(d.code, /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.match(d.shop.id, /^s[a-z0-9]{5}$/);
+  assert.equal(d.shop.name, 'Альфа Трейд');
+  assert.equal(d.shop.sellers, 0);
+  assert.equal(d.shop.on, true);
+  assert.ok(!JSON.stringify([...W.hubStorage.m.entries()]).includes(d.code), 'код лежит только в виде хэша');
+  assert.ok(!JSON.stringify([...W.getShop(d.shop.id).storage.m.entries()]).includes(d.code));
+  // свой код владельца
+  const own = await jsonOf(await createShop({ name: 'Бета', code: 'моя-длинная-фраза-2026' }));
+  assert.equal(own.code, 'моя-длинная-фраза-2026');
+  assert.equal((await createShop({ name: 'Гамма', code: 'моя-длинная-фраза-2026' })).status, 409, 'один код у двух дистрибьюторов нельзя');
+  const l = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
+  assert.deepEqual(l.shops.map(x => x.id), ['main', d.shop.id, own.shop.id]);
+  assert.deepEqual(l.shops.map(x => x.own), [false, true, true]);
+  assert.ok(l.shops.every(x => !('hash' in x)));
+  assert.equal((await call('GET', '/api/hub/admin/shops', { init: iA() })).status, 403);
+  // пустой дистрибьютор клиентам не виден
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops', { init: iA() }))).shops, []);
+});
+
+await t('площадка: продавец дистрибьютора входит по своему коду и видит только своё', async () => {
+  await hubWorld();
+  const { shop, code } = await addShop('Альфа Трейд');
+  const sid = shop.id;
+  await send(adminMsg(DIL, 'wrong-wrong-wrong', 50));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'));
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 403);
+  await send(adminMsg(DIL, code, 51));
+  assert.ok(lastTg('deleteMessage', p => p.message_id === 51));
+  const ok = lastTg('sendMessage').payload;
+  assert.ok(ok.text.includes('вы продавец «Альфа Трейд»'));
+  assert.ok(!ok.text.includes('владелец площадки'));
+  assert.equal(ok.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=' + sid + '&v=seller');
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 200);
+  assert.equal((await call('GET', '/api/admin/orders', { init: iD() })).status, 403, 'у первого дистрибьютора он никто');
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iS() })).status, 403, 'владелец площадки не продавец чужого дистрибьютора');
+  assert.equal((await call('GET', '/api/hub/admin/shops', { init: iD() })).status, 403, 'дистрибьютор не владелец площадки');
+  const bs = await jsonOf(await callS(sid, 'GET', '/api/bootstrap', { init: iD() }));
+  assert.equal(bs.me.admin, true);
+  assert.equal(bs.did, sid);
+  assert.equal(bs.cfg.shop.name, 'Альфа Трейд');
+  const me = (await jsonOf(await call('GET', '/api/shops', { init: iD() }))).me;
+  assert.deepEqual(me.sells.map(x => ({ id: x.id, name: x.name })), [{ id: sid, name: 'Альфа Трейд' }]);
+  assert.ok(me.sells[0].link === '' || me.sells[0].link.endsWith('?start=d_' + sid));
+  assert.equal(me.owner, false);
+  const l = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
+  assert.equal(l.shops.find(x => x.id === sid).sellers, 1);
+  // владелец при входе узнаёт про вкладку «Дистрибьюторы» и открывает свой кабинет
+  await send(adminMsg(SELLER, CODE, 52));
+  const ow = lastTg('sendMessage').payload;
+  assert.ok(ow.text.includes('вы продавец') && ow.text.includes('Дистрибьюторы'));
+  assert.equal(ow.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=main&v=seller');
+});
+
+await t('площадка: у каждого дистрибьютора свои каталог и фото, список для клиентов собирается сам', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  const mine = (await jsonOf(await callS(sid, 'GET', '/api/config'))).prod;
+  assert.equal(mine.items.length, 4);
+  assert.deepEqual((await jsonOf(await call('GET', '/api/config'))).prod, { cats: [], items: [] }, 'первый дистрибьютор не затронут');
+  const pub = await jsonOf(await call('GET', '/api/shops'));
+  assert.deepEqual(pub.shops.map(x => x.id), [sid], 'первый пока без товаров, поэтому не показан');
+  assert.equal(pub.shops[0].items, 4);
+  assert.deepEqual(pub.shops[0].cats.map(c => c.name), ['Масла', 'Крупы и макароны']);
+  assert.equal(pub.shops[0].delivery, true);
+  // переименование в настройках сразу видно в списке
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+  cfg.shop.name = 'Альфа Опт';
+  assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } })).status, 200);
+  assert.equal((await jsonOf(await call('GET', '/api/shops'))).shops[0].name, 'Альфа Опт');
+  // фото: свой адрес у каждого дистрибьютора
+  assert.equal((await callS(sid, 'PUT', '/api/admin/photo/p1', { init: iD(), body: jpegBytes(), headers: { 'content-type': 'image/jpeg' } })).status, 200);
+  assert.equal((await call('GET', '/img/' + sid + '/p1')).status, 200);
+  assert.equal((await call('GET', '/img/p1')).status, 404);
+  assert.equal((await call('GET', '/img/main/p1')).status, 404);
+  assert.equal((await call('GET', '/img/a/b/c')).status, 404);
+  // и у первого дистрибьютора старые адреса картинок работают
+  assert.equal((await putProd(SAMPLE_PROD(), iA())).status, 403, 'клиент каталог первого дистрибьютора не меняет');
+  assert.equal((await putProd(SAMPLE_PROD(), iD())).status, 403, 'продавец другого дистрибьютора тоже');
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200, 'владелец (он же продавец первого дистрибьютора) меняет');
+  assert.equal((await putPhoto('p1', jpegBytes())).status, 200);
+  assert.equal((await call('GET', '/img/p1')).status, 200);
+  assert.equal((await call('GET', '/img/main/p1')).status, 200);
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops'))).shops.map(x => x.id), ['main', sid]);
+  // каталог одного не видно в избранном и заказе другого: id товаров могут совпадать
+  const A = newUser();
+  assert.equal((await callS(sid, 'PUT', '/api/fav', { init: A.init(), body: { ids: ['p1'] } })).status, 200);
+  assert.deepEqual((await jsonOf(await call('GET', '/api/bootstrap', { init: A.init() }))).me.fav, []);
+  assert.deepEqual((await jsonOf(await callS(sid, 'GET', '/api/bootstrap', { init: A.init() }))).me.fav, ['p1']);
+});
+
+await t('площадка: заказ уходит продавцу своего дистрибьютора, кнопки несут его номер и работают только у него', async () => {
+  const { sid } = await shopWorld();
+  await send(adminMsg(SELLER, CODE, 70));
+  tgLog = [];
+  const A = newUser();
+  const r = await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) });
+  assert.equal(r.status, 200);
+  const order = (await jsonOf(r)).order;
+  const card = tgAll('sendMessage', p => p.chat_id === DIL.id).pop().payload;
+  const kb = card.reply_markup.inline_keyboard.flat();
+  assert.ok(kb.some(b => b.callback_data === 's:' + sid + ':' + order.id + ':accepted'));
+  assert.ok(kb.some(b => b.callback_data === 'c:' + sid + ':' + order.id));
+  assert.ok(kb.every(b => !b.callback_data || b.callback_data.length <= 64));
+  assert.ok(kb.some(b => b.web_app && b.web_app.url === HOST + '/?d=' + sid + '&v=seller'));
+  assert.equal(tgAll('sendMessage', p => p.chat_id === SELLER.id).length, 0, 'продавец первого дистрибьютора чужой заказ не получает');
+  assert.deepEqual((await jsonOf(await call('GET', '/api/admin/orders', { init: iS() }))).orders, []);
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/admin/orders', { init: iD() }))).orders.length, 1);
+  // чужой продавец нажать не может, свой может
+  tgLog = [];
+  await cb(SELLER, 's:' + sid + ':' + order.id + ':accepted', 555);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('Нет доступа'));
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/admin/orders', { init: iD() }))).orders[0].status, 'new');
+  tgLog = [];
+  await cb(DIL, 's:' + sid + ':' + order.id + ':accepted', 556);
+  assert.ok(lastTg('sendMessage', p => p.chat_id === A.u.id && p.text.includes('принят в работу')));
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/admin/orders', { init: iD() }))).orders[0].status, 'accepted');
+  // отмена с подтверждением через кнопки с номером дистрибьютора
+  tgLog = [];
+  await cb(DIL, 'c:' + sid + ':' + order.id, 557);
+  const e = lastTg('editMessageText').payload.reply_markup.inline_keyboard.flat();
+  assert.ok(e.some(b => b.callback_data === 's:' + sid + ':' + order.id + ':cancelled'));
+  assert.ok(e.some(b => b.callback_data === 'b:' + sid + ':' + order.id));
+  // кнопка с неизвестным дистрибьютором молча игнорируется
+  tgLog = [];
+  await cb(DIL, 's:zzzzzz:' + order.id + ':accepted', 558);
+  assert.equal(tgLog.length, 0);
+});
+
+await t('площадка: «Мои заказы» собирает заказы клиента у всех дистрибьюторов; отмена идёт к своему дистрибьютору', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  await send(adminMsg(SELLER, CODE, 70));
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const A = newUser();
+  assert.deepEqual((await jsonOf(await call('GET', '/api/hub/orders', { init: A.init() }))).orders, []);
+  assert.equal((await call('GET', '/api/hub/orders')).status, 401);
+  const o1 = (await jsonOf(await place(A, CART))).order;                                   // у первого дистрибьютора
+  await new Promise(r => setTimeout(r, 5));
+  const o2 = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) }))).order;   // у Альфы
+  const list = (await jsonOf(await call('GET', '/api/hub/orders', { init: A.init() }))).orders;
+  assert.deepEqual(list.map(o => o.id), [o2.id, o1.id], 'новые сверху');
+  assert.deepEqual(list.map(o => o.did), [sid, 'main']);
+  assert.equal(list[0].shopName, 'Альфа Трейд');
+  assert.equal(list[1].shopName, 'Оптовая база');
+  assert.ok(list.every(o => !('uid' in o) && !('tg' in o)));
+  // чужой клиент их не видит
+  assert.deepEqual((await jsonOf(await call('GET', '/api/hub/orders', { init: newUser().init() }))).orders, []);
+  // отмена: к тому дистрибьютору, чей заказ
+  assert.equal((await call('POST', '/api/cancel', { init: A.init(), body: { id: o2.id } })).status, 404, 'у первого дистрибьютора такого заказа нет');
+  const c = await callS(sid, 'POST', '/api/cancel', { init: A.init(), body: { id: o2.id } });
+  assert.equal(c.status, 200);
+  assert.equal((await jsonOf(await call('GET', '/api/hub/orders', { init: A.init() }))).orders[0].status, 'cancelled');
+  // дистрибьютор отключён: заказы клиента у него по-прежнему видны
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { on: false } })).status, 200);
+  assert.equal((await jsonOf(await call('GET', '/api/hub/orders', { init: A.init() }))).orders.length, 2);
+  // заказы до появления площадки: у первого дистрибьютора находятся и без записи в реестре клиентов
+  const B = newUser();
+  const ob1 = (await jsonOf(await place(B, CART))).order;
+  await W.hubStorage.delete('u:' + B.u.id);
+  const lb = (await jsonOf(await call('GET', '/api/hub/orders', { init: B.init() }))).orders;
+  assert.deepEqual(lb.map(o => o.id), [ob1.id]);
+  assert.deepEqual(await W.hubStorage.get('u:' + B.u.id), ['main']);
+  const C = newUser();
+  await call('GET', '/api/hub/orders', { init: C.init() });
+  assert.deepEqual(await W.hubStorage.get('u:' + C.u.id), [], 'без заказов запись пустая, повторно первого дистрибьютора не опрашиваем');
+});
+
+await t('площадка: отключённый дистрибьютор скрыт и заказы не принимает, включается обратно', async () => {
+  const { sid } = await shopWorld();
+  const A = newUser();
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iA(), body: { on: false } })).status, 403);
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { on: 'no' } })).status, 400);
+  assert.equal((await call('PUT', '/api/hub/admin/shops/nope12', { init: iS(), body: { on: false } })).status, 404);
+  const off = await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { on: false } });
+  assert.equal((await jsonOf(off)).shop.on, false);
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops'))).shops, []);
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/config'))).off, true);
+  const r = await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) });
+  assert.equal(r.status, 403);
+  assert.equal((await jsonOf(r)).error, 'shop_off');
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 200, 'продавец заходит и видит свои данные');
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { on: true } })).status, 200);
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops'))).shops.map(x => x.id), [sid]);
+  assert.equal((await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) })).status, 200);
+});
+
+await t('площадка: новый код закрывает доступ прежним продавцам; у первого дистрибьютора владелец остаётся продавцом', async () => {
+  const { sid, code } = await shopWorld();
+  assert.equal((await call('POST', '/api/hub/admin/shops/' + sid + '/code', { init: iA(), body: {} })).status, 403);
+  assert.equal((await call('POST', '/api/hub/admin/shops/' + sid + '/code', { init: iS(), body: { code: 'short' } })).status, 400);
+  assert.equal((await call('POST', '/api/hub/admin/shops/' + sid + '/code', { init: iS(), body: { code: CODE } })).status, 409);
+  const r = await call('POST', '/api/hub/admin/shops/' + sid + '/code', { init: iS(), body: {} });
+  const d = await jsonOf(r);
+  assert.equal(r.status, 200);
+  assert.notEqual(d.code, code);
+  assert.equal(d.shop.sellers, 0);
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 403, 'прежний продавец вышел');
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops', { init: iD() }))).me.sells, []);
+  tgLog = [];
+  await send(adminMsg(DIL, code, 60));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'), 'старый код больше не работает');
+  await send(adminMsg(DIL, d.code, 61));
+  assert.ok(lastTg('sendMessage').payload.text.includes('вы продавец'));
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 200);
+  // первый дистрибьютор: свой код для помощников, ADMIN_CODE остаётся кодом владельца
+  const m = await jsonOf(await call('POST', '/api/hub/admin/shops/main/code', { init: iS(), body: { code: 'main-helper-code-777' } }));
+  assert.equal(m.code, 'main-helper-code-777');
+  assert.equal((await call('GET', '/api/admin/orders', { init: iS() })).status, 200, 'владелец по-прежнему продавец первого дистрибьютора');
+  tgLog = [];
+  await send(adminMsg(JAS2, 'main-helper-code-777', 62));
+  assert.ok(lastTg('sendMessage').payload.text.includes('вы продавец'));
+  assert.ok(!lastTg('sendMessage').payload.text.includes('владелец площадки'), 'помощник не становится владельцем');
+  assert.equal((await call('GET', '/api/admin/orders', { init: initDataFor(JAS2) })).status, 200);
+  assert.equal((await call('GET', '/api/hub/admin/shops', { init: initDataFor(JAS2) })).status, 403);
+  await send(adminMsg(ANNA, CODE, 63));
+  assert.equal((await call('GET', '/api/hub/admin/shops', { init: iA() })).status, 200, 'ADMIN_CODE по-прежнему делает владельцем');
+});
+
+await t('площадка: чужой номер дистрибьютора не создаёт ничего, неверный номер отклоняется', async () => {
+  await hubWorld();
+  for (const bad of ['Evil/../x', 'UPPER', 'a', 'x'.repeat(13), 'a b']) {
+    const r = await call('GET', '/api/config', { headers: { 'x-shop': bad } });
+    assert.equal(r.status, 400, bad);
+  }
+  const r = await call('GET', '/api/config', { headers: sx('zzzzzz') });
+  assert.equal(r.status, 404);
+  assert.equal((await jsonOf(r)).error, 'no_shop');
+  assert.equal((await callS('zzzzzz', 'GET', '/api/bootstrap', { init: iA() })).status, 404);
+  assert.equal((await callS('zzzzzz', 'PUT', '/api/admin/products', { init: iS(), body: { prod: SAMPLE_PROD() } })).status, 404);
+  assert.equal(W.getShop('zzzzzz').storage.m.size, 0, 'в хранилище ничего не появилось');
+  // служебные адреса снаружи недоступны
+  for (const p of ['/__/summary', '/__/admin-add', '/__/sync', '/__/off']) assert.equal((await call('POST', p, { body: { uid: 1 } })).status, 404, p);
+  assert.equal((await call('GET', '/img/zzzzzz/p1')).status, 404);
+});
+
+await t('площадка: приветствие бота зависит от числа дистрибьюторов, ссылка d_<номер> открывает нужный каталог', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  const start = async (from, text) => { tgLog = []; await send({ update_id: 9, message: { message_id: 9, from, chat: { id: from.id, type: 'private' }, text } }); return lastTg('sendMessage').payload; };
+  // виден один дистрибьютор: говорим от его имени, кнопка открывает приложение
+  let m = await start(ANNA, '/start');
+  assert.ok(m.text.includes('Альфа Трейд') && m.text.includes('самовывоз или доставка'));
+  assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
+  await send(adminMsg(SELLER, CODE, 70));
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  // два: от имени площадки
+  m = await start(ANNA, '/start');
+  assert.ok(m.text.includes('VIVA Distribution') && m.text.includes('выберите дистрибьютора') && m.text.includes('каталог'));
+  assert.equal(m.reply_markup.inline_keyboard[0][0].text, '🛒 Открыть каталог');
+  m = await start(BOB, '/start');
+  assert.ok(m.text.includes('Katalogni oching') && m.text.includes('distribyutor'));
+  // ссылка на конкретного
+  m = await start(ANNA, '/start d_' + sid);
+  assert.ok(m.text.includes('Альфа Трейд'));
+  assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=' + sid);
+  m = await start(ANNA, '/start d_zzzzzz');
+  assert.ok(m.text.includes('VIVA Distribution'));
+  assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
+  // название площадки меняет владелец
+  assert.equal((await call('PUT', '/api/hub/admin/title', { init: iA(), body: { title: 'X' } })).status, 403);
+  assert.equal((await call('PUT', '/api/hub/admin/title', { init: iS(), body: { title: 5 } })).status, 400);
+  assert.equal((await jsonOf(await call('PUT', '/api/hub/admin/title', { init: iS(), body: { title: '  Навои Опт  ' } }))).title, 'Навои Опт');
+  assert.equal((await jsonOf(await call('GET', '/api/shops'))).title, 'Навои Опт');
+  m = await start(ANNA, '/start');
+  assert.ok(m.text.includes('Навои Опт'));
+  // ссылка на каталог в кабинете владельца
+  const l = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
+  assert.equal(l.shops.find(x => x.id === sid).link, 'https://t.me/distro_test_bot?start=d_' + sid);
+});
+
+await t('площадка: больше 50 дистрибьюторов не заводится', async () => {
+  await hubWorld();
+  for (let i = 0; i < 49; i++) assert.equal((await createShop({ name: 'Компания ' + i })).status, 200);
+  const r = await createShop({ name: 'Лишняя' });
+  assert.equal(r.status, 409);
+  assert.equal((await jsonOf(r)).error, 'too_many');
+  const l = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
+  assert.equal(l.shops.length, 50);
+  assert.equal(new Set(l.shops.map(x => x.id)).size, 50);
+});
+
+await t('площадка: /setup подключает и реестр, показывает число дистрибьюторов', async () => {
+  await hubWorld();
+  await addShop('Альфа');
+  tgLog = [];
+  const r = await call('POST', '/setup', { body: 'code=' + encodeURIComponent(CODE), headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+  const page = await r.text();
+  assert.ok(page.includes('Площадка дистрибьюторов') && page.includes('дистрибьюторов: 2'));
+  assert.ok(!page.includes('✘'));
+  // без привязки HUB страница честно говорит, что делать
+  const w = makeWorld();
+  delete w.env.HUB;
+  const prev = W; W = w;
+  const r2 = await call('POST', '/setup', { body: 'code=' + encodeURIComponent(CODE), headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+  W = prev;
+  assert.ok((await r2.text()).includes('HUB'));
+});
+
+await t('площадка: страница приложения отдаётся, скрипт собирается и использует номер дистрибьютора', async () => {
+  await hubWorld();
+  const r = await call('GET', '/');
+  assert.equal(r.status, 200);
+  const html = await r.text();
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+  assert.ok(scripts.length >= 1);
+  // скрипт должен хотя бы разбираться без синтаксических ошибок
+  scripts.forEach(code => new Function(code));
+  const code = scripts.join('\n');
+  assert.ok(code.includes("'x-shop'"), 'приложение не присылает номер дистрибьютора');
+  assert.ok(code.includes('/api/hub/orders') && code.includes('/api/shops'));
+  assert.ok(code.includes("'/img/'+encodeURIComponent(S.did"), 'картинки должны брать номер дистрибьютора');
+  assert.ok(!html.includes('/*SHARED*/'), 'метка общего кода должна быть заменена');
+});
+
+await t('площадка: без привязки HUB каталог и заказы первого дистрибьютора работают как раньше', async () => {
+  W = makeWorld();
+  delete W.env.HUB;
+  await W.storage.put({ cfg: { shop: { name: 'Старое имя' } }, admins: [SELLER.id], prod: { cats: [{ id: 'c', name: 'Крупы' }], items: [{ id: 'p1', cat: 'c', name: 'Рис', amount: 1, unit: 'kg', price: 100, on: true }] } });
+  const l = await call('GET', '/api/shops', { init: iA() });
+  assert.equal(l.status, 503);
+  const c = await call('GET', '/api/config');
+  assert.equal(c.status, 200);
+  assert.equal((await jsonOf(c)).cfg.shop.name, 'Старое имя');
+  const b = await jsonOf(await call('GET', '/api/bootstrap', { init: iA() }));
+  assert.equal(b.cfg.shop.name, 'Старое имя');
+  assert.equal(b.me.admin, false);
+  // webhook без HUB уходит первому дистрибьютору и не падает
+  const r = await call('POST', '/webhook', { body: { update_id: 1 }, headers: { 'x-telegram-bot-api-secret-token': 'bad' } });
+  assert.ok(r.status === 200 || r.status === 403, 'статус ' + r.status);
 });
 
 /* ---------- итог ---------- */
