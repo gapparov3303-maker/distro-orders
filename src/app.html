@@ -388,6 +388,10 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .codebox{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .hrow h1{margin-bottom:0}
+.pctrow{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
+.pctrow>div{flex:0 0 auto}
+.pctrow input[type=text]{width:96px}
+.sum small.sub{display:block;font-size:12px;color:var(--ink-2)}
 @media (prefers-reduced-motion:no-preference){.chip,.seg button{transition:border-color .12s,background-color .12s}}
 </style>
 </head><body>
@@ -428,7 +432,7 @@ const S={
   rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0},
   did:'',epoch:0,switching:false,off:false,otherCart:null,
   hub:{title:'',shops:[],me:null,loaded:false,err:false},
-  own:{shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:''}
+  own:{shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{}}
 };
 const view=$('#view');
 let toastT=null,saveT=null;
@@ -1563,6 +1567,15 @@ function buyHTML(r){
   }).join('')+'</div></div>';
   return h;
 }
+/* Комиссия площадки в отчётах дистрибьютора: сколько он должен площадке за этот и прошлый месяц (видна, если процент больше нуля) */
+function commHTML(r){
+  const c=r.comm;
+  if(!c||!(c.pct>0||c.cur.cm>0||c.prev.cm>0))return '';
+  const row=(lab,x)=>'<div class="r"><span>'+esc(lab+' ('+mFull(x.m)+')')+'<small class="sub">'+esc(ordTxt(x.n)+' · '+L('товаров на ','mahsulotlar: ')+money(x.base))+'</small></span><span>'+esc(money(x.cm))+'</span></div>';
+  return '<div class="card"><h3>'+L('Комиссия площадки','Platforma komissiyasi')+'</h3><div class="unit">'
+    +L('Площадка берёт '+fmtPct(c.pct)+'% от суммы товаров (после скидки, без доставки) по выданным заказам. Это сумма, которую вы платите площадке за месяц.','Platforma topshirilgan buyurtmalarda mahsulotlar summasidan (chegirmadan keyin, yetkazib berishsiz) '+fmtPct(c.pct)+'% oladi. Bu siz platformaga oylik toʻlaydigan summa.')
+    +'</div><div class="sum">'+row(L('Этот месяц','Shu oy'),c.cur)+row(L('Прошлый месяц','Oʻtgan oy'),c.prev)+'</div></div>';
+}
 function repHTML(){
   const R=S.rep,r=R.data;
   let h='<div class="filters">'+RP_DAYS.map(d=>'<button type="button" class="chip" data-act="rdays" data-v="'+d+'" aria-pressed="'+(R.days===d)+'">'+esc(rpRange(d))+'</button>').join('')+'</div>';
@@ -1570,6 +1583,7 @@ function repHTML(){
     if(R.err)return h+'<div class="empty"><b>'+L('Не удалось загрузить отчёт','Hisobotni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение.','Ulanishni tekshiring.')+'<div style="margin-top:10px"><button type="button" class="btn sm" data-act="rretry">'+L('Повторить','Qayta urinish')+'</button></div></div>';
     return h+'<div class="empty"><b>'+L('Считаем отчёт','Hisobot tayyorlanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   }
+  h+=commHTML(r);
   h+='<div class="xtools">'+xbtn('report')+'</div>'
     +'<p class="rnote" style="margin:0 0 4px">'+L('Период: '+fDay(r.from)+' — '+fDay(r.to)+'. В отчёт попадают заказы со статусом «Выдан» или «Доставлен», по дню завершения.','Davr: '+fDay(r.from)+' — '+fDay(r.to)+'. Hisobotga «Topshirildi» yoki «Yetkazildi» holatidagi buyurtmalar kiradi, yakunlangan kun boʻyicha.')+'</p>';
   if(r.since>r.from)h+='<p class="rnote">'+L('Отчёт ведётся с '+fDay(r.since)+', раньше данных нет.','Hisobot '+fDay(r.since)+' dan yuritiladi, undan oldin maʼlumot yoʻq.')+'</p>';
@@ -2079,20 +2093,72 @@ async function enterShop(did,v,cart){
 const ownErr=e=>({
   bad_name:L('Название — от 2 символов','Nomi kamida 2 belgi boʻlsin'),
   too_many:L('Больше дистрибьюторов добавить нельзя','Boshqa distribyutor qoʻshib boʻlmaydi'),
+  bad_pct:L('Процент — число от 0 до 50','Foiz — 0 dan 50 gacha son'),
   weak_code:L('Код должен быть не короче 12 символов','Kod kamida 12 belgidan iborat boʻlsin'),
   code_taken:L('Такой код уже занят, придумайте другой','Bu kod band, boshqasini oʻylab toping'),
   forbidden:L('Раздел только для владельца','Boʻlim faqat egasi uchun')
 }[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
+/* перерисовывает раздел владельца, но не сбивает того, кто сейчас печатает в поле */
+function ownRefresh(){
+  if(S.view!=='owner')return;
+  const ae=document.activeElement;
+  if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&view.contains(ae))return;
+  renderOwner();
+}
 async function loadOwner(){
   if(!isOwner())return;
+  loadOwnerStats();
   const r=await api('GET','/api/hub/admin/shops');
   const o=S.own;
   if(!r.ok||!r.data){o.err=true;o.loaded=true;if(S.view==='owner')renderOwner();return}
   o.shops=r.data.shops||[];o.title=r.data.title||'';o.max=r.data.max||50;o.err=false;o.loaded=true;
-  if(S.view!=='owner')return;
-  const ae=document.activeElement;
-  if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&view.contains(ae))return;   // человек печатает: не сбиваем
+  ownRefresh();
+}
+async function loadOwnerStats(){
+  if(!isOwner())return;
+  const o=S.own,per=o.period;
+  const r=await api('GET','/api/hub/admin/stats?period='+encodeURIComponent(per));
+  if(per!==o.period)return;   // пока грузилось, выбрали другой период
+  if(r.ok&&r.data&&Array.isArray(r.data.rows)){o.stats=r.data;o.serr=false}
+  else o.serr=true;
+  ownRefresh();
+}
+const fmtPct=p=>String(p).replace('.',',');
+/* «Заказы и комиссия»: сводка по всем дистрибьюторам за выбранный период. Составы заказов и клиенты здесь не показываются. */
+function ownStatsHTML(){
+  const o=S.own,st=o.stats;
+  const per=[['7d',L('7 дней','7 kun')],['30d',L('30 дней','30 kun')],['month',L('Этот месяц','Shu oy')],['prev',L('Прошлый месяц','Oʻtgan oy')]];
+  let h='<div class="card"><h3>'+L('Заказы и комиссия','Buyurtmalar va komissiya')+'</h3>'
+    +'<div class="filters" style="margin:8px 0">'+per.map(p=>'<button type="button" class="chip" data-act="ownper" data-v="'+p[0]+'" aria-pressed="'+(o.period===p[0])+'">'+esc(p[1])+'</button>').join('')+'</div>';
+  if(!st||st.period!==o.period){
+    h+=o.serr?'<div class="note">'+L('Не удалось загрузить сводку. Проверьте соединение.','Hisobotni yuklab boʻlmadi. Ulanishni tekshiring.')+' <button type="button" class="btn ghost sm" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>'
+      :'<div class="unit">'+L('Считаем…','Hisoblanmoqda…')+'</div>';
+    return h+'</div>';
+  }
+  const t=st.total;
+  h+='<div class="unit">'+esc(fDay(st.from)+' — '+fDay(st.to))+'</div><div class="sum">'
+    +'<div class="r"><span>'+L('Выдано заказов','Topshirilgan buyurtmalar')+'</span><span>'+num(t.n)+'</span></div>'
+    +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(t.base))+'</span></div>'
+    +(t.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(t.active)+'</span></div>':'')
+    +'<div class="r t"><span>'+L('Комиссия к получению','Olinadigan komissiya')+'</span><span>'+esc(money(t.cm))+'</span></div></div>'
+    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого дистрибьютора свой, его можно менять ниже. Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: клиенты платят дистрибьютору при получении, а комиссию вы получаете с него сами.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir distribyutorning foizi alohida, uni quyida oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: mijozlar distribyutorga olganda toʻlaydi, komissiyani esa siz undan oʻzingiz olasiz.')+'</div></div>';
+  return h;
+}
+async function ownPct(id){
+  const o=S.own;if(o.busy)return;
+  const row=o.stats&&o.stats.rows.find(x=>x.id===id);
+  const raw=String(o.pcts[id]!==undefined?o.pcts[id]:(row?row.pct:'')).trim().replace(',','.');
+  const v=Number(raw);
+  if(raw===''||!isFinite(v)||v<0||v>50){toast(ownErr('bad_pct'));return}
+  o.busy='pct';renderOwner();
+  const r=await api('PUT','/api/hub/admin/shops/'+encodeURIComponent(id),{pct:v});
+  o.busy='';
+  if(r.ok&&r.data&&typeof r.data.pct==='number'){
+    delete o.pcts[id];
+    toast(L('Процент сохранён: '+fmtPct(r.data.pct)+'%. Он действует на заказы, которые выдаются с этого момента.','Foiz saqlandi: '+fmtPct(r.data.pct)+'%. U shu paytdan topshiriladigan buyurtmalarga amal qiladi.'));
+  }else toast(ownErr(r.data&&r.data.error));
   renderOwner();
+  loadOwnerStats();
 }
 function renderOwner(){
   const o=S.own;
@@ -2111,6 +2177,7 @@ function renderOwner(){
         +'<div class="note">'+L('Дистрибьютор открывает бота, отправляет «/admin КОД» (бот сразу удалит сообщение с кодом) и нажимает «Открыть приложение». Заказы будут приходить ему в бот.','Distribyutor botni ochib, «/admin KOD» yuboradi (bot kod yozilgan xabarni darhol oʻchiradi) va «Ilovani ochish» tugmasini bosadi. Buyurtmalar botga keladi.')+'</div>'
         +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="ownmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
     }
+    h+=ownStatsHTML();
     const full=o.shops.length>=o.max;
     h+='<div class="card"><h3>'+L('Добавить дистрибьютора','Distribyutor qoʻshish')+'</h3><div class="form">'
       +'<div><label class="lab" for="o-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="o-name" data-own="fname" maxlength="60" value="'+esc(o.fname)+'" autocomplete="off"></div>'
@@ -2122,7 +2189,7 @@ function renderOwner(){
       const sure=o.rc===r.id;
       const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('продавцов: '+r.sellers,'sotuvchilar: '+r.sellers),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
       return '<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></div>'
-        +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div><div class="row-btns">'
+        +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div>'+ownShopStatsHTML(r.id)+'<div class="row-btns">'
         +'<button type="button" class="btn ghost sm" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button>'
         +'<button type="button" class="btn ghost sm" data-act="owntoggle" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(r.on?L('Скрыть и закрыть заказы','Yashirish va buyurtmani yopish'):L('Вернуть в список','Roʻyxatga qaytarish'))+'</button>'
         +'<button type="button" class="btn ghost sm" data-act="ownreset" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(sure?L('Точно? Прежние продавцы потеряют доступ','Aniqmi? Avvalgi sotuvchilar kirolmaydi'):L('Новый код','Yangi kod'))+'</button>'
@@ -2134,6 +2201,20 @@ function renderOwner(){
       +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="owntitle"'+(o.busy?' disabled':'')+'>'+L('Сохранить название','Nomni saqlash')+'</button></div></div>';
   }
   view.innerHTML=h+'</div>';
+}
+/* у каждого дистрибьютора: выданные заказы за период, комиссия и поле процента */
+function ownShopStatsHTML(id){
+  const o=S.own,st=o.stats,x=st&&st.period===o.period?st.rows.find(y=>y.id===id):null;
+  if(!x)return '';
+  if(x.err)return '<div class="note" style="margin-bottom:12px">'+L('Нет данных по этому дистрибьютору.','Bu distribyutor boʻyicha maʼlumot yoʻq.')+'</div>';
+  const pv=o.pcts[id]!==undefined?o.pcts[id]:fmtPct(x.pct);
+  return '<div class="sum" style="margin-bottom:6px">'
+    +'<div class="r"><span>'+L('Выдано заказов','Topshirilgan buyurtmalar')+'</span><span>'+num(x.n)+'</span></div>'
+    +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(x.base))+'</span></div>'
+    +(x.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(x.active)+'</span></div>':'')
+    +'<div class="r t"><span>'+L('Комиссия ','Komissiya ')+esc(fmtPct(x.pct))+'%</span><span>'+esc(money(x.cm))+'</span></div></div>'
+    +'<div class="pctrow"><div><label class="lab" for="pc-'+esc(id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(id)+'" data-opct="'+esc(id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off"></div>'
+    +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>';
 }
 async function ownAdd(){
   const o=S.own;if(o.busy)return;
@@ -2215,6 +2296,8 @@ document.addEventListener('click',e=>{
   else if(a==='ownadd')ownAdd();
   else if(a==='owntoggle')ownToggle(t.dataset.id);
   else if(a==='owntitle')ownTitle();
+  else if(a==='ownper'){S.own.period=t.dataset.v;renderOwner();loadOwnerStats()}
+  else if(a==='ownpct')ownPct(t.dataset.id);
   else if(a==='ownmadeclose'){S.own.made=null;renderOwner()}
   else if(a==='ownreset'){
     const id=t.dataset.id;
@@ -2405,6 +2488,7 @@ document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='q'){S.q=t.value;paintGrid()}
   else if(t.id==='cq'){S.cq=t.value;paintClientList()}
+  else if(t.dataset.opct!==undefined)S.own.pcts[t.dataset.opct]=t.value;
   else if(t.dataset.own!==undefined){S.own[t.dataset.own]=t.value;if(t.dataset.own!=='ftitle'&&S.own.err2){S.own.err2='';const er=$('#o-err');if(er)er.textContent=''}}
   else if(t.dataset.qty!==undefined){
     /* количество вводят с клавиатуры: пока клиент печатает, обновляем только суммы */

@@ -3054,6 +3054,92 @@ await t('площадка: без привязки HUB каталог и зак�
   assert.ok(r.status === 200 || r.status === 403, 'статус ' + r.status);
 });
 
+await t('площадка: комиссия считается с товаров без доставки, только с выданных заказов; процент меняет владелец', async () => {
+  const { sid } = await shopWorld();
+  const A = newUser();
+  const statusOf = (id, to) => callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id, to } });
+  const finish = async id => { for (const to of ['accepted', 'ready', 'done']) assert.equal((await statusOf(id, to)).status, 200); };
+  const stats = async period => jsonOf(await call('GET', '/api/hub/admin/stats' + (period ? '?period=' + period : ''), { init: iS() }));
+  const row = d => d.rows.find(x => x.id === sid);
+  const order = async (over, mode) => (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART, over, mode) }))).order;
+  // доставка платная: 30 000 в итог входят, а в комиссию нет
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+  cfg.shop.deliveryFee = 30000;
+  assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } })).status, 200);
+  const o1 = await order();
+  const o2 = await order({ expectTotal: 1424000 }, 'delivery');
+  const o3 = await order();
+  assert.equal(o2.total, 1424000);
+  assert.equal(o2.fee, 30000);
+  // пока ничего не выдано, комиссии нет, но видно, сколько заказов в работе
+  let d = await stats();
+  assert.equal(d.period, 'month');
+  assert.equal(row(d).pct, 2);
+  assert.deepEqual([row(d).n, row(d).base, row(d).cm, row(d).active], [0, 0, 0, 3]);
+  await finish(o1.id);
+  await finish(o2.id);
+  assert.equal((await callS(sid, 'POST', '/api/cancel', { init: A.init(), body: { id: o3.id } })).status, 200);
+  d = await stats();
+  assert.deepEqual([row(d).n, row(d).base, row(d).cm, row(d).active], [2, 2788000, 55760, 0]);
+  // первый дистрибьютор: комиссии нет по умолчанию
+  const main = d.rows.find(x => x.id === 'main');
+  assert.deepEqual([main.pct, main.cm, main.err], [0, 0, false]);
+  assert.equal(d.total.cm, 55760);
+  assert.equal(d.total.base, 2788000);
+  // прошлый месяц пуст
+  assert.equal(row(await stats('prev')).n, 0);
+  // новый процент действует только на заказы, выданные после изменения
+  let r = await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { pct: 5 } });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).pct, 5);
+  const o4 = await order();
+  await finish(o4.id);
+  d = await stats('30d');
+  assert.deepEqual([row(d).pct, row(d).n, row(d).base, row(d).cm], [5, 3, 4182000, 55760 + 69700]);
+  // дистрибьютор видит свою комиссию в отчёте, чужие данные не затронуты
+  const rep = (await jsonOf(await callS(sid, 'GET', '/api/admin/report?days=30', { init: iD() }))).report;
+  assert.equal(rep.comm.pct, 5);
+  assert.deepEqual([rep.comm.cur.n, rep.comm.cur.base, rep.comm.cur.cm, rep.comm.prev.cm], [3, 4182000, 125460, 0]);
+  const mainRep = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
+  assert.equal(mainRep.comm.pct, 0);
+  assert.equal(mainRep.comm.cur.cm, 0);
+  // процент: запятая допустима, лишнее и чужие запросы отклоняются
+  r = await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { pct: '1,5' } });
+  assert.equal((await jsonOf(r)).pct, 1.5);
+  assert.equal(row(await stats()).pct, 1.5);
+  for (const bad of [51, -1, 'abc', null]) assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { pct: bad } })).status, 400, 'pct ' + bad);
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: {} })).status, 400);
+  assert.equal((await call('GET', '/api/hub/admin/stats', { init: iD() })).status, 403);
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iD(), body: { pct: 0 } })).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/stats', { init: A.init() })).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/stats')).status, 401);
+  // скрытие компании и процент можно менять в одном запросе
+  r = await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { on: false, pct: 2 } });
+  assert.equal(r.status, 200);
+  assert.equal(row(await stats()).on, false);
+  assert.equal(row(await stats()).pct, 2);
+});
+
+await t('площадка: комиссия у записей прежних дней считается по старым итогам и не ломает отчёты', async () => {
+  W = makeWorld();
+  await send(adminMsg(SELLER, CODE, 1));
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  // день, записанный до появления комиссии (без cb и cm), и новый заказ в тот же день
+  const today = new Date(Date.now() + 5 * 3600000).toISOString().slice(0, 10);
+  await W.storage.put({ rpx: [today], rp0: today, ['rp:' + today]: { n: 1, sum: 130000, disc: 0, fee: 30000, items: [], cl: [] } });
+  await call('PUT', '/api/hub/admin/shops/main', { init: iS(), body: { pct: 10 } });
+  const A = newUser();
+  const o = (await jsonOf(await place(A, CART))).order;
+  for (const to of ['accepted', 'ready', 'done']) assert.equal((await call('POST', '/api/admin/status', { init: iS(), body: { id: o.id, to } })).status, 200);
+  const d = await jsonOf(await call('GET', '/api/hub/admin/stats', { init: iS() }));
+  const m = d.rows.find(x => x.id === 'main');
+  // старая запись: 130 000 − 30 000 доставки = 100 000; новый заказ 1 394 000; комиссия только с нового
+  assert.deepEqual([m.n, m.base, m.cm], [2, 1494000, 139400]);
+  const rep = (await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report;
+  assert.equal(rep.tot.n, 2);
+  assert.equal(rep.comm.cur.cm, 139400);
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {

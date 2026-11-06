@@ -894,9 +894,25 @@ const RP_RANGES = [7, 30, 90, 365];
 const RP_COVER = 14;          // на сколько дней считаем запас в подсказке «что пора закупать»
 const dayOf = iso => { const t = Date.parse(iso); return new Date((Number.isFinite(t) ? t : Date.now()) + SHOP_TZ * 3600000).toISOString().slice(0, 10); };
 const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
-const newRp = () => ({ n: 0, sum: 0, disc: 0, fee: 0, items: [], cl: [] });
-function rpAdd(rp, o) {
+const newRp = () => ({ n: 0, sum: 0, disc: 0, fee: 0, cb: 0, cm: 0, items: [], cl: [] });
+/* Комиссия площадки: считается с суммы товаров после скидки, без доставки (итог заказа минус доставка), только с выданных заказов.
+   В записи дня cb — эта сумма, cm — комиссия, начисленная по проценту на момент выдачи (позже процент меняют только для новых заказов). */
+const COMM_DEFAULT = 2, COMM_MAX = 50;
+const cleanPct = v => { const n = Number(String(v).replace(',', '.')); return Number.isFinite(n) && n >= 0 && n <= COMM_MAX ? Math.round(n * 100) / 100 : null; };
+const commBase = r => r.cb !== undefined ? r.cb : Math.max(0, (Number(r.sum) || 0) - (Number(r.fee) || 0));
+function statRange(period) {
+  const today = dayOf(new Date().toISOString());
+  const first = today.slice(0, 7) + '-01';
+  if (period === '7d') return { period, from: addDays(today, -6), to: today };
+  if (period === '30d') return { period, from: addDays(today, -29), to: today };
+  if (period === 'prev') { const last = addDays(first, -1); return { period, from: last.slice(0, 7) + '-01', to: last }; }
+  return { period: 'month', from: first, to: today };
+}
+function rpAdd(rp, o, pct) {
   const total = Number(o.total) || 0;
+  if (rp.cb === undefined) rp.cb = Math.max(0, (Number(rp.sum) || 0) - (Number(rp.fee) || 0));   // запись дня, начатая до комиссии
+  const base = Math.max(0, total - (Number(o.fee) || 0));
+  rp.cb += base; rp.cm = (Number(rp.cm) || 0) + Math.round(base * (Number(pct) || 0) / 100);
   rp.n += 1; rp.sum += total; rp.disc += Number(o.disc) || 0; rp.fee += Number(o.fee) || 0;
   for (const it of o.items || []) {
     const qty = Number(it.qty) || 0;
@@ -1127,7 +1143,28 @@ export class Shop {
     const map = await this.getMany(idx.filter(d => d >= need).map(d => 'rp:' + d));
     const rp = new Map();
     map.forEach((v, k) => rp.set(k.slice(3), v));
-    return reportBuild({ days, today, rp, rp0: await this.st.get('rp0'), prod: await this.getProd(), stk: await this.getStk() });
+    const rep = reportBuild({ days, today, rp, rp0: await this.st.get('rp0'), prod: await this.getProd(), stk: await this.getStk() });
+    rep.comm = await this.commSummary();
+    return rep;
+  }
+  /* Процент комиссии площадки: у первого дистрибьютора по умолчанию 0, у остальных его ставит площадка при создании. */
+  async getPct() { const p = await this.st.get('cpct'); return typeof p === 'number' && p >= 0 && p <= COMM_MAX ? p : 0; }
+  /* Выданные заказы за период (дни включительно): сколько, на какую сумму товаров, какая комиссия, сколько заказов сейчас в работе. */
+  async commRange(from, to) {
+    await this.ensureReports();
+    const days = ((await this.st.get('rpx')) || []).filter(d => d >= from && d <= to);
+    const map = await this.getMany(days.map(d => 'rp:' + d));
+    const out = { pct: await this.getPct(), n: 0, base: 0, cm: 0, active: ((await this.st.get('act')) || []).length };
+    map.forEach(r => { out.n += Number(r.n) || 0; out.base += commBase(r); out.cm += Number(r.cm) || 0; });
+    return out;
+  }
+  /* Для отчётов дистрибьютора: комиссия за этот и прошлый месяц. */
+  async commSummary() {
+    const today = dayOf(new Date().toISOString());
+    const first = today.slice(0, 7) + '-01', last = addDays(first, -1), pfirst = last.slice(0, 7) + '-01';
+    const cur = await this.commRange(first, today), prev = await this.commRange(pfirst, last);
+    const pick = (m, x) => ({ m, n: x.n, base: x.base, cm: x.cm });
+    return { pct: cur.pct, cur: pick(first.slice(0, 7), cur), prev: pick(last.slice(0, 7), prev) };
   }
   async getProd() { return normProd(await this.st.get('prod')); }
   async getStk() { const s = await this.st.get('stk'); return s && typeof s === 'object' ? s : {}; }
@@ -1361,12 +1398,22 @@ export class Shop {
       // площадка создаёт дистрибьютора: помечаем хранилище и ставим название
       const cfg = await this.getCfg();
       cfg.shop.name = cleanStr(b.name, 60) || DEFAULT.shop.name;
-      await this.st.put({ born: 1, cfg: sanitizeCfg(cfg) });
+      const upd = { born: 1, cfg: sanitizeCfg(cfg) };
+      const pct = b.pct === undefined ? null : cleanPct(b.pct);
+      if (pct !== null) upd.cpct = pct;
+      await this.st.put(upd);
       this.born = true;
       return json({ ok: true });
     }
     if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
     if (path === '/__/summary') return json(await this.summary());
+    if (path === '/__/stats') return json(await this.commRange(String(b.from || ''), String(b.to || '')));
+    if (path === '/__/cpct') {
+      const pct = cleanPct(b.pct);
+      if (pct === null) return json({ error: 'bad_pct' }, 400);
+      await this.st.put('cpct', pct);
+      return json({ ok: true, pct });
+    }
     if (path === '/__/admins') return json({ admins: (await this.st.get('admins')) || [] });
     if (path === '/__/admin-add') {
       const uid = Number(b.uid);
@@ -1805,7 +1852,7 @@ export class Shop {
       if (to === 'done') {
         const day = dayOf(o.statusAt);
         const rp = (await this.st.get('rp:' + day)) || newRp();
-        rpAdd(rp, o);
+        rpAdd(rp, o, await this.getPct());
         upd['rp:' + day] = rp;
         const idx = (await this.st.get('rpx')) || [];
         if (!idx.includes(day)) {
@@ -2163,6 +2210,17 @@ export class Hub {
       await this.st.put('title', t);
       return json({ title: t });
     }
+    if (path === '/api/hub/admin/stats' && method === 'GET') {
+      const rg = statRange(new URL(request.url).searchParams.get('period') || 'month');
+      const recs = await this.allRecs();
+      const rows = await Promise.all(recs.map(async rec => {
+        const r = await shopCall(this.env, rec.id, '/__/stats', { from: rg.from, to: rg.to });
+        const d = r.ok && r.data ? r.data : null;
+        return { id: rec.id, name: rec.name, on: rec.on, pct: d ? d.pct : 0, n: d ? d.n : 0, base: d ? d.base : 0, cm: d ? d.cm : 0, active: d ? d.active : 0, err: !d };
+      }));
+      const total = rows.reduce((t, x) => ({ n: t.n + x.n, base: t.base + x.base, cm: t.cm + x.cm, active: t.active + x.active }), { n: 0, base: 0, cm: 0, active: 0 });
+      return json({ period: rg.period, from: rg.from, to: rg.to, rows, total });
+    }
     const m = path.match(/^\/api\/hub\/admin\/shops\/([a-z0-9]{2,12})(\/code)?$/);
     if (m) {
       const rec = await this.getRec(m[1]);
@@ -2171,11 +2229,22 @@ export class Hub {
       if (r.err) return json({ error: 'bad_request' }, 400);
       if (m[2] && method === 'POST') return await this.resetCode(rec, r.body || {});
       if (!m[2] && method === 'PUT') {
-        if (!r.body || typeof r.body.on !== 'boolean') return json({ error: 'bad_request' }, 400);
-        rec.on = r.body.on;
-        await this.st.put('d:' + rec.id, rec);
-        await shopCall(this.env, rec.id, '/__/off', { off: !rec.on });
-        return json({ shop: await this.ownerRec(rec) });
+        const b = r.body && typeof r.body === 'object' ? r.body : {};
+        const hasOn = typeof b.on === 'boolean', hasPct = b.pct !== undefined;
+        if (!hasOn && !hasPct) return json({ error: 'bad_request' }, 400);
+        let pct;
+        if (hasPct) {
+          pct = cleanPct(b.pct);
+          if (pct === null) return json({ error: 'bad_pct' }, 400);
+          const sp = await shopCall(this.env, rec.id, '/__/cpct', { pct });
+          if (!sp.ok) return json({ error: 'server' }, 500);
+        }
+        if (hasOn) {
+          rec.on = b.on;
+          await this.st.put('d:' + rec.id, rec);
+          await shopCall(this.env, rec.id, '/__/off', { off: !rec.on });
+        }
+        return json(Object.assign({ shop: await this.ownerRec(rec) }, hasPct ? { pct } : {}));
       }
     }
     return json({ error: 'not_found' }, 404);
@@ -2203,7 +2272,7 @@ export class Hub {
     if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
     let id;
     do { id = 's' + randId(5).toLowerCase(); } while (idx.includes(id));
-    const init = await shopCall(this.env, id, '/__/init', { name });
+    const init = await shopCall(this.env, id, '/__/init', { name, pct: COMM_DEFAULT });
     if (!init.ok) return json({ error: 'server' }, 500);
     const rec = newRec(id, name, c.hash);
     await this.st.put({ ['d:' + id]: rec, dx: idx.concat([id]) });
