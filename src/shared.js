@@ -177,7 +177,11 @@ const cleanRegion=v=>typeof v==='string'&&REGION_IDS.includes(v)?v:'';
 /* список регионов без повторов и лишнего, в порядке справочника */
 const cleanRegions=a=>{const set=new Set(Array.isArray(a)?a:[]);return REGION_IDS.filter(id=>set.has(id))};
 /* Ограничена ли доставка: отмечены не все регионы, а часть. Пустой список и «все четырнадцать» — по всей стране. */
-const hasZone=a=>{const n=cleanRegions(a).length;return n>0&&n<REGION_IDS.length};
+/* Региональный фильтр пока выключен: работаем только по Навои, регионы нигде не показываются и доставку не ограничивают (даже если когда-то были отмечены).
+   Чтобы вернуть, поставьте REGIONS_DEFAULT = true. Тесты включают его через globalThis.__regionsOn. */
+const REGIONS_DEFAULT=false;
+const regionsOn=()=>typeof globalThis.__regionsOn==='boolean'?globalThis.__regionsOn:REGIONS_DEFAULT;
+const hasZone=a=>{if(!regionsOn())return false;const n=cleanRegions(a).length;return n>0&&n<REGION_IDS.length};
 /* Доставляет ли дистрибьютор (запись из списка или настройки) в регион. Нет региона у клиента — считаем, что доставляет. */
 const deliversTo=(sh,reg)=>!!sh&&sh.delivery!==false&&(!hasZone(sh.regions)||!reg||cleanRegions(sh.regions).includes(reg));
 /* Подходит ли дистрибьютор клиенту из региона reg: доставляет к нему или находится в его регионе (самовывоз). */

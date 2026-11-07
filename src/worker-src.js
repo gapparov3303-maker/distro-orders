@@ -1709,7 +1709,7 @@ export class Shop {
       upd['c:' + uid] = cl;
     }
     await this.st.put(upd);
-    await this.hubOrdered(uid, { name: order.name, phone: order.phone, org: order.org || '', addr: order.mode === 'delivery' ? order.address : '' });
+    await this.hubOrdered(uid, { name: order.name, phone: order.phone, org: order.org || '', addr: order.mode === 'delivery' ? order.address : '', terr: cleanStr(body.form.terr, 12) });
 
     // уведомления: ошибки Telegram не должны ломать приём заказа
     const sent = [];
@@ -2233,8 +2233,15 @@ export class Hub {
   /* Магазин оформил заказ. Есть в базе — ничего не меняем (данные могла проверить агент); нет — добавляем из заказа, агент потом проверит. */
   async baseTouch(uid, p) {
     if (!p || typeof p !== 'object' || !Number.isSafeInteger(uid)) return;
+    // территорию называет сам магазин в заказе; принимаем только из списка владельца
+    const tid = cleanStr(p.terr, 12), terr = tid && (await this.terrs()).some(t => t.id === tid) ? tid : '';
     const have = await this.st.get('bu:' + uid);
-    if (have && await this.st.get('b:' + have)) return;
+    const hv = have ? await this.st.get('b:' + have) : null;
+    if (hv) {
+      // запись уже есть: пустую территорию дополняем, уже выбранную (в том числе агентом) не меняем
+      if (!hv.terr && terr) { hv.terr = terr; hv.upd = new Date().toISOString(); await this.st.put('b:' + hv.id, hv); }
+      return;
+    }
     const name = cleanStr(p.org, 60) || cleanStr(p.name, 60), phone = cleanStr(p.phone, 25), addr = cleanStr(p.addr, 200);
     if (name.length < 2 || !phoneOk(phone)) return;
     const ex = await this.findDup(phone, name, addr, '');
@@ -2243,6 +2250,7 @@ export class Hub {
       // уже есть (внёс агент или другой сотрудник магазина): привязываем человека к записи
       const upd = { ['bu:' + uid]: ex.id };
       if (!ex.uid) { ex.uid = uid; upd['b:' + ex.id] = ex; }
+      if (!ex.terr && terr) { ex.terr = terr; ex.upd = now; upd['b:' + ex.id] = ex; }
       await this.st.put(upd);
       return;
     }
@@ -2251,7 +2259,7 @@ export class Hub {
     const id = await this.newBid();
     const ref = await this.st.get('ref:' + uid);
     const agent = validAid(ref) && (await this.st.get('a:' + ref)) ? ref : '';
-    const rec = { id, name, phone, addr, terr: '', st: 'new', note: '', agent, uid, chk: false, ver: 0, src: 'order', created: now, upd: now };
+    const rec = { id, name, phone, addr, terr, st: 'new', note: '', agent, uid, chk: false, ver: 0, src: 'order', created: now, upd: now };
     await this.st.put(Object.assign({ ['b:' + id]: rec, ['bu:' + uid]: id, bn: n + 1 }, this.idxOf(rec)));
   }
   /* Поля записи из запроса: проверяет только присланные. role решает, какие территории можно выбрать. */
@@ -2521,7 +2529,8 @@ export class Hub {
   /* Главный экран: дистрибьюторы, у которых есть товары и которые не отключены. Без входа через Telegram виден только список. */
   async publicList(request) {
     const recs = (await this.allRecs()).filter(r => r.on && r.items > 0);
-    const out = { title: await this.title(), shops: recs.map(pubRec) };
+    const terrs = (await this.terrs()).map(t => ({ id: t.id, name: t.name }));
+    const out = { title: await this.title(), shops: recs.map(pubRec), terrs };
     const au = await this.auth(request);
     if (au.user) {
       const sells = await this.sellsOf(au.user.id);
@@ -2536,7 +2545,7 @@ export class Hub {
       if (ag) out.me.agent = { id: ag.id, name: ag.name, terr: ag.terr || [], link: await this.agentLink(ag.id) };
       // данные магазина из общей базы: форма заказа подставляется сама, на любом телефоне и у любого дистрибьютора
       const bid = await this.st.get('bu:' + au.user.id), br = bid ? await this.st.get('b:' + bid) : null;
-      if (br) out.me.card = { name: br.name, phone: br.phone, addr: br.addr || '', ver: Number(br.ver) || 0 };
+      if (br) out.me.card = { name: br.name, phone: br.phone, addr: br.addr || '', terr: terrs.some(t => t.id === br.terr) ? br.terr : '', ver: Number(br.ver) || 0 };
     }
     return json(out);
   }

@@ -439,7 +439,7 @@ const MAX_QTY=500,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
   view:'shops',sellerTab:'orders',filter:'active',
   cfg:clone(DEFAULT),
-  form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:''},
+  form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:''},
   region:'',showFar:false,regSent:false,regOnly:null,
   myOrders:[],allOrders:[],stats:{doneSum:0,doneCount:0},
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
@@ -453,7 +453,7 @@ const S={
   fav:[],favT:null,favSeq:0,imp:null,impBusy:false,
   rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0},
   did:'',epoch:0,switching:false,off:false,otherCart:null,
-  hub:{title:'',shops:[],me:null,loaded:false,err:false},
+  hub:{title:'',shops:[],me:null,terrs:[],loaded:false,err:false},
   own:{shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:''}
 };
@@ -503,7 +503,7 @@ const mode=()=>S.cfg.shop.delivery!==false&&S.form.mode==='delivery'?'delivery':
 const pickup=()=>pickupInfo(S.cfg,shopNow(),leadFor(S.cfg,mode()));
 function normalizeMode(){if(S.cfg.shop.delivery===false)S.form.mode='pickup'}
 /* Регион магазина запоминается на телефоне и на площадке (чтобы на другом телефоне список был тем же). */
-function loadRegion(){try{S.region=cleanRegion(localStorage.getItem('sh-region'))}catch(e){}}
+function loadRegion(){if(!regionsOn())return;try{S.region=cleanRegion(localStorage.getItem('sh-region'))}catch(e){}}
 function saveRegionLocal(){try{if(S.region)localStorage.setItem('sh-region',S.region);else localStorage.removeItem('sh-region')}catch(e){}}
 function setRegion(id){
   id=cleanRegion(id);
@@ -520,6 +520,16 @@ const orderRegion=()=>{const c=cleanRegion(S.form.region);return zoneOn()?(zone(
 function normalizeRegion(){
   if(!zoneOn()){return}
   if(!zone().includes(S.form.region))S.form.region=zone().includes(S.region)?S.region:'';
+}
+/* Территория магазина (район или город внутри области): спрашиваем один раз, пока её нет в общей базе. */
+const terrKnown=()=>{const c=S.hub.me&&S.hub.me.card;return !!(c&&c.terr&&S.hub.terrs.some(t=>t.id===c.terr))};
+const terrOn=()=>S.hub.terrs.length>0&&!terrKnown();
+const terrCur=()=>{const v=S.form.terr;return v==='-'||S.hub.terrs.some(t=>t.id===v)?v:''};
+function terrFieldHTML(){
+  const cur=terrCur();
+  return '<div class="full"><label class="lab" for="f-terr">'+L('Ваш район или город','Rayon yoki shahringiz')+'</label><select id="f-terr" data-f="terr"><option value="">'+L('Выберите район или город','Rayon yoki shaharni tanlang')+'</option>'
+    +S.hub.terrs.map(t=>'<option value="'+esc(t.id)+'"'+(t.id===cur?' selected':'')+'>'+esc(t.name)+'</option>').join('')
+    +'<option value="-"'+(cur==='-'?' selected':'')+'>'+L('Другой район','Boshqa hudud')+'</option></select><div class="err" id="e-terr"></div></div>';
 }
 function regionFieldHTML(){
   const z=zone(),cur=orderRegion(),off=S.region&&!z.includes(S.region);
@@ -580,10 +590,11 @@ function loadForm(){
     if(f&&typeof f==='object'){
       ['name','phone','address'].forEach(k=>{if(typeof f[k]==='string')S.form[k]=f[k].slice(0,200)});
       if(f.mode==='delivery')S.form.mode='delivery';
+      if(typeof f.terr==='string')S.form.terr=f.terr.slice(0,12);
     }
   }catch(e){}
 }
-function saveForm(){try{localStorage.setItem('sh-form',JSON.stringify({name:S.form.name,phone:S.form.phone,address:S.form.address,mode:S.form.mode}))}catch(e){}}
+function saveForm(){try{localStorage.setItem('sh-form',JSON.stringify({name:S.form.name,phone:S.form.phone,address:S.form.address,mode:S.form.mode,terr:S.form.terr}))}catch(e){}}
 /* профиль на сервере главнее того, что запомнил телефон: имя и телефон берём из него; адрес подставляем, если поле пустое */
 function applyProfile(){
   const p=S.profile,c=S.hub.me&&S.hub.me.card;
@@ -601,6 +612,7 @@ function applyProfile(){
     if(c.name&&(fix||!S.form.name))S.form.name=c.name;
     if(c.phone&&(fix||!S.form.phone))S.form.phone=c.phone;
     if(c.addr&&!S.form.address)S.form.address=c.addr;
+    if(c.terr)S.form.terr=c.terr;
     if(fix)try{localStorage.setItem('sh-cardv',String(c.ver))}catch(e){}
   }
   saveForm();
@@ -868,6 +880,7 @@ function formHTML(pk){
     +(del&&zoneOn()?regionFieldHTML():'')
     +'<div><label class="lab" for="f-name">'+L('Ваше имя или название компании','Ismingiz yoki kompaniya nomi')+'</label><input type="text" id="f-name" data-f="name" value="'+esc(S.form.name)+'" autocomplete="name"><div class="err" id="e-name"></div></div>'
     +'<div><label class="lab" for="f-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="f-phone" data-f="phone" value="'+esc(S.form.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel"><div class="err" id="e-phone"></div></div>'
+    +(terrOn()?terrFieldHTML():'')
     +(del?'<div class="full"><label class="lab" for="f-address">'+L('Адрес доставки','Yetkazib berish manzili')+'</label><textarea id="f-address" data-f="address" rows="2" maxlength="200" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'" autocomplete="street-address">'+esc(S.form.address)+'</textarea><div class="err" id="e-address"></div>'+addrChips()+'</div>':'')
     +'<div><label class="lab" for="f-date">'+(del?L('Дата доставки','Yetkazib berish sanasi'):L('Дата получения','Olish sanasi'))+'</label><input type="date" id="f-date" data-f="date" min="'+pk.min+'" max="'+pk.max+'" value="'+esc(S.form.date)+'"><div class="err" id="e-date"></div></div>'
     +'<div><label class="lab" for="f-time">'+L('Время','Vaqt')+'</label><select id="f-time" data-f="time"></select><div class="err" id="e-time"></div></div>'
@@ -939,13 +952,14 @@ function validate(){
   const e={},f=S.form;
   if(!f.name.trim())e.name=L('Укажите имя','Ismingizni kiriting');
   if(f.phone.replace(/\D/g,'').length<9)e.phone=L('Укажите номер телефона','Telefon raqamini kiriting');
+  if(terrOn()&&!terrCur())e.terr=L('Выберите ваш район или город','Rayon yoki shahringizni tanlang');
   if(mode()==='delivery'&&zoneOn()&&!orderRegion())e.region=L('Выберите регион доставки','Yetkazib berish hududini tanlang');
   if(mode()==='delivery'&&f.address.trim().length<5)e.address=L('Укажите адрес доставки','Yetkazib berish manzilini kiriting');
   if(!f.date)e.date=L('Выберите дату','Sanani tanlang');
   if(f.date&&!f.time)e.time=L('Выберите время','Vaqtni tanlang');
   return e;
 }
-const FIELDS=['region','name','phone','address','date','time'];
+const FIELDS=['region','name','phone','terr','address','date','time'];
 function orderErrText(er){
   return {
     too_many:L('У вас уже есть несколько неподтверждённых заказов. Дождитесь ответа продавца.','Sizda tasdiqlanmagan buyurtmalar bor. Sotuvchi javobini kuting.'),
@@ -982,7 +996,7 @@ async function submitOrder(){
   const f=S.form,del=mode()==='delivery';
   const r=await api('POST','/api/order',{
     cart:lines.map(l=>({id:l.p.id,qty:l.qty})),
-    form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',region:del?orderRegion():'',date:f.date,time:f.time,comment:f.comment.trim()},
+    form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',region:del?orderRegion():'',terr:terrKnown()?S.hub.me.card.terr:(terrCur()==='-'?'':terrCur()),date:f.date,time:f.time,comment:f.comment.trim()},
     lang:LANG,expectTotal:cartPay()
   });
   S.busy=false;
@@ -1036,6 +1050,7 @@ async function submitOrder(){
   order.did=S.did;order.shopName=S.cfg.shop.name||'';
   S.cart={};saveCart();
   S.shopPlaced={order};S.shopStep='list';
+  loadHub();   // магазин уже в общей базе: поле района больше не нужно
   S.myOrders=[order].concat(S.myOrders.filter(o=>!(o.id===order.id&&(o.did||S.did)===S.did)));
   S.form.comment='';
   if(!S.profile)S.profile={name:order.name,phone:order.phone,org:'',addrs:order.mode==='delivery'&&order.address?[order.address]:[]};
@@ -1975,7 +1990,7 @@ function settingsHTML(){
     +num('dfee',L('Стоимость доставки, сум (0 — бесплатно)','Yetkazib berish narxi, soʻm (0 — bepul)'),'deliveryFee',0,1000000000)
     +num('dfree',L('Доставка бесплатна от суммы, сум (0 — нет порога)','Yetkazib berish bepul boʻladigan summa, soʻm (0 — chegarasiz)'),'freeDeliveryFrom',0,1000000000)
     +'<div class="full"><div class="note">'+L('Минимальная сумма считается по товарам и действует и на самовывоз, и на доставку. Стоимость доставки добавляется к заказу только при доставке; если указан порог, при сумме товаров от него доставка бесплатна.','Minimal summa mahsulotlar boʻyicha hisoblanadi va olib ketishga ham, yetkazib berishga ham taalluqli. Yetkazib berish narxi faqat yetkazishda qoʻshiladi; chegara koʻrsatilsa, mahsulotlar shu summadan oshganda yetkazish bepul.')+'</div></div>'
-    +regionsEditHTML()
+    +(regionsOn()?regionsEditHTML():'')
     +discEditHTML()
     +num('from',L('Время работы с, часов','Ish vaqti: dan, soat'),'openFrom',0,22)
     +num('to',L('Время работы до, часов','Ish vaqti: gacha, soat'),'openTo',1,23)
@@ -2108,7 +2123,7 @@ function go(v){
 }
 /* ---------- дистрибьюторы: список, переход, раздел владельца ---------- */
 /* Региональный фильтр работает, только если кто-то из дистрибьюторов уже отметил регионы или склад */
-const regionsInUse=()=>S.hub.shops.some(r=>hasZone(r.regions)||r.home);
+const regionsInUse=()=>regionsOn()&&S.hub.shops.some(r=>hasZone(r.regions)||r.home);
 function shopCardHTML(r){
   const meta=[],reg=S.region&&regionsInUse()?S.region:'';
   if(r.items)meta.push(L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'));
@@ -2118,7 +2133,7 @@ function shopCardHTML(r){
     meta.push(reg?(deliversTo(r,reg)?L('доставка к вам','sizga yetkazib beradi'):L('к вам не доставляет, самовывоз','sizga yetkazmaydi, olib ketish')):L('доставка в '+n+' рег.','yetkazib berish: '+n+' ta hudud'));
   }
   else meta.push(L('есть доставка','yetkazib berish bor'));
-  if(r.home&&regionName(r.home))meta.push(L('склад: ','ombor: ')+regionName(r.home));
+  if(regionsOn()&&r.home&&regionName(r.home))meta.push(L('склад: ','ombor: ')+regionName(r.home));
   if(r.minOrder>0)meta.push(L('мин. заказ ','min. buyurtma ')+money(r.minOrder));
   return '<article class="dcard"><h2>'+esc(r.name)+'</h2><div class="dmeta">'+esc(meta.join(' · '))+'</div>'
     +((r.cats||[]).length?'<div class="dcats">'+r.cats.map(c=>'<span>'+esc(nm(c))+'</span>').join('')+'</div>':'')
@@ -2175,15 +2190,15 @@ async function loadHub(){
     return false;
   }
   const d=r.data,h=S.hub;
-  const next={title:d.title||'',shops:Array.isArray(d.shops)?d.shops:[],me:d.me||null};
+  const next={title:d.title||'',shops:Array.isArray(d.shops)?d.shops:[],me:d.me||null,terrs:Array.isArray(d.terrs)?d.terrs:[]};
   if(d.me){
     S.auth=true;S.uid=d.me.id;
     // регион: что выбрано на этом телефоне, то главнее; если здесь пусто, берём с площадки
-    const sr=cleanRegion(d.me.region);
+    const sr=regionsOn()?cleanRegion(d.me.region):'';
     if(sr&&!S.region){S.region=sr;saveRegionLocal()}
     else if(S.region&&sr!==S.region&&!S.regSent){S.regSent=true;api('PUT','/api/hub/region',{region:S.region})}
   }
-  const same=h.loaded&&JSON.stringify([h.title,h.shops,h.me])===JSON.stringify([next.title,next.shops,next.me]);
+  const same=h.loaded&&JSON.stringify([h.title,h.shops,h.me,h.terrs])===JSON.stringify([next.title,next.shops,next.me,next.terrs]);
   Object.assign(h,next,{loaded:true,err:false});
   if(same)return true;
   renderNav();
@@ -2893,7 +2908,7 @@ document.addEventListener('input',e=>{
   else if(t.dataset.f){
     const f=t.dataset.f;S.form[f]=t.value;
     if(f==='date')fillTimes();
-    if(f==='name'||f==='phone'||f==='address')saveForm();
+    if(f==='name'||f==='phone'||f==='address'||f==='terr')saveForm();
     if(f==='address')markAddr();
     const er=$('#e-'+f);if(er&&er.textContent){er.textContent='';t.setAttribute('aria-invalid','false')}
   }

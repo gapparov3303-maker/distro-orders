@@ -165,6 +165,10 @@ async function t(name, fn) {
   try { await fn(); results.push([true, name]); }
   catch (e) { results.push([false, name, e]); }
 }
+/* региональный фильтр в приложении выключен; эти проверки включают его на время теста (globalThis.__regionsOn) */
+async function tr(name, fn) {
+  return t(name, async () => { globalThis.__regionsOn = true; try { await fn(); } finally { delete globalThis.__regionsOn; } });
+}
 
 /* ============ тесты ============ */
 await t('страница приложения отдаётся и содержит собранный общий код, без торта', async () => {
@@ -3148,7 +3152,22 @@ await t('площадка: комиссия у записей прежних д�
 });
 
 /* ---------- регионы: куда доставляет дистрибьютор, какой регион у магазина ---------- */
-await t('регионы: доставка только в отмеченные регионы, самовывоз всегда; ответ сервера подсказывает, что делать', async () => {
+await t('регионы выключены: отмеченные регионы не ограничивают доставку и никому не показываются', async () => {
+  const { sid } = await shopWorld();
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+  cfg.shop.regions = ['sa', 'tk'];
+  cfg.shop.home = 'nv';
+  assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } })).status, 200);
+  const A = newUser();
+  // доставка без региона, регион не нужен: ограничения не работают
+  const r = await callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: CART, form: formFor(S.DEFAULT, 'delivery'), lang: 'ru', expectTotal: 1394000 } });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).order.region, undefined);
+  const r2 = await callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: CART, form: formFor(S.DEFAULT, 'delivery', { region: 'nv' }), lang: 'ru', expectTotal: 1394000 } });
+  assert.equal(r2.status, 200, 'регион вне списка доставки больше не отклоняется');
+});
+
+await tr('регионы: доставка только в отмеченные регионы, самовывоз всегда; ответ сервера подсказывает, что делать', async () => {
   const { sid } = await shopWorld();
   const mkOrder = async (form, mode, over) => {
     const A = newUser();
@@ -3217,7 +3236,7 @@ await t('регионы: доставка только в отмеченные �
   assert.equal(r.d.error, 'no_delivery');
 });
 
-await t('регионы: другие дистрибьюторы не затронуты; у первого доставка по-прежнему везде', async () => {
+await tr('регионы: другие дистрибьюторы не затронуты; у первого доставка по-прежнему везде', async () => {
   const { sid } = await shopWorld();
   const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
   cfg.shop.regions = ['sa'];
@@ -3234,7 +3253,7 @@ await t('регионы: другие дистрибьюторы не затро
   assert.deepEqual(list.find(x => x.id === sid).regions, ['sa']);
 });
 
-await t('регионы: регион магазина запоминается на площадке, проверяется и у каждого свой', async () => {
+await tr('регионы: регион магазина запоминается на площадке, проверяется и у каждого свой', async () => {
   await hubWorld();
   const A = newUser(), B = newUser();
   const meOfU = async u => (await jsonOf(await call('GET', '/api/shops', { init: u.init() }))).me;
@@ -3569,6 +3588,42 @@ await t('база: личная ссылка агента закрепляет �
   const pe = await jsonOf(await adm('GET', '/people'));
   assert.deepEqual(pe.agents.map(x => [x.name, x.n]), [['Азиз', 1], ['Ботир', 0]]);
   assert.equal(pe.free, 4, 'четыре магазина пока без территории');
+});
+
+await t('база: район или город из заказа попадает в базу, список территорий виден клиенту, чужие значения игнорируются', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const id = n => t1.terr.find(x => x.name === n).id;
+  const A = newUser(), B = newUser(), C = newUser();
+  // названия территорий видны всем: клиент выбирает свой район в форме заказа
+  const pub = await jsonOf(await call('GET', '/api/shops'));
+  assert.deepEqual(pub.terrs.map(x => x.name), ['Навои', 'Кармана']);
+  assert.ok(pub.terrs.every(x => Object.keys(x).sort().join() === 'id,name'));
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', terr: id('Кармана') });
+  await ordBase(sid, B, { name: 'Дастур', phone: '+998 93 777 88 99', terr: 'tzzzz' });   // не из списка владельца
+  await ordBase(sid, C, { name: 'Бахор', phone: '+998 94 000 11 22' });   // район не указан
+  let d = await baseGet();
+  const by = n => d.items.find(x => x.name === n);
+  assert.equal(by('Магазин Мадина').terr, id('Кармана'));
+  assert.equal(by('Дастур').terr, '');
+  assert.equal(by('Бахор').terr, '');
+  assert.equal(d.items.length, 3, 'чужое значение не создаёт лишних записей');
+  assert.equal((await meHub(A)).card.terr, id('Кармана'), 'выбранный район приходит в карточку для автозаполнения');
+  assert.equal((await meHub(B)).card.terr, '');
+  // пустой район дополняется следующим заказом, уже выбранный (в том числе агентом) не меняется
+  await ordBase(sid, B, { name: 'Дастур', phone: '+998 93 777 88 99', terr: id('Навои') });
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', terr: id('Навои') });
+  d = await baseGet();
+  assert.equal(by('Дастур').terr, id('Навои'));
+  assert.equal(by('Магазин Мадина').terr, id('Кармана'));
+  assert.equal(d.items.length, 3);
+  assert.equal((await meHub(B)).card.terr, id('Навои'));
+  // сотрудник того же магазина с другим аккаунтом: запись находится по телефону, район берётся из неё
+  const E = newUser();
+  await ordBase(sid, E, { name: 'Мадина', phone: '+998 (90) 111-22-33', terr: id('Навои') });
+  assert.equal((await baseGet()).items.length, 3);
+  assert.equal((await meHub(E)).card.terr, id('Кармана'));
 });
 
 /* ---------- итог ---------- */
