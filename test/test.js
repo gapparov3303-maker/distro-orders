@@ -26,6 +26,12 @@ class MockStorage {
     if (typeof k === 'object') { Object.keys(k).forEach(x => this.m.set(x, structuredClone(k[x]))); return; }
     this.m.set(k, structuredClone(v));
   }
+  /* как в Durable Object: записи по префиксу, по возрастанию ключа */
+  async list({ prefix = '', limit } = {}) {
+    const out = new Map();
+    for (const k of [...this.m.keys()].filter(x => x.startsWith(prefix)).sort()) { if (limit && out.size >= limit) break; out.set(k, structuredClone(this.m.get(k))); }
+    return out;
+  }
   async delete(k) {
     const list = Array.isArray(k) ? k : [k];
     let n = 0;
@@ -3247,6 +3253,322 @@ await t('регионы: регион магазина запоминается 
   assert.equal((await meOfU(A)).region, '');
   // гость без входа список видит, региона у него нет
   assert.equal((await jsonOf(await call('GET', '/api/shops'))).me, undefined);
+});
+
+/* ---------- общая база магазинов: заказ, агенты, территории ---------- */
+const AGT = { id: 9201, first_name: 'Aziz', username: 'aziz_ag', language_code: 'ru' };
+const AGT2 = { id: 9202, first_name: 'Botir', username: 'botir_ag', language_code: 'ru' };
+const iG = () => initDataFor(AGT), iG2 = () => initDataFor(AGT2);
+const agentMsg = (from, code, mid) => ({ update_id: 6000 + mid, message: { message_id: mid, from, chat: { id: from.id, type: 'private' }, text: '/agent ' + code } });
+const say = async (from, text) => { tgLog = []; await send({ update_id: 6500, message: { message_id: 6500, from, chat: { id: from.id, type: 'private' }, text } }); return lastTg('sendMessage') && lastTg('sendMessage').payload; };
+const baseGet = async (qs, init) => jsonOf(await call('GET', '/api/hub/base' + (qs || ''), { init: init || iS() }));
+const baseSend = (method, path, body, init) => call(method, '/api/hub/base' + path, { init: init || iS(), body });
+const ordBase = async (did, u, form, mode) => {
+  const r = await callS(did, 'POST', '/api/order', { init: u.init(), body: { cart: CART, form: formFor(S.DEFAULT, mode || 'pickup', form), lang: 'ru', expectTotal: 1394000 } });
+  assert.equal(r.status, 200);
+  return jsonOf(r);
+};
+const adm = (method, path, body, init) => call(method, '/api/hub/admin' + path, { init: init || iS(), body });
+const meHub = async u => (await jsonOf(await call('GET', '/api/shops', { init: u.init ? u.init() : initDataFor(u) }))).me;
+
+await t('база: первый заказ сам добавляет магазин, повторные заказы и второй дистрибьютор дублей не создают', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const A = newUser(), B = newUser(), C = newUser();
+  const madina = { name: 'Магазин Мадина', phone: '+998 90 111 22 33' };
+  await ordBase(sid, A, madina, 'delivery');
+  let d = await baseGet();
+  assert.equal(d.total, 1);
+  assert.deepEqual([d.items[0].name, d.items[0].phone, d.items[0].terr, d.items[0].chk, d.items[0].app, d.items[0].src], ['Магазин Мадина', '+998 90 111 22 33', '', false, true, 'order']);
+  assert.equal(d.items[0].addr, 'Навои, ул. Галаба 12, склад 3');
+  assert.equal(d.unchk, 1);
+  // повторный заказ и заказ у другого дистрибьютора: дубля нет
+  await ordBase(sid, A, madina);
+  await ordBase('main', A, madina);
+  assert.equal((await baseGet()).total, 1);
+  // сотрудник того же магазина (другой аккаунт, тот же номер в другой записи): привязывается к той же записи
+  await ordBase('main', B, { name: 'Мадина', phone: '+998 (90) 111-22-33' });
+  assert.equal((await baseGet()).total, 1);
+  assert.equal((await meHub(B)).card.name, 'Магазин Мадина');
+  // другой магазин — новая запись
+  await ordBase('main', C, { name: 'Дастур', phone: '+998 93 777 88 99' });
+  d = await baseGet();
+  assert.deepEqual(d.items.map(x => x.name), ['Дастур', 'Магазин Мадина']);
+  // форма заказа подставляется из базы: карточка приходит владельцу аккаунта
+  const card = (await meHub(A)).card;
+  assert.deepEqual([card.name, card.phone, card.ver], ['Магазин Мадина', '+998 90 111 22 33', 0]);
+  assert.equal((await meHub(newUser())).card, undefined, 'у того, кого нет в базе, карточки нет');
+  // заказ без нормального телефона/названия базу не меняет: проверяется самим заказом
+  assert.equal((await baseGet()).total, 2);
+});
+
+await t('база: агент входит по коду, правит и проверяет записи своей зоны, добавляет новых; повторы запрещены', async () => {
+  const { sid } = await shopWorld();
+  const A = newUser();
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана', 'Зарафшан'] }));
+  const id = n => t1.terr.find(x => x.name === n).id;
+  assert.deepEqual(t1.terr.map(x => x.name), ['Навои', 'Кармана', 'Зарафшан']);
+  const made = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [id('Навои')] }));
+  assert.match(made.code, /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.ok(!JSON.stringify([...W.hubStorage.m.entries()]).includes(made.code), 'код лежит только в виде хэша');
+  // без входа по коду агентом не стать
+  assert.equal((await baseGet('', iG())).error, 'forbidden');
+  assert.equal((await meHub(AGT)).agent, undefined);
+  await send(agentMsg(AGT, 'wrong-wrong-wrong', 1));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'));
+  tgLog = [];
+  await send(agentMsg(AGT, made.code, 2));
+  assert.ok(lastTg('deleteMessage', p => p.message_id === 2), 'сообщение с кодом удалено');
+  const hello = lastTg('sendMessage').payload;
+  assert.ok(hello.text.includes('вы агент «Азиз»') && hello.text.includes('Навои'));
+  assert.equal(hello.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?v=base');
+  const me = await meHub(AGT);
+  assert.deepEqual([me.agent.name, me.agent.terr], ['Азиз', [id('Навои')]]);
+  assert.match(me.agent.link, /\?start=a_a[a-z0-9]+$/);
+  assert.equal(me.owner, false);
+
+  // магазин, оформивший заказ, виден агенту (без территории), как «не проверен»
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33' }, 'delivery');
+  let d = await baseGet('', iG());
+  assert.deepEqual([d.role, d.total, d.unchk, d.mine], ['agent', 1, 1, [id('Навои')]]);
+  const rec = d.items[0];
+  // агент исправляет данные после визита: запись проверена, магазин получит исправление
+  let r = await baseSend('PUT', '/' + rec.id, { name: 'Мадина маркет', phone: '+998 90 111 22 34', terr: id('Навои') }, iG());
+  assert.equal(r.status, 200);
+  let it = (await jsonOf(r)).item;
+  assert.deepEqual([it.name, it.phone, it.terr, it.chk, it.agent], ['Мадина маркет', '+998 90 111 22 34', id('Навои'), true, made.agentId]);
+  assert.deepEqual([(await meHub(A)).card.name, (await meHub(A)).card.ver], ['Мадина маркет', 1]);
+  assert.equal((await baseGet('', iG())).unchk, 0);
+  // правка заметки версию карточки не меняет
+  assert.equal((await baseSend('PUT', '/' + rec.id, { note: 'Директор Алишер, работает до 18:00', st: 'talk' }, iG())).status, 200);
+  assert.equal((await meHub(A)).card.ver, 1);
+  // чужая территория и пустая территория при наличии списка — нельзя
+  assert.deepEqual([(await baseSend('PUT', '/' + rec.id, { terr: id('Кармана') }, iG())).status], [400]);
+  assert.equal((await jsonOf(await baseSend('PUT', '/' + rec.id, { terr: '' }, iG()))).error, 'need_terr');
+  assert.equal((await jsonOf(await baseSend('PUT', '/' + rec.id, { terr: 'tzzzz' }, iG()))).error, 'bad_terr');
+  assert.equal((await jsonOf(await baseSend('PUT', '/' + rec.id, { phone: '12' }, iG()))).error, 'bad_phone');
+  assert.equal((await jsonOf(await baseSend('PUT', '/' + rec.id, { name: 'Я' }, iG()))).error, 'bad_name');
+  assert.equal((await jsonOf(await baseSend('PUT', '/' + rec.id, { st: 'x' }, iG()))).error, 'bad_request');
+
+  // новый магазин, которого ещё нет в базе
+  r = await baseSend('POST', '', { name: 'Дастур', phone: '+998 93 111 22 33', addr: 'Навои, Галаба 5', terr: id('Навои'), note: 'Зайти в пятницу' }, iG());
+  assert.equal(r.status, 200);
+  const dast = (await jsonOf(r)).item;
+  assert.deepEqual([dast.chk, dast.app, dast.agent, dast.src, dast.st], [true, false, made.agentId, 'agent', 'new']);
+  // повторно добавить нельзя: тот же телефон в любой записи, то же название по тому же адресу, телефон уже существующего клиента
+  for (const dup of [
+    { name: 'Другое', phone: '93 111 22 33', terr: id('Навои') },
+    { name: 'ДАСТУР', phone: '+998 94 000 00 01', addr: 'навои, галаба  5', terr: id('Навои') },
+    { name: 'Мадина', phone: '+998 90 111 22 34', terr: id('Навои') }
+  ]) {
+    r = await baseSend('POST', '', dup, iG());
+    assert.equal(r.status, 409, JSON.stringify(dup));
+    const e = await jsonOf(r);
+    assert.equal(e.error, 'dup');
+    assert.equal(e.exists.mine, true);
+  }
+  assert.equal((await jsonOf(await baseSend('POST', '', { name: 'Дастур', phone: '+998 94 000 00 02', addr: 'Навои, Другая 7', terr: id('Навои') }, iG()))).item.name, 'Дастур', 'то же название по другому адресу — другой магазин');
+  // нельзя переименовать/сменить телефон на уже занятый
+  assert.equal((await jsonOf(await baseSend('PUT', '/' + dast.id, { phone: '+998 90 111 22 34' }, iG()))).error, 'dup');
+  // обязательные поля и территория при создании
+  assert.equal((await jsonOf(await baseSend('POST', '', { name: 'Без телефона', terr: id('Навои') }, iG()))).error, 'bad_phone');
+  assert.equal((await jsonOf(await baseSend('POST', '', { phone: '+998 95 123 45 67', terr: id('Навои') }, iG()))).error, 'bad_name');
+  assert.equal((await jsonOf(await baseSend('POST', '', { name: 'Новый', phone: '+998 95 123 45 67' }, iG()))).error, 'need_terr');
+  assert.equal((await jsonOf(await baseSend('POST', '', { name: 'Новый', phone: '+998 95 123 45 67', terr: id('Кармана') }, iG()))).error, 'bad_terr');
+
+  // чужая зона не видна и не правится
+  const far = (await jsonOf(await baseSend('POST', '', { name: 'Карманский', phone: '+998 97 555 66 77', terr: id('Кармана'), addr: 'Кармана' }))).item;   // владелец
+  d = await baseGet('', iG());
+  assert.ok(!d.items.some(x => x.id === far.id), 'магазин другой территории агенту не виден');
+  assert.equal((await baseSend('PUT', '/' + far.id, { note: 'x' }, iG())).status, 403);
+  assert.equal((await baseSend('DELETE', '/' + far.id, undefined, iG())).status, 403);
+  // удалять агент может только свои записи без привязки к приложению
+  assert.equal((await baseSend('DELETE', '/' + rec.id, undefined, iG())).status, 403, 'магазин, который уже заказывал, остаётся');
+  assert.equal((await baseSend('DELETE', '/' + dast.id, undefined, iG())).status, 200);
+  assert.equal((await baseSend('DELETE', '/' + dast.id, undefined, iG())).status, 404);
+  assert.equal((await baseSend('POST', '', { name: 'Дастур', phone: '+998 93 111 22 33', addr: 'Навои, Галаба 5', terr: id('Навои') }, iG())).status, 200, 'после удаления можно добавить снова');
+  // клиент базу не видит и не правит
+  assert.equal((await call('GET', '/api/hub/base', { init: A.init() })).status, 403);
+  assert.equal((await call('POST', '/api/hub/base', { init: A.init(), body: { name: 'Х', phone: '+998 90 000 00 00' } })).status, 403);
+  assert.equal((await call('GET', '/api/hub/base')).status, 401);
+  // выключенный агент теряет доступ
+  assert.equal((await adm('PUT', '/agents/' + made.agentId, { on: false })).status, 200);
+  assert.equal((await call('GET', '/api/hub/base', { init: iG() })).status, 403);
+  assert.equal((await meHub(AGT)).agent, undefined);
+  await adm('PUT', '/agents/' + made.agentId, { on: true });
+  assert.equal((await baseGet('', iG())).role, 'agent');
+});
+
+await t('база: поиск, территории, проверка и страницы; дистрибьютор видит всех, но без заметок и отказавшихся', async () => {
+  const { sid } = await shopWorld();
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const tn = t1.terr[0].id, tk = t1.terr[1].id;
+  const mk = async (i, over) => {
+    const r = await baseSend('POST', '', Object.assign({ name: 'Магазин ' + String(i).padStart(3, '0'), phone: '+998 90 ' + String(100 + i).padStart(3, '0') + ' ' + String(10 + (i % 80)) + ' 00', addr: 'Адрес ' + i, terr: tn }, over || {}));
+    assert.equal(r.status, 200, 'создание ' + i + ': ' + JSON.stringify(await r.clone().json()));
+    return (await jsonOf(r)).item;
+  };
+  for (let i = 1; i <= 55; i++) await mk(i);
+  const karm = await mk(56, { terr: tk, name: 'Карманский базар', note: 'внутренняя заметка' });
+  const ref = await mk(57, { name: 'Отказник' });
+  await baseSend('PUT', '/' + ref.id, { st: 'refuse', note: 'отказался' });
+  let d = await baseGet();
+  assert.deepEqual([d.total, d.all, d.items.length, d.more], [57, 57, 50, true]);
+  assert.deepEqual(d.counts, { [tn]: 56, [tk]: 1 });
+  const d2 = await baseGet('?off=50');
+  assert.deepEqual([d2.items.length, d2.more], [7, false]);
+  assert.equal(new Set(d.items.concat(d2.items).map(x => x.id)).size, 57, 'страницы не пересекаются и ничего не теряют');
+  // фильтры
+  assert.deepEqual((await baseGet('?terr=' + tk)).items.map(x => x.name), ['Карманский базар']);
+  assert.equal((await baseGet('?terr=-')).total, 0, 'без территории никого нет');
+  assert.equal((await baseGet('?f=refuse')).total, 1);
+  assert.equal((await baseGet('?f=chk')).total, 0, 'все проверены (внесены агентом)');
+  assert.deepEqual((await baseGet('?q=' + encodeURIComponent('базар'))).items.map(x => x.name), ['Карманский базар']);
+  assert.deepEqual((await baseGet('?q=' + encodeURIComponent('адрес 7'))).items.map(x => x.name), ['Магазин 007'], 'поиск по адресу');
+  // поиск по телефону: с кодом страны, без него и кусочком
+  for (const q of ['+998 90 156', '90 156 66', '9015666']) assert.deepEqual((await baseGet('?q=' + encodeURIComponent(q))).items.map(x => x.name), ['Карманский базар'], q);
+  assert.equal((await baseGet('?q=' + encodeURIComponent('99'))).total, 0, 'две цифры по телефону не ищем: слишком много случайных совпадений');
+  // магазин из заказа без территории
+  await ordBase(sid, newUser(), { name: 'Новый из заказа', phone: '+998 91 999 88 77' });
+  assert.equal((await baseGet('?terr=-')).total, 1);
+  assert.equal((await baseGet('?f=chk')).total, 1);
+  // дистрибьютор: читает всех, кроме отказавшихся, без заметок, статусов и агентов; менять не может
+  const dv = await baseGet('', iD());
+  assert.deepEqual([dv.role, dv.total, dv.all], ['dist', 57, 57]);
+  const kk = (await baseGet('?terr=' + tk, iD())).items[0];
+  assert.deepEqual(Object.keys(kk).sort(), ['addr', 'app', 'id', 'name', 'phone', 'terr']);
+  assert.ok(!JSON.stringify(dv).includes('внутренняя') && !JSON.stringify(dv).includes('отказался') && !dv.items.some(x => x.name === 'Отказник'));
+  assert.ok(!('agents' in dv) && !('unchk' in dv));
+  assert.equal((await baseGet('?f=refuse', iD())).total, 57, 'фильтр статусов дистрибьютору недоступен');
+  for (const [m, pth, b] of [['POST', '', { name: 'Х', phone: '+998 90 000 00 00' }], ['PUT', '/' + karm.id, { note: 'x' }], ['DELETE', '/' + karm.id]]) assert.equal((await baseSend(m, pth, b, iD())).status, 403, m);
+  // владелец: видит агентов
+  assert.ok(Array.isArray((await baseGet()).agents));
+});
+
+await t('база: территории и агенты — без повторов, удаляются только пустые; новый код отключает прежний аккаунт', async () => {
+  await shopWorld();
+  let r = await adm('POST', '/terr', { names: ['Навои', 'навои', ' Зарафшан ', 'x', 5] });
+  assert.equal(r.status, 200);
+  let st = await jsonOf(r);
+  assert.deepEqual(st.terr.map(x => x.name), ['Навои', 'Зарафшан']);
+  assert.equal((await adm('POST', '/terr', { names: ['НАВОИ'] })).status, 409);
+  assert.equal((await adm('POST', '/terr', { names: [] })).status, 400);
+  assert.equal((await adm('POST', '/terr', {})).status, 400);
+  const [tn, tz] = st.terr.map(x => x.id);
+  // переименование
+  assert.equal((await adm('PUT', '/terr/' + tz, { name: 'Зарафшан город' })).status, 200);
+  assert.equal((await adm('PUT', '/terr/' + tz, { name: 'навои' })).status, 409);
+  assert.equal((await adm('PUT', '/terr/' + tz, { name: 'Я' })).status, 400);
+  assert.equal((await adm('PUT', '/terr/tzzzz', { name: 'Любое' })).status, 404);
+  // агент закреплён за территориями; несуществующие отбрасываются
+  const ag = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [tn, tz, 'tqqqq', tn] }));
+  assert.deepEqual(ag.agents[0].terr, [tn, tz]);
+  assert.deepEqual([ag.agents[0].used, ag.agents[0].n], [false, 0]);
+  // территорию с магазинами удалить нельзя; пустую можно, и из агентов она уходит
+  await baseSend('POST', '', { name: 'Магазин А', phone: '+998 90 123 45 67', terr: tn });
+  assert.equal((await adm('DELETE', '/terr/' + tn)).status, 409);
+  assert.equal((await jsonOf(await adm('DELETE', '/terr/' + tz))).terr.length, 1);
+  assert.deepEqual((await jsonOf(await adm('GET', '/people'))).agents[0].terr, [tn]);
+  // агенты: коды не пересекаются с другими
+  assert.equal((await adm('POST', '/agents', { name: 'Ещё', code: CODE })).status, 409, 'код владельца занят');
+  assert.equal((await adm('POST', '/agents', { name: 'Ещё', code: 'short' })).status, 400);
+  assert.equal((await adm('POST', '/agents', { name: 'Я' })).status, 400);
+  const own = await jsonOf(await adm('POST', '/agents', { name: 'Ещё', code: 'агент-длинный-код-2026' }));
+  assert.equal(own.code, 'агент-длинный-код-2026');
+  assert.equal((await adm('POST', '/agents', { name: 'Третий', code: 'агент-длинный-код-2026' })).status, 409);
+  assert.equal((await createShop({ name: 'Альфа', code: 'агент-длинный-код-2026' })).status, 409, 'код агента не годится дистрибьютору');
+  const dcode = (await addShop('Бета')).code;
+  assert.equal((await adm('POST', '/agents', { name: 'Четвёртый', code: dcode })).status, 409, 'и наоборот');
+  // /agent и /admin не подменяют друг друга
+  await send(agentMsg(AGT, CODE, 20));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'), 'код владельца агентом не делает');
+  await send(adminMsg(AGT, own.code, 21));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'), 'код агента продавцом не делает');
+  // вход, новый код отключает прежний аккаунт
+  await send(agentMsg(AGT, ag.code, 22));
+  assert.equal((await meHub(AGT)).agent.name, 'Азиз');
+  assert.equal((await jsonOf(await adm('GET', '/people'))).agents[0].used, true);
+  const re = await jsonOf(await adm('POST', '/agents/' + ag.agentId + '/code', {}));
+  assert.notEqual(re.code, ag.code);
+  assert.equal((await meHub(AGT)).agent, undefined, 'прежний аккаунт потерял доступ');
+  assert.equal((await call('GET', '/api/hub/base', { init: iG() })).status, 403);
+  await send(agentMsg(AGT2, ag.code, 23));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'), 'старый код не работает');
+  await send(agentMsg(AGT2, re.code, 24));
+  assert.equal((await meHub(AGT2)).agent.name, 'Азиз');
+  // агент и переименование/территории
+  assert.equal((await adm('PUT', '/agents/' + ag.agentId, { name: 'Азиз Каримов', terr: [] })).status, 200);
+  const nm2 = (await jsonOf(await adm('GET', '/people'))).agents[0];
+  assert.deepEqual([nm2.name, nm2.terr], ['Азиз Каримов', []]);
+  assert.equal((await adm('PUT', '/agents/' + ag.agentId, { terr: 'x' })).status, 400);
+  assert.equal((await adm('PUT', '/agents/azzzzz', { on: false })).status, 404);
+  // неверные коды агента закрывают ввод на час, как у /admin
+  for (let i = 0; i < 8; i++) await send(agentMsg(ANNA, 'неверный-код-' + i, 40 + i));
+  await send(agentMsg(ANNA, re.code, 50));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Слишком много'));
+  // всё это только для владельца
+  for (const [m, pth, b] of [['GET', '/people'], ['POST', '/terr', { names: ['Х1'] }], ['POST', '/agents', { name: 'Ага' }], ['PUT', '/agents/' + ag.agentId, { on: false }], ['POST', '/base/import', {}]]) assert.equal((await adm(m, pth, b, iA())).status, 403, m + pth);
+});
+
+await t('база: перенос клиентов дистрибьюторов — уже внесённые не дублируются, повторный перенос ничего не меняет', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const tn = (await jsonOf(await adm('POST', '/terr', { names: ['Навои'] }))).terr[0].id;
+  const A = newUser(), B = newUser(), C = newUser();
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33' });
+  await ordBase('main', B, { name: 'Дастур', phone: '+998 93 777 88 99', address: 'Навои, Галаба 5' }, 'delivery');
+  await ordBase('main', C, { name: 'Сардор', phone: '+998 94 000 11 22' });
+  assert.equal((await baseGet()).total, 3);
+  // имитируем «прежних» клиентов: записи из заказов стёрты, агент внёс Мадину сам и Дастура по тому же адресу, но с другим номером
+  for (const x of (await baseGet()).items) assert.equal((await baseSend('DELETE', '/' + x.id)).status, 200);
+  assert.equal((await baseGet()).total, 0);
+  const mad = (await jsonOf(await baseSend('POST', '', { name: 'Мадина (агент)', phone: '90 111 22 33', terr: tn, note: 'проверено' }))).item;
+  const das = (await jsonOf(await baseSend('POST', '', { name: 'Дастур', phone: '+998 99 000 00 00', addr: 'Навои, Галаба 5', terr: tn }))).item;
+  let r = await jsonOf(await adm('POST', '/base/import', {}));
+  assert.deepEqual([r.added, r.linked], [1, 2], JSON.stringify(r));
+  const d = await baseGet();
+  assert.equal(d.total, 3, 'Мадина и Дастур не задвоились, добавлен только Сардор');
+  const byName = n => d.items.find(x => x.name === n);
+  assert.deepEqual([byName('Мадина (агент)').app, byName('Мадина (агент)').note, byName('Мадина (агент)').chk], [true, 'проверено', true], 'данные агента не затёрты, магазин привязан');
+  assert.deepEqual([byName('Дастур').app, byName('Дастур').phone], [true, '+998 99 000 00 00']);
+  assert.deepEqual([byName('Сардор').app, byName('Сардор').chk, byName('Сардор').src, byName('Сардор').terr], [true, false, 'import', '']);
+  assert.equal((await meHub(A)).card.name, 'Мадина (агент)', 'форма заказа подставится из базы');
+  // повторный перенос: ничего нового
+  r = await jsonOf(await adm('POST', '/base/import', {}));
+  assert.deepEqual([r.added, r.linked], [0, 0]);
+  assert.equal((await baseGet()).total, 3);
+  assert.deepEqual(r.state.total, 3);
+  assert.ok(mad.id && das.id);
+});
+
+await t('база: личная ссылка агента закрепляет магазин за ним при первом заказе', async () => {
+  const { sid } = await shopWorld();
+  const ag = await jsonOf(await adm('POST', '/agents', { name: 'Азиз' }));
+  const ag2 = await jsonOf(await adm('POST', '/agents', { name: 'Ботир' }));
+  const [a1, a2] = ag2.agents.map(x => x.id);
+  const A = newUser(), B = newUser(), C = newUser();
+  let m = await say(A.u, '/start a_' + a1);
+  assert.ok(m.text.length > 10 && m.reply_markup.inline_keyboard[0][0].web_app.url === HOST + '/', 'обычное приветствие с кнопкой каталога');
+  await say(A.u, '/start a_' + a2);   // вторая ссылка первую не перебивает
+  await say(B.u, '/start a_azzzzz');    // неизвестный агент игнорируется
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33' });
+  await ordBase(sid, B, { name: 'Дастур', phone: '+998 93 777 88 99' });
+  await ordBase(sid, C, { name: 'Сардор', phone: '+998 94 000 11 22' });
+  const by = n => baseGet().then(d => d.items.find(x => x.name === n));
+  assert.equal((await by('Магазин Мадина')).agent, a1);
+  assert.equal((await by('Дастур')).agent, '');
+  assert.equal((await by('Сардор')).agent, '');
+  // выключенный агент ссылкой не закрепляет
+  await adm('PUT', '/agents/' + a2, { on: false });
+  const D = newUser();
+  await say(D.u, '/start a_' + a2);
+  await ordBase(sid, D, { name: 'Четвёртый', phone: '+998 95 222 33 44' });
+  assert.equal((await by('Четвёртый')).agent, '');
+  assert.ok(ag.code);
+  // владелец видит, сколько магазинов у каждого агента
+  const pe = await jsonOf(await adm('GET', '/people'));
+  assert.deepEqual(pe.agents.map(x => [x.name, x.n]), [['Азиз', 1], ['Ботир', 0]]);
+  assert.equal(pe.free, 4, 'четыре магазина пока без территории');
 });
 
 /* ---------- итог ---------- */

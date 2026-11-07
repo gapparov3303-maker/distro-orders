@@ -1394,9 +1394,9 @@ export class Shop {
     try { await hubCall(this.env, '/__/sync', { did: this.did, summary: await this.summary() }); }
     catch (e) { console.error('hub sync failed', e && e.message || e); }
   }
-  async hubOrdered(uid) {
+  async hubOrdered(uid, prof) {
     if (!this.env.HUB) return;
-    try { await hubCall(this.env, '/__/ordered', { did: this.did, uid }); }
+    try { await hubCall(this.env, '/__/ordered', { did: this.did, uid, prof }); }
     catch (e) { console.error('hub ordered failed', e && e.message || e); }
   }
   async internal(request, path) {
@@ -1416,6 +1416,12 @@ export class Shop {
     }
     if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
     if (path === '/__/summary') return json(await this.summary());
+    if (path === '/__/clients') {
+      // клиенты этого дистрибьютора: площадка один раз переносит их в общую базу магазинов
+      await this.ensureClients();
+      const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
+      return json({ clients: idx.map(x => map.get('c:' + x)).filter(Boolean).map(c => ({ uid: c.uid, name: c.name, phone: c.phone, org: c.org, addr: (c.addrs || [])[0] || '' })) });
+    }
     if (path === '/__/stats') return json(await this.commRange(String(b.from || ''), String(b.to || '')));
     if (path === '/__/cpct') {
       const pct = cleanPct(b.pct);
@@ -1703,7 +1709,7 @@ export class Shop {
       upd['c:' + uid] = cl;
     }
     await this.st.put(upd);
-    await this.hubOrdered(uid);
+    await this.hubOrdered(uid, { name: order.name, phone: order.phone, org: order.org || '', addr: order.mode === 'delivery' ? order.address : '' });
 
     // уведомления: ошибки Telegram не должны ломать приём заказа
     const sent = [];
@@ -2016,6 +2022,24 @@ const newRec = (id, name, hash, sum) => ({
 const pubRec = r => ({ id: r.id, name: r.name, items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home) });
 const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
+/* ---------- База магазинов: территории, агенты, записи ---------- */
+const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50;
+const BASE_STATUS = ['new', 'talk', 'refuse'];
+/* Ключ для поиска повторов: последние 9 цифр номера (код страны, пробелы и скобки не мешают). */
+const phoneKey = p => { const d = String(p || '').replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
+/* Второй ключ повтора: то же название по тому же адресу (без регистра, пробелов и знаков). Без адреса ключа нет. */
+const nameKey = (name, addr) => {
+  const n = String(name || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''), a = String(addr || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  return n && a ? (n + '|' + a).slice(0, 200) : '';
+};
+const validAid = a => typeof a === 'string' && /^a[a-z0-9]{3,10}$/.test(a);
+const validBid = b => typeof b === 'string' && /^b[a-z0-9]{4,12}$/.test(b);
+const validTid = t => typeof t === 'string' && /^t[a-z0-9]{2,8}$/.test(t);
+/* Запись магазина для того, кто смотрит: владелец и агент видят всё, дистрибьютор только то, что нужно для звонка и доставки. */
+const baseOwn = b => ({ id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src });
+const basePub = b => ({ id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid });
+const lowName = (a, b) => { const x = a.name.toLowerCase(), y = b.name.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; };
+
 export class Hub {
   constructor(state, env) {
     this.st = state.storage;
@@ -2148,6 +2172,8 @@ export class Hub {
       if (!validDid(b.did) || !Number.isSafeInteger(uid)) return json({ ok: false });
       const list = await this.userShops(uid, b.did);
       if (!list.includes(b.did)) await this.st.put('u:' + uid, list.concat([b.did]));
+      // магазин оформил заказ: если его ещё нет в общей базе, он добавляется с данными из заказа
+      try { await this.baseTouch(uid, b.prof); } catch (e) { console.error('base touch failed', e && e.message || e); }
       return json({ ok: true });
     }
     return json({ error: 'not_found' }, 404);
@@ -2163,6 +2189,328 @@ export class Hub {
     }
     await this.st.put('u:' + uid, list);
     return list;
+  }
+
+  /* --- территории, агенты, база магазинов --- */
+  async terrs() { const t = await this.st.get('terr'); return Array.isArray(t) ? t : []; }
+  async allAgents() {
+    const idx = (await this.st.get('ax')) || [];
+    if (!idx.length) return [];
+    const map = await this.st.get(idx.map(x => 'a:' + x));
+    return idx.map(x => map.get('a:' + x)).filter(Boolean);
+  }
+  /* Агент, который вошёл по коду с этого аккаунта. Новый код отключает прежний аккаунт. */
+  async agentOf(uid) {
+    const aid = await this.st.get('agu:' + uid);
+    const a = aid ? await this.st.get('a:' + aid) : null;
+    return a && a.on && a.uid === uid ? a : null;
+  }
+  async agentLink(id) { const b = await this.botName(); return b ? 'https://t.me/' + b + '?start=a_' + id : ''; }
+  async baseRole(uid) {
+    if ((await this.owners()).includes(uid)) return { r: 'owner' };
+    const ag = await this.agentOf(uid);
+    if (ag) return { r: 'agent', ag };
+    if ((await this.sellsOf(uid)).length) return { r: 'dist' };
+    return null;
+  }
+  /* Агент видит и правит свои магазины, магазины своих территорий и магазины без территории (их добавили сами по заказу). */
+  inScope(ag, b) { return b.agent === ag.id || !b.terr || (ag.terr || []).includes(b.terr); }
+  async newBid() {
+    let id;
+    do { id = 'b' + randId(7).toLowerCase(); } while (await this.st.get('b:' + id));
+    return id;
+  }
+  /* Нет ли уже такого магазина: по телефону или по названию с тем же адресом. except: запись, которую правим. */
+  async findDup(phone, name, addr, except) {
+    const ids = [await this.st.get('bp:' + phoneKey(phone))];
+    const k = nameKey(name, addr);
+    if (k) ids.push(await this.st.get('bk:' + k));
+    for (const id of ids) if (id && id !== except) { const e = await this.st.get('b:' + id); if (e) return e; }
+    return null;
+  }
+  /* Ключи поиска повторов записи: что положить и что убрать при смене телефона, названия или адреса. */
+  idxOf(b) { const o = { ['bp:' + phoneKey(b.phone)]: b.id }, k = nameKey(b.name, b.addr); if (k) o['bk:' + k] = b.id; return o; }
+  /* Магазин оформил заказ. Есть в базе — ничего не меняем (данные могла проверить агент); нет — добавляем из заказа, агент потом проверит. */
+  async baseTouch(uid, p) {
+    if (!p || typeof p !== 'object' || !Number.isSafeInteger(uid)) return;
+    const have = await this.st.get('bu:' + uid);
+    if (have && await this.st.get('b:' + have)) return;
+    const name = cleanStr(p.org, 60) || cleanStr(p.name, 60), phone = cleanStr(p.phone, 25), addr = cleanStr(p.addr, 200);
+    if (name.length < 2 || !phoneOk(phone)) return;
+    const ex = await this.findDup(phone, name, addr, '');
+    const now = new Date().toISOString();
+    if (ex) {
+      // уже есть (внёс агент или другой сотрудник магазина): привязываем человека к записи
+      const upd = { ['bu:' + uid]: ex.id };
+      if (!ex.uid) { ex.uid = uid; upd['b:' + ex.id] = ex; }
+      await this.st.put(upd);
+      return;
+    }
+    const n = (await this.st.get('bn')) || 0;
+    if (n >= MAX_BASE) return;
+    const id = await this.newBid();
+    const ref = await this.st.get('ref:' + uid);
+    const agent = validAid(ref) && (await this.st.get('a:' + ref)) ? ref : '';
+    const rec = { id, name, phone, addr, terr: '', st: 'new', note: '', agent, uid, chk: false, ver: 0, src: 'order', created: now, upd: now };
+    await this.st.put(Object.assign({ ['b:' + id]: rec, ['bu:' + uid]: id, bn: n + 1 }, this.idxOf(rec)));
+  }
+  /* Поля записи из запроса: проверяет только присланные. role решает, какие территории можно выбрать. */
+  async baseFields(b, role) {
+    const v = {}, has = k => b[k] !== undefined;
+    for (const k of ['name', 'phone', 'addr', 'terr', 'st', 'note', 'agent']) if (has(k) && typeof b[k] !== 'string') return { err: 'bad_request' };
+    if (has('name')) { v.name = cleanStr(b.name, 60); if (v.name.length < 2) return { err: 'bad_name' }; }
+    if (has('phone')) { v.phone = cleanStr(b.phone, 25); if (!phoneOk(v.phone)) return { err: 'bad_phone' }; }
+    if (has('addr')) v.addr = cleanStr(b.addr, 200);
+    if (has('note')) v.note = cleanStr(b.note, 500, true);
+    if (has('st')) { if (!BASE_STATUS.includes(b.st)) return { err: 'bad_request' }; v.st = b.st; }
+    if (has('terr')) {
+      const terrs = await this.terrs();
+      if (b.terr === '') { if (terrs.length && role.r === 'agent') return { err: 'need_terr' }; v.terr = ''; }
+      else {
+        if (!terrs.some(t => t.id === b.terr)) return { err: 'bad_terr' };
+        if (role.r === 'agent' && (role.ag.terr || []).length && !role.ag.terr.includes(b.terr)) return { err: 'bad_terr' };
+        v.terr = b.terr;
+      }
+    }
+    if (has('agent') && role.r === 'owner') {
+      if (b.agent && !(await this.st.get('a:' + b.agent))) return { err: 'bad_agent' };
+      v.agent = b.agent;
+    }
+    return { v };
+  }
+  dupJson(e, role) {
+    return json({ error: 'dup', exists: { name: e.name, terr: e.terr, mine: role.r === 'owner' || (role.ag && e.agent === role.ag.id) } }, 409);
+  }
+  async baseCreate(role, b) {
+    const f = await this.baseFields(Object.assign({ terr: '' }, b), role);
+    if (f.err) return json({ error: f.err }, 400);
+    const v = f.v;
+    if (!v.name) return json({ error: 'bad_name' }, 400);
+    if (!v.phone) return json({ error: 'bad_phone' }, 400);
+    const n = (await this.st.get('bn')) || 0;
+    if (n >= MAX_BASE) return json({ error: 'too_many' }, 409);
+    const dup = await this.findDup(v.phone, v.name, v.addr || '', '');
+    if (dup) return this.dupJson(dup, role);
+    const now = new Date().toISOString(), id = await this.newBid();
+    const rec = { id, name: v.name, phone: v.phone, addr: v.addr || '', terr: v.terr || '', st: v.st || 'new', note: v.note || '', agent: role.r === 'agent' ? role.ag.id : (v.agent || ''), uid: 0, chk: true, ver: 1, src: 'agent', created: now, upd: now };
+    await this.st.put(Object.assign({ ['b:' + id]: rec, bn: n + 1 }, this.idxOf(rec)));
+    return json({ item: baseOwn(rec) });
+  }
+  async baseUpdate(role, id, b) {
+    const rec = await this.st.get('b:' + id);
+    if (!rec) return json({ error: 'not_found' }, 404);
+    if (role.r === 'agent' && !this.inScope(role.ag, rec)) return json({ error: 'forbidden' }, 403);
+    const f = await this.baseFields(b, role);
+    if (f.err) return json({ error: f.err }, 400);
+    const v = f.v, next = Object.assign({}, rec, v);
+    const dup = await this.findDup(next.phone, next.name, next.addr, rec.id);
+    if (dup) return this.dupJson(dup, role);
+    const upd = {}, del = [];
+    const was = this.idxOf(rec), now = this.idxOf(next);
+    Object.keys(was).forEach(k => { if (!(k in now)) del.push(k); });
+    // телефон или название исправлены: магазин получит исправление в форме заказа один раз (ver)
+    if ((v.name !== undefined && v.name !== rec.name) || (v.phone !== undefined && v.phone !== rec.phone)) next.ver = (Number(rec.ver) || 0) + 1;
+    // правит агент или владелец: данные проверены; магазин без территории и агента закрепляется за агентом
+    next.chk = true;
+    if (role.r === 'agent' && !next.agent) next.agent = role.ag.id;
+    next.upd = new Date().toISOString();
+    await this.st.put(Object.assign({ ['b:' + id]: next }, now, upd));
+    if (del.length) await this.st.delete(del);
+    return json({ item: baseOwn(next) });
+  }
+  async baseDelete(role, id) {
+    const rec = await this.st.get('b:' + id);
+    if (!rec) return json({ error: 'not_found' }, 404);
+    // агент убирает только свои записи без привязки к приложению: магазин, который уже заказывал, остаётся в базе
+    if (role.r === 'agent' && (!this.inScope(role.ag, rec) || rec.uid)) return json({ error: 'forbidden' }, 403);
+    const del = ['b:' + id].concat(Object.keys(this.idxOf(rec)));
+    if (rec.uid) del.push('bu:' + rec.uid);
+    await this.st.delete(del);
+    await this.st.put('bn', Math.max(0, ((await this.st.get('bn')) || 1) - 1));
+    return json({ ok: true });
+  }
+  /* Список для экрана «База»: владелец видит всё, агент свою зону, дистрибьютор всех, кроме отказавшихся (без заметок и статусов). */
+  async baseList(role, url) {
+    const sp = url.searchParams;
+    const terr = String(sp.get('terr') || '').slice(0, 12), f = String(sp.get('f') || '');
+    const q = String(sp.get('q') || '').trim().toLowerCase().slice(0, 40);
+    const off = Math.max(0, Math.min(MAX_BASE, parseInt(sp.get('off') || '0', 10) || 0));
+    const all = [...(await this.st.list({ prefix: 'b:' })).values()];
+    let scope = all;
+    if (role.r === 'agent') scope = all.filter(b => this.inScope(role.ag, b));
+    else if (role.r === 'dist') scope = all.filter(b => b.st !== 'refuse');
+    const counts = {};
+    scope.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
+    const qd = q.replace(/\D/g, '');
+    const full = role.r !== 'dist';
+    const rows = scope.filter(b => (!terr || (terr === '-' ? !b.terr : b.terr === terr))
+      && (!full || !f || (f === 'chk' ? !b.chk : b.st === f))
+      && (!q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd)))).sort(lowName);
+    const out = {
+      role: role.r, total: rows.length, all: scope.length, counts, more: off + BASE_PAGE < rows.length,
+      items: rows.slice(off, off + BASE_PAGE).map(full ? baseOwn : basePub),
+      terrs: (await this.terrs()).map(t => ({ id: t.id, name: t.name }))
+    };
+    if (full) out.unchk = scope.filter(b => !b.chk).length;
+    if (role.r === 'agent') out.mine = role.ag.terr || [];
+    if (role.r === 'owner') out.agents = (await this.allAgents()).map(a => ({ id: a.id, name: a.name }));
+    return json(out);
+  }
+  /* Для владельца: территории и агенты со счётчиками. */
+  async peopleState() {
+    const rows = [...(await this.st.list({ prefix: 'b:' })).values()];
+    const byT = {}, byA = {};
+    rows.forEach(b => { byT[b.terr || ''] = (byT[b.terr || ''] || 0) + 1; byA[b.agent || ''] = (byA[b.agent || ''] || 0) + 1; });
+    const terr = (await this.terrs()).map(t => ({ id: t.id, name: t.name, n: byT[t.id] || 0 }));
+    const agents = await Promise.all((await this.allAgents()).map(async a => ({ id: a.id, name: a.name, on: a.on, since: a.since, terr: a.terr || [], used: !!a.uid, n: byA[a.id] || 0, link: await this.agentLink(a.id) })));
+    return { terr, agents, free: byT[''] || 0, total: rows.length, max: { terr: MAX_TERR, agents: MAX_AGENTS, base: MAX_BASE } };
+  }
+  async addTerr(names) {
+    const terrs = await this.terrs();
+    const have = new Set(terrs.map(t => t.name.toLowerCase()));
+    let added = 0;
+    for (const raw of names.slice(0, 20)) {
+      const name = cleanStr(raw, 40);
+      if (name.length < 2 || have.has(name.toLowerCase()) || terrs.length >= MAX_TERR) continue;
+      let id;
+      do { id = 't' + randId(4).toLowerCase(); } while (terrs.some(t => t.id === id));
+      terrs.push({ id, name });
+      have.add(name.toLowerCase());
+      added++;
+    }
+    if (added) await this.st.put('terr', terrs);
+    return added;
+  }
+  async adminPeople(request, path, method) {
+    if (path === '/api/hub/admin/people' && method === 'GET') return json(await this.peopleState());
+    if (path === '/api/hub/admin/terr' && method === 'POST') {
+      const r = await this.readBody(request, 4000);
+      const names = r.body && Array.isArray(r.body.names) ? r.body.names.filter(x => typeof x === 'string') : null;
+      if (r.err || !names || !names.length) return json({ error: 'bad_name' }, 400);
+      const added = await this.addTerr(names);
+      if (!added) return json({ error: (await this.terrs()).length >= MAX_TERR ? 'too_many' : 'terr_dup' }, 409);
+      return json(await this.peopleState());
+    }
+    const tm = path.match(/^\/api\/hub\/admin\/terr\/(t[a-z0-9]{2,8})$/);
+    if (tm) {
+      const terrs = await this.terrs(), t = terrs.find(x => x.id === tm[1]);
+      if (!t) return json({ error: 'not_found' }, 404);
+      if (method === 'PUT') {
+        const r = await this.readBody(request, 1000);
+        const name = r.body && typeof r.body === 'object' ? cleanStr(r.body.name, 40) : '';
+        if (r.err || name.length < 2) return json({ error: 'bad_name' }, 400);
+        if (terrs.some(x => x.id !== t.id && x.name.toLowerCase() === name.toLowerCase())) return json({ error: 'terr_dup' }, 409);
+        t.name = name;
+        await this.st.put('terr', terrs);
+        return json(await this.peopleState());
+      }
+      if (method === 'DELETE') {
+        if ([...(await this.st.list({ prefix: 'b:' })).values()].some(b => b.terr === t.id)) return json({ error: 'terr_used' }, 409);
+        await this.st.put('terr', terrs.filter(x => x.id !== t.id));
+        for (const a of await this.allAgents()) if ((a.terr || []).includes(t.id)) { a.terr = a.terr.filter(x => x !== t.id); await this.st.put('a:' + a.id, a); }
+        return json(await this.peopleState());
+      }
+    }
+    if (path === '/api/hub/admin/agents' && method === 'POST') {
+      const r = await this.readBody(request, 3000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const name = cleanStr(r.body.name, 60);
+      if (name.length < 2) return json({ error: 'bad_name' }, 400);
+      const idx = (await this.st.get('ax')) || [];
+      if (idx.length >= MAX_AGENTS) return json({ error: 'too_many' }, 409);
+      const c = await this.pickCode(r.body.code);
+      if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
+      const valid = new Set((await this.terrs()).map(t => t.id));
+      const terr = (Array.isArray(r.body.terr) ? r.body.terr : []).filter(x => valid.has(x)).filter((x, i, a) => a.indexOf(x) === i);
+      let id;
+      do { id = 'a' + randId(5).toLowerCase(); } while (idx.includes(id));
+      await this.st.put({ ['a:' + id]: { id, name, on: true, hash: c.hash, since: new Date().toISOString(), uid: 0, terr }, ax: idx.concat([id]) });
+      return json(Object.assign(await this.peopleState(), { code: c.code, agentId: id }));
+    }
+    const am = path.match(/^\/api\/hub\/admin\/agents\/(a[a-z0-9]{3,10})(\/code)?$/);
+    if (am) {
+      const a = await this.st.get('a:' + am[1]);
+      if (!a) return json({ error: 'not_found' }, 404);
+      const r = await this.readBody(request, 3000);
+      if (r.err) return json({ error: 'bad_request' }, 400);
+      const b = r.body && typeof r.body === 'object' ? r.body : {};
+      if (am[2] && method === 'POST') {
+        const c = await this.pickCode(b.code, a.id);
+        if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
+        if (a.uid) await this.st.delete('agu:' + a.uid);   // прежний аккаунт теряет доступ
+        a.hash = c.hash; a.uid = 0;
+        await this.st.put('a:' + a.id, a);
+        return json(Object.assign(await this.peopleState(), { code: c.code, agentId: a.id }));
+      }
+      if (!am[2] && method === 'PUT') {
+        if (typeof b.on === 'boolean') a.on = b.on;
+        if (b.name !== undefined) { const n = cleanStr(b.name, 60); if (n.length < 2) return json({ error: 'bad_name' }, 400); a.name = n; }
+        if (b.terr !== undefined) {
+          if (!Array.isArray(b.terr)) return json({ error: 'bad_request' }, 400);
+          const valid = new Set((await this.terrs()).map(t => t.id));
+          a.terr = b.terr.filter(x => valid.has(x)).filter((x, i, arr) => arr.indexOf(x) === i);
+        }
+        await this.st.put('a:' + a.id, a);
+        return json(await this.peopleState());
+      }
+    }
+    if (path === '/api/hub/admin/base/import' && method === 'POST') return json(Object.assign(await this.importClients(), { state: await this.peopleState() }));
+    return null;
+  }
+  /* Один раз (и безопасно повторно) переносит клиентов всех дистрибьюторов в общую базу. Кто уже есть (по телефону или названию с адресом), не добавляется, а привязывается. */
+  async importClients() {
+    const byPhone = await this.st.list({ prefix: 'bp:' }), byName = await this.st.list({ prefix: 'bk:' }), byUid = await this.st.list({ prefix: 'bu:' });
+    let n = (await this.st.get('bn')) || 0, added = 0, linked = 0, skipped = 0;
+    const now = new Date().toISOString(), upd = {}, touched = new Map();
+    for (const shop of await this.allRecs()) {
+      const r = await shopCall(this.env, shop.id, '/__/clients', {});
+      for (const c of (r.data && Array.isArray(r.data.clients) ? r.data.clients : [])) {
+        const uid = Number(c.uid);
+        const name = cleanStr(c.org, 60) || cleanStr(c.name, 60), phone = cleanStr(c.phone, 25), addr = cleanStr(c.addr, 200);
+        if (!Number.isSafeInteger(uid) || byUid.has('bu:' + uid) || name.length < 2 || !phoneOk(phone)) { skipped++; continue; }
+        const k = nameKey(name, addr);
+        const ex = byPhone.get('bp:' + phoneKey(phone)) || (k && byName.get('bk:' + k)) || '';
+        if (ex) {
+          byUid.set('bu:' + uid, ex); upd['bu:' + uid] = ex;
+          const rec = touched.get(ex) || await this.st.get('b:' + ex);
+          if (rec && !rec.uid) { rec.uid = uid; touched.set(ex, rec); }
+          linked++;
+          continue;
+        }
+        if (n >= MAX_BASE) { skipped++; continue; }
+        let id;
+        do { id = 'b' + randId(7).toLowerCase(); } while (upd['b:' + id]);
+        const rec = { id, name, phone, addr, terr: '', st: 'new', note: '', agent: '', uid, chk: false, ver: 0, src: 'import', created: now, upd: now };
+        upd['b:' + id] = rec; upd['bu:' + uid] = id; upd['bp:' + phoneKey(phone)] = id;
+        byPhone.set('bp:' + phoneKey(phone), id); byUid.set('bu:' + uid, id);
+        if (k) { upd['bk:' + k] = id; byName.set('bk:' + k, id); }
+        n++; added++;
+      }
+    }
+    touched.forEach((rec, id) => { upd['b:' + id] = rec; });
+    upd.bn = n;
+    const keys = Object.keys(upd);
+    for (let i = 0; i < keys.length; i += 100) { const part = {}; keys.slice(i, i + 100).forEach(k => { part[k] = upd[k]; }); await this.st.put(part); }
+    return { added, linked, skipped };
+  }
+  /* Вход агента по коду. Ошибки считаются в том же счётчике, что и у /admin. */
+  async tryAgentCode(code, uid) {
+    const f = (await this.st.get('fail:' + uid)) || { n: 0, until: 0 };
+    if (f.until > Date.now()) return { r: 'locked' };
+    const h = await sha256hex('code:' + String(code || ''));
+    let ag = null;
+    for (const a of await this.allAgents()) if (a.hash && safeEq(h, a.hash) && !ag) ag = a;
+    if (!ag || !ag.on) {
+      f.n += 1;
+      if (f.n >= 8) { f.n = 0; f.until = Date.now() + 3600 * 1000; }
+      await this.st.put('fail:' + uid, f);
+      return { r: 'bad' };
+    }
+    if (f.n || f.until) await this.st.delete('fail:' + uid);
+    if (ag.uid && ag.uid !== uid) await this.st.delete('agu:' + ag.uid);
+    ag.uid = uid;
+    await this.st.put({ ['a:' + ag.id]: ag, ['agu:' + uid]: ag.id });
+    return { r: 'ok', ag };
   }
 
   /* --- приложение --- */
@@ -2184,6 +2532,11 @@ export class Hub {
         // ссылка на каталог нужна продавцу, чтобы раздать её клиентам
         sells: await Promise.all(mine.map(async r => ({ id: r.id, name: r.name, link: await this.link(r.id) })))
       };
+      const ag = await this.agentOf(au.user.id);
+      if (ag) out.me.agent = { id: ag.id, name: ag.name, terr: ag.terr || [], link: await this.agentLink(ag.id) };
+      // данные магазина из общей базы: форма заказа подставляется сама, на любом телефоне и у любого дистрибьютора
+      const bid = await this.st.get('bu:' + au.user.id), br = bid ? await this.st.get('b:' + bid) : null;
+      if (br) out.me.card = { name: br.name, phone: br.phone, addr: br.addr || '', ver: Number(br.ver) || 0 };
     }
     return json(out);
   }
@@ -2213,9 +2566,33 @@ export class Hub {
       return json({ region: reg });
     }
 
+    // база магазинов: смотрят владелец, агенты и дистрибьюторы; правят владелец и агенты
+    if (path === '/api/hub/base' || path.startsWith('/api/hub/base/')) {
+      const role = await this.baseRole(uid);
+      if (!role) return json({ error: 'forbidden' }, 403);
+      if (path === '/api/hub/base' && method === 'GET') return await this.baseList(role, new URL(request.url));
+      if (role.r === 'dist') return json({ error: 'forbidden' }, 403);
+      const rd = await this.readBody(request, 3000);
+      if (path === '/api/hub/base' && method === 'POST') {
+        if (rd.err || !rd.body || typeof rd.body !== 'object') return json({ error: 'bad_request' }, 400);
+        return await this.baseCreate(role, rd.body);
+      }
+      const bm = path.match(/^\/api\/hub\/base\/(b[a-z0-9]{4,12})$/);
+      if (bm && method === 'PUT') {
+        if (rd.err || !rd.body || typeof rd.body !== 'object') return json({ error: 'bad_request' }, 400);
+        return await this.baseUpdate(role, bm[1], rd.body);
+      }
+      if (bm && method === 'DELETE') return await this.baseDelete(role, bm[1]);
+      return json({ error: 'not_found' }, 404);
+    }
+
     // дальше только владелец площадки
     if (!path.startsWith('/api/hub/admin/')) return json({ error: 'not_found' }, 404);
     if (!(await this.owners()).includes(uid)) return json({ error: 'forbidden' }, 403);
+    if (path.startsWith('/api/hub/admin/people') || path.startsWith('/api/hub/admin/terr') || path.startsWith('/api/hub/admin/agents') || path === '/api/hub/admin/base/import') {
+      const res = await this.adminPeople(request, path, method);
+      if (res) return res;
+    }
     if (path === '/api/hub/admin/shops' && method === 'GET') {
       const recs = await this.allRecs();
       return json({ title: await this.title(), max: MAX_SHOPS, shops: await Promise.all(recs.map(r => this.ownerRec(r))) });
@@ -2283,6 +2660,7 @@ export class Hub {
     const hash = await sha256hex('code:' + code);
     if (this.env.ADMIN_CODE && safeEq(hash, await sha256hex('code:' + this.env.ADMIN_CODE))) return { err: 'code_taken' };
     for (const x of await this.allRecs()) if (x.hash && x.id !== except && safeEq(hash, x.hash)) return { err: 'code_taken' };
+    for (const x of await this.allAgents()) if (x.hash && x.id !== except && safeEq(hash, x.hash)) return { err: 'code_taken' };
     return { code, hash };
   }
   async createShop(b) {
@@ -2387,8 +2765,32 @@ export class Hub {
       return;
     }
 
+    if (cmd === '/agent') {
+      const code = text.replace(/^\S+\s*/, '');
+      if (!code) {
+        await this.tg('sendMessage', { chat_id: chat, text: 'Отправьте «/agent КОД». Код агента выдаёт владелец площадки.' });
+        return;
+      }
+      const res = await this.tryAgentCode(code, uid);
+      await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });   // код не должен оставаться в переписке
+      if (res.r === 'ok') {
+        const names = (await this.terrs()).filter(t => (res.ag.terr || []).includes(t.id)).map(t => t.name);
+        await this.tg('sendMessage', {
+          chat_id: chat,
+          text: 'Готово, вы агент «' + res.ag.name + '».' + (names.length ? ' Территории: ' + names.join(', ') + '.' : '')
+            + '\n\nВ приложении откройте вкладку «База»: там можно проверять данные магазинов после визита, исправлять ошибки и добавлять тех, кого ещё нет. Свою ссылку для магазинов вы найдёте там же.',
+          reply_markup: openBtn(this.origin, 'Открыть базу', this.origin + '/?v=base')
+        });
+      } else if (res.r === 'locked') await this.tg('sendMessage', { chat_id: chat, text: 'Слишком много неверных попыток. Попробуйте через час.' });
+      else await this.tg('sendMessage', { chat_id: chat, text: 'Неверный код.' });
+      return;
+    }
+
     // «/start d_<номер>» — ссылка на каталог конкретного дистрибьютора; всё остальное — общее приветствие
     const payload = cmd === '/start' ? (text.split(/\s+/)[1] || '') : '';
+    // «/start a_<номер>» — личная ссылка агента: магазин, пришедший по ней, закрепляется за агентом (при первом заказе)
+    const am0 = payload.match(/^a_(a[a-z0-9]{3,10})$/);
+    if (am0 && !(await this.st.get('ref:' + uid))) { const ag = await this.st.get('a:' + am0[1]); if (ag && ag.on) await this.st.put('ref:' + uid, ag.id); }
     let target = null;
     const m = payload.match(/^d_([a-z0-9]{2,12})$/);
     if (m) { const rec = await this.getRec(m[1]); if (rec && rec.on) target = rec; }
