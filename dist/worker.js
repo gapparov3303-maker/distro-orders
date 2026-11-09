@@ -429,8 +429,25 @@ function normProd(d) {
 }
 /* Штук в блоке или коробке: 0 (нет такой упаковки) или от 2 до 500. */
 const cleanPack = v => { const n = Math.round(Number(v)); return n >= 2 && n <= MAX_QTY ? n : 0; };
-/* Чистит то, что прислал продавец. Версию фото (pv) клиент не задаёт: берём из сохранённых данных. */
-function sanitizeProd(d, old) {
+/* Проверка товаров. У одобренного товара метки ms нет совсем (так выглядят и все прежние товары).
+   ms: 'draft' — продавец добавил, но ещё не отправил на проверку; 'wait' — ждёт проверки; 'ret' — владелец вернул с причиной mc.
+   mt — когда статус менялся в последний раз, ma — когда владелец одобрил. Эти поля продавец не задаёт: берутся из сохранённых данных. */
+const MOD_BAD_NAMES = ['', 'Без названия', 'Новый товар'];
+const MOD_REASON_MAX = 300;
+const isApproved = it => !it.ms;
+const ruCount = (n, w) => { const m = n % 100, k = n % 10; return m > 10 && m < 15 ? w[2] : k === 1 ? w[0] : k > 1 && k < 5 ? w[1] : w[2]; };
+const ruTovar = n => n + ' ' + ruCount(n, ['товар', 'товара', 'товаров']);
+/* Что мешает отправить товар на проверку: название, цена, категория. */
+function modProblems(it, cats) {
+  const bad = [];
+  if (MOD_BAD_NAMES.includes(String(it.name || '').trim())) bad.push('name');
+  if (!(Number(it.price) > 0)) bad.push('price');
+  if (!cats.some(c => c.id === it.cat)) bad.push('cat');
+  return bad;
+}
+/* Чистит то, что прислал продавец. Версию фото (pv) клиент не задаёт: берём из сохранённых данных.
+   mod: {state, at} — в каком состоянии начинают новые товары (draft, wait; у владельца ok — метки нет). */
+function sanitizeProd(d, old, mod) {
   const oldItems = new Map(normProd(old).items.map(i => [i.id, i]));
   const src = normProd(d);
   const cats = [], seenC = new Set();
@@ -467,21 +484,34 @@ function sanitizeProd(d, old) {
       pv2: prev && typeof prev.pv2 === 'string' ? prev.pv2 : '',
       pv3: prev && typeof prev.pv3 === 'string' ? prev.pv3 : ''
     });
+    const it = items[items.length - 1];
+    if (prev) {
+      if (prev.ms) { it.ms = prev.ms; if (prev.mt) it.mt = prev.mt; if (prev.mc) it.mc = prev.mc; }
+      if (prev.ma) it.ma = prev.ma;
+    } else if (mod && mod.state && mod.state !== 'ok') {
+      it.ms = mod.state;
+      if (mod.state === 'wait') it.mt = mod.at;
+    }
   });
   return { cats, items };
 }
 
 /* ---------- остатки ---------- */
-/* Каталог для покупателей: у товаров с учётом добавляется av (сколько можно заказать, не больше 500) и lw (товара мало). */
-function publicProd(prod, stk) {
-  return {
-    cats: prod.cats,
-    items: prod.items.map(it => {
-      const v = stk ? stkPublic(stk[it.id], MAX_QTY) : undefined;
-      if (!v) return it;
-      return Object.assign({}, it, v.lw ? { av: v.av, lw: 1 } : { av: v.av });
-    })
-  };
+/* Каталог для покупателей: у товаров с учётом добавляется av (сколько можно заказать, не больше 500) и lw (товара мало).
+   Товар на проверке виден покупателю без цены (серой карточкой «На модерации»), черновики и возвращённые не видны совсем.
+   admin: продавцу отдаётся всё, с метками проверки. */
+function publicProd(prod, stk, admin) {
+  const items = [];
+  prod.items.forEach(it => {
+    if (it.ms && !admin) {
+      if (it.ms !== 'wait') return;
+      items.push({ id: it.id, cat: it.cat, name: it.name, uz: it.uz || '', desc: it.desc, descUz: it.descUz, amount: it.amount, unit: it.unit, price: 0, tiers: [], blk: 0, box: 0, on: true, tag: '', old: 0, pv: it.pv, pv2: it.pv2, pv3: it.pv3, ms: 'wait' });
+      return;
+    }
+    const v = stk && !it.ms ? stkPublic(stk[it.id], MAX_QTY) : undefined;
+    items.push(!v ? it : Object.assign({}, it, v.lw ? { av: v.av, lw: 1 } : { av: v.av }));
+  });
+  return { cats: prod.cats, items };
 }
 /* Название для журнала и сообщений: «Рис, 25 кг». */
 function ruTitle(it) {
@@ -532,7 +562,7 @@ function validateOrder(b, cfg, prod, stk) {
     if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY || typeof c.id !== 'string' || seen.has(c.id)) return { err: 'bad_request' };
     seen.add(c.id);
     const it = prod.items.find(x => x.id === c.id);
-    if (!it || it.on === false) { missing = true; continue; }
+    if (!it || it.on === false || it.ms) { missing = true; continue; }   // на проверке заказать нельзя
     const price = unitPrice(it, qty);    // цена за штуку с учётом ступеней: считает только сервер
     const line = { id: it.id, name: it.name, uz: it.uz || '', amount: it.amount, unit: it.unit, price, qty };
     if (packSize(it, 'box')) line.box = packSize(it, 'box');
@@ -1446,7 +1476,7 @@ export class Shop {
   }
   async getProd() { return normProd(await this.st.get('prod')); }
   async getStk() { const s = await this.st.get('stk'); return s && typeof s === 'object' ? s : {}; }
-  async pubProd() { return publicProd(await this.getProd(), await this.getStk()); }
+  async pubProd(admin) { return publicProd(await this.getProd(), await this.getStk(), !!admin); }
   /* Новые строки журнала + прежние (последние JR_CAP). Возвращает массив для записи. */
   async jrWith(rows) { return rows.concat((await this.st.get('jr')) || []).slice(0, JR_CAP); }
   /* Сколько штук товара сейчас отложено под активные заказы (нужно, когда учёт товара включают заново). */
@@ -1470,6 +1500,13 @@ export class Shop {
     for (const aid of (await this.st.get('admins')) || []) await this.tg('sendMessage', { chat_id: aid, text });
   }
   async isAdmin(uid) { return ((await this.st.get('admins')) || []).includes(uid); }
+  /* Публичный адрес /api/config читают все, но продавцу нужен каталог целиком (с черновиками): узнаём его, если Telegram-подпись приложена. */
+  async adminIn(request) {
+    const h = request.headers.get('x-init-data');
+    if (!h || !this.env.BOT_TOKEN) return false;
+    const au = await verifyInitData(h, this.env.BOT_TOKEN);
+    return !au.err && await this.isAdmin(au.user.id);
+  }
 
   /* --- Telegram --- */
   tg(method, payload) { return tgApi(this.env.BOT_TOKEN, method, payload); }
@@ -1634,7 +1671,7 @@ export class Shop {
       if (path === '/webhook' && method === 'POST') return await this.webhook(request);
       if (path === '/setup') return await this.setup(request);
       if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5), new URL(request.url).searchParams.get('n'));
-      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd(), off: await this.isOff() });
+      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd(await this.adminIn(request)), off: await this.isOff() });
       if (path.startsWith('/api/')) return await this.api(request, path, method);
       return json({ error: 'not_found' }, 404);
     } catch (e) {
@@ -1653,9 +1690,10 @@ export class Shop {
   /* Краткая карточка дистрибьютора для списка: название, сколько товаров, категории, есть ли доставка. */
   async summary() {
     const cfg = await this.getCfg(), prod = await this.getProd();
-    const cats = prod.cats.filter(c => prod.items.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
+    const ok = prod.items.filter(isApproved);   // в списке дистрибьюторов считаются только одобренные товары
+    const cats = prod.cats.filter(c => ok.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
     return {
-      name: cfg.shop.name || DEFAULT.shop.name, items: prod.items.length, cats,
+      name: cfg.shop.name || DEFAULT.shop.name, items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
       delivery: cfg.shop.delivery !== false, minOrder: Number(cfg.shop.minOrder) || 0,
       regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home)
     };
@@ -1673,7 +1711,9 @@ export class Shop {
   }
   async internal(request, path) {
     if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
-    const r = await this.readBody(request, 8000);
+    // фото от владельца приходит байтами, остальное — JSON
+    const raw = path === '/__/mod-photo';
+    const r = raw ? { body: {} } : await this.readBody(request, 8000);
     const b = r.body && typeof r.body === 'object' ? r.body : {};
     if (path === '/__/init') {
       // площадка создаёт дистрибьютора: помечаем хранилище и ставим название
@@ -1687,6 +1727,7 @@ export class Shop {
       return json({ ok: true });
     }
     if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
+    if (path === '/__/mod-photo') return await this.modPhoto(request);
     if (path === '/__/summary') return json(await this.summary());
     if (path === '/__/clients') {
       // клиенты этого дистрибьютора: площадка один раз переносит их в общую базу магазинов
@@ -1701,6 +1742,10 @@ export class Shop {
       await this.st.put('cpct', pct);
       return json({ ok: true, pct });
     }
+    if (path === '/__/mod-list') return json(await this.modList(b.seg === 'ret' || b.seg === 'ok' ? b.seg : 'wait'));
+    if (path === '/__/mod-approve') return await this.modApprove(b);
+    if (path === '/__/mod-return') return await this.modReturn(b);
+    if (path === '/__/mod-edit') return await this.modEdit(b);
     if (path === '/__/admins') return json({ admins: (await this.st.get('admins')) || [] });
     if (path === '/__/admin-add') {
       const uid = Number(b.uid);
@@ -1739,7 +1784,7 @@ export class Shop {
     if (path === '/api/bootstrap' && method === 'GET') {
       await this.ensureClients();
       const cl = await this.getClient(uid);
-      return json({ did: this.did, off: await this.isOff(), cfg: await this.getCfg(), prod: await this.pubProd(), me: { id: uid, name: u.first_name || '', admin, profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
+      return json({ did: this.did, off: await this.isOff(), cfg: await this.getCfg(), prod: await this.pubProd(admin), me: { id: uid, name: u.first_name || '', admin, profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
     }
     if (path === '/api/profile' && method === 'PUT') {
       const r = await this.readBody(request, 6000);
@@ -1791,7 +1836,12 @@ export class Shop {
       if (path === '/api/admin/products' && method === 'PUT') {
         const r = await this.readBody(request, PROD_BODY_MAX);
         if (r.err || !r.body) return json({ error: 'bad_request' }, r.err || 400);
-        return await this.saveProd(r.body.prod);
+        return await this.saveProd(r.body.prod, uid);
+      }
+      if (path === '/api/admin/submit' && method === 'POST') {
+        const r = await this.readBody(request, 6000);
+        if (r.err) return json({ error: 'bad_request' }, 400);
+        return await this.modSubmit(r.body && typeof r.body === 'object' ? r.body : {});
       }
       if (path === '/api/admin/clients' && method === 'GET') {
         await this.ensureClients();
@@ -1850,7 +1900,7 @@ export class Shop {
           return json({ ok: true, name: f.name, size: f.bytes.length, n: f.n });
         } finally { this.exporting = false; }
       }
-      if (path === '/api/admin/import' && method === 'POST') return await this.importPrice(request, new URL(request.url).searchParams.get('apply') === '1');
+      if (path === '/api/admin/import' && method === 'POST') return await this.importPrice(request, new URL(request.url).searchParams.get('apply') === '1', uid);
       if (path === '/api/admin/stock' && method === 'GET') return json({ stk: await this.getStk() });
       if (path === '/api/admin/journal' && method === 'GET') return json({ jr: (await this.st.get('jr')) || [] });
       if (path === '/api/admin/stock' && method === 'POST') {
@@ -2007,11 +2057,20 @@ export class Shop {
   }
 
   /* --- каталог --- */
-  async saveProd(input) { return json({ prod: await this.applyProd(input) }); }
-  /* Сохраняет каталог целиком (его присылает приложение или прайс) и возвращает его в виде, который видят клиенты. */
-  async applyProd(input) {
+  async saveProd(input, uid) { return json({ prod: await this.applyProd(input, uid) }); }
+  /* Владелец площадки? Без площадки (одиночный магазин) продавец и есть владелец. */
+  async isOwnerUid(uid) {
+    if (!this.env.HUB) return true;
+    try { const r = await hubCall(this.env, '/__/is-owner', { uid }); return !!(r && r.owner); } catch (e) { return false; }
+  }
+  /* Сохраняет каталог целиком (его присылает приложение или прайс) и возвращает его продавцу с метками проверки.
+     Новые товары продавца начинаются черновиками (из прайса — сразу «ждёт проверки»), у владельца — сразу одобренными. */
+  async applyProd(input, uid, newState) {
     const old = await this.getProd();
-    const prod = sanitizeProd(input, old);
+    const oldIds = new Set(old.items.map(i => i.id));
+    const hasNew = normProd(input).items.some(o => !(validId(o.id) && oldIds.has(o.id)));
+    const mod = hasNew && !(await this.isOwnerUid(uid)) ? { state: newState || 'draft', at: new Date().toISOString() } : null;
+    const prod = sanitizeProd(input, old, mod);
     const keep = new Set(prod.items.map(i => i.id));
     const gone = old.items.map(i => i.id).filter(id => !keep.has(id));
     const stk = await this.getStk();
@@ -2020,10 +2079,110 @@ export class Shop {
     await this.st.put(upd);
     if (gone.length) await this.st.delete(gone.flatMap(id => [1, 2, 3].map(n => photoKey(id, n))));   // фото удалённых товаров не копим
     await this.hubSync();
-    return publicProd(prod, stk);
+    if (mod && mod.state === 'wait') {
+      const fresh = prod.items.filter(i => i.ms === 'wait' && !oldIds.has(i.id));
+      if (fresh.length) await this.modNotifyOwner(fresh.length);
+    }
+    return publicProd(prod, stk, true);
+  }
+  /* Продавец отправляет новые (или возвращённые) товары на проверку. ids — какие; без них — все черновики и возвращённые.
+     Нужны название, цена и категория: у остальных в ответе bad (что исправить), они остаются как были. */
+  async modSubmit(b) {
+    const prod = await this.getProd();
+    const want = Array.isArray(b.ids) ? new Set(b.ids.filter(validId)) : null;
+    const sent = [], bad = [], now = new Date().toISOString();
+    for (const it of prod.items) {
+      if ((it.ms !== 'draft' && it.ms !== 'ret') || (want && !want.has(it.id))) continue;
+      const why = modProblems(it, prod.cats);
+      if (why.length) { bad.push({ id: it.id, why }); continue; }
+      it.ms = 'wait'; it.mt = now; delete it.mc;
+      sent.push(it);
+    }
+    if (!sent.length) return json({ error: 'nothing', bad }, 400);
+    await this.st.put('prod', prod);
+    await this.hubSync();
+    await this.modNotifyOwner(sent.length);
+    return json({ prod: publicProd(prod, await this.getStk(), true), sent: sent.length, bad });
+  }
+  /* Один раз на отправку: владельцу уходит «Дистрибьютор: на проверке N товаров» с кнопкой в раздел проверки. */
+  async modNotifyOwner(n) {
+    if (!this.env.HUB || !(n > 0)) return;
+    try { await hubCall(this.env, '/__/mod-notify', { did: this.did, n, origin: this.origin }); }
+    catch (e) { console.error('mod notify failed', e && e.message || e); }
+  }
+  /* Сообщение продавцам этого дистрибьютора (одобрили или вернули). */
+  async modTellSellers(text, origin) {
+    const url = /^https:\/\/(?!internal)/.test(origin || '') ? origin : '';
+    for (const aid of (await this.st.get('admins')) || []) {
+      try { await this.tg('sendMessage', Object.assign({ chat_id: aid, text }, url ? { reply_markup: openBtn(url, 'Открыть товары', sellerUrl(url, this.did)) } : {})); }
+      catch (e) { console.error('mod tell failed', e && e.message || e); }
+    }
+  }
+  /* Владелец: список товаров по статусам. seg: wait, ret или ok (одобренные через проверку). Ответ — вместе с числами по всем трём. */
+  async modList(seg) {
+    const prod = await this.getProd();
+    const cat = new Map(prod.cats.map(c => [c.id, c]));
+    const counts = { wait: 0, ret: 0, ok: 0 };
+    prod.items.forEach(i => { if (i.ms === 'wait') counts.wait++; else if (i.ms === 'ret') counts.ret++; else if (!i.ms && i.ma) counts.ok++; });
+    const pick = i => seg === 'ok' ? (!i.ms && i.ma) : i.ms === seg;
+    const rows = prod.items.filter(pick).sort((a, b) => String(b.ma || b.mt || '').localeCompare(String(a.ma || a.mt || ''))).slice(0, 150)
+      .map(i => Object.assign({}, i, { catName: (cat.get(i.cat) || {}).name || '', catUz: (cat.get(i.cat) || {}).uz || '' }));
+    return { items: rows, counts, name: (await this.getCfg()).shop.name || '' };
+  }
+  async modApprove(b) {
+    const prod = await this.getProd(), ids = new Set((Array.isArray(b.ids) ? b.ids : []).filter(validId));
+    const done = [], now = new Date().toISOString();
+    for (const it of prod.items) {
+      if (!ids.has(it.id) || (it.ms !== 'wait' && it.ms !== 'ret')) continue;
+      delete it.ms; delete it.mt; delete it.mc; it.ma = now;
+      done.push(it);
+    }
+    if (done.length) {
+      await this.st.put('prod', prod);
+      await this.hubSync();
+      const names = done.slice(0, 8).map(i => '• ' + i.name).join('\n') + (done.length > 8 ? '\n… и ещё ' + (done.length - 8) : '');
+      await this.modTellSellers(done.length === 1 ? '✅ Товар «' + done[0].name + '» одобрен и появился в каталоге.' : '✅ Одобрено: ' + ruTovar(done.length) + '. Они появились в каталоге.\n' + names, b.origin);
+    }
+    return json({ ok: true, n: done.length });
+  }
+  async modReturn(b) {
+    const reason = cleanStr(b.reason, MOD_REASON_MAX, true);
+    if (!validId(b.id) || !reason) return json({ error: 'bad_request' }, 400);
+    const prod = await this.getProd(), it = prod.items.find(x => x.id === b.id);
+    if (!it) return json({ error: 'not_found' }, 404);
+    if (it.ms !== 'wait' && it.ms !== 'ret') return json({ error: 'not_pending' }, 409);
+    it.ms = 'ret'; it.mt = new Date().toISOString(); it.mc = reason; delete it.ma;
+    await this.st.put('prod', prod);
+    await this.hubSync();
+    await this.modTellSellers('↩️ Товар «' + it.name + '» возвращён на доработку.\nЧто исправить: ' + reason + '\nОткройте «Продавец» → «Товары», исправьте и отправьте снова.', b.origin);
+    return json({ ok: true });
+  }
+  /* Владелец правит товар сам (текст, цена, упаковка); статус проверки при этом не меняется. */
+  async modEdit(b) {
+    if (!validId(b.id) || !b.item || typeof b.item !== 'object') return json({ error: 'bad_request' }, 400);
+    const old = await this.getProd();
+    if (!old.items.some(x => x.id === b.id)) return json({ error: 'not_found' }, 404);
+    const F = ['name', 'uz', 'desc', 'descUz', 'cat', 'amount', 'unit', 'price', 'tiers', 'blk', 'box', 'tag', 'old'];
+    const patch = {};
+    F.forEach(k => { if (b.item[k] !== undefined) patch[k] = b.item[k]; });
+    const prod = sanitizeProd({ cats: old.cats, items: old.items.map(x => x.id === b.id ? Object.assign({}, x, patch) : x) }, old);
+    await this.st.put('prod', prod);
+    await this.hubSync();
+    return json({ item: prod.items.find(x => x.id === b.id) });
+  }
+  /* Фото товара от владельца (через площадку): то же, что у продавца, с теми же проверками. del=1 — убрать. */
+  async modPhoto(request) {
+    const q = new URL(request.url).searchParams, id = q.get('id') || '', n = Number(q.get('n') || 1);
+    if (!validId(id)) return json({ error: 'not_found' }, 404);
+    if (!Number.isInteger(n) || n < 1 || n > PHOTOS_MAX) return json({ error: 'bad_slot' }, 400);
+    if (q.get('del') === '1') return await this.setPhoto(id, null, n);
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.length > PROD_PHOTO_MAX) return json({ error: 'too_big' }, 413);
+    if (!checkJpeg(bytes, PROD_PHOTO_LIM)) return json({ error: 'bad_photo' }, 400);
+    return await this.setPhoto(id, bytes, n);
   }
   /* Прайс из Excel: apply=false только показывает, что изменится; apply=true записывает. */
-  async importPrice(request, apply) {
+  async importPrice(request, apply, uid) {
     if (Number(request.headers.get('content-length') || 0) > XL_MAX_FILE) return json({ error: 'bad_file', why: 'too_big' }, 413);
     const u = new Uint8Array(await request.arrayBuffer());
     if (u.length > XL_MAX_FILE) return json({ error: 'bad_file', why: 'too_big' }, 413);
@@ -2040,7 +2199,7 @@ export class Shop {
       changes: plan.changes.slice(0, 200), moreChanges: Math.max(0, plan.changes.length - 200),
       errors: plan.errors.slice(0, 50), moreErrors: Math.max(0, plan.errors.length - 50)
     };
-    if (apply && plan.changes.length) { out.prod = await this.applyProd(plan.prod); out.applied = true; }
+    if (apply && plan.changes.length) { out.prod = await this.applyProd(plan.prod, uid, 'wait'); out.applied = true; }   // новые строки прайса сразу идут на проверку
     return json(out);
   }
 
@@ -2306,7 +2465,7 @@ export class Shop {
 /* ---------- Площадка: реестр дистрибьюторов, их коды, вход продавцов, заказы клиента по всем компаниям ---------- */
 const newRec = (id, name, hash, sum) => ({
   id, name: cleanStr(name, 60) || DEFAULT.shop.name, on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
-  items: sum && Number(sum.items) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
+  items: sum && Number(sum.items) || 0, wait: sum && Number(sum.wait) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
   regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home)
 });
 /* Что видит клиент в списке. Код и служебные поля не уходят. */
@@ -2450,12 +2609,26 @@ export class Hub {
       const s = b.summary;
       rec.name = cleanStr(s.name, 60) || rec.name;
       rec.items = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.items) || 0)));
+      rec.wait = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.wait) || 0)));
       rec.cats = (Array.isArray(s.cats) ? s.cats : []).slice(0, 6).map(c => ({ name: cleanStr(c && c.name, 40), uz: cleanStr(c && c.uz, 40) })).filter(c => c.name);
       rec.delivery = s.delivery !== false;
       rec.minOrder = Math.max(0, Math.round(Number(s.minOrder) || 0));
       rec.regions = cleanRegions(s.regions);
       rec.home = cleanRegion(s.home);
       await this.st.put('d:' + rec.id, rec);
+      return json({ ok: true });
+    }
+    if (path === '/__/is-owner') return json({ owner: (await this.owners()).includes(Number(b.uid)) });
+    if (path === '/__/mod-notify') {
+      // продавец отправил товары на проверку: владельцам уходит одно сообщение на отправку
+      const n = Math.round(Number(b.n));
+      if (!validDid(b.did) || !(n > 0)) return json({ ok: false });
+      const rec = await this.getRec(b.did), origin = /^https:\/\/(?!internal)/.test(b.origin || '') ? b.origin : '';
+      const text = (rec ? rec.name : b.did) + ': на проверке ' + ruTovar(n);
+      for (const oid of await this.owners()) {
+        try { await this.tg('sendMessage', Object.assign({ chat_id: oid, text }, origin ? { reply_markup: openBtn(origin, 'Проверить', origin + '/?v=review') } : {})); }
+        catch (e) { console.error('mod notify send failed', e && e.message || e); }
+      }
       return json({ ok: true });
     }
     if (path === '/__/ordered') {
@@ -2839,6 +3012,8 @@ export class Hub {
         // ссылка на каталог нужна продавцу, чтобы раздать её клиентам
         sells: await Promise.all(mine.map(async r => ({ id: r.id, name: r.name, link: await this.link(r.id) })))
       };
+      // у владельца на вкладке «Проверка» горит число товаров, которые ждут решения
+      if (out.me.owner) out.me.modN = all.reduce((n, r) => n + (Number(r.wait) || 0), 0);
       const ag = await this.agentOf(au.user.id);
       if (ag) out.me.agent = { id: ag.id, name: ag.name, terr: ag.terr || [], link: await this.agentLink(ag.id) };
       // данные магазина из общей базы: форма заказа подставляется сама, на любом телефоне и у любого дистрибьютора
@@ -2896,6 +3071,7 @@ export class Hub {
     // дальше только владелец площадки
     if (!path.startsWith('/api/hub/admin/')) return json({ error: 'not_found' }, 404);
     if (!(await this.owners()).includes(uid)) return json({ error: 'forbidden' }, 403);
+    if (path.startsWith('/api/hub/admin/mod')) return await this.adminMod(request, path, method);
     if (path.startsWith('/api/hub/admin/people') || path.startsWith('/api/hub/admin/terr') || path.startsWith('/api/hub/admin/agents') || path === '/api/hub/admin/base/import') {
       const res = await this.adminPeople(request, path, method);
       if (res) return res;
@@ -2952,6 +3128,59 @@ export class Hub {
         }
         return json(Object.assign({ shop: await this.ownerRec(rec) }, hasPct ? { pct } : {}));
       }
+    }
+    return json({ error: 'not_found' }, 404);
+  }
+  /* Проверка товаров, владелец: список со всех дистрибьюторов, одобрить, вернуть с причиной, поправить, фото. */
+  async adminMod(request, path, method) {
+    const url = new URL(request.url), origin = url.origin, sp = url.searchParams;
+    const recs = await this.allRecs();
+    if (path === '/api/hub/admin/mod' && method === 'GET') {
+      const seg = sp.get('seg') === 'ret' || sp.get('seg') === 'ok' ? sp.get('seg') : 'wait';
+      const got = await Promise.all(recs.map(async r => { const x = await shopCall(this.env, r.id, '/__/mod-list', { seg }); return { r, d: x.ok && x.data ? x.data : null }; }));
+      const items = [], counts = { wait: 0, ret: 0, ok: 0 }, shops = [];
+      got.forEach(({ r, d }) => {
+        if (!d) return;
+        const dn = d.name || r.name;
+        counts.wait += d.counts.wait; counts.ret += d.counts.ret; counts.ok += d.counts.ok;
+        if (d.items.length) shops.push({ id: r.id, name: dn, n: d.items.length });
+        d.items.forEach(i => items.push(Object.assign({}, i, { did: r.id, dname: dn })));
+      });
+      items.sort((a, b) => String(b.ma || b.mt || '').localeCompare(String(a.ma || a.mt || '')));
+      return json({ seg, items: items.slice(0, 300), counts, shops });
+    }
+    const did = validDid(sp.get('did')) ? sp.get('did') : '';
+    if (path === '/api/hub/admin/mod/photo' && (method === 'PUT' || method === 'DELETE')) {
+      if (!did || !recs.some(r => r.id === did)) return json({ error: 'not_found' }, 404);
+      const q = '?id=' + encodeURIComponent(sp.get('id') || '') + '&n=' + encodeURIComponent(sp.get('n') || '1') + (method === 'DELETE' ? '&del=1' : '');
+      if (method === 'PUT' && Number(request.headers.get('content-length') || 0) > PROD_PHOTO_MAX) return json({ error: 'too_big' }, 413);
+      const bytes = method === 'PUT' ? new Uint8Array(await request.arrayBuffer()) : new Uint8Array(0);
+      const r = await stubOf(this.env.SHOP, did).fetch(new Request('https://internal/__/mod-photo' + q, { method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-did': did }, body: bytes }));
+      let data = null; try { data = await r.json(); } catch (e) { /* пусто */ }
+      return json(data || { error: 'server' }, r.status);
+    }
+    const rd = await this.readBody(request, 30000);
+    const b = rd.body && typeof rd.body === 'object' ? rd.body : null;
+    if (rd.err || !b) return json({ error: 'bad_request' }, 400);
+    const have = id => validDid(id) && recs.some(r => r.id === id);
+    if (path === '/api/hub/admin/mod/approve' && method === 'POST') {
+      const by = new Map();
+      for (const x of (Array.isArray(b.items) ? b.items : []).slice(0, 300)) {
+        if (!x || !have(x.did) || !validId(x.id)) continue;
+        by.set(x.did, (by.get(x.did) || []).concat([x.id]));
+      }
+      let n = 0;
+      for (const [d, ids] of by) { const r = await shopCall(this.env, d, '/__/mod-approve', { ids, origin }); n += r.data && r.data.n || 0; }
+      return json({ ok: true, n });
+    }
+    if (!have(b.did)) return json({ error: 'not_found' }, 404);
+    if (path === '/api/hub/admin/mod/return' && method === 'POST') {
+      const r = await shopCall(this.env, b.did, '/__/mod-return', { id: b.id, reason: b.reason, origin });
+      return json(r.data || { error: 'server' }, r.status);
+    }
+    if (path === '/api/hub/admin/mod/edit' && method === 'PUT') {
+      const r = await shopCall(this.env, b.did, '/__/mod-edit', { id: b.id, item: b.item });
+      return json(r.data || { error: 'server' }, r.status);
     }
     return json({ error: 'not_found' }, 404);
   }
