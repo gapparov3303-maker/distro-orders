@@ -195,6 +195,23 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .pimg .fav svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
 .pimg .fav[aria-pressed="true"]{color:var(--bad)}
 .pimg .fav[aria-pressed="true"] svg{fill:currentColor}
+.pimg.zm{cursor:zoom-in}
+.pimg .pcnt{position:absolute;right:8px;bottom:8px;z-index:1;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(20,35,31,.72);color:#fff;pointer-events:none}
+.pimg .pcnt svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+html.lb-open,html.lb-open body{overflow:hidden}
+.lb{position:fixed;inset:0;z-index:200;background:#080c0b;display:flex;flex-direction:column;color:#fff;touch-action:pan-x}
+.lb-top{position:absolute;left:0;right:0;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top))}
+.lb-cnt{font-size:14px;font-weight:700;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.14);min-width:8px}
+.lb-cnt:empty{background:transparent}
+.lb-x{appearance:none;border:0;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:28px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.lb-track{flex:1;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior:contain}
+.lb-track::-webkit-scrollbar{display:none}
+.lb-slide{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:flex;align-items:center;justify-content:center;padding:64px 0;box-sizing:border-box;cursor:zoom-out}
+.lb-slide img{max-width:100%;max-height:100%;object-fit:contain;display:block;cursor:default;user-select:none;-webkit-user-drag:none}
+.lb-slide .ph{font-size:72px}
+.lb-dots{position:absolute;left:0;right:0;bottom:max(18px,env(safe-area-inset-bottom));display:flex;gap:8px;justify-content:center;pointer-events:none}
+.lb-dots i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.4)}
+.lb-dots i.on{background:#fff}
 .pold{display:inline-block;margin-right:6px;font:500 12px var(--f-body);color:var(--ink-2);text-decoration:line-through}
 .psale{margin-left:6px;font:700 11px var(--f-body);color:var(--bad)}
 .ptier{display:block;font:500 11.5px/1.35 var(--f-body);color:var(--ink-2);margin-top:1px}
@@ -283,13 +300,22 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 }
 
 /* seller: catalog editor */
-.prow{display:grid;grid-template-columns:104px minmax(0,1fr);gap:14px;padding:14px 0;border-top:1px solid var(--line)}
+.prow{display:grid;grid-template-columns:232px minmax(0,1fr);gap:14px;padding:14px 0;border-top:1px solid var(--line)}
 .prow.off .pf{opacity:.8}
 .pph{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
-.pthumb{position:relative;width:104px;height:104px;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,var(--stage-a),var(--stage-b));display:flex;align-items:center;justify-content:center}
-.pthumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.pbtns{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-.pbtns label.dis,.row-btns label.dis{opacity:.6;pointer-events:none}
+.pslots{display:grid;grid-template-columns:repeat(3,72px);gap:8px}
+.pslots.busy{pointer-events:none}
+.pslot{position:relative;width:72px;height:72px;border-radius:12px;overflow:hidden}
+.pslot label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;background:linear-gradient(160deg,var(--stage-a),var(--stage-b))}
+.pslot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pslot.has{border:1px solid var(--line)}
+.pslot.add label{background:var(--accent-soft);color:var(--accent);border:2px dashed var(--accent);border-radius:12px;font-size:30px;font-weight:300;line-height:1}
+.pslot.ghost{border:2px dashed var(--line);background:transparent}
+.pslot .px{position:absolute;right:3px;top:3px;width:24px;height:24px;border-radius:50%;border:0;padding:0;background:rgba(20,35,31,.72);color:#fff;font-size:17px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pslot .pmain{position:absolute;left:3px;bottom:3px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;background:var(--accent);color:#fff;pointer-events:none}
+.pslot.load::after{content:"…";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.72);color:var(--ink);font-size:26px;font-weight:700}
+.phint{font-size:12px;line-height:1.4;color:var(--ink-2);max-width:260px}
+.row-btns label.dis{opacity:.6;pointer-events:none}
 .sr{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
 .pf{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
 .pf .full{grid-column:1/-1}
@@ -306,8 +332,8 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 }
 @media (max-width:560px){
   .prow{grid-template-columns:minmax(0,1fr)}
-  .pph{flex-direction:row;align-items:center}
-  .pthumb{width:88px;height:88px;flex:none}
+  .pslots{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;max-width:288px}
+  .pslot{width:auto;height:auto;aspect-ratio:1}
 }
 
 /* stock: status line on product cards, seller screen «Остатки» */
@@ -549,7 +575,10 @@ function regionNoteHTML(){
 
 /* ---------- каталог: данные и корзина ---------- */
 const normProd=d=>{const o={cats:[],items:[]};if(d&&typeof d==='object'){if(Array.isArray(d.cats))o.cats=d.cats.filter(x=>x&&typeof x==='object');if(Array.isArray(d.items))o.items=d.items.filter(x=>x&&typeof x==='object')}return o};
-const imgUrl=p=>'/img/'+encodeURIComponent(S.did||'main')+'/'+encodeURIComponent(p.id)+'?v='+encodeURIComponent(p.pv||'');
+/* фото товара: до трёх; версии лежат в pv (главное, видно в каталоге), pv2, pv3; подряд, без пропусков */
+const PH_MAX=3;
+const phVers=p=>{const v=[p.pv,p.pv2,p.pv3].map(x=>typeof x==='string'?x:'');const n=v.findIndex(x=>!x);return n<0?v:v.slice(0,n)};
+const imgUrl=(p,n)=>'/img/'+encodeURIComponent(S.did||'main')+'/'+encodeURIComponent(p.id)+'?v='+encodeURIComponent((n>1?p['pv'+n]:p.pv)||'')+(n>1?'&n='+n:'');
 const pimg=p=>p.pv?'<img src="'+imgUrl(p)+'" alt="'+esc(nm(p))+'" loading="lazy" decoding="async">':'<span class="ph" aria-hidden="true">📦</span>';
 /* Корзина одна на всё приложение и принадлежит одному дистрибьютору: {did, name, items}. Прежний формат (просто {товар: штуки}) — это первый дистрибьютор. */
 function loadCart(){
@@ -740,7 +769,8 @@ function priceHTML(p){
 function productCard(p){
   const off=soldOut(p),d=prodDesc(p),w=weightLabel(p);
   const status=off?'':(p.lw&&typeof p.av==='number'?'<div class="pst low">'+esc(lowTxt(p.av))+'</div>':'<div class="pst">'+L('В наличии','Mavjud')+'</div>');
-  return '<article class="pcard'+(off?' off':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg">'+pimg(p)+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
+  const np=phVers(p).length;
+  return '<article class="pcard'+(off?' off':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg'+(np?' zm':'')+'"'+(np?' data-act="pzoom" data-id="'+esc(p.id)+'"':'')+'>'+pimg(p)+(np>1?'<span class="pcnt" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>'+np+' '+L('фото','rasm')+'</span>':'')+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
     +'<div class="pbody"><div class="pname">'+esc(nm(p))+'</div>'+(w?'<div class="pw">'+esc(w)+'</div>':'')+status
     +(d?'<div class="pdesc" data-act="pdesc">'+esc(d)+'</div>':'')
     +'<div class="pprice">'+priceHTML(p)+'</div><div class="pctl">'+productCtl(p)+'</div></div></article>';
@@ -1276,12 +1306,20 @@ function printPick(){
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.pick)closePick()});
 
 function photoBlock(p){
-  const id=esc(p.id),busy=!!S.upl[p.id];
-  return '<div class="pthumb">'+pimg(p)+'</div><div class="pbtns">'
-    +'<label class="btn ghost sm'+(busy?' dis':'')+'" for="ph-'+id+'">'+(busy?L('Загрузка…','Yuklanmoqda…'):(p.pv?L('Заменить фото','Rasmni almashtirish'):L('Загрузить фото','Rasm yuklash')))+'</label>'
-    +'<input type="file" class="sr" id="ph-'+id+'" accept="image/*" data-photo="'+id+'"'+(busy?' disabled':'')+'>'
-    +(p.pv&&!busy?'<button type="button" class="btn ghost sm" data-act="phdel" data-id="'+id+'">'+L('Убрать фото','Rasmni olib tashlash')+'</button>':'')
-    +'</div>';
+  const id=esc(p.id),up=S.upl[p.id],busy=!!up,cnt=phVers(p).length;
+  let h='<div class="pslots'+(busy?' busy':'')+'">';
+  for(let i=1;i<=PH_MAX;i++){
+    const inp='<input type="file" class="sr" id="ph-'+id+'-'+i+'" accept="image/*" data-photo="'+id+'" data-n="'+i+'"'+(busy?' disabled':'')+'>';
+    if(i<=cnt){
+      h+='<div class="pslot has'+(up===i?' load':'')+'"><label for="ph-'+id+'-'+i+'" aria-label="'+esc(L('Заменить фото '+i,i+'-rasmni almashtirish'))+'"><img src="'+imgUrl(p,i)+'" alt="" decoding="async"></label>'
+        +(i===1?'<span class="pmain">'+L('Главное','Asosiy')+'</span>':'')
+        +(busy?'':'<button type="button" class="px" data-act="phdel" data-id="'+id+'" data-n="'+i+'" aria-label="'+esc(L('Убрать фото '+i,i+'-rasmni olib tashlash'))+'">×</button>')
+        +inp+'</div>';
+    }else if(i===cnt+1){
+      h+='<div class="pslot add'+(up===i?' load':'')+'"><label for="ph-'+id+'-'+i+'" aria-label="'+esc(L('Добавить фото','Rasm qoʻshish'))+'"><span>+</span></label>'+inp+'</div>';
+    }else h+='<div class="pslot ghost" aria-hidden="true"></div>';
+  }
+  return h+'</div><div class="phint">'+L('До 3 фото. Первое видно в каталоге, остальные открываются по нажатию на него. Чтобы заменить фото, нажмите на него.','3 tagacha rasm. Birinchisi katalogda koʻrinadi, qolganlari unga bosilganda ochiladi. Rasmni almashtirish uchun unga bosing.')+'</div>';
 }
 function paintPhoto(id){
   const p=S.prod.items.find(x=>x.id===id),el=document.getElementById('pph-'+id);
@@ -1906,30 +1944,71 @@ async function apiBin(method,path,blob,ctype){
     return {ok:r.ok,status:r.status,data};
   }catch(e){return {ok:false,status:0,data:null}}
 }
-async function uploadPhoto(id,file){
+function setPhotoVers(p,d){p.pv=d&&d.pv||'';p.pv2=d&&d.pv2||'';p.pv3=d&&d.pv3||''}
+async function uploadPhoto(id,file,n){
   if(!S.auth||!S.admin||S.upl[id])return;
   const p=S.prod.items.find(x=>x.id===id);if(!p)return;
-  S.upl[id]=true;paintPhoto(id);
+  n=Math.max(1,Math.min(PH_MAX,Number(n)||1));
+  n=Math.min(n,phVers(p).length+1);          // фото идут подряд: следующее — сразу за последним
+  S.upl[id]=n;paintPhoto(id);
   let ok=false;
   try{
     await flushSave();   // товар должен уже быть на сервере, иначе фото некуда привязать
     const blob=await shrinkPhoto(file);
     if(blob){
-      const r=await apiBin('PUT','/api/admin/photo/'+encodeURIComponent(id),blob);
-      if(r.ok&&r.data){p.pv=r.data.pv||'';ok=true}
+      const r=await apiBin('PUT','/api/admin/photo/'+encodeURIComponent(id)+'?n='+n,blob);
+      if(r.ok&&r.data){setPhotoVers(p,r.data);ok=true}
     }
   }catch(e){}
   delete S.upl[id];paintPhoto(id);
   toast(ok?L('Фото сохранено','Rasm saqlandi'):L('Не удалось загрузить фото. Попробуйте другое изображение.','Rasmni yuklab boʻlmadi. Boshqa rasm tanlang.'));
 }
-async function removePhoto(id){
+async function removePhoto(id,n){
   const p=S.prod.items.find(x=>x.id===id);if(!p||S.upl[id])return;
-  S.upl[id]=true;paintPhoto(id);
-  const r=await api('DELETE','/api/admin/photo/'+encodeURIComponent(id));
-  if(r.ok)p.pv='';
+  n=Math.max(1,Math.min(PH_MAX,Number(n)||1));
+  S.upl[id]=n;paintPhoto(id);
+  const r=await api('DELETE','/api/admin/photo/'+encodeURIComponent(id)+'?n='+n);
+  if(r.ok&&r.data)setPhotoVers(p,r.data);
   delete S.upl[id];paintPhoto(id);
   if(!r.ok)toast(L('Не удалось убрать фото','Rasmni olib tashlab boʻlmadi'));
 }
+
+/* просмотр фото на весь экран: свайп между фото, × / касание тёмного поля / Esc / «Назад» в Telegram закрывают */
+function lbBack(){closeViewer()}
+function openViewer(id){
+  const p=S.prod.items.find(x=>x.id===id);if(!p)return;
+  const vs=phVers(p);if(!vs.length)return;
+  closeViewer();
+  const el=document.createElement('div');el.id='lb';el.className='lb';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label',nm(p));
+  const many=vs.length>1;
+  el.innerHTML='<div class="lb-top"><span class="lb-cnt" id="lb-cnt" aria-live="polite">'+(many?'1 / '+vs.length:'')+'</span><button type="button" class="lb-x" data-act="lbclose" aria-label="'+esc(L('Закрыть','Yopish'))+'">×</button></div>'
+    +'<div class="lb-track" id="lb-track">'+vs.map((v,i)=>'<div class="lb-slide" data-act="lbbg"><img src="'+imgUrl(p,i+1)+'" alt="'+esc(nm(p))+'" decoding="async" draggable="false"></div>').join('')+'</div>'
+    +(many?'<div class="lb-dots" id="lb-dots">'+vs.map((v,i)=>'<i'+(i?'':' class="on"')+'></i>').join('')+'</div>':'');
+  document.body.appendChild(el);
+  document.documentElement.classList.add('lb-open');
+  const tr=el.querySelector('#lb-track');let raf=0;
+  tr.addEventListener('scroll',()=>{
+    if(raf)return;
+    raf=requestAnimationFrame(()=>{
+      raf=0;
+      const i=Math.max(0,Math.min(vs.length-1,Math.round(tr.scrollLeft/(tr.clientWidth||1))));
+      const c=el.querySelector('#lb-cnt');if(c&&many)c.textContent=(i+1)+' / '+vs.length;
+      el.querySelectorAll('#lb-dots i').forEach((d,k)=>d.classList.toggle('on',k===i));
+    });
+  },{passive:true});
+  try{if(S.tg&&S.tg.BackButton&&S.tg.isVersionAtLeast&&S.tg.isVersionAtLeast('6.1')){S.tg.BackButton.onClick(lbBack);S.tg.BackButton.show();S.lbTg=true}}catch(e){}
+}
+function closeViewer(){
+  const el=document.getElementById('lb');
+  if(el)el.remove();
+  document.documentElement.classList.remove('lb-open');
+  if(S.lbTg){S.lbTg=false;try{S.tg.BackButton.offClick(lbBack);S.tg.BackButton.hide()}catch(e){}}
+}
+document.addEventListener('keydown',e=>{
+  const el=document.getElementById('lb');if(!el)return;
+  if(e.key==='Escape')closeViewer();
+  else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){const tr=el.querySelector('#lb-track');if(tr)tr.scrollBy({left:(e.key==='ArrowRight'?1:-1)*tr.clientWidth,behavior:'smooth'})}
+});
 
 /* скидка на заказ: до трёх строк «от суммы — %» */
 function discEditHTML(){
@@ -2782,7 +2861,10 @@ document.addEventListener('click',e=>{
     queueSave('prod');paintSeller();
     const row=document.getElementById('prow-'+id);if(row)try{row.scrollIntoView({block:'center'})}catch(x){}
   }
-  else if(a==='phdel')removePhoto(t.dataset.id);
+  else if(a==='phdel')removePhoto(t.dataset.id,t.dataset.n);
+  else if(a==='pzoom')openViewer(t.dataset.id);
+  else if(a==='lbclose')closeViewer();
+  else if(a==='lbbg'){if(e.target.tagName!=='IMG')closeViewer()}
   else if(a==='copy'){
     const v=t.dataset.v||'';
     const ok=t.dataset.ok||L('Номер скопирован','Raqam nusxalandi');
@@ -2960,7 +3042,7 @@ document.addEventListener('change',e=>{
   }
   else if(t&&t.type==='file'&&t.dataset.photo){
     const f=t.files&&t.files[0];
-    if(f)uploadPhoto(t.dataset.photo,f);
+    if(f)uploadPhoto(t.dataset.photo,f,t.dataset.n);
     try{t.value=''}catch(x){}
   }
   else if(t&&t.dataset&&t.dataset.reg!==undefined)setRegion(t.value);
@@ -2977,7 +3059,7 @@ document.addEventListener('change',e=>{
 /* картинка не загрузилась: оставляем заглушку */
 document.addEventListener('error',e=>{
   const t=e.target;
-  if(t&&t.tagName==='IMG'&&t.closest('.pimg,.cth,.pthumb,.th')){
+  if(t&&t.tagName==='IMG'&&t.closest('.pimg,.cth,.pthumb,.th,.pslot,.lb-slide')){
     const ph=document.createElement('span');ph.className='ph';ph.textContent='📦';ph.setAttribute('aria-hidden','true');
     t.replaceWith(ph);
   }
