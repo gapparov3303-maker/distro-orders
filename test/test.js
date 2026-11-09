@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -164,6 +164,10 @@ const results = [];
 async function t(name, fn) {
   try { await fn(); results.push([true, name]); }
   catch (e) { results.push([false, name, e]); }
+}
+/* региональный фильтр в приложении выключен; эти проверки включают его на время теста (globalThis.__regionsOn) */
+async function tr(name, fn) {
+  return t(name, async () => { globalThis.__regionsOn = true; try { await fn(); } finally { delete globalThis.__regionsOn; } });
 }
 
 /* ============ тесты ============ */
@@ -361,6 +365,85 @@ await t('фото товара: при удалении товара его фо
   await putProd(cur);
   assert.equal(await W.storage.get('p:p4'), undefined);
   assert.equal((await call('GET', '/img/p4')).status, 404);
+  await putProd(SAMPLE_PROD());
+});
+
+await t('фото товара: до трёх фото, порядок без пропусков, отдача по номеру', async () => {
+  const a = jpegBytes(800, 600, 6000), b = jpegBytes(700, 700, 7000), c = jpegBytes(640, 480, 8000);
+  const img = async (v, n) => call('GET', '/img/p2?v=' + v + (n ? '&n=' + n : ''));
+  // второе фото нельзя положить, пока нет первого; четвёртого не бывает
+  assert.equal((await putPhoto('p2?n=2', b)).status, 400);
+  assert.equal((await jsonOf(await putPhoto('p2?n=2', b))).error, 'bad_slot');
+  assert.equal((await putPhoto('p2?n=4', b)).status, 400);
+  assert.equal((await putPhoto('p2?n=0', b)).status, 400);
+  assert.equal((await putPhoto('p2?n=abc', b)).status, 400);
+  // обычная загрузка без номера = главное фото (как раньше)
+  let r = await jsonOf(await putPhoto('p2', a));
+  assert.ok(r.pv && !r.pv2 && !r.pv3);
+  assert.equal((await putPhoto('p2?n=3', c)).status, 400);                  // через пропуск нельзя
+  r = await jsonOf(await putPhoto('p2?n=2', b));
+  assert.ok(r.pv && r.pv2 && !r.pv3);
+  r = await jsonOf(await putPhoto('p2?n=3', c));
+  assert.ok(r.pv && r.pv2 && r.pv3);
+  const it = (await getProd()).items.find(x => x.id === 'p2');
+  assert.deepEqual([it.pv, it.pv2, it.pv3], [r.pv, r.pv2, r.pv3]);
+  assert.deepEqual(new Uint8Array(await (await img(r.pv)).arrayBuffer()), a);
+  assert.deepEqual(new Uint8Array(await (await img(r.pv, 1)).arrayBuffer()), a);
+  assert.deepEqual(new Uint8Array(await (await img(r.pv2, 2)).arrayBuffer()), b);
+  assert.deepEqual(new Uint8Array(await (await img(r.pv3, 3)).arrayBuffer()), c);
+  assert.ok((await img(r.pv3, 3)).headers.get('cache-control').includes('immutable'));
+  assert.equal((await call('GET', '/img/p2?n=4')).status, 200);             // неверный номер = главное фото
+  assert.deepEqual(new Uint8Array(await (await call('GET', '/img/p2?n=4')).arrayBuffer()), a);
+  // замена второго меняет только его версию
+  const b2 = jpegBytes(500, 500, 4000);
+  const r2 = await jsonOf(await putPhoto('p2?n=2', b2));
+  assert.equal(r2.pv, r.pv); assert.equal(r2.pv3, r.pv3); assert.notEqual(r2.pv2, r.pv2);
+  assert.deepEqual(new Uint8Array(await (await img(r2.pv2, 2)).arrayBuffer()), b2);
+  // текстовые правки не трогают версии всех трёх
+  const cur = await getProd();
+  const ci = cur.items.find(x => x.id === 'p2');
+  ci.name = 'Другое имя'; ci.pv2 = 'EVIL'; ci.pv3 = 'EVIL'; ci.pv = 'EVIL';
+  const sv = (await jsonOf(await putProd(cur))).prod.items.find(x => x.id === 'p2');
+  assert.deepEqual([sv.pv, sv.pv2, sv.pv3], [r2.pv, r2.pv2, r2.pv3]);
+  // удаление среднего сдвигает третье на его место, версии новые
+  const d = await jsonOf(await call('DELETE', '/api/admin/photo/p2?n=2', { init: iS() }));
+  assert.equal(d.pv, r2.pv);
+  assert.ok(d.pv2 && d.pv2 !== r2.pv2 && d.pv2 !== r2.pv3);
+  assert.equal(d.pv3, '');
+  assert.deepEqual(new Uint8Array(await (await img(d.pv2, 2)).arrayBuffer()), c);
+  assert.equal((await call('GET', '/img/p2?n=3')).status, 404);             // третьего фото больше нет
+  assert.equal(await W.storage.get('p3:p2'), undefined);
+  // удаление главного сдвигает всё влево
+  const d1 = await jsonOf(await call('DELETE', '/api/admin/photo/p2', { init: iS() }));
+  assert.ok(d1.pv && d1.pv !== r2.pv && !d1.pv2 && !d1.pv3);
+  assert.deepEqual(new Uint8Array(await (await img(d1.pv)).arrayBuffer()), c);
+  assert.equal(await W.storage.get('p2:p2'), undefined);
+  // удаление несуществующего номера не ломает
+  assert.equal((await call('DELETE', '/api/admin/photo/p2?n=3', { init: iS() })).status, 200);
+  assert.equal((await call('DELETE', '/api/admin/photo/p2?n=9', { init: iS() })).status, 400);
+  // последнее фото
+  const d2 = await jsonOf(await call('DELETE', '/api/admin/photo/p2', { init: iS() }));
+  assert.deepEqual([d2.pv, d2.pv2, d2.pv3], ['', '', '']);
+  assert.equal((await call('GET', '/img/p2')).status, 404);
+  assert.equal((await putPhoto('nope?n=2', a)).status, 404);
+  await putProd(SAMPLE_PROD());
+});
+
+await t('фото товара: при удалении товара удаляются все три фото', async () => {
+  for (const n of [1, 2, 3]) assert.equal((await putPhoto('p4?n=' + n, jpegBytes(800, 600, 4000 + n))).status, 200);
+  assert.ok(await W.storage.get('p:p4') && await W.storage.get('p2:p4') && await W.storage.get('p3:p4'));
+  const cur = await getProd();
+  cur.items = cur.items.filter(i => i.id !== 'p4');
+  await putProd(cur);
+  for (const k of ['p:p4', 'p2:p4', 'p3:p4']) assert.equal(await W.storage.get(k), undefined, k);
+  await putProd(SAMPLE_PROD());
+});
+
+await t('фото товара: клиент и гость не загружают и не удаляют', async () => {
+  assert.equal((await putPhoto('p1?n=1', jpegBytes(), iA())).status, 403);
+  assert.equal((await putPhoto('p1', jpegBytes(), 'bad')).status >= 400, true);
+  assert.equal((await call('DELETE', '/api/admin/photo/p1?n=1', { init: iA() })).status, 403);
+  assert.equal((await getProd()).items.find(x => x.id === 'p1').pv, '');
   await putProd(SAMPLE_PROD());
 });
 
@@ -1857,6 +1940,22 @@ await t('резервная копия: архив с данными и фото
   assert.ok(new TextDecoder().decode(z['README.txt']).includes('backup.json'));
 });
 
+await t('резервная копия: все три фото товара попадают в архив с отдельными именами', async () => {
+  await stockWorld();
+  const f = [jpegBytes(800, 600, 5000), jpegBytes(700, 600, 6000), jpegBytes(600, 600, 7000)];
+  for (let n = 1; n <= 3; n++) assert.equal((await putPhoto('p1?n=' + n, f[n - 1])).status, 200);
+  tgLog = [];
+  const d = await jsonOf(await exportReq('backup'));
+  assert.equal(d.ok, true);
+  const z = unzip(lastDoc().file.bytes);
+  assert.deepEqual(Object.keys(z).sort(), ['README.txt', 'backup.json', 'photos/p1-2.jpg', 'photos/p1-3.jpg', 'photos/p1.jpg']);
+  assert.deepEqual(Buffer.from(z['photos/p1-3.jpg']), Buffer.from(f[2]));
+  const bk = JSON.parse(new TextDecoder().decode(z['backup.json']));
+  assert.deepEqual(bk.photos, { saved: 3, of: 3 });
+  assert.deepEqual([bk.prod.items[0].pv2 !== '', bk.prod.items[0].pv3 !== ''], [true, true]);
+  await putProd(SAMPLE_PROD());
+});
+
 await t('резервная копия: фото сверх лимита не вешают копию, остальное сохраняется целиком', async () => {
   await stockWorld();
   const prod = SAMPLE_PROD();
@@ -2515,7 +2614,8 @@ await t('отчёты: при первом обращении данные бе�
   await stockWorld();
   const A = newUser();
   // «старые» заказы: до обновления отчётов их выдача нигде не записывалась. Ставим их напрямую в хранилище.
-  const day = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString();
+  const day = n => new Date(Date.now() - n * 86400000).toISOString();                       // настоящая метка времени
+  const tday = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString().slice(0, 10); // дата по Ташкенту
   const mk = (id, ago, total, qty, st) => ({ id, createdAt: day(ago), status: st || 'done', statusAt: day(ago), name: 'Старый клиент', phone: '+998 90 000 00 00', mode: 'pickup', pickupAt: '2026-01-01T10:00', comment: '', uid: 777, items: [{ id: 'p4', name: 'Макароны', amount: 400, unit: 'g', price: 7500, qty }], total, msgs: [] });
   const olds = [mk('Z-OLD01', 12, 75000, 10), mk('Z-OLD02', 3, 30000, 4), mk('Z-OLD03', 3, 45000, 6), mk('Z-OLD04', 2, 7500, 1, 'cancelled')];
   const st = W.storage;
@@ -2524,7 +2624,7 @@ await t('отчёты: при первом обращении данные бе�
   assert.equal(await st.get('rpx'), undefined);
   let d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
   assert.deepEqual([d.tot.n, d.tot.sum], [3, 150000]);
-  assert.equal(d.since, day(12).slice(0, 10));
+  assert.equal(d.since, tday(12));
   assert.equal(d.thin, false);
   assert.deepEqual(d.series.filter(x => x.n).map(x => x.n), [1, 2]);
   assert.deepEqual(d.cl.map(x => [x.name, x.n, x.sum]), [['Старый клиент', 3, 150000]]);
@@ -2539,7 +2639,7 @@ await t('отчёты: при первом обращении данные бе�
   assert.equal((await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report.prev, null);
   // а за 7 дней, когда учёт шёл ещё раньше, сравнение есть
   const r7 = (await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report;
-  assert.equal(r7.since, day(12).slice(0, 10));
+  assert.equal(r7.since, tday(12));
 });
 
 await t('отчёты: сравнение с прошлым периодом, когда учёт шёл уже тогда', async () => {
@@ -2689,6 +2789,15 @@ async function hubWorld() {
 }
 const createShop = (body, init) => call('POST', '/api/hub/admin/shops', { init: init || iS(), body });
 const addShop = async (name, code) => { const r = await createShop({ name, code }); assert.equal(r.status, 200); return jsonOf(r); };
+/* продавец отправляет все свои новые товары на проверку, владелец их одобряет */
+async function approveAll(sid, sellerInit) {
+  const sub = await call('POST', '/api/admin/submit', { init: sellerInit || iD(), headers: sx(sid), body: {} });
+  assert.equal(sub.status, 200, 'отправка на проверку: ' + JSON.stringify(await sub.clone().json()));
+  const ls = await jsonOf(await call('GET', '/api/hub/admin/mod?seg=wait', { init: iS() }));
+  const ap = await call('POST', '/api/hub/admin/mod/approve', { init: iS(), body: { items: ls.items.filter(i => i.did === sid).map(i => ({ did: sid, id: i.id })) } });
+  assert.equal(ap.status, 200);
+  return jsonOf(ap);
+}
 /* дистрибьютор с каталогом и продавцом DIL */
 async function shopWorld(name) {
   await hubWorld();
@@ -2696,6 +2805,7 @@ async function shopWorld(name) {
   await send(adminMsg(DIL, d.code, 2));
   const put = await call('PUT', '/api/admin/products', { init: iD(), headers: sx(d.shop.id), body: { prod: SAMPLE_PROD() } });
   assert.equal(put.status, 200);
+  await approveAll(d.shop.id);   // каталог дистрибьютора уже проверен владельцем: дальше тесты работают как с обычным каталогом
   tgLog = [];
   return { sid: d.shop.id, code: d.code };
 }
@@ -3040,7 +3150,7 @@ await t('площадка: страница приложения отдаётс�
   const code = scripts.join('\n');
   assert.ok(code.includes("'x-shop'"), 'приложение не присылает номер дистрибьютора');
   assert.ok(code.includes('/api/hub/orders') && code.includes('/api/shops'));
-  assert.ok(code.includes("'/img/'+encodeURIComponent(S.did"), 'картинки должны брать номер дистрибьютора');
+  assert.ok(code.includes("'/img/'+encodeURIComponent(did||S.did"), 'картинки должны брать номер дистрибьютора (по умолчанию открытого)');
   assert.ok(!html.includes('/*SHARED*/'), 'метка общего кода должна быть заменена');
 });
 
@@ -3148,7 +3258,22 @@ await t('площадка: комиссия у записей прежних д�
 });
 
 /* ---------- регионы: куда доставляет дистрибьютор, какой регион у магазина ---------- */
-await t('регионы: доставка только в отмеченные регионы, самовывоз всегда; ответ сервера подсказывает, что делать', async () => {
+await t('регионы выключены: отмеченные регионы не ограничивают доставку и никому не показываются', async () => {
+  const { sid } = await shopWorld();
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+  cfg.shop.regions = ['sa', 'tk'];
+  cfg.shop.home = 'nv';
+  assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } })).status, 200);
+  const A = newUser();
+  // доставка без региона, регион не нужен: ограничения не работают
+  const r = await callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: CART, form: formFor(S.DEFAULT, 'delivery'), lang: 'ru', expectTotal: 1394000 } });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).order.region, undefined);
+  const r2 = await callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: CART, form: formFor(S.DEFAULT, 'delivery', { region: 'nv' }), lang: 'ru', expectTotal: 1394000 } });
+  assert.equal(r2.status, 200, 'регион вне списка доставки больше не отклоняется');
+});
+
+await tr('регионы: доставка только в отмеченные регионы, самовывоз всегда; ответ сервера подсказывает, что делать', async () => {
   const { sid } = await shopWorld();
   const mkOrder = async (form, mode, over) => {
     const A = newUser();
@@ -3217,7 +3342,7 @@ await t('регионы: доставка только в отмеченные �
   assert.equal(r.d.error, 'no_delivery');
 });
 
-await t('регионы: другие дистрибьюторы не затронуты; у первого доставка по-прежнему везде', async () => {
+await tr('регионы: другие дистрибьюторы не затронуты; у первого доставка по-прежнему везде', async () => {
   const { sid } = await shopWorld();
   const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
   cfg.shop.regions = ['sa'];
@@ -3234,7 +3359,7 @@ await t('регионы: другие дистрибьюторы не затро
   assert.deepEqual(list.find(x => x.id === sid).regions, ['sa']);
 });
 
-await t('регионы: регион магазина запоминается на площадке, проверяется и у каждого свой', async () => {
+await tr('регионы: регион магазина запоминается на площадке, проверяется и у каждого свой', async () => {
   await hubWorld();
   const A = newUser(), B = newUser();
   const meOfU = async u => (await jsonOf(await call('GET', '/api/shops', { init: u.init() }))).me;
@@ -3270,6 +3395,272 @@ const ordBase = async (did, u, form, mode) => {
 };
 const adm = (method, path, body, init) => call(method, '/api/hub/admin' + path, { init: init || iS(), body });
 const meHub = async u => (await jsonOf(await call('GET', '/api/shops', { init: u.init ? u.init() : initDataFor(u) }))).me;
+
+/* ---------- проверка товаров ---------- */
+const ruTovarT = n => n + ' ' + (n % 100 > 10 && n % 100 < 15 ? 'товаров' : n % 10 === 1 ? 'товар' : n % 10 > 1 && n % 10 < 5 ? 'товара' : 'товаров');
+const NEWP = (id, over) => Object.assign({ id, cat: 'oil', name: 'Масло «Золотое»', uz: 'Oltin yogʻ', desc: '', descUz: '', amount: 1, unit: 'l', price: 30000, on: true }, over || {});
+/* дистрибьютор с одним проверенным товаром; продавец DIL добавляет новые */
+async function modWorld() {
+  const { sid } = await shopWorld('Навои Фуд');
+  const cur = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod;
+  return { sid, cur };
+}
+const dPut = (sid, prod) => callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod } });
+const dSee = async (sid, init) => (await jsonOf(await callS(sid, 'GET', '/api/config', init ? { init } : undefined))).prod;
+const dMod = (sid, body) => callS(sid, 'POST', '/api/admin/submit', { init: iD(), body: body || {} });
+const oMod = async seg => jsonOf(await call('GET', '/api/hub/admin/mod?seg=' + (seg || 'wait'), { init: iS() }));
+const oAct = (action, body, init) => call(action === 'edit' ? 'PUT' : 'POST', '/api/hub/admin/mod/' + action, { init: init || iS(), body });
+
+await t('проверка: новый товар продавца — черновик, клиентам не виден, прежние товары остаются одобренными', async () => {
+  const { sid, cur } = await modWorld();
+  assert.ok(cur.items.every(i => !i.ms), 'у прежних товаров метки нет');
+  const next = { cats: cur.cats, items: cur.items.concat([NEWP('n1'), NEWP('n2', { name: 'Рис «Лазер»', cat: 'groats' })]) };
+  const saved = (await jsonOf(await dPut(sid, next))).prod;
+  assert.deepEqual(saved.items.filter(i => i.ms).map(i => [i.id, i.ms]), [['n1', 'draft'], ['n2', 'draft']]);
+  // продавец видит всё, в том числе по общему адресу, если приложил подпись
+  assert.equal((await dSee(sid, iD())).items.length, 6);
+  // клиент и гость черновиков не видят
+  assert.equal((await dSee(sid)).items.length, 4);
+  assert.equal((await dSee(sid, iA())).items.length, 4);
+  const boot = await jsonOf(await callS(sid, 'GET', '/api/bootstrap', { init: iA() }));
+  assert.equal(boot.prod.items.length, 4);
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/bootstrap', { init: iD() }))).prod.items.length, 6, 'продавцу — весь каталог');
+  // метки задать самому нельзя
+  const hack = JSON.parse(JSON.stringify(saved));
+  hack.items.find(i => i.id === 'n1').ms = ''; hack.items.push(Object.assign(NEWP('n3'), { ms: 'ok', ma: '2026-01-01' }));
+  const h2 = (await jsonOf(await dPut(sid, hack))).prod;
+  assert.equal(h2.items.find(i => i.id === 'n1').ms, 'draft');
+  assert.deepEqual([h2.items.find(i => i.id === 'n3').ms, h2.items.find(i => i.id === 'n3').ma], ['draft', undefined]);
+  // правки одобренного товара свободные: статус не появляется
+  const e = JSON.parse(JSON.stringify(h2)); e.items.find(i => i.id === 'p1').price = 90000; e.items.find(i => i.id === 'p1').name = 'Масло новое';
+  const e2 = (await jsonOf(await dPut(sid, e))).prod.items.find(i => i.id === 'p1');
+  assert.equal(e2.ms, undefined); assert.equal(e2.price, 90000);
+  assert.equal((await dSee(sid)).items.find(i => i.id === 'p1').price, 90000);
+  // удаление черновика
+  const d2 = JSON.parse(JSON.stringify(e)); d2.items = d2.items.filter(i => i.id !== 'n3');
+  assert.equal((await jsonOf(await dPut(sid, d2))).prod.items.length, 6);
+  // в списке дистрибьюторов считаются только одобренные
+  const pub = await jsonOf(await call('GET', '/api/shops'));
+  assert.equal(pub.shops.find(x => x.id === sid).items, 4);
+});
+
+await t('проверка: владелец и одиночный магазин добавляют товары сразу одобренными', async () => {
+  W = makeWorld();
+  await send(adminMsg(SELLER, CODE, 1));
+  const prod = SAMPLE_PROD(); prod.items.push(NEWP('n9'));
+  const r = (await jsonOf(await putProd(prod))).prod;
+  assert.ok(r.items.every(i => !i.ms), 'у владельца всё одобрено сразу');
+  assert.equal((await jsonOf(await call('GET', '/api/config'))).prod.items.length, 5);
+  // без площадки (нет HUB) продавец и есть владелец
+  const W0 = W; W = makeWorld(); delete W.env.HUB;
+  await W.storage.put({ cfg: { shop: { name: 'Один' } }, admins: [SELLER.id] });
+  const r2 = (await jsonOf(await putProd(SAMPLE_PROD()))).prod;
+  assert.ok(r2.items.every(i => !i.ms));
+  W = W0;
+});
+
+await t('проверка: отправка на проверку — нужны название, цена и категория; владельцу одно сообщение на отправку', async () => {
+  const { sid, cur } = await modWorld();
+  const A = newUser();
+  const items = [NEWP('n1'), NEWP('n2', { name: 'Рис «Лазер»', cat: 'groats' }), NEWP('n3', { name: 'Новый товар' }), NEWP('n4', { price: 0 })];
+  await dPut(sid, { cats: cur.cats, items: cur.items.concat(items) });
+  tgLog = [];
+  // по одному товару без названия/цены отправить нельзя, остальные уходят
+  let r = await dMod(sid, {});
+  let d = await jsonOf(r);
+  assert.equal(r.status, 200);
+  assert.equal(d.sent, 2);
+  assert.deepEqual(d.bad.map(b => [b.id, b.why[0]]), [['n3', 'name'], ['n4', 'price']]);
+  assert.deepEqual(d.prod.items.filter(i => i.ms === 'wait').map(i => i.id).sort(), ['n1', 'n2']);
+  assert.ok(d.prod.items.filter(i => i.ms === 'wait').every(i => /^\d{4}-/.test(i.mt)));
+  const tgs = tgLog.filter(x => x.method === 'sendMessage');
+  assert.equal(tgs.length, 1, 'одно сообщение владельцу на всю отправку');
+  assert.equal(tgs[0].payload.chat_id, SELLER.id);
+  assert.equal(tgs[0].payload.text, 'Навои Фуд: на проверке 2 товара');
+  assert.equal(tgs[0].payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?v=review');
+  // повторная отправка ничего нового не даёт
+  tgLog = [];
+  r = await dMod(sid, {});
+  assert.equal(r.status, 400); assert.equal((await jsonOf(r)).error, 'nothing');
+  assert.equal(tgLog.filter(x => x.method === 'sendMessage').length, 0);
+  // отправка отдельным списком
+  await dPut(sid, { cats: cur.cats, items: (await dSee(sid, iD())).items.map(i => i.id === 'n3' ? Object.assign({}, i, { name: 'Гречка отборная' }) : i) });
+  r = await dMod(sid, { ids: ['n3', 'n4'] });
+  d = await jsonOf(r);
+  assert.deepEqual([d.sent, d.bad.map(b => b.id)], [1, ['n4']]);
+  assert.equal(tgLog.pop().payload.text, 'Навои Фуд: на проверке 1 товар');
+  // клиент и посторонние отправлять не могут
+  assert.equal((await callS(sid, 'POST', '/api/admin/submit', { init: A.init(), body: {} })).status, 403);
+  assert.equal((await callS(sid, 'POST', '/api/admin/submit', { body: {} })).status, 401);
+});
+
+await t('проверка: клиент видит товар на проверке без цены, заказать его нельзя; черновики и возвращённые не видны', async () => {
+  const { sid, cur } = await modWorld();
+  const A = newUser();
+  await dPut(sid, { cats: cur.cats, items: cur.items.concat([NEWP('n1', { tiers: [{ n: 10, price: 28000 }], tag: 'sale', old: 40000, box: 12 }), NEWP('n2', { name: 'Рис «Лазер»' }), NEWP('n3', { name: 'Гречка' })]) });
+  await dMod(sid, { ids: ['n1', 'n2'] });
+  assert.equal((await oAct('return', { did: sid, id: 'n2', reason: 'Нет фото' })).status, 200);
+  const view = (await dSee(sid, A.init())).items;
+  assert.deepEqual(view.map(i => i.id).sort(), ['n1', 'p1', 'p2', 'p3', 'p4'], 'n2 возвращён, n3 черновик — не видны');
+  const n1 = view.find(i => i.id === 'n1');
+  assert.deepEqual([n1.ms, n1.price, n1.tiers, n1.old, n1.box, n1.tag, n1.mt, n1.mc], ['wait', 0, [], 0, 0, '', undefined, undefined]);
+  assert.equal(n1.name, 'Масло «Золотое»');
+  // заказать нельзя
+  const ord = await callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: [{ id: 'n1', qty: 1 }], form: formFor(S.DEFAULT, 'pickup', {}), lang: 'ru' } });
+  assert.equal(ord.status, 409);
+  const ordBody = await jsonOf(ord);
+  assert.equal(ordBody.error, 'unavailable');
+  const ord2 = await callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: [{ id: 'n3', qty: 1 }], form: formFor(S.DEFAULT, 'pickup', {}), lang: 'ru' } });
+  assert.equal((await jsonOf(ord2)).error, 'unavailable', 'черновик заказать нельзя');
+  // ответ про «изменилось» тоже не раскрывает цену
+  assert.ok(ordBody.prod.items.every(i => i.id !== 'n1' || i.price === 0));
+  assert.ok(!JSON.stringify(await dSee(sid, A.init())).includes('30000'), 'цена на проверке не утекает клиенту');
+});
+
+await t('проверка: владелец видит товары всех дистрибьюторов, возвращает с причиной, продавец исправляет и отправляет снова', async () => {
+  const { sid, cur } = await modWorld();
+  await dPut(sid, { cats: cur.cats, items: cur.items.concat([NEWP('n1'), NEWP('n2', { name: 'Рис «Лазер»', cat: 'groats' })]) });
+  // второй дистрибьютор
+  const d2 = await addShop('Зарафшан Опт');
+  await send(adminMsg(JAS2, d2.code, 3));
+  const sid2 = d2.shop.id, iJ = () => initDataFor(JAS2);
+  await callS(sid2, 'PUT', '/api/admin/products', { init: iJ(), body: { prod: { cats: [{ id: 'c1', name: 'Соусы', uz: 'Souslar' }], items: [NEWP('z1', { cat: 'c1', name: 'Томатная паста' })] } } });
+  tgLog = [];
+  await dMod(sid, {});
+  await callS(sid2, 'POST', '/api/admin/submit', { init: iJ(), body: {} });
+  // счётчик у владельца (список площадки) и пустой список без отправок
+  const me = (await jsonOf(await call('GET', '/api/shops', { init: iS() }))).me;
+  assert.equal(me.modN, 3);
+  assert.equal((await jsonOf(await call('GET', '/api/shops', { init: iD() }))).me.modN, undefined, 'продавцу счётчик не нужен');
+  const l = await oMod('wait');
+  assert.deepEqual(l.counts, { wait: 3, ret: 0, ok: 4 });
+  assert.deepEqual(l.items.map(i => [i.did === sid ? 'sid' : i.did === sid2 ? 'sid2' : '?', i.dname, i.id]).sort(), [['sid', 'Навои Фуд', 'n1'], ['sid', 'Навои Фуд', 'n2'], ['sid2', 'Зарафшан Опт', 'z1']]);   // идентификаторы случайные: порядок по ним не сравниваем
+  assert.deepEqual(l.shops.map(x => [x.name, x.n]).sort(), [['Зарафшан Опт', 1], ['Навои Фуд', 2]]);
+  const z = l.items.find(i => i.id === 'z1');
+  assert.deepEqual([z.catName, z.price, z.ms], ['Соусы', 30000, 'wait']);
+  assert.equal(l.items.find(i => i.id === 'n2').catName, 'Крупы и макароны');
+  // посторонние не видят и не решают
+  assert.equal((await call('GET', '/api/hub/admin/mod', { init: iD() })).status, 403);
+  assert.equal((await oAct('approve', { items: [{ did: sid, id: 'n1' }] }, iD())).status, 403);
+  assert.equal((await oAct('return', { did: sid, id: 'n1', reason: 'x' }, iD())).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/mod', { init: newUser().init() })).status, 403);
+  // вернуть без причины нельзя
+  assert.equal((await oAct('return', { did: sid, id: 'n1', reason: '   ' })).status, 400);
+  assert.equal((await oAct('return', { did: sid, id: 'n1' })).status, 400);
+  assert.equal((await oAct('return', { did: 'nosuch', id: 'n1', reason: 'x' })).status, 404);
+  assert.equal((await oAct('return', { did: sid, id: 'nope', reason: 'x' })).status, 404);
+  tgLog = [];
+  const reason = 'Нет фото. Неверная цена: проверьте за коробку';
+  assert.equal((await oAct('return', { did: sid, id: 'n1', reason })).status, 200);
+  const tg = tgLog.filter(x => x.method === 'sendMessage');
+  assert.equal(tg.length, 1);
+  assert.equal(tg[0].payload.chat_id, DIL.id, 'сообщение продавцу дистрибьютора, а не другому');
+  assert.ok(tg[0].payload.text.includes('«Масло «Золотое»»') && tg[0].payload.text.includes('возвращён') && tg[0].payload.text.includes(reason), tg[0].payload.text);
+  // у продавца: «нужно исправить» с причиной; в списке владельца — в «Возвращены»
+  const mine = (await dSee(sid, iD())).items.find(i => i.id === 'n1');
+  assert.deepEqual([mine.ms, mine.mc], ['ret', reason]);
+  assert.deepEqual((await oMod('wait')).counts, { wait: 2, ret: 1, ok: 4 });
+  const rl = await oMod('ret');
+  assert.deepEqual(rl.items.map(i => [i.id, i.mc]), [['n1', reason]]);
+  assert.equal((await call('GET', '/api/shops', { init: iS() }).then(jsonOf)).me.modN, 2);
+  // повторно вернуть то, что не ждёт проверки, нельзя; а вот уже возвращённый можно переписать
+  assert.equal((await oAct('return', { did: sid, id: 'p1', reason: 'x' })).status, 409);
+  // продавец правит и отправляет снова: причина очищается, статус «ждёт»
+  const fix = (await dSee(sid, iD())); fix.items.find(i => i.id === 'n1').price = 31000;
+  assert.equal((await jsonOf(await dPut(sid, fix))).prod.items.find(i => i.id === 'n1').ms, 'ret', 'правка не снимает «нужно исправить»');
+  tgLog = [];
+  const re = await jsonOf(await dMod(sid, { ids: ['n1'] }));
+  assert.equal(re.sent, 1);
+  const n1 = re.prod.items.find(i => i.id === 'n1');
+  assert.deepEqual([n1.ms, n1.mc], ['wait', undefined]);
+  assert.equal(tgLog.filter(x => x.method === 'sendMessage').pop().payload.text, 'Навои Фуд: на проверке 1 товар');
+  assert.deepEqual((await oMod('wait')).counts, { wait: 3, ret: 0, ok: 4 });
+});
+
+await t('проверка: одобрение — товар появляется у клиентов с ценой; «одобрить все» по нескольким дистрибьюторам; продавцам одно сообщение', async () => {
+  const { sid, cur } = await modWorld();
+  const A = newUser();
+  await dPut(sid, { cats: cur.cats, items: cur.items.concat([NEWP('n1'), NEWP('n2', { name: 'Рис «Лазер»', cat: 'groats' }), NEWP('n3', { name: 'Гречка' })]) });
+  const d2 = await addShop('Зарафшан Опт');
+  await send(adminMsg(JAS2, d2.code, 3));
+  const sid2 = d2.shop.id, iJ = () => initDataFor(JAS2);
+  await callS(sid2, 'PUT', '/api/admin/products', { init: iJ(), body: { prod: { cats: [{ id: 'c1', name: 'Соусы', uz: '' }], items: [NEWP('z1', { cat: 'c1', name: 'Томатная паста' })] } } });
+  await dMod(sid, {}); await callS(sid2, 'POST', '/api/admin/submit', { init: iJ(), body: {} });
+  tgLog = [];
+  // один товар
+  let r = await jsonOf(await oAct('approve', { items: [{ did: sid, id: 'n1' }] }));
+  assert.deepEqual([r.ok, r.n], [true, 1]);
+  let msgs = tgLog.filter(x => x.method === 'sendMessage');
+  assert.equal(msgs.length, 1);
+  assert.deepEqual([msgs[0].payload.chat_id, msgs[0].payload.text], [DIL.id, '✅ Товар «Масло «Золотое»» одобрен и появился в каталоге.']);
+  const seen = (await dSee(sid, A.init())).items.find(i => i.id === 'n1');
+  assert.deepEqual([seen.price, seen.ms, seen.ma === undefined], [30000, undefined, false]);
+  // теперь его можно заказать
+  const ok = await callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: [{ id: 'n1', qty: 2 }], form: formFor(S.DEFAULT, 'pickup', {}), lang: 'ru' } });
+  assert.equal(ok.status, 200);
+  assert.equal((await jsonOf(ok)).order.total, 60000);
+  // «одобрить все» из двух дистрибьюторов; неверные записи пропускаются, уже одобренные не считаются
+  tgLog = [];
+  r = await jsonOf(await oAct('approve', { items: [{ did: sid, id: 'n2' }, { did: sid, id: 'n3' }, { did: sid, id: 'n1' }, { did: sid2, id: 'z1' }, { did: sid, id: 'p1' }, { did: 'nosuch', id: 'x' }, { did: sid, id: '../x' }] }));
+  assert.equal(r.n, 3);
+  msgs = tgLog.filter(x => x.method === 'sendMessage');
+  assert.deepEqual(msgs.map(m => m.payload.chat_id).sort(), [DIL.id, JAS2.id].sort(), 'каждому продавцу по одному сообщению');
+  assert.ok(msgs.find(m => m.payload.chat_id === DIL.id).payload.text.includes('Одобрено: 2 товара') && msgs.find(m => m.payload.chat_id === DIL.id).payload.text.includes('• Рис «Лазер»'));
+  assert.deepEqual((await oMod('wait')).counts, { wait: 0, ret: 0, ok: 8 });
+  assert.deepEqual((await oMod('wait')).items, []);
+  const okl = await oMod('ok');
+  assert.equal(okl.items.length, 8); assert.ok(okl.items.every(i => i.ma && !i.ms));
+  assert.equal((await call('GET', '/api/shops', { init: iS() }).then(jsonOf)).me.modN, 0);
+  // список площадки: теперь у дистрибьютора 7 товаров
+  assert.equal((await jsonOf(await call('GET', '/api/shops'))).shops.find(x => x.id === sid).items, 7);
+});
+
+await t('проверка: владелец правит товар сам, статус остаётся; фото владельца; чужого не трогает', async () => {
+  const { sid, cur } = await modWorld();
+  await dPut(sid, { cats: cur.cats, items: cur.items.concat([NEWP('n1')]) });
+  await dMod(sid, {});
+  const it = { name: 'Масло «Золотое» 1 л', uz: 'Oltin yogʻ 1 l', desc: 'Рафинированное', cat: 'groats', price: 33000, amount: 1, unit: 'l', tiers: [{ n: 10, price: 31000 }], box: 12, ms: 'ok', pv: 'EVIL', price_x: 1 };
+  let r = await oAct('edit', { did: sid, id: 'n1', item: it });
+  assert.equal(r.status, 200);
+  const got = (await jsonOf(r)).item;
+  assert.deepEqual([got.name, got.cat, got.price, got.box, got.tiers.length, got.ms, got.pv], ['Масло «Золотое» 1 л', 'groats', 33000, 12, 1, 'wait', '']);
+  assert.equal((await oAct('edit', { did: sid, id: 'nope', item: it })).status, 404);
+  assert.equal((await oAct('edit', { did: sid, id: 'n1', item: it }, iD())).status, 403);
+  // фото: три места, как у продавца
+  const ph = (n, bytes, del) => call(del ? 'DELETE' : 'PUT', '/api/hub/admin/mod/photo?did=' + sid + '&id=n1&n=' + n, { init: iS(), body: bytes });
+  r = await ph(1, jpegBytes(800, 600, 5000));
+  assert.equal(r.status, 200);
+  const v = await jsonOf(r);
+  assert.ok(v.pv && !v.pv2);
+  assert.equal((await ph(3, jpegBytes())).status, 400, 'через пропуск нельзя');
+  assert.equal((await ph(2, jpegBytes())).status, 200);
+  assert.equal((await ph(1, new Uint8Array(500).fill(3))).status, 400, 'не картинка');
+  assert.equal((await ph(2, null, true)).status, 200);
+  assert.equal((await oMod('wait')).items[0].pv, v.pv);
+  assert.equal((await call('PUT', '/api/hub/admin/mod/photo?did=' + sid + '&id=n1&n=1', { init: iD(), body: jpegBytes() })).status, 403);
+  assert.equal((await call('PUT', '/api/hub/admin/mod/photo?did=nosuch&id=n1&n=1', { init: iS(), body: jpegBytes() })).status, 404);
+  // правка владельца не снимает статус «ждёт проверки», пока он сам не одобрит
+  assert.equal((await oMod('wait')).items.length, 1);
+});
+
+await t('проверка: прайс из Excel у дистрибьютора — новые строки сразу «ждут проверки», у владельца — сразу одобрены', async () => {
+  const { sid } = await modWorld();
+  tgLog = [];
+  const fx = 'price-openpyxl.xlsx';
+  const r = await callS(sid, 'POST', '/api/admin/import?apply=1', { init: iD(), body: FIX(fx), headers: { 'content-type': 'application/octet-stream' } });
+  const d = await jsonOf(r);
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.equal(d.applied, true);
+  const added = d.prod.items.filter(i => !['p1', 'p2', 'p3', 'p4'].includes(i.id));
+  assert.ok(added.length >= 1, 'в прайсе есть новые товары');
+  assert.ok(added.every(i => i.ms === 'wait'), 'новые строки сразу ждут проверки');
+  assert.ok(d.prod.items.filter(i => ['p1', 'p2', 'p3', 'p4'].includes(i.id)).every(i => !i.ms), 'обновлённые прежние товары остаются одобренными');
+  const tgs = tgLog.filter(x => x.method === 'sendMessage');
+  assert.equal(tgs.length, 1);
+  assert.equal(tgs[0].payload.text, 'Навои Фуд: на проверке ' + ruTovarT(added.length));
+  assert.equal((await dSee(sid)).items.filter(i => i.ms === 'wait').every(i => i.price === 0), true);
+  assert.equal((await oMod('wait')).counts.wait, added.length);
+});
 
 await t('база: первый заказ сам добавляет магазин, повторные заказы и второй дистрибьютор дублей не создают', async () => {
   const { sid } = await shopWorld();
@@ -3445,6 +3836,67 @@ await t('база: поиск, территории, проверка и стр�
   assert.ok(Array.isArray((await baseGet()).agents));
 });
 
+await t('база: фильтры «новые», «в приложении», агент и порядок «сначала новые»; районы считаются с учётом фильтров', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const tn = t1.terr[0].id, tk = t1.terr[1].id;
+  const made = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [tn] }));
+  await send(agentMsg(AGT, made.code, 2));
+  const mk = async (name, n, over) => (await jsonOf(await baseSend('POST', '', Object.assign({ name, phone: '+998 90 100 00 0' + n, addr: 'ул. ' + name }, over)))).item;
+  const a = await mk('Альфа', 1, { terr: tn });
+  const b = await mk('Бета', 2, { terr: tn, agent: made.agentId });
+  const c = await mk('Гамма', 3, { terr: tk });
+  const d = await mk('Дельта', 4, { terr: tk, agent: made.agentId });
+  assert.equal((await baseSend('PUT', '/' + b.id, { st: 'talk' })).status, 200);
+  assert.equal((await baseSend('PUT', '/' + d.id, { st: 'refuse' })).status, 200);
+  await ordBase(sid, newUser(), { name: 'Эпсилон', phone: '+998 91 100 00 05' });
+  // сохранённое время создания делаем разным, чтобы порядок «сначала новые» не зависел от скорости теста
+  for (const [x, day] of [[a, 1], [b, 2], [c, 3], [d, 4]]) { const r = await W.hubStorage.get('b:' + x.id); r.created = '2026-11-0' + day + 'T10:00:00.000Z'; await W.hubStorage.put('b:' + x.id, r); }
+  const eps = (await baseGet('?q=' + encodeURIComponent('Эпсилон'))).items[0];
+  { const r = await W.hubStorage.get('b:' + eps.id); r.created = '2026-11-05T10:00:00.000Z'; await W.hubStorage.put('b:' + eps.id, r); }
+  const nm = async (qs, init) => (await baseGet(qs, init)).items.map(x => x.name);
+  assert.equal((await baseGet()).total, 5);
+  assert.deepEqual(await nm('?f=new'), ['Альфа', 'Гамма', 'Эпсилон'], 'статус «Новый»');
+  assert.deepEqual(await nm('?f=talk'), ['Бета']);
+  assert.deepEqual(await nm('?f=refuse'), ['Дельта']);
+  assert.deepEqual(await nm('?f=app'), ['Эпсилон'], 'в приложении — те, у кого есть аккаунт');
+  assert.deepEqual(await nm('?f=chk'), ['Эпсилон'], 'не проверен — из заказа');
+  // агент
+  assert.deepEqual(await nm('?ag=' + made.agentId), ['Бета', 'Дельта']);
+  assert.deepEqual(await nm('?ag=-'), ['Альфа', 'Гамма', 'Эпсилон'], 'без агента');
+  // фильтры складываются
+  assert.deepEqual(await nm('?f=refuse&ag=' + made.agentId), ['Дельта']);
+  assert.deepEqual(await nm('?f=talk&ag=-'), []);
+  assert.deepEqual(await nm('?f=new&terr=' + tk), ['Гамма']);
+  assert.deepEqual(await nm('?f=new&ag=-&q=' + encodeURIComponent('аль')), ['Альфа']);
+  // порядок
+  assert.deepEqual(await nm('?sort=new'), ['Эпсилон', 'Дельта', 'Гамма', 'Бета', 'Альфа'], 'сначала новые');
+  assert.deepEqual(await nm(''), ['Альфа', 'Бета', 'Гамма', 'Дельта', 'Эпсилон'], 'по умолчанию по названию');
+  assert.deepEqual(await nm('?sort=new&terr=' + tk), ['Дельта', 'Гамма']);
+  // районы считаются с учётом статуса, агента и поиска, но не района
+  assert.deepEqual((await baseGet()).counts, { [tn]: 2, [tk]: 2, '': 1 });
+  assert.deepEqual((await baseGet('?f=new')).counts, { [tn]: 1, [tk]: 1, '': 1 });
+  assert.deepEqual((await baseGet('?ag=' + made.agentId)).counts, { [tn]: 1, [tk]: 1 });
+  assert.deepEqual((await baseGet('?q=' + encodeURIComponent('Гамма'))).counts, { [tk]: 1 });
+  const ft = await baseGet('?f=new&terr=' + tk);
+  assert.deepEqual([ft.total, ft.all, ft.counts], [1, 5, { [tn]: 1, [tk]: 1, '': 1 }], 'выбор района не меняет счётчики районов');
+  assert.equal((await baseGet('?f=app')).unchk, 1);
+  // агент: только своя зона; фильтр по другому агенту ему не нужен и игнорируется; «в приложении» работает
+  const ag = await baseGet('', iG());
+  assert.deepEqual(ag.items.map(x => x.name), ['Альфа', 'Бета', 'Дельта', 'Эпсилон'], 'агент не видит Кармана без своих');
+  assert.deepEqual((await baseGet('?ag=-', iG())).items.map(x => x.name), ['Альфа', 'Бета', 'Дельта', 'Эпсилон'], 'агент не выбирает агентов');
+  assert.deepEqual((await baseGet('?f=app', iG())).items.map(x => x.name), ['Эпсилон']);
+  assert.deepEqual((await baseGet('?f=talk&terr=' + tn, iG())).items.map(x => x.name), ['Бета']);
+  assert.deepEqual((await baseGet('?sort=new', iG())).items.map(x => x.name), ['Эпсилон', 'Дельта', 'Бета', 'Альфа']);
+  assert.ok(!('agents' in ag));
+  // дистрибьютор: статусы, «в приложении» и агента не выбирает; район, поиск и порядок работают; отказавшихся не видит
+  assert.deepEqual((await baseGet('?f=app&ag=-', iD())).items.map(x => x.name), ['Альфа', 'Бета', 'Гамма', 'Эпсилон']);
+  assert.deepEqual((await baseGet('?terr=' + tk, iD())).items.map(x => x.name), ['Гамма']);
+  assert.deepEqual((await baseGet('', iD())).counts, { [tn]: 2, [tk]: 1, '': 1 });
+  assert.deepEqual((await baseGet('?sort=new', iD())).items.map(x => x.name), ['Эпсилон', 'Гамма', 'Бета', 'Альфа']);
+});
+
 await t('база: территории и агенты — без повторов, удаляются только пустые; новый код отключает прежний аккаунт', async () => {
   await shopWorld();
   let r = await adm('POST', '/terr', { names: ['Навои', 'навои', ' Зарафшан ', 'x', 5] });
@@ -3569,6 +4021,190 @@ await t('база: личная ссылка агента закрепляет �
   const pe = await jsonOf(await adm('GET', '/people'));
   assert.deepEqual(pe.agents.map(x => [x.name, x.n]), [['Азиз', 1], ['Ботир', 0]]);
   assert.equal(pe.free, 4, 'четыре магазина пока без территории');
+});
+
+await t('база: район или город из заказа попадает в базу, список территорий виден клиенту, чужие значения игнорируются', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const id = n => t1.terr.find(x => x.name === n).id;
+  const A = newUser(), B = newUser(), C = newUser();
+  // названия территорий видны всем: клиент выбирает свой район в форме заказа
+  const pub = await jsonOf(await call('GET', '/api/shops'));
+  assert.deepEqual(pub.terrs.map(x => x.name), ['Навои', 'Кармана']);
+  assert.ok(pub.terrs.every(x => Object.keys(x).sort().join() === 'id,name'));
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', terr: id('Кармана') });
+  await ordBase(sid, B, { name: 'Дастур', phone: '+998 93 777 88 99', terr: 'tzzzz' });   // не из списка владельца
+  await ordBase(sid, C, { name: 'Бахор', phone: '+998 94 000 11 22' });   // район не указан
+  let d = await baseGet();
+  const by = n => d.items.find(x => x.name === n);
+  assert.equal(by('Магазин Мадина').terr, id('Кармана'));
+  assert.equal(by('Дастур').terr, '');
+  assert.equal(by('Бахор').terr, '');
+  assert.equal(d.items.length, 3, 'чужое значение не создаёт лишних записей');
+  assert.equal((await meHub(A)).card.terr, id('Кармана'), 'выбранный район приходит в карточку для автозаполнения');
+  assert.equal((await meHub(B)).card.terr, '');
+  // пустой район дополняется следующим заказом, уже выбранный (в том числе агентом) не меняется
+  await ordBase(sid, B, { name: 'Дастур', phone: '+998 93 777 88 99', terr: id('Навои') });
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', terr: id('Навои') });
+  d = await baseGet();
+  assert.equal(by('Дастур').terr, id('Навои'));
+  assert.equal(by('Магазин Мадина').terr, id('Кармана'));
+  assert.equal(d.items.length, 3);
+  assert.equal((await meHub(B)).card.terr, id('Навои'));
+  // сотрудник того же магазина с другим аккаунтом: запись находится по телефону, район берётся из неё
+  const E = newUser();
+  await ordBase(sid, E, { name: 'Мадина', phone: '+998 (90) 111-22-33', terr: id('Навои') });
+  assert.equal((await baseGet()).items.length, 3);
+  assert.equal((await meHub(E)).card.terr, id('Кармана'));
+});
+
+/* ---------- местоположение ---------- */
+await t('точка: разбор координат и ссылок на карты, расстояние', async () => {
+  const P = (x, la, ln) => assert.deepEqual(S.parseGeo(x), la === null ? null : { lat: la, lng: ln }, String(x));
+  P('41.5543, 60.6361', 41.5543, 60.6361);
+  P('41.5543 60.6361', 41.5543, 60.6361);
+  P('41,5543 60,6361', 41.5543, 60.6361);
+  P('Координаты: 41.55432, 60.63611.', 41.55432, 60.63611);
+  P('https://yandex.uz/maps/?ll=60.636100%2C41.554300&z=17', 41.5543, 60.6361);          // у Яндекса сначала долгота
+  P('https://yandex.com/maps/?pt=60.6361,41.5543&z=17&l=map', 41.5543, 60.6361);
+  P('https://www.google.com/maps/place/Foo/@41.5543,60.6361,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!7e2!8m2!3d41.5555!4d60.6666', 41.5555, 60.6666);   // метка точнее центра карты
+  P('https://www.google.com/maps/@41.5543,60.6361,17z', 41.5543, 60.6361);
+  P('https://maps.google.com/?q=41.5543,60.6361', 41.5543, 60.6361);
+  P('https://www.google.com/maps/search/?api=1&query=41.5543%2C60.6361', 41.5543, 60.6361);
+  P('https://2gis.uz/navoi?m=60.6361%2C41.5543%2F17', 41.5543, 60.6361);
+  P('https://www.openstreetmap.org/?mlat=41.5543&mlon=60.6361#map=17/41.5543/60.6361', 41.5543, 60.6361);
+  P('https://maps.app.goo.gl/AbCdEf', null, 0);        // короткая ссылка без координат
+  P('https://yandex.uz/maps/-/CCUxyz', null, 0);
+  P('hello', null, 0); P('', null, 0); P(null, null, 0); P('0, 0', null, 0); P('41.5543', null, 0);
+  assert.deepEqual(S.cleanLoc({ lat: '41.55', lng: 60.1 }), { lat: 41.55, lng: 60.1 });
+  assert.deepEqual(S.cleanLoc({ lat: 41.123456789, lng: 60.987654321 }), { lat: 41.12346, lng: 60.98765 }, 'пять знаков');
+  for (const bad of [null, undefined, 'x', [], {}, { lat: null, lng: 1 }, { lat: '', lng: 1 }, { lat: true, lng: 1 }, { lat: 91, lng: 0 }, { lat: 0, lng: 181 }, { lat: NaN, lng: 1 }, { lat: 0, lng: 0 }]) assert.equal(S.cleanLoc(bad), null, JSON.stringify(bad));
+  assert.ok(Math.abs(S.distKm({ lat: 41.55, lng: 60.63 }, { lat: 41.56, lng: 60.63 }) - 1.112) < 0.01);
+  assert.equal(S.distKm({ lat: 41.55, lng: 60.63 }, { lat: 41.55, lng: 60.63 }), 0);
+  assert.equal(S.mapUrl('y', { lat: 41.5, lng: 60.6 }), 'https://yandex.com/maps/?pt=60.6,41.5&z=17&l=map');
+  assert.equal(S.mapUrl('g', { lat: 41.5, lng: 60.6 }), 'https://www.google.com/maps/search/?api=1&query=41.5,60.6');
+});
+
+await t('точка в заказе: хранится в заказе, неверная отбрасывается, продавцу — кнопки карт, в базу идёт только предложением', async () => {
+  const { sid } = await shopWorld();
+  const A = newUser(), B = newUser(), C = newUser();
+  tgLog = [];
+  const o = await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', loc: { lat: 41.55432123, lng: '60.63611' } });
+  assert.deepEqual(o.order.loc, { lat: 41.55432, lng: 60.63611 }, 'округляется до пяти знаков');
+  const ao = (await jsonOf(await callS(sid, 'GET', '/api/admin/orders', { init: iD() }))).orders;
+  assert.deepEqual(ao[0].loc, { lat: 41.55432, lng: 60.63611 }, 'продавец видит точку заказа');
+  const card = tgLog.filter(x => x.method === 'sendMessage' && x.payload.chat_id === DIL.id)[0].payload;
+  assert.deepEqual(card.reply_markup.inline_keyboard.flat().filter(b => b.url).map(b => b.url), [S.mapUrl('y', o.order.loc), S.mapUrl('g', o.order.loc)], 'в сообщении продавцу две кнопки: Яндекс и Google');
+  // неверная точка заказ не ломает
+  const b1 = await ordBase(sid, B, { name: 'Дастур', phone: '+998 93 777 88 99', loc: { lat: 999, lng: 5 } });
+  assert.equal(b1.order.loc, undefined);
+  const c1 = await ordBase(sid, C, { name: 'Бахор', phone: '+998 94 000 11 22', loc: 'abc' });
+  assert.equal(c1.order.loc, undefined);
+  // без точки у заказа нет кнопок карт
+  const none = tgLog.filter(x => x.method === 'sendMessage' && x.payload.chat_id === DIL.id).pop().payload;
+  assert.equal(none.reply_markup.inline_keyboard.flat().some(b => b.url), false);
+  // в базе точка клиента лежит предложением, сохранённой точки нет
+  const d = await baseGet();
+  const by = n => d.items.find(x => x.name === n);
+  assert.equal(by('Магазин Мадина').loc, undefined);
+  assert.deepEqual(by('Магазин Мадина').cloc, { lat: 41.55432, lng: 60.63611 });
+  assert.equal(by('Дастур').cloc, undefined);
+  // дистрибьютор не видит ни точки, ни предложения клиента
+  const dd = await baseGet('', iD());
+  assert.equal(dd.role, 'dist');
+  assert.ok(dd.items.every(x => x.loc === undefined && x.cloc === undefined));
+  assert.ok(!JSON.stringify([...W.hubStorage.m.entries()].filter(([k]) => k.startsWith('o:'))).includes('41.55432'), 'заказы лежат в хранилище дистрибьютора, не площадки');
+});
+
+await t('точка магазина: менять могут только владелец и агент своей зоны; клиент и дистрибьютор смотрят; предложение клиента принимается', async () => {
+  const { sid } = await shopWorld();
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const id = n => t1.terr.find(x => x.name === n).id;
+  const mk = async (name, terr, from, mid) => { const m = await jsonOf(await adm('POST', '/agents', { name, terr: [terr] })); await send(agentMsg(from, m.code, mid)); return m; };
+  await mk('Азиз', id('Навои'), AGT, 21);
+  await mk('Ботир', id('Кармана'), AGT2, 22);
+  const A = newUser();
+  const P1 = { lat: 41.55432, lng: 60.63611 };
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', terr: id('Навои'), loc: P1 });
+  let rec = (await baseGet('', iG())).items[0];
+  assert.deepEqual(rec.cloc, P1);
+  const put = (body, init) => baseSend('PUT', '/' + rec.id, body, init);
+  // чужие не меняют: другой агент, дистрибьютор, клиент, посторонний
+  assert.equal((await put({ accept: true }, iG2())).status, 403, 'агент другого района');
+  assert.equal((await put({ loc: { lat: 41.6, lng: 60.7 } }, iG2())).status, 403);
+  assert.equal((await put({ loc: { lat: 41.6, lng: 60.7 } }, iD())).status, 403, 'дистрибьютор');
+  assert.equal((await put({ accept: true }, iD())).status, 403);
+  assert.equal((await put({ loc: { lat: 41.6, lng: 60.7 } }, A.init())).status, 403, 'клиент');
+  assert.equal((await put({ loc: { lat: 41.6, lng: 60.7 } }, newUser().init())).status, 403);
+  assert.equal((await baseGet('', iG())).items[0].loc, undefined, 'ничего не изменилось');
+  // вместе с другими полями чужой точки тоже не поставить
+  assert.equal((await put({ note: 'x', loc: { lat: 41.6, lng: 60.7 } }, iD())).status, 403);
+  // принять без предложения нельзя; верная точка принимается
+  assert.equal((await baseSend('PUT', '/' + rec.id, { accept: true }, iG())).status, 200);
+  rec = (await baseGet('', iG())).items[0];
+  assert.deepEqual([rec.loc, rec.cloc], [{ lat: P1.lat, lng: P1.lng, by: 'client' }, undefined], 'принятая точка помечена «от клиента», предложение ушло');
+  assert.equal((await put({ accept: true }, iG())).status, 409, 'принимать больше нечего');
+  // дистрибьютор теперь видит сохранённую точку, но не её происхождение
+  const dd = (await baseGet('', iD())).items[0];
+  assert.deepEqual(dd.loc, P1);
+  assert.equal(dd.cloc, undefined);
+  // агент ставит свою точку; неверное отвергается
+  const P2 = { lat: 41.5601, lng: 60.6402 };
+  const r2 = await jsonOf(await put({ loc: P2 }, iG()));
+  assert.deepEqual(r2.item.loc, { lat: P2.lat, lng: P2.lng, by: 'agent' });
+  assert.equal((await put({ loc: { lat: 200, lng: 1 } }, iG())).status, 400);
+  assert.equal((await put({ loc: 'x' }, iG())).status, 400);
+  assert.equal((await put({ loc: {} }, iG())).status, 400);
+  assert.deepEqual((await baseGet('', iG())).items[0].loc, { lat: P2.lat, lng: P2.lng, by: 'agent' }, 'после ошибок точка прежняя');
+  // владелец тоже ставит; а правка других полей точку не трогает
+  const P3 = { lat: 41.57, lng: 60.65 };
+  assert.deepEqual((await jsonOf(await put({ loc: P3 }))).item.loc, { lat: P3.lat, lng: P3.lng, by: 'owner' });
+  assert.deepEqual((await jsonOf(await put({ note: 'Звонить после обеда' }, iG()))).item.loc, { lat: P3.lat, lng: P3.lng, by: 'owner' });
+  // клиент заказывает снова: рядом с сохранённой (до 50 м) — предложения нет; далеко — предложение
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', loc: { lat: 41.57002, lng: 60.65002 } });
+  assert.equal((await baseGet('', iG())).items[0].cloc, undefined);
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', loc: { lat: 41.6, lng: 60.7 } });
+  assert.deepEqual((await baseGet('', iG())).items[0].cloc, { lat: 41.6, lng: 60.7 });
+  assert.deepEqual((await baseGet('', iG())).items[0].loc, { lat: P3.lat, lng: P3.lng, by: 'owner' }, 'сохранённая точка от заказа не меняется');
+  // своя точка агента убирает устаревшее предложение; «убрать» очищает точку
+  await put({ loc: P2 }, iG());
+  assert.equal((await baseGet('', iG())).items[0].cloc, undefined);
+  assert.equal((await jsonOf(await put({ loc: null }, iG()))).item.loc, undefined);
+  assert.equal((await baseGet('', iD())).items[0].loc, undefined);
+  // агент добавляет новый магазин сразу с точкой
+  const cr = await jsonOf(await baseSend('POST', '', { name: 'Новый Базар', phone: '+998 91 222 33 44', addr: 'ул. Навои', terr: id('Навои'), loc: P2 }, iG()));
+  assert.deepEqual(cr.item.loc, { lat: P2.lat, lng: P2.lng, by: 'agent' });
+  assert.equal((await baseSend('POST', '', { name: 'Плохая Точка', phone: '+998 91 222 33 55', terr: id('Навои'), loc: { lat: 'a', lng: 1 } }, iG())).status, 400);
+});
+
+await t('точка: «ближайшие» — по расстоянию от того, кто смотрит; магазины без точки в конце; видят владелец, агент и дистрибьютор', async () => {
+  const { sid } = await shopWorld();
+  const mk = (name, ph, loc) => baseSend('POST', '', Object.assign({ name, phone: ph, addr: '' }, loc ? { loc } : {}));
+  await mk('Дальний', '+998 90 000 00 03', { lat: 41.75, lng: 60.63 });       // ~22 км к северу
+  await mk('Ближний', '+998 90 000 00 01', { lat: 41.56, lng: 60.63 });       // ~1,1 км
+  await mk('Без точки', '+998 90 000 00 04');
+  await mk('Средний', '+998 90 000 00 02', { lat: 41.6, lng: 60.63 });        // ~5,6 км
+  const q = '?sort=near&lat=41.55&lng=60.63';
+  for (const [who, init] of [['владелец', iS()], ['дистрибьютор', iD()]]) {
+    const d = await baseGet(q, init);
+    assert.deepEqual(d.items.map(x => x.name), ['Ближний', 'Средний', 'Дальний', 'Без точки'], who);
+    assert.deepEqual(d.items.map(x => x.d), [1.1, 5.6, 22.2, undefined], who + ': расстояние в км с одним знаком');
+  }
+  // без координат «ближайшие» не работают: обычный порядок по названию и без расстояний
+  const plain = await baseGet('?sort=near');
+  assert.deepEqual(plain.items.map(x => x.name), ['Без точки', 'Ближний', 'Дальний', 'Средний']);
+  assert.ok(plain.items.every(x => x.d === undefined));
+  assert.equal((await baseGet('?sort=near&lat=abc&lng=1')).items[0].d, undefined, 'неверные координаты игнорируются');
+  // фильтры работают вместе с «ближайшими»
+  const f = await baseGet(q + '&q=ж');
+  assert.deepEqual(f.items.map(x => x.name), ['Ближний']);
+  // агент видит расстояние тоже
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои'] }));
+  const m = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [t1.terr[0].id] }));
+  await send(agentMsg(AGT, m.code, 31));
+  const ag = await baseGet(q, iG());
+  assert.deepEqual(ag.items.map(x => x.name), ['Ближний', 'Средний', 'Дальний', 'Без точки']);
 });
 
 /* ---------- итог ---------- */

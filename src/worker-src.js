@@ -69,6 +69,15 @@ function checkJpeg(u, lim) {
   return !(w < minW || h < minH || w > maxSide || h > maxSide);
 }
 const PROD_PHOTO_LIM = { minW: 64, minH: 64, maxSide: 2000 };
+/* Фото товара: до трёх. Первое (pv) показывается на карточке в каталоге и лежит там же, где лежало единственное фото раньше (p:<товар>);
+   второе и третье (pv2, pv3) лежат в p2:<товар> и p3:<товар>. Фото всегда идут подряд, без дыр: убрали первое, второе встаёт на его место. */
+const PHOTOS_MAX = 3;
+const photoKey = (id, n) => (n > 1 ? 'p' + n + ':' : 'p:') + id;
+const photoVers = it => {
+  const v = [it.pv, it.pv2, it.pv3].map(x => (typeof x === 'string' ? x : ''));
+  const n = v.findIndex(x => !x);
+  return n < 0 ? v : v.slice(0, n);
+};
 
 const json = (obj, status) => new Response(JSON.stringify(obj), {
   status: status || 200,
@@ -161,8 +170,25 @@ function normProd(d) {
 }
 /* Штук в блоке или коробке: 0 (нет такой упаковки) или от 2 до 500. */
 const cleanPack = v => { const n = Math.round(Number(v)); return n >= 2 && n <= MAX_QTY ? n : 0; };
-/* Чистит то, что прислал продавец. Версию фото (pv) клиент не задаёт: берём из сохранённых данных. */
-function sanitizeProd(d, old) {
+/* Проверка товаров. У одобренного товара метки ms нет совсем (так выглядят и все прежние товары).
+   ms: 'draft' — продавец добавил, но ещё не отправил на проверку; 'wait' — ждёт проверки; 'ret' — владелец вернул с причиной mc.
+   mt — когда статус менялся в последний раз, ma — когда владелец одобрил. Эти поля продавец не задаёт: берутся из сохранённых данных. */
+const MOD_BAD_NAMES = ['', 'Без названия', 'Новый товар'];
+const MOD_REASON_MAX = 300;
+const isApproved = it => !it.ms;
+const ruCount = (n, w) => { const m = n % 100, k = n % 10; return m > 10 && m < 15 ? w[2] : k === 1 ? w[0] : k > 1 && k < 5 ? w[1] : w[2]; };
+const ruTovar = n => n + ' ' + ruCount(n, ['товар', 'товара', 'товаров']);
+/* Что мешает отправить товар на проверку: название, цена, категория. */
+function modProblems(it, cats) {
+  const bad = [];
+  if (MOD_BAD_NAMES.includes(String(it.name || '').trim())) bad.push('name');
+  if (!(Number(it.price) > 0)) bad.push('price');
+  if (!cats.some(c => c.id === it.cat)) bad.push('cat');
+  return bad;
+}
+/* Чистит то, что прислал продавец. Версию фото (pv) клиент не задаёт: берём из сохранённых данных.
+   mod: {state, at} — в каком состоянии начинают новые товары (draft, wait; у владельца ok — метки нет). */
+function sanitizeProd(d, old, mod) {
   const oldItems = new Map(normProd(old).items.map(i => [i.id, i]));
   const src = normProd(d);
   const cats = [], seenC = new Set();
@@ -195,23 +221,38 @@ function sanitizeProd(d, old) {
       on: o.on !== false,
       tag: o.tag === 'sale' || o.tag === 'new' ? o.tag : '',
       old: o.tag === 'sale' ? Math.round(clampN(o.old, 0, 1e8, 0)) : 0,
-      pv: prev && typeof prev.pv === 'string' ? prev.pv : ''
+      pv: prev && typeof prev.pv === 'string' ? prev.pv : '',
+      pv2: prev && typeof prev.pv2 === 'string' ? prev.pv2 : '',
+      pv3: prev && typeof prev.pv3 === 'string' ? prev.pv3 : ''
     });
+    const it = items[items.length - 1];
+    if (prev) {
+      if (prev.ms) { it.ms = prev.ms; if (prev.mt) it.mt = prev.mt; if (prev.mc) it.mc = prev.mc; }
+      if (prev.ma) it.ma = prev.ma;
+    } else if (mod && mod.state && mod.state !== 'ok') {
+      it.ms = mod.state;
+      if (mod.state === 'wait') it.mt = mod.at;
+    }
   });
   return { cats, items };
 }
 
 /* ---------- остатки ---------- */
-/* Каталог для покупателей: у товаров с учётом добавляется av (сколько можно заказать, не больше 500) и lw (товара мало). */
-function publicProd(prod, stk) {
-  return {
-    cats: prod.cats,
-    items: prod.items.map(it => {
-      const v = stk ? stkPublic(stk[it.id], MAX_QTY) : undefined;
-      if (!v) return it;
-      return Object.assign({}, it, v.lw ? { av: v.av, lw: 1 } : { av: v.av });
-    })
-  };
+/* Каталог для покупателей: у товаров с учётом добавляется av (сколько можно заказать, не больше 500) и lw (товара мало).
+   Товар на проверке виден покупателю без цены (серой карточкой «На модерации»), черновики и возвращённые не видны совсем.
+   admin: продавцу отдаётся всё, с метками проверки. */
+function publicProd(prod, stk, admin) {
+  const items = [];
+  prod.items.forEach(it => {
+    if (it.ms && !admin) {
+      if (it.ms !== 'wait') return;
+      items.push({ id: it.id, cat: it.cat, name: it.name, uz: it.uz || '', desc: it.desc, descUz: it.descUz, amount: it.amount, unit: it.unit, price: 0, tiers: [], blk: 0, box: 0, on: true, tag: '', old: 0, pv: it.pv, pv2: it.pv2, pv3: it.pv3, ms: 'wait' });
+      return;
+    }
+    const v = stk && !it.ms ? stkPublic(stk[it.id], MAX_QTY) : undefined;
+    items.push(!v ? it : Object.assign({}, it, v.lw ? { av: v.av, lw: 1 } : { av: v.av }));
+  });
+  return { cats: prod.cats, items };
 }
 /* Название для журнала и сообщений: «Рис, 25 кг». */
 function ruTitle(it) {
@@ -247,7 +288,8 @@ function validateForm(f, cfg) {
   // час запаса, чтобы не спорить с клиентскими часами
   const pk = pickupInfo(cfg, new Date(shopNow().getTime() - 3600000), leadFor(cfg, mode));
   if (date > pk.max || !pk.slots(date).includes(time)) return { err: 'pickup' };
-  return { name, phone, comment, mode, address, region, pickupAt: date + 'T' + time };
+  // точка на карте необязательна; неверную молча отбрасываем, заказ из-за неё не отклоняем
+  return { name, phone, comment, mode, address, region, pickupAt: date + 'T' + time, loc: cleanLoc(f.loc) };
 }
 
 /* Заказ: цены и названия берём только из каталога на сервере. */
@@ -262,7 +304,7 @@ function validateOrder(b, cfg, prod, stk) {
     if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY || typeof c.id !== 'string' || seen.has(c.id)) return { err: 'bad_request' };
     seen.add(c.id);
     const it = prod.items.find(x => x.id === c.id);
-    if (!it || it.on === false) { missing = true; continue; }
+    if (!it || it.on === false || it.ms) { missing = true; continue; }   // на проверке заказать нельзя
     const price = unitPrice(it, qty);    // цена за штуку с учётом ступеней: считает только сервер
     const line = { id: it.id, name: it.name, uz: it.uz || '', amount: it.amount, unit: it.unit, price, qty };
     if (packSize(it, 'box')) line.box = packSize(it, 'box');
@@ -285,7 +327,7 @@ function validateOrder(b, cfg, prod, stk) {
   if (min > 0 && total < min) return { err: 'min_order', min };
   const fee = deliveryFee(cfg, fm.mode, total);
   const dc = orderDiscount(cfg, total);
-  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt };
+  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt, loc: fm.loc };
 }
 
 const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; return x; };
@@ -365,6 +407,7 @@ function adminCard(o, shop, origin, confirm, cl, did) {
     if (o.status === 'accepted') rows.push([btn(del ? '📦 Готов к отправке' : '📦 Готов к выдаче', 's:' + px + o.id + ':ready')]);
     if (o.status === 'ready') rows.push([btn(del ? '🚚 Доставлен клиенту' : '🤝 Выдан клиенту', 's:' + px + o.id + ':done')]);
     if (NEXT[o.status]) rows.push([btn('❌ Отменить', 'c:' + px + o.id)]);
+    if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
     rows.push([{ text: 'Открыть панель продавца', web_app: { url: sellerUrl(origin, did) } }]);
   }
   return { text, reply_markup: { inline_keyboard: rows } };
@@ -1176,7 +1219,7 @@ export class Shop {
   }
   async getProd() { return normProd(await this.st.get('prod')); }
   async getStk() { const s = await this.st.get('stk'); return s && typeof s === 'object' ? s : {}; }
-  async pubProd() { return publicProd(await this.getProd(), await this.getStk()); }
+  async pubProd(admin) { return publicProd(await this.getProd(), await this.getStk(), !!admin); }
   /* Новые строки журнала + прежние (последние JR_CAP). Возвращает массив для записи. */
   async jrWith(rows) { return rows.concat((await this.st.get('jr')) || []).slice(0, JR_CAP); }
   /* Сколько штук товара сейчас отложено под активные заказы (нужно, когда учёт товара включают заново). */
@@ -1200,6 +1243,13 @@ export class Shop {
     for (const aid of (await this.st.get('admins')) || []) await this.tg('sendMessage', { chat_id: aid, text });
   }
   async isAdmin(uid) { return ((await this.st.get('admins')) || []).includes(uid); }
+  /* Публичный адрес /api/config читают все, но продавцу нужен каталог целиком (с черновиками): узнаём его, если Telegram-подпись приложена. */
+  async adminIn(request) {
+    const h = request.headers.get('x-init-data');
+    if (!h || !this.env.BOT_TOKEN) return false;
+    const au = await verifyInitData(h, this.env.BOT_TOKEN);
+    return !au.err && await this.isAdmin(au.user.id);
+  }
 
   /* --- Telegram --- */
   tg(method, payload) { return tgApi(this.env.BOT_TOKEN, method, payload); }
@@ -1246,19 +1296,21 @@ export class Shop {
     await this.ensureClients();
     const prod = await this.getProd(), orders = await this.allOrders();
     const idx = await this.clientsIdx(), cmap = await this.getMany(idx.map(x => 'c:' + x));
-    const withPhoto = prod.items.filter(it => it.pv);
+    // все фото всех товаров: первое как photos/<товар>.jpg, второе и третье как photos/<товар>-2.jpg и -3.jpg
+    const withPhoto = [];
+    prod.items.forEach(it => photoVers(it).forEach((v, i) => withPhoto.push({ id: it.id, n: i + 1 })));
     const photos = [];
     let used = 0;
     for (let i = 0; i < withPhoto.length; i += 20) {
       const part = withPhoto.slice(i, i + 20);
-      const m = await this.getMany(part.map(it => 'p:' + it.id));
-      for (const it of part) {
-        const b = m.get('p:' + it.id);
+      const m = await this.getMany(part.map(x => photoKey(x.id, x.n)));
+      for (const x of part) {
+        const b = m.get(photoKey(x.id, x.n));
         if (!b || !b.length) continue;
         const u = b instanceof Uint8Array ? b : new Uint8Array(b);
         if (used + u.length > BACKUP_PHOTO_BUDGET) continue;
         used += u.length;
-        photos.push({ name: 'photos/' + it.id + '.jpg', data: u });
+        photos.push({ name: 'photos/' + x.id + (x.n > 1 ? '-' + x.n : '') + '.jpg', data: u });
       }
     }
     const at = new Date().toISOString();
@@ -1361,8 +1413,8 @@ export class Shop {
       if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
       if (path === '/webhook' && method === 'POST') return await this.webhook(request);
       if (path === '/setup') return await this.setup(request);
-      if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5));
-      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd(), off: await this.isOff() });
+      if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5), new URL(request.url).searchParams.get('n'));
+      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd(await this.adminIn(request)), off: await this.isOff() });
       if (path.startsWith('/api/')) return await this.api(request, path, method);
       return json({ error: 'not_found' }, 404);
     } catch (e) {
@@ -1381,9 +1433,10 @@ export class Shop {
   /* Краткая карточка дистрибьютора для списка: название, сколько товаров, категории, есть ли доставка. */
   async summary() {
     const cfg = await this.getCfg(), prod = await this.getProd();
-    const cats = prod.cats.filter(c => prod.items.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
+    const ok = prod.items.filter(isApproved);   // в списке дистрибьюторов считаются только одобренные товары
+    const cats = prod.cats.filter(c => ok.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
     return {
-      name: cfg.shop.name || DEFAULT.shop.name, items: prod.items.length, cats,
+      name: cfg.shop.name || DEFAULT.shop.name, items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
       delivery: cfg.shop.delivery !== false, minOrder: Number(cfg.shop.minOrder) || 0,
       regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home)
     };
@@ -1401,7 +1454,9 @@ export class Shop {
   }
   async internal(request, path) {
     if (request.method !== 'POST') return json({ error: 'not_found' }, 404);
-    const r = await this.readBody(request, 8000);
+    // фото от владельца приходит байтами, остальное — JSON
+    const raw = path === '/__/mod-photo';
+    const r = raw ? { body: {} } : await this.readBody(request, 8000);
     const b = r.body && typeof r.body === 'object' ? r.body : {};
     if (path === '/__/init') {
       // площадка создаёт дистрибьютора: помечаем хранилище и ставим название
@@ -1415,6 +1470,7 @@ export class Shop {
       return json({ ok: true });
     }
     if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
+    if (path === '/__/mod-photo') return await this.modPhoto(request);
     if (path === '/__/summary') return json(await this.summary());
     if (path === '/__/clients') {
       // клиенты этого дистрибьютора: площадка один раз переносит их в общую базу магазинов
@@ -1429,6 +1485,10 @@ export class Shop {
       await this.st.put('cpct', pct);
       return json({ ok: true, pct });
     }
+    if (path === '/__/mod-list') return json(await this.modList(b.seg === 'ret' || b.seg === 'ok' ? b.seg : 'wait'));
+    if (path === '/__/mod-approve') return await this.modApprove(b);
+    if (path === '/__/mod-return') return await this.modReturn(b);
+    if (path === '/__/mod-edit') return await this.modEdit(b);
     if (path === '/__/admins') return json({ admins: (await this.st.get('admins')) || [] });
     if (path === '/__/admin-add') {
       const uid = Number(b.uid);
@@ -1467,7 +1527,7 @@ export class Shop {
     if (path === '/api/bootstrap' && method === 'GET') {
       await this.ensureClients();
       const cl = await this.getClient(uid);
-      return json({ did: this.did, off: await this.isOff(), cfg: await this.getCfg(), prod: await this.pubProd(), me: { id: uid, name: u.first_name || '', admin, profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
+      return json({ did: this.did, off: await this.isOff(), cfg: await this.getCfg(), prod: await this.pubProd(admin), me: { id: uid, name: u.first_name || '', admin, profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
     }
     if (path === '/api/profile' && method === 'PUT') {
       const r = await this.readBody(request, 6000);
@@ -1519,7 +1579,12 @@ export class Shop {
       if (path === '/api/admin/products' && method === 'PUT') {
         const r = await this.readBody(request, PROD_BODY_MAX);
         if (r.err || !r.body) return json({ error: 'bad_request' }, r.err || 400);
-        return await this.saveProd(r.body.prod);
+        return await this.saveProd(r.body.prod, uid);
+      }
+      if (path === '/api/admin/submit' && method === 'POST') {
+        const r = await this.readBody(request, 6000);
+        if (r.err) return json({ error: 'bad_request' }, 400);
+        return await this.modSubmit(r.body && typeof r.body === 'object' ? r.body : {});
       }
       if (path === '/api/admin/clients' && method === 'GET') {
         await this.ensureClients();
@@ -1578,7 +1643,7 @@ export class Shop {
           return json({ ok: true, name: f.name, size: f.bytes.length, n: f.n });
         } finally { this.exporting = false; }
       }
-      if (path === '/api/admin/import' && method === 'POST') return await this.importPrice(request, new URL(request.url).searchParams.get('apply') === '1');
+      if (path === '/api/admin/import' && method === 'POST') return await this.importPrice(request, new URL(request.url).searchParams.get('apply') === '1', uid);
       if (path === '/api/admin/stock' && method === 'GET') return json({ stk: await this.getStk() });
       if (path === '/api/admin/journal' && method === 'GET') return json({ jr: (await this.st.get('jr')) || [] });
       if (path === '/api/admin/stock' && method === 'POST') {
@@ -1589,13 +1654,17 @@ export class Shop {
       if (path.startsWith('/api/admin/photo/') && (method === 'PUT' || method === 'DELETE')) {
         const id = path.slice('/api/admin/photo/'.length);
         if (!validId(id)) return json({ error: 'not_found' }, 404);
-        if (method === 'DELETE') return await this.setPhoto(id, null);
+        // ?n=1..3 — какое по счёту фото; без n это первое (так работало, пока фото было одно)
+        const rawN = new URL(request.url).searchParams.get('n');
+        const n = rawN === null ? 1 : Number(rawN);
+        if (!Number.isInteger(n) || n < 1 || n > PHOTOS_MAX) return json({ error: 'bad_slot' }, 400);
+        if (method === 'DELETE') return await this.setPhoto(id, null, n);
         // фото приходит как есть, байтами (JPEG), без base64: так сервер почти ничего не считает
         if (Number(request.headers.get('content-length') || 0) > PROD_PHOTO_MAX) return json({ error: 'too_big' }, 413);
         const bytes = new Uint8Array(await request.arrayBuffer());
         if (bytes.length > PROD_PHOTO_MAX) return json({ error: 'too_big' }, 413);
         if (!checkJpeg(bytes, PROD_PHOTO_LIM)) return json({ error: 'bad_photo' }, 400);
-        return await this.setPhoto(id, bytes);
+        return await this.setPhoto(id, bytes, n);
       }
     }
     return json({ error: 'not_found' }, 404);
@@ -1676,6 +1745,7 @@ export class Shop {
     };
     if (cl0 && cl0.org) order.org = cl0.org;
     if (v.mode === 'delivery' && v.region) order.region = v.region;
+    if (v.loc) order.loc = v.loc;   // только в заказе: в базу магазинов точка попадает после подтверждения агентом
     if (v.fee > 0 || v.disc > 0) order.sub = v.sub;
     if (v.disc > 0) { order.disc = v.disc; order.dpct = v.dpct; }
     if (v.fee > 0) order.fee = v.fee;
@@ -1709,7 +1779,7 @@ export class Shop {
       upd['c:' + uid] = cl;
     }
     await this.st.put(upd);
-    await this.hubOrdered(uid, { name: order.name, phone: order.phone, org: order.org || '', addr: order.mode === 'delivery' ? order.address : '' });
+    await this.hubOrdered(uid, { name: order.name, phone: order.phone, org: order.org || '', addr: order.mode === 'delivery' ? order.address : '', terr: cleanStr(body.form.terr, 12), loc: order.loc });
 
     // уведомления: ошибки Telegram не должны ломать приём заказа
     const sent = [];
@@ -1731,23 +1801,132 @@ export class Shop {
   }
 
   /* --- каталог --- */
-  async saveProd(input) { return json({ prod: await this.applyProd(input) }); }
-  /* Сохраняет каталог целиком (его присылает приложение или прайс) и возвращает его в виде, который видят клиенты. */
-  async applyProd(input) {
+  async saveProd(input, uid) { return json({ prod: await this.applyProd(input, uid) }); }
+  /* Владелец площадки? Без площадки (одиночный магазин) продавец и есть владелец. */
+  async isOwnerUid(uid) {
+    if (!this.env.HUB) return true;
+    try { const r = await hubCall(this.env, '/__/is-owner', { uid }); return !!(r && r.owner); } catch (e) { return false; }
+  }
+  /* Сохраняет каталог целиком (его присылает приложение или прайс) и возвращает его продавцу с метками проверки.
+     Новые товары продавца начинаются черновиками (из прайса — сразу «ждёт проверки»), у владельца — сразу одобренными. */
+  async applyProd(input, uid, newState) {
     const old = await this.getProd();
-    const prod = sanitizeProd(input, old);
+    const oldIds = new Set(old.items.map(i => i.id));
+    const hasNew = normProd(input).items.some(o => !(validId(o.id) && oldIds.has(o.id)));
+    const mod = hasNew && !(await this.isOwnerUid(uid)) ? { state: newState || 'draft', at: new Date().toISOString() } : null;
+    const prod = sanitizeProd(input, old, mod);
     const keep = new Set(prod.items.map(i => i.id));
     const gone = old.items.map(i => i.id).filter(id => !keep.has(id));
     const stk = await this.getStk();
     const upd = { prod };
     if (gone.some(id => stk[id])) { gone.forEach(id => { delete stk[id]; }); upd.stk = stk; }   // остаток удалённого товара не копим
     await this.st.put(upd);
-    if (gone.length) await this.st.delete(gone.map(id => 'p:' + id));   // фото удалённых товаров не копим
+    if (gone.length) await this.st.delete(gone.flatMap(id => [1, 2, 3].map(n => photoKey(id, n))));   // фото удалённых товаров не копим
     await this.hubSync();
-    return publicProd(prod, stk);
+    if (mod && mod.state === 'wait') {
+      const fresh = prod.items.filter(i => i.ms === 'wait' && !oldIds.has(i.id));
+      if (fresh.length) await this.modNotifyOwner(fresh.length);
+    }
+    return publicProd(prod, stk, true);
+  }
+  /* Продавец отправляет новые (или возвращённые) товары на проверку. ids — какие; без них — все черновики и возвращённые.
+     Нужны название, цена и категория: у остальных в ответе bad (что исправить), они остаются как были. */
+  async modSubmit(b) {
+    const prod = await this.getProd();
+    const want = Array.isArray(b.ids) ? new Set(b.ids.filter(validId)) : null;
+    const sent = [], bad = [], now = new Date().toISOString();
+    for (const it of prod.items) {
+      if ((it.ms !== 'draft' && it.ms !== 'ret') || (want && !want.has(it.id))) continue;
+      const why = modProblems(it, prod.cats);
+      if (why.length) { bad.push({ id: it.id, why }); continue; }
+      it.ms = 'wait'; it.mt = now; delete it.mc;
+      sent.push(it);
+    }
+    if (!sent.length) return json({ error: 'nothing', bad }, 400);
+    await this.st.put('prod', prod);
+    await this.hubSync();
+    await this.modNotifyOwner(sent.length);
+    return json({ prod: publicProd(prod, await this.getStk(), true), sent: sent.length, bad });
+  }
+  /* Один раз на отправку: владельцу уходит «Дистрибьютор: на проверке N товаров» с кнопкой в раздел проверки. */
+  async modNotifyOwner(n) {
+    if (!this.env.HUB || !(n > 0)) return;
+    try { await hubCall(this.env, '/__/mod-notify', { did: this.did, n, origin: this.origin }); }
+    catch (e) { console.error('mod notify failed', e && e.message || e); }
+  }
+  /* Сообщение продавцам этого дистрибьютора (одобрили или вернули). */
+  async modTellSellers(text, origin) {
+    const url = /^https:\/\/(?!internal)/.test(origin || '') ? origin : '';
+    for (const aid of (await this.st.get('admins')) || []) {
+      try { await this.tg('sendMessage', Object.assign({ chat_id: aid, text }, url ? { reply_markup: openBtn(url, 'Открыть товары', sellerUrl(url, this.did)) } : {})); }
+      catch (e) { console.error('mod tell failed', e && e.message || e); }
+    }
+  }
+  /* Владелец: список товаров по статусам. seg: wait, ret или ok (одобренные через проверку). Ответ — вместе с числами по всем трём. */
+  async modList(seg) {
+    const prod = await this.getProd();
+    const cat = new Map(prod.cats.map(c => [c.id, c]));
+    const counts = { wait: 0, ret: 0, ok: 0 };
+    prod.items.forEach(i => { if (i.ms === 'wait') counts.wait++; else if (i.ms === 'ret') counts.ret++; else if (!i.ms && i.ma) counts.ok++; });
+    const pick = i => seg === 'ok' ? (!i.ms && i.ma) : i.ms === seg;
+    const rows = prod.items.filter(pick).sort((a, b) => String(b.ma || b.mt || '').localeCompare(String(a.ma || a.mt || ''))).slice(0, 150)
+      .map(i => Object.assign({}, i, { catName: (cat.get(i.cat) || {}).name || '', catUz: (cat.get(i.cat) || {}).uz || '' }));
+    return { items: rows, counts, name: (await this.getCfg()).shop.name || '', cats: prod.cats };
+  }
+  async modApprove(b) {
+    const prod = await this.getProd(), ids = new Set((Array.isArray(b.ids) ? b.ids : []).filter(validId));
+    const done = [], now = new Date().toISOString();
+    for (const it of prod.items) {
+      if (!ids.has(it.id) || (it.ms !== 'wait' && it.ms !== 'ret')) continue;
+      delete it.ms; delete it.mt; delete it.mc; it.ma = now;
+      done.push(it);
+    }
+    if (done.length) {
+      await this.st.put('prod', prod);
+      await this.hubSync();
+      const names = done.slice(0, 8).map(i => '• ' + i.name).join('\n') + (done.length > 8 ? '\n… и ещё ' + (done.length - 8) : '');
+      await this.modTellSellers(done.length === 1 ? '✅ Товар «' + done[0].name + '» одобрен и появился в каталоге.' : '✅ Одобрено: ' + ruTovar(done.length) + '. Они появились в каталоге.\n' + names, b.origin);
+    }
+    return json({ ok: true, n: done.length });
+  }
+  async modReturn(b) {
+    const reason = cleanStr(b.reason, MOD_REASON_MAX, true);
+    if (!validId(b.id) || !reason) return json({ error: 'bad_request' }, 400);
+    const prod = await this.getProd(), it = prod.items.find(x => x.id === b.id);
+    if (!it) return json({ error: 'not_found' }, 404);
+    if (it.ms !== 'wait' && it.ms !== 'ret') return json({ error: 'not_pending' }, 409);
+    it.ms = 'ret'; it.mt = new Date().toISOString(); it.mc = reason; delete it.ma;
+    await this.st.put('prod', prod);
+    await this.hubSync();
+    await this.modTellSellers('↩️ Товар «' + it.name + '» возвращён на доработку.\nЧто исправить: ' + reason + '\nОткройте «Продавец» → «Каталог», исправьте и отправьте снова.', b.origin);
+    return json({ ok: true });
+  }
+  /* Владелец правит товар сам (текст, цена, упаковка); статус проверки при этом не меняется. */
+  async modEdit(b) {
+    if (!validId(b.id) || !b.item || typeof b.item !== 'object') return json({ error: 'bad_request' }, 400);
+    const old = await this.getProd();
+    if (!old.items.some(x => x.id === b.id)) return json({ error: 'not_found' }, 404);
+    const F = ['name', 'uz', 'desc', 'descUz', 'cat', 'amount', 'unit', 'price', 'tiers', 'blk', 'box', 'tag', 'old'];
+    const patch = {};
+    F.forEach(k => { if (b.item[k] !== undefined) patch[k] = b.item[k]; });
+    const prod = sanitizeProd({ cats: old.cats, items: old.items.map(x => x.id === b.id ? Object.assign({}, x, patch) : x) }, old);
+    await this.st.put('prod', prod);
+    await this.hubSync();
+    return json({ item: prod.items.find(x => x.id === b.id) });
+  }
+  /* Фото товара от владельца (через площадку): то же, что у продавца, с теми же проверками. del=1 — убрать. */
+  async modPhoto(request) {
+    const q = new URL(request.url).searchParams, id = q.get('id') || '', n = Number(q.get('n') || 1);
+    if (!validId(id)) return json({ error: 'not_found' }, 404);
+    if (!Number.isInteger(n) || n < 1 || n > PHOTOS_MAX) return json({ error: 'bad_slot' }, 400);
+    if (q.get('del') === '1') return await this.setPhoto(id, null, n);
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.length > PROD_PHOTO_MAX) return json({ error: 'too_big' }, 413);
+    if (!checkJpeg(bytes, PROD_PHOTO_LIM)) return json({ error: 'bad_photo' }, 400);
+    return await this.setPhoto(id, bytes, n);
   }
   /* Прайс из Excel: apply=false только показывает, что изменится; apply=true записывает. */
-  async importPrice(request, apply) {
+  async importPrice(request, apply, uid) {
     if (Number(request.headers.get('content-length') || 0) > XL_MAX_FILE) return json({ error: 'bad_file', why: 'too_big' }, 413);
     const u = new Uint8Array(await request.arrayBuffer());
     if (u.length > XL_MAX_FILE) return json({ error: 'bad_file', why: 'too_big' }, 413);
@@ -1764,7 +1943,7 @@ export class Shop {
       changes: plan.changes.slice(0, 200), moreChanges: Math.max(0, plan.changes.length - 200),
       errors: plan.errors.slice(0, 50), moreErrors: Math.max(0, plan.errors.length - 50)
     };
-    if (apply && plan.changes.length) { out.prod = await this.applyProd(plan.prod); out.applied = true; }
+    if (apply && plan.changes.length) { out.prod = await this.applyProd(plan.prod, uid, 'wait'); out.applied = true; }   // новые строки прайса сразу идут на проверку
     return json(out);
   }
 
@@ -1811,24 +1990,39 @@ export class Shop {
     await this.stockAlert(low);
     return json({ stk });
   }
-  async setPhoto(id, bytes) {
+  /* Кладёт фото под номером n (замена или добавление в конец) или убирает его, а следующие сдвигает на одно место вперёд.
+     Номер больше «сколько есть + 1» нельзя: фото идут подряд. Ответ: версии всех трёх мест (пустая строка, если места нет). */
+  async setPhoto(id, bytes, n) {
+    n = n || 1;
     const prod = await this.getProd();
     const it = prod.items.find(x => x.id === id);
     if (!it) return json({ error: 'not_found' }, 404);
+    const vers = photoVers(it);
+    const put = {}, del = [];
     if (bytes) {
-      it.pv = randId(6);
-      await this.st.put({ ['p:' + id]: bytes, prod });
-    } else {
-      it.pv = '';
-      await this.st.put('prod', prod);
-      await this.st.delete('p:' + id);
+      if (n > vers.length + 1) return json({ error: 'bad_slot' }, 400);
+      vers[n - 1] = randId(6);
+      put[photoKey(id, n)] = bytes;
+    } else if (n <= vers.length) {
+      for (let i = n; i < vers.length; i++) {
+        // фото i+1 переезжает на место i, под новой версией, чтобы адрес в кэше не совпал ни с каким прежним
+        put[photoKey(id, i)] = await this.st.get(photoKey(id, i + 1));
+        vers[i - 1] = randId(6);
+      }
+      del.push(photoKey(id, vers.length));
+      vers.length--;
     }
-    return json({ pv: it.pv });
+    it.pv = vers[0] || ''; it.pv2 = vers[1] || ''; it.pv3 = vers[2] || '';
+    await this.st.put(Object.assign(put, { prod }));
+    if (del.length) await this.st.delete(del);
+    return json({ pv: it.pv, pv2: it.pv2, pv3: it.pv3 });
   }
-  /* Фото товара: открыто всем, как обычная картинка в каталоге. Адрес с ?v= меняется вместе с фото, поэтому кэш вечный. */
-  async image(id) {
+  /* Фото товара: открыто всем, как обычная картинка в каталоге. Адрес с ?v= меняется вместе с фото, поэтому кэш вечный.
+     ?n=2 и ?n=3 — второе и третье фото; без n это первое. */
+  async image(id, n) {
     if (!validId(id)) return new Response('not found', { status: 404 });
-    const bytes = await this.st.get('p:' + id);
+    const k = Number(n);
+    const bytes = await this.st.get(photoKey(id, Number.isInteger(k) && k >= 1 && k <= PHOTOS_MAX ? k : 1));
     if (!bytes) return new Response('not found', { status: 404 });
     return new Response(bytes, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
   }
@@ -2015,7 +2209,7 @@ export class Shop {
 /* ---------- Площадка: реестр дистрибьюторов, их коды, вход продавцов, заказы клиента по всем компаниям ---------- */
 const newRec = (id, name, hash, sum) => ({
   id, name: cleanStr(name, 60) || DEFAULT.shop.name, on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
-  items: sum && Number(sum.items) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
+  items: sum && Number(sum.items) || 0, wait: sum && Number(sum.wait) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
   regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home)
 });
 /* Что видит клиент в списке. Код и служебные поля не уходят. */
@@ -2036,8 +2230,20 @@ const validAid = a => typeof a === 'string' && /^a[a-z0-9]{3,10}$/.test(a);
 const validBid = b => typeof b === 'string' && /^b[a-z0-9]{4,12}$/.test(b);
 const validTid = t => typeof t === 'string' && /^t[a-z0-9]{2,8}$/.test(t);
 /* Запись магазина для того, кто смотрит: владелец и агент видят всё, дистрибьютор только то, что нужно для звонка и доставки. */
-const baseOwn = b => ({ id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src });
-const basePub = b => ({ id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid });
+/* Точка магазина: loc — сохранённая (поставил агент или владелец, либо принята от клиента), cloc — то, что прислал клиент в заказе и ждёт подтверждения.
+   Дистрибьютор видит только сохранённую точку. */
+const locOut = l => l ? { lat: l.lat, lng: l.lng, by: l.by || '' } : null;
+const baseOwn = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src }; if (b.loc) o.loc = locOut(b.loc); if (b.cloc) o.cloc = { lat: b.cloc.lat, lng: b.cloc.lng }; return o; };
+const basePub = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid }; if (b.loc) o.loc = { lat: b.loc.lat, lng: b.loc.lng }; return o; };
+/* Клиент прислал точку в заказе: запоминаем как предложение. Если она рядом с уже сохранённой (до 50 м), ничего не меняем. Возвращает, изменилась ли запись. */
+function setClientLoc(rec, loc, now) {
+  const l = cleanLoc(loc);
+  if (!l) return false;
+  if (rec.loc && distKm(rec.loc, l) < 0.05) { if (!rec.cloc) return false; delete rec.cloc; return true; }
+  if (rec.cloc && distKm(rec.cloc, l) < 0.005) return false;
+  rec.cloc = { lat: l.lat, lng: l.lng, t: now };
+  return true;
+}
 const lowName = (a, b) => { const x = a.name.toLowerCase(), y = b.name.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; };
 
 export class Hub {
@@ -2159,12 +2365,26 @@ export class Hub {
       const s = b.summary;
       rec.name = cleanStr(s.name, 60) || rec.name;
       rec.items = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.items) || 0)));
+      rec.wait = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.wait) || 0)));
       rec.cats = (Array.isArray(s.cats) ? s.cats : []).slice(0, 6).map(c => ({ name: cleanStr(c && c.name, 40), uz: cleanStr(c && c.uz, 40) })).filter(c => c.name);
       rec.delivery = s.delivery !== false;
       rec.minOrder = Math.max(0, Math.round(Number(s.minOrder) || 0));
       rec.regions = cleanRegions(s.regions);
       rec.home = cleanRegion(s.home);
       await this.st.put('d:' + rec.id, rec);
+      return json({ ok: true });
+    }
+    if (path === '/__/is-owner') return json({ owner: (await this.owners()).includes(Number(b.uid)) });
+    if (path === '/__/mod-notify') {
+      // продавец отправил товары на проверку: владельцам уходит одно сообщение на отправку
+      const n = Math.round(Number(b.n));
+      if (!validDid(b.did) || !(n > 0)) return json({ ok: false });
+      const rec = await this.getRec(b.did), origin = /^https:\/\/(?!internal)/.test(b.origin || '') ? b.origin : '';
+      const text = (rec ? rec.name : b.did) + ': на проверке ' + ruTovar(n);
+      for (const oid of await this.owners()) {
+        try { await this.tg('sendMessage', Object.assign({ chat_id: oid, text }, origin ? { reply_markup: openBtn(origin, 'Проверить', origin + '/?v=review') } : {})); }
+        catch (e) { console.error('mod notify send failed', e && e.message || e); }
+      }
       return json({ ok: true });
     }
     if (path === '/__/ordered') {
@@ -2233,8 +2453,19 @@ export class Hub {
   /* Магазин оформил заказ. Есть в базе — ничего не меняем (данные могла проверить агент); нет — добавляем из заказа, агент потом проверит. */
   async baseTouch(uid, p) {
     if (!p || typeof p !== 'object' || !Number.isSafeInteger(uid)) return;
+    // территорию называет сам магазин в заказе; принимаем только из списка владельца
+    const tid = cleanStr(p.terr, 12), terr = tid && (await this.terrs()).some(t => t.id === tid) ? tid : '';
     const have = await this.st.get('bu:' + uid);
-    if (have && await this.st.get('b:' + have)) return;
+    const hv = have ? await this.st.get('b:' + have) : null;
+    if (hv) {
+      // запись уже есть: пустую территорию дополняем, уже выбранную (в том числе агентом) не меняем
+      const now = new Date().toISOString();
+      let ch = false;
+      if (!hv.terr && terr) { hv.terr = terr; hv.upd = now; ch = true; }
+      if (setClientLoc(hv, p.loc, now)) ch = true;
+      if (ch) await this.st.put('b:' + hv.id, hv);
+      return;
+    }
     const name = cleanStr(p.org, 60) || cleanStr(p.name, 60), phone = cleanStr(p.phone, 25), addr = cleanStr(p.addr, 200);
     if (name.length < 2 || !phoneOk(phone)) return;
     const ex = await this.findDup(phone, name, addr, '');
@@ -2243,6 +2474,8 @@ export class Hub {
       // уже есть (внёс агент или другой сотрудник магазина): привязываем человека к записи
       const upd = { ['bu:' + uid]: ex.id };
       if (!ex.uid) { ex.uid = uid; upd['b:' + ex.id] = ex; }
+      if (!ex.terr && terr) { ex.terr = terr; ex.upd = now; upd['b:' + ex.id] = ex; }
+      if (setClientLoc(ex, p.loc, now)) upd['b:' + ex.id] = ex;
       await this.st.put(upd);
       return;
     }
@@ -2251,7 +2484,8 @@ export class Hub {
     const id = await this.newBid();
     const ref = await this.st.get('ref:' + uid);
     const agent = validAid(ref) && (await this.st.get('a:' + ref)) ? ref : '';
-    const rec = { id, name, phone, addr, terr: '', st: 'new', note: '', agent, uid, chk: false, ver: 0, src: 'order', created: now, upd: now };
+    const rec = { id, name, phone, addr, terr, st: 'new', note: '', agent, uid, chk: false, ver: 0, src: 'order', created: now, upd: now };
+    setClientLoc(rec, p.loc, now);
     await this.st.put(Object.assign({ ['b:' + id]: rec, ['bu:' + uid]: id, bn: n + 1 }, this.idxOf(rec)));
   }
   /* Поля записи из запроса: проверяет только присланные. role решает, какие территории можно выбрать. */
@@ -2281,6 +2515,20 @@ export class Hub {
   dupJson(e, role) {
     return json({ error: 'dup', exists: { name: e.name, terr: e.terr, mine: role.r === 'owner' || (role.ag && e.agent === role.ag.id) } }, 409);
   }
+  /* Что делать с точкой: b.loc {lat,lng} — поставить; b.loc === null — убрать; b.accept === true — принять точку, присланную клиентом.
+     by — кто поставил: owner, agent или client (принята от клиента). */
+  locChange(role, rec, b, now) {
+    if (!b || typeof b !== 'object') return {};
+    if (b.accept === true) {
+      if (!rec.cloc) return { err: 'no_client_loc' };
+      return { accepted: { lat: rec.cloc.lat, lng: rec.cloc.lng, t: now, by: 'client' } };
+    }
+    if (b.loc === undefined) return {};
+    if (b.loc === null) return { clear: true };
+    const l = cleanLoc(b.loc);
+    if (!l) return { err: 'bad_loc' };
+    return { set: { lat: l.lat, lng: l.lng, t: now, by: role.r === 'owner' ? 'owner' : 'agent' } };
+  }
   async baseCreate(role, b) {
     const f = await this.baseFields(Object.assign({ terr: '' }, b), role);
     if (f.err) return json({ error: f.err }, 400);
@@ -2293,6 +2541,9 @@ export class Hub {
     if (dup) return this.dupJson(dup, role);
     const now = new Date().toISOString(), id = await this.newBid();
     const rec = { id, name: v.name, phone: v.phone, addr: v.addr || '', terr: v.terr || '', st: v.st || 'new', note: v.note || '', agent: role.r === 'agent' ? role.ag.id : (v.agent || ''), uid: 0, chk: true, ver: 1, src: 'agent', created: now, upd: now };
+    const lc = this.locChange(role, {}, b, now);
+    if (lc.err) return json({ error: lc.err }, 400);
+    if (lc.set) rec.loc = lc.set;
     await this.st.put(Object.assign({ ['b:' + id]: rec, bn: n + 1 }, this.idxOf(rec)));
     return json({ item: baseOwn(rec) });
   }
@@ -2305,6 +2556,12 @@ export class Hub {
     const v = f.v, next = Object.assign({}, rec, v);
     const dup = await this.findDup(next.phone, next.name, next.addr, rec.id);
     if (dup) return this.dupJson(dup, role);
+    // точка магазина: только владелец и агент (эта запись — его зона); клиент и дистрибьютор её не меняют
+    const lc = this.locChange(role, rec, b, new Date().toISOString());
+    if (lc.err) return json({ error: lc.err }, lc.err === 'no_client_loc' ? 409 : 400);
+    if (lc.set) { next.loc = lc.set; delete next.cloc; }
+    else if (lc.clear) { delete next.loc; }
+    if (lc.accepted) { next.loc = lc.accepted; delete next.cloc; }
     const upd = {}, del = [];
     const was = this.idxOf(rec), now = this.idxOf(next);
     Object.keys(was).forEach(k => { if (!(k in now)) del.push(k); });
@@ -2329,26 +2586,38 @@ export class Hub {
     await this.st.put('bn', Math.max(0, ((await this.st.get('bn')) || 1) - 1));
     return json({ ok: true });
   }
-  /* Список для экрана «База»: владелец видит всё, агент свою зону, дистрибьютор всех, кроме отказавшихся (без заметок и статусов). */
+  /* Список для экрана «База»: владелец видит всё, агент свою зону, дистрибьютор всех, кроме отказавшихся (без заметок и статусов).
+     Фильтры (кроме района и поиска только у владельца и агента): f — статус (new, chk «не проверен», talk, app «в приложении», refuse),
+     ag — агент (только владелец; «-» без агента), sort=new — сначала новые. Счётчики по районам считаются уже с учётом статуса, агента и поиска. */
   async baseList(role, url) {
     const sp = url.searchParams;
     const terr = String(sp.get('terr') || '').slice(0, 12), f = String(sp.get('f') || '');
+    const ag = role.r === 'owner' ? String(sp.get('ag') || '').slice(0, 12) : '';
+    const byNew = sp.get('sort') === 'new';
+    const here = sp.get('sort') === 'near' ? cleanLoc({ lat: sp.get('lat'), lng: sp.get('lng') }) : null;
     const q = String(sp.get('q') || '').trim().toLowerCase().slice(0, 40);
     const off = Math.max(0, Math.min(MAX_BASE, parseInt(sp.get('off') || '0', 10) || 0));
     const all = [...(await this.st.list({ prefix: 'b:' })).values()];
     let scope = all;
     if (role.r === 'agent') scope = all.filter(b => this.inScope(role.ag, b));
     else if (role.r === 'dist') scope = all.filter(b => b.st !== 'refuse');
-    const counts = {};
-    scope.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
     const qd = q.replace(/\D/g, '');
     const full = role.r !== 'dist';
-    const rows = scope.filter(b => (!terr || (terr === '-' ? !b.terr : b.terr === terr))
-      && (!full || !f || (f === 'chk' ? !b.chk : b.st === f))
-      && (!q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd)))).sort(lowName);
+    const stOk = b => !full || !f || (f === 'chk' ? !b.chk : f === 'app' ? !!b.uid : b.st === f);
+    const agOk = b => !ag || (ag === '-' ? !b.agent : b.agent === ag);
+    const qOk = b => !q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd));
+    const pre = scope.filter(b => stOk(b) && agOk(b) && qOk(b));
+    const counts = {};
+    pre.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
+    const rows = pre.filter(b => !terr || (terr === '-' ? !b.terr : b.terr === terr));
+    // «Ближайшие»: сначала магазины с точкой по расстоянию от того, кто смотрит, потом остальные по названию
+    const dist = new Map();
+    if (here) rows.forEach(b => { if (b.loc) dist.set(b.id, distKm(here, b.loc)); });
+    if (here) rows.sort((x, y) => (dist.has(x.id) ? 0 : 1) - (dist.has(y.id) ? 0 : 1) || (dist.get(x.id) || 0) - (dist.get(y.id) || 0) || lowName(x, y));
+    else rows.sort(byNew ? (x, y) => String(y.created || '').localeCompare(String(x.created || '')) || lowName(x, y) : lowName);
     const out = {
       role: role.r, total: rows.length, all: scope.length, counts, more: off + BASE_PAGE < rows.length,
-      items: rows.slice(off, off + BASE_PAGE).map(full ? baseOwn : basePub),
+      items: rows.slice(off, off + BASE_PAGE).map(b => { const o = (full ? baseOwn : basePub)(b); if (dist.has(b.id)) o.d = Math.round(dist.get(b.id) * 10) / 10; return o; }),
       terrs: (await this.terrs()).map(t => ({ id: t.id, name: t.name }))
     };
     if (full) out.unchk = scope.filter(b => !b.chk).length;
@@ -2521,7 +2790,8 @@ export class Hub {
   /* Главный экран: дистрибьюторы, у которых есть товары и которые не отключены. Без входа через Telegram виден только список. */
   async publicList(request) {
     const recs = (await this.allRecs()).filter(r => r.on && r.items > 0);
-    const out = { title: await this.title(), shops: recs.map(pubRec) };
+    const terrs = (await this.terrs()).map(t => ({ id: t.id, name: t.name }));
+    const out = { title: await this.title(), shops: recs.map(pubRec), terrs };
     const au = await this.auth(request);
     if (au.user) {
       const sells = await this.sellsOf(au.user.id);
@@ -2532,11 +2802,13 @@ export class Hub {
         // ссылка на каталог нужна продавцу, чтобы раздать её клиентам
         sells: await Promise.all(mine.map(async r => ({ id: r.id, name: r.name, link: await this.link(r.id) })))
       };
+      // у владельца на вкладке «Проверка» горит число товаров, которые ждут решения
+      if (out.me.owner) out.me.modN = all.reduce((n, r) => n + (Number(r.wait) || 0), 0);
       const ag = await this.agentOf(au.user.id);
       if (ag) out.me.agent = { id: ag.id, name: ag.name, terr: ag.terr || [], link: await this.agentLink(ag.id) };
       // данные магазина из общей базы: форма заказа подставляется сама, на любом телефоне и у любого дистрибьютора
       const bid = await this.st.get('bu:' + au.user.id), br = bid ? await this.st.get('b:' + bid) : null;
-      if (br) out.me.card = { name: br.name, phone: br.phone, addr: br.addr || '', ver: Number(br.ver) || 0 };
+      if (br) out.me.card = { name: br.name, phone: br.phone, addr: br.addr || '', terr: terrs.some(t => t.id === br.terr) ? br.terr : '', ver: Number(br.ver) || 0 };
     }
     return json(out);
   }
@@ -2589,6 +2861,7 @@ export class Hub {
     // дальше только владелец площадки
     if (!path.startsWith('/api/hub/admin/')) return json({ error: 'not_found' }, 404);
     if (!(await this.owners()).includes(uid)) return json({ error: 'forbidden' }, 403);
+    if (path.startsWith('/api/hub/admin/mod')) return await this.adminMod(request, path, method);
     if (path.startsWith('/api/hub/admin/people') || path.startsWith('/api/hub/admin/terr') || path.startsWith('/api/hub/admin/agents') || path === '/api/hub/admin/base/import') {
       const res = await this.adminPeople(request, path, method);
       if (res) return res;
@@ -2645,6 +2918,59 @@ export class Hub {
         }
         return json(Object.assign({ shop: await this.ownerRec(rec) }, hasPct ? { pct } : {}));
       }
+    }
+    return json({ error: 'not_found' }, 404);
+  }
+  /* Проверка товаров, владелец: список со всех дистрибьюторов, одобрить, вернуть с причиной, поправить, фото. */
+  async adminMod(request, path, method) {
+    const url = new URL(request.url), origin = url.origin, sp = url.searchParams;
+    const recs = await this.allRecs();
+    if (path === '/api/hub/admin/mod' && method === 'GET') {
+      const seg = sp.get('seg') === 'ret' || sp.get('seg') === 'ok' ? sp.get('seg') : 'wait';
+      const got = await Promise.all(recs.map(async r => { const x = await shopCall(this.env, r.id, '/__/mod-list', { seg }); return { r, d: x.ok && x.data ? x.data : null }; }));
+      const items = [], counts = { wait: 0, ret: 0, ok: 0 }, shops = [];
+      got.forEach(({ r, d }) => {
+        if (!d) return;
+        const dn = d.name || r.name;
+        counts.wait += d.counts.wait; counts.ret += d.counts.ret; counts.ok += d.counts.ok;
+        if (d.items.length) shops.push({ id: r.id, name: dn, n: d.items.length, cats: d.cats || [] });
+        d.items.forEach(i => items.push(Object.assign({}, i, { did: r.id, dname: dn })));
+      });
+      items.sort((a, b) => String(b.ma || b.mt || '').localeCompare(String(a.ma || a.mt || '')));
+      return json({ seg, items: items.slice(0, 300), counts, shops });
+    }
+    const did = validDid(sp.get('did')) ? sp.get('did') : '';
+    if (path === '/api/hub/admin/mod/photo' && (method === 'PUT' || method === 'DELETE')) {
+      if (!did || !recs.some(r => r.id === did)) return json({ error: 'not_found' }, 404);
+      const q = '?id=' + encodeURIComponent(sp.get('id') || '') + '&n=' + encodeURIComponent(sp.get('n') || '1') + (method === 'DELETE' ? '&del=1' : '');
+      if (method === 'PUT' && Number(request.headers.get('content-length') || 0) > PROD_PHOTO_MAX) return json({ error: 'too_big' }, 413);
+      const bytes = method === 'PUT' ? new Uint8Array(await request.arrayBuffer()) : new Uint8Array(0);
+      const r = await stubOf(this.env.SHOP, did).fetch(new Request('https://internal/__/mod-photo' + q, { method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-did': did }, body: bytes }));
+      let data = null; try { data = await r.json(); } catch (e) { /* пусто */ }
+      return json(data || { error: 'server' }, r.status);
+    }
+    const rd = await this.readBody(request, 30000);
+    const b = rd.body && typeof rd.body === 'object' ? rd.body : null;
+    if (rd.err || !b) return json({ error: 'bad_request' }, 400);
+    const have = id => validDid(id) && recs.some(r => r.id === id);
+    if (path === '/api/hub/admin/mod/approve' && method === 'POST') {
+      const by = new Map();
+      for (const x of (Array.isArray(b.items) ? b.items : []).slice(0, 300)) {
+        if (!x || !have(x.did) || !validId(x.id)) continue;
+        by.set(x.did, (by.get(x.did) || []).concat([x.id]));
+      }
+      let n = 0;
+      for (const [d, ids] of by) { const r = await shopCall(this.env, d, '/__/mod-approve', { ids, origin }); n += r.data && r.data.n || 0; }
+      return json({ ok: true, n });
+    }
+    if (!have(b.did)) return json({ error: 'not_found' }, 404);
+    if (path === '/api/hub/admin/mod/return' && method === 'POST') {
+      const r = await shopCall(this.env, b.did, '/__/mod-return', { id: b.id, reason: b.reason, origin });
+      return json(r.data || { error: 'server' }, r.status);
+    }
+    if (path === '/api/hub/admin/mod/edit' && method === 'PUT') {
+      const r = await shopCall(this.env, b.did, '/__/mod-edit', { id: b.id, item: b.item });
+      return json(r.data || { error: 'server' }, r.status);
     }
     return json({ error: 'not_found' }, 404);
   }
