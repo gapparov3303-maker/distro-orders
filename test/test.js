@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -4057,6 +4057,154 @@ await t('база: район или город из заказа попадае
   await ordBase(sid, E, { name: 'Мадина', phone: '+998 (90) 111-22-33', terr: id('Навои') });
   assert.equal((await baseGet()).items.length, 3);
   assert.equal((await meHub(E)).card.terr, id('Кармана'));
+});
+
+/* ---------- местоположение ---------- */
+await t('точка: разбор координат и ссылок на карты, расстояние', async () => {
+  const P = (x, la, ln) => assert.deepEqual(S.parseGeo(x), la === null ? null : { lat: la, lng: ln }, String(x));
+  P('41.5543, 60.6361', 41.5543, 60.6361);
+  P('41.5543 60.6361', 41.5543, 60.6361);
+  P('41,5543 60,6361', 41.5543, 60.6361);
+  P('Координаты: 41.55432, 60.63611.', 41.55432, 60.63611);
+  P('https://yandex.uz/maps/?ll=60.636100%2C41.554300&z=17', 41.5543, 60.6361);          // у Яндекса сначала долгота
+  P('https://yandex.com/maps/?pt=60.6361,41.5543&z=17&l=map', 41.5543, 60.6361);
+  P('https://www.google.com/maps/place/Foo/@41.5543,60.6361,17z/data=!3m1!4b1!4m6!3m5!1s0x0:0x0!7e2!8m2!3d41.5555!4d60.6666', 41.5555, 60.6666);   // метка точнее центра карты
+  P('https://www.google.com/maps/@41.5543,60.6361,17z', 41.5543, 60.6361);
+  P('https://maps.google.com/?q=41.5543,60.6361', 41.5543, 60.6361);
+  P('https://www.google.com/maps/search/?api=1&query=41.5543%2C60.6361', 41.5543, 60.6361);
+  P('https://2gis.uz/navoi?m=60.6361%2C41.5543%2F17', 41.5543, 60.6361);
+  P('https://www.openstreetmap.org/?mlat=41.5543&mlon=60.6361#map=17/41.5543/60.6361', 41.5543, 60.6361);
+  P('https://maps.app.goo.gl/AbCdEf', null, 0);        // короткая ссылка без координат
+  P('https://yandex.uz/maps/-/CCUxyz', null, 0);
+  P('hello', null, 0); P('', null, 0); P(null, null, 0); P('0, 0', null, 0); P('41.5543', null, 0);
+  assert.deepEqual(S.cleanLoc({ lat: '41.55', lng: 60.1 }), { lat: 41.55, lng: 60.1 });
+  assert.deepEqual(S.cleanLoc({ lat: 41.123456789, lng: 60.987654321 }), { lat: 41.12346, lng: 60.98765 }, 'пять знаков');
+  for (const bad of [null, undefined, 'x', [], {}, { lat: null, lng: 1 }, { lat: '', lng: 1 }, { lat: true, lng: 1 }, { lat: 91, lng: 0 }, { lat: 0, lng: 181 }, { lat: NaN, lng: 1 }, { lat: 0, lng: 0 }]) assert.equal(S.cleanLoc(bad), null, JSON.stringify(bad));
+  assert.ok(Math.abs(S.distKm({ lat: 41.55, lng: 60.63 }, { lat: 41.56, lng: 60.63 }) - 1.112) < 0.01);
+  assert.equal(S.distKm({ lat: 41.55, lng: 60.63 }, { lat: 41.55, lng: 60.63 }), 0);
+  assert.equal(S.mapUrl('y', { lat: 41.5, lng: 60.6 }), 'https://yandex.com/maps/?pt=60.6,41.5&z=17&l=map');
+  assert.equal(S.mapUrl('g', { lat: 41.5, lng: 60.6 }), 'https://www.google.com/maps/search/?api=1&query=41.5,60.6');
+});
+
+await t('точка в заказе: хранится в заказе, неверная отбрасывается, продавцу — кнопки карт, в базу идёт только предложением', async () => {
+  const { sid } = await shopWorld();
+  const A = newUser(), B = newUser(), C = newUser();
+  tgLog = [];
+  const o = await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', loc: { lat: 41.55432123, lng: '60.63611' } });
+  assert.deepEqual(o.order.loc, { lat: 41.55432, lng: 60.63611 }, 'округляется до пяти знаков');
+  const ao = (await jsonOf(await callS(sid, 'GET', '/api/admin/orders', { init: iD() }))).orders;
+  assert.deepEqual(ao[0].loc, { lat: 41.55432, lng: 60.63611 }, 'продавец видит точку заказа');
+  const card = tgLog.filter(x => x.method === 'sendMessage' && x.payload.chat_id === DIL.id)[0].payload;
+  assert.deepEqual(card.reply_markup.inline_keyboard.flat().filter(b => b.url).map(b => b.url), [S.mapUrl('y', o.order.loc), S.mapUrl('g', o.order.loc)], 'в сообщении продавцу две кнопки: Яндекс и Google');
+  // неверная точка заказ не ломает
+  const b1 = await ordBase(sid, B, { name: 'Дастур', phone: '+998 93 777 88 99', loc: { lat: 999, lng: 5 } });
+  assert.equal(b1.order.loc, undefined);
+  const c1 = await ordBase(sid, C, { name: 'Бахор', phone: '+998 94 000 11 22', loc: 'abc' });
+  assert.equal(c1.order.loc, undefined);
+  // без точки у заказа нет кнопок карт
+  const none = tgLog.filter(x => x.method === 'sendMessage' && x.payload.chat_id === DIL.id).pop().payload;
+  assert.equal(none.reply_markup.inline_keyboard.flat().some(b => b.url), false);
+  // в базе точка клиента лежит предложением, сохранённой точки нет
+  const d = await baseGet();
+  const by = n => d.items.find(x => x.name === n);
+  assert.equal(by('Магазин Мадина').loc, undefined);
+  assert.deepEqual(by('Магазин Мадина').cloc, { lat: 41.55432, lng: 60.63611 });
+  assert.equal(by('Дастур').cloc, undefined);
+  // дистрибьютор не видит ни точки, ни предложения клиента
+  const dd = await baseGet('', iD());
+  assert.equal(dd.role, 'dist');
+  assert.ok(dd.items.every(x => x.loc === undefined && x.cloc === undefined));
+  assert.ok(!JSON.stringify([...W.hubStorage.m.entries()].filter(([k]) => k.startsWith('o:'))).includes('41.55432'), 'заказы лежат в хранилище дистрибьютора, не площадки');
+});
+
+await t('точка магазина: менять могут только владелец и агент своей зоны; клиент и дистрибьютор смотрят; предложение клиента принимается', async () => {
+  const { sid } = await shopWorld();
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const id = n => t1.terr.find(x => x.name === n).id;
+  const mk = async (name, terr, from, mid) => { const m = await jsonOf(await adm('POST', '/agents', { name, terr: [terr] })); await send(agentMsg(from, m.code, mid)); return m; };
+  await mk('Азиз', id('Навои'), AGT, 21);
+  await mk('Ботир', id('Кармана'), AGT2, 22);
+  const A = newUser();
+  const P1 = { lat: 41.55432, lng: 60.63611 };
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', terr: id('Навои'), loc: P1 });
+  let rec = (await baseGet('', iG())).items[0];
+  assert.deepEqual(rec.cloc, P1);
+  const put = (body, init) => baseSend('PUT', '/' + rec.id, body, init);
+  // чужие не меняют: другой агент, дистрибьютор, клиент, посторонний
+  assert.equal((await put({ accept: true }, iG2())).status, 403, 'агент другого района');
+  assert.equal((await put({ loc: { lat: 41.6, lng: 60.7 } }, iG2())).status, 403);
+  assert.equal((await put({ loc: { lat: 41.6, lng: 60.7 } }, iD())).status, 403, 'дистрибьютор');
+  assert.equal((await put({ accept: true }, iD())).status, 403);
+  assert.equal((await put({ loc: { lat: 41.6, lng: 60.7 } }, A.init())).status, 403, 'клиент');
+  assert.equal((await put({ loc: { lat: 41.6, lng: 60.7 } }, newUser().init())).status, 403);
+  assert.equal((await baseGet('', iG())).items[0].loc, undefined, 'ничего не изменилось');
+  // вместе с другими полями чужой точки тоже не поставить
+  assert.equal((await put({ note: 'x', loc: { lat: 41.6, lng: 60.7 } }, iD())).status, 403);
+  // принять без предложения нельзя; верная точка принимается
+  assert.equal((await baseSend('PUT', '/' + rec.id, { accept: true }, iG())).status, 200);
+  rec = (await baseGet('', iG())).items[0];
+  assert.deepEqual([rec.loc, rec.cloc], [{ lat: P1.lat, lng: P1.lng, by: 'client' }, undefined], 'принятая точка помечена «от клиента», предложение ушло');
+  assert.equal((await put({ accept: true }, iG())).status, 409, 'принимать больше нечего');
+  // дистрибьютор теперь видит сохранённую точку, но не её происхождение
+  const dd = (await baseGet('', iD())).items[0];
+  assert.deepEqual(dd.loc, P1);
+  assert.equal(dd.cloc, undefined);
+  // агент ставит свою точку; неверное отвергается
+  const P2 = { lat: 41.5601, lng: 60.6402 };
+  const r2 = await jsonOf(await put({ loc: P2 }, iG()));
+  assert.deepEqual(r2.item.loc, { lat: P2.lat, lng: P2.lng, by: 'agent' });
+  assert.equal((await put({ loc: { lat: 200, lng: 1 } }, iG())).status, 400);
+  assert.equal((await put({ loc: 'x' }, iG())).status, 400);
+  assert.equal((await put({ loc: {} }, iG())).status, 400);
+  assert.deepEqual((await baseGet('', iG())).items[0].loc, { lat: P2.lat, lng: P2.lng, by: 'agent' }, 'после ошибок точка прежняя');
+  // владелец тоже ставит; а правка других полей точку не трогает
+  const P3 = { lat: 41.57, lng: 60.65 };
+  assert.deepEqual((await jsonOf(await put({ loc: P3 }))).item.loc, { lat: P3.lat, lng: P3.lng, by: 'owner' });
+  assert.deepEqual((await jsonOf(await put({ note: 'Звонить после обеда' }, iG()))).item.loc, { lat: P3.lat, lng: P3.lng, by: 'owner' });
+  // клиент заказывает снова: рядом с сохранённой (до 50 м) — предложения нет; далеко — предложение
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', loc: { lat: 41.57002, lng: 60.65002 } });
+  assert.equal((await baseGet('', iG())).items[0].cloc, undefined);
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33', loc: { lat: 41.6, lng: 60.7 } });
+  assert.deepEqual((await baseGet('', iG())).items[0].cloc, { lat: 41.6, lng: 60.7 });
+  assert.deepEqual((await baseGet('', iG())).items[0].loc, { lat: P3.lat, lng: P3.lng, by: 'owner' }, 'сохранённая точка от заказа не меняется');
+  // своя точка агента убирает устаревшее предложение; «убрать» очищает точку
+  await put({ loc: P2 }, iG());
+  assert.equal((await baseGet('', iG())).items[0].cloc, undefined);
+  assert.equal((await jsonOf(await put({ loc: null }, iG()))).item.loc, undefined);
+  assert.equal((await baseGet('', iD())).items[0].loc, undefined);
+  // агент добавляет новый магазин сразу с точкой
+  const cr = await jsonOf(await baseSend('POST', '', { name: 'Новый Базар', phone: '+998 91 222 33 44', addr: 'ул. Навои', terr: id('Навои'), loc: P2 }, iG()));
+  assert.deepEqual(cr.item.loc, { lat: P2.lat, lng: P2.lng, by: 'agent' });
+  assert.equal((await baseSend('POST', '', { name: 'Плохая Точка', phone: '+998 91 222 33 55', terr: id('Навои'), loc: { lat: 'a', lng: 1 } }, iG())).status, 400);
+});
+
+await t('точка: «ближайшие» — по расстоянию от того, кто смотрит; магазины без точки в конце; видят владелец, агент и дистрибьютор', async () => {
+  const { sid } = await shopWorld();
+  const mk = (name, ph, loc) => baseSend('POST', '', Object.assign({ name, phone: ph, addr: '' }, loc ? { loc } : {}));
+  await mk('Дальний', '+998 90 000 00 03', { lat: 41.75, lng: 60.63 });       // ~22 км к северу
+  await mk('Ближний', '+998 90 000 00 01', { lat: 41.56, lng: 60.63 });       // ~1,1 км
+  await mk('Без точки', '+998 90 000 00 04');
+  await mk('Средний', '+998 90 000 00 02', { lat: 41.6, lng: 60.63 });        // ~5,6 км
+  const q = '?sort=near&lat=41.55&lng=60.63';
+  for (const [who, init] of [['владелец', iS()], ['дистрибьютор', iD()]]) {
+    const d = await baseGet(q, init);
+    assert.deepEqual(d.items.map(x => x.name), ['Ближний', 'Средний', 'Дальний', 'Без точки'], who);
+    assert.deepEqual(d.items.map(x => x.d), [1.1, 5.6, 22.2, undefined], who + ': расстояние в км с одним знаком');
+  }
+  // без координат «ближайшие» не работают: обычный порядок по названию и без расстояний
+  const plain = await baseGet('?sort=near');
+  assert.deepEqual(plain.items.map(x => x.name), ['Без точки', 'Ближний', 'Дальний', 'Средний']);
+  assert.ok(plain.items.every(x => x.d === undefined));
+  assert.equal((await baseGet('?sort=near&lat=abc&lng=1')).items[0].d, undefined, 'неверные координаты игнорируются');
+  // фильтры работают вместе с «ближайшими»
+  const f = await baseGet(q + '&q=ж');
+  assert.deepEqual(f.items.map(x => x.name), ['Ближний']);
+  // агент видит расстояние тоже
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои'] }));
+  const m = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [t1.terr[0].id] }));
+  await send(agentMsg(AGT, m.code, 31));
+  const ag = await baseGet(q, iG());
+  assert.deepEqual(ag.items.map(x => x.name), ['Ближний', 'Средний', 'Дальний', 'Без точки']);
 });
 
 /* ---------- итог ---------- */

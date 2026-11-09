@@ -252,3 +252,55 @@ function orderText(o,shop,maxItems){
   P.push(L('Итого: ','Jami: ')+money(o.total)+L(', оплата при получении',', olganda toʻlanadi'));
   return P.join('\n');
 }
+
+/* ---------- местоположение ---------- */
+/* Точка на карте: {lat, lng} с пятью знаками (около метра) или null, если это не координаты. */
+function cleanLoc(v){
+  if(!v||typeof v!=='object'||Array.isArray(v))return null;
+  const n=x=>typeof x==='number'?x:(typeof x==='string'&&x.trim()!==''?Number(x):NaN);
+  const lat=n(v.lat),lng=n(v.lng);
+  if(!isFinite(lat)||!isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180||(lat===0&&lng===0))return null;
+  return {lat:Math.round(lat*1e5)/1e5,lng:Math.round(lng*1e5)/1e5};
+}
+/* Ссылка на точку: k — «y» (Яндекс.Карты) или «g» (Google Maps). */
+const mapUrl=(k,p)=>k==='g'?'https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lng:'https://yandex.com/maps/?pt='+p.lng+','+p.lat+'&z=17&l=map';
+/* Расстояние между точками, км (по дуге большого круга). */
+function distKm(a,b){
+  const r=Math.PI/180,dl=(b.lat-a.lat)*r,dg=(b.lng-a.lng)*r;
+  const h=Math.sin(dl/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dg/2)**2;
+  return 12742*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+/* Координаты из того, что вставил человек: ссылка Яндекс.Карт, Google Maps, 2ГИС, OpenStreetMap или просто «41.5543, 60.6361».
+   Короткие ссылки (maps.app.goo.gl, yandex.uz/maps/-/…) координат не содержат: для них вернётся null. */
+function parseGeo(text){
+  let s=String(text==null?'':text).trim().slice(0,2000);
+  if(!s)return null;
+  try{s=decodeURIComponent(s)}catch(e){}
+  const F='(-?\\d{1,3}(?:\\.\\d+)?)',pair=(a,b)=>cleanLoc({lat:a,lng:b});
+  let m;
+  if(/yandex\.|ya\.ru|2gis\./i.test(s)){
+    // у Яндекса и 2ГИС порядок «долгота, широта»
+    m=s.match(new RegExp('[?&#/](?:pt|ll|m)=\\s*'+F+'\\s*[,;]\\s*'+F));
+    if(m)return pair(m[2],m[1]);
+  }
+  m=s.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);      // Google: метка
+  if(m)return pair(m[1],m[2]);
+  m=s.match(new RegExp('@'+F+'\\s*,\\s*'+F));                   // Google, Apple: центр карты
+  if(m)return pair(m[1],m[2]);
+  m=s.match(new RegExp('[?&](?:q|query|ll|sll|center|destination|daddr|saddr)=\\s*'+F+'\\s*[,;+ ]\\s*'+F));
+  if(m)return pair(m[1],m[2]);
+  m=s.match(new RegExp('[?&]mlat='+F+'&mlon='+F));            // OpenStreetMap
+  if(m)return pair(m[1],m[2]);
+  m=s.match(new RegExp('#map=\\d{1,2}/'+F+'/'+F));
+  if(m)return pair(m[1],m[2]);
+  // просто числа: «41.5543, 60.6361», «41.5543 60.6361», «41,5543 60,6361»
+  const t=s.replace(/^[^\d-]+/,'').replace(/[^\d.,;\s-]+$/,'');
+  m=t.match(/^(-?\d{1,3}(?:[.,]\d+)?)\s*[;\s]\s*(-?\d{1,3}(?:[.,]\d+)?)$/)||t.match(/^(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/);
+  if(!m)m=s.match(new RegExp('(-?\\d{1,2}\\.\\d{3,})\\s*[,;/\\s]\\s*(-?\\d{1,3}\\.\\d{3,})'));
+  if(m){
+    let a=Number(String(m[1]).replace(',','.')),b=Number(String(m[2]).replace(',','.'));
+    if(Math.abs(a)>90&&Math.abs(b)<=90){const x=a;a=b;b=x}
+    return pair(a,b);
+  }
+  return null;
+}

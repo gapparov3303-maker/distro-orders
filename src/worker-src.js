@@ -288,7 +288,8 @@ function validateForm(f, cfg) {
   // час запаса, чтобы не спорить с клиентскими часами
   const pk = pickupInfo(cfg, new Date(shopNow().getTime() - 3600000), leadFor(cfg, mode));
   if (date > pk.max || !pk.slots(date).includes(time)) return { err: 'pickup' };
-  return { name, phone, comment, mode, address, region, pickupAt: date + 'T' + time };
+  // точка на карте необязательна; неверную молча отбрасываем, заказ из-за неё не отклоняем
+  return { name, phone, comment, mode, address, region, pickupAt: date + 'T' + time, loc: cleanLoc(f.loc) };
 }
 
 /* Заказ: цены и названия берём только из каталога на сервере. */
@@ -326,7 +327,7 @@ function validateOrder(b, cfg, prod, stk) {
   if (min > 0 && total < min) return { err: 'min_order', min };
   const fee = deliveryFee(cfg, fm.mode, total);
   const dc = orderDiscount(cfg, total);
-  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt };
+  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt, loc: fm.loc };
 }
 
 const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; return x; };
@@ -406,6 +407,7 @@ function adminCard(o, shop, origin, confirm, cl, did) {
     if (o.status === 'accepted') rows.push([btn(del ? '📦 Готов к отправке' : '📦 Готов к выдаче', 's:' + px + o.id + ':ready')]);
     if (o.status === 'ready') rows.push([btn(del ? '🚚 Доставлен клиенту' : '🤝 Выдан клиенту', 's:' + px + o.id + ':done')]);
     if (NEXT[o.status]) rows.push([btn('❌ Отменить', 'c:' + px + o.id)]);
+    if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
     rows.push([{ text: 'Открыть панель продавца', web_app: { url: sellerUrl(origin, did) } }]);
   }
   return { text, reply_markup: { inline_keyboard: rows } };
@@ -1743,6 +1745,7 @@ export class Shop {
     };
     if (cl0 && cl0.org) order.org = cl0.org;
     if (v.mode === 'delivery' && v.region) order.region = v.region;
+    if (v.loc) order.loc = v.loc;   // только в заказе: в базу магазинов точка попадает после подтверждения агентом
     if (v.fee > 0 || v.disc > 0) order.sub = v.sub;
     if (v.disc > 0) { order.disc = v.disc; order.dpct = v.dpct; }
     if (v.fee > 0) order.fee = v.fee;
@@ -1776,7 +1779,7 @@ export class Shop {
       upd['c:' + uid] = cl;
     }
     await this.st.put(upd);
-    await this.hubOrdered(uid, { name: order.name, phone: order.phone, org: order.org || '', addr: order.mode === 'delivery' ? order.address : '', terr: cleanStr(body.form.terr, 12) });
+    await this.hubOrdered(uid, { name: order.name, phone: order.phone, org: order.org || '', addr: order.mode === 'delivery' ? order.address : '', terr: cleanStr(body.form.terr, 12), loc: order.loc });
 
     // уведомления: ошибки Telegram не должны ломать приём заказа
     const sent = [];
@@ -2227,8 +2230,20 @@ const validAid = a => typeof a === 'string' && /^a[a-z0-9]{3,10}$/.test(a);
 const validBid = b => typeof b === 'string' && /^b[a-z0-9]{4,12}$/.test(b);
 const validTid = t => typeof t === 'string' && /^t[a-z0-9]{2,8}$/.test(t);
 /* Запись магазина для того, кто смотрит: владелец и агент видят всё, дистрибьютор только то, что нужно для звонка и доставки. */
-const baseOwn = b => ({ id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src });
-const basePub = b => ({ id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid });
+/* Точка магазина: loc — сохранённая (поставил агент или владелец, либо принята от клиента), cloc — то, что прислал клиент в заказе и ждёт подтверждения.
+   Дистрибьютор видит только сохранённую точку. */
+const locOut = l => l ? { lat: l.lat, lng: l.lng, by: l.by || '' } : null;
+const baseOwn = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src }; if (b.loc) o.loc = locOut(b.loc); if (b.cloc) o.cloc = { lat: b.cloc.lat, lng: b.cloc.lng }; return o; };
+const basePub = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid }; if (b.loc) o.loc = { lat: b.loc.lat, lng: b.loc.lng }; return o; };
+/* Клиент прислал точку в заказе: запоминаем как предложение. Если она рядом с уже сохранённой (до 50 м), ничего не меняем. Возвращает, изменилась ли запись. */
+function setClientLoc(rec, loc, now) {
+  const l = cleanLoc(loc);
+  if (!l) return false;
+  if (rec.loc && distKm(rec.loc, l) < 0.05) { if (!rec.cloc) return false; delete rec.cloc; return true; }
+  if (rec.cloc && distKm(rec.cloc, l) < 0.005) return false;
+  rec.cloc = { lat: l.lat, lng: l.lng, t: now };
+  return true;
+}
 const lowName = (a, b) => { const x = a.name.toLowerCase(), y = b.name.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; };
 
 export class Hub {
@@ -2444,7 +2459,11 @@ export class Hub {
     const hv = have ? await this.st.get('b:' + have) : null;
     if (hv) {
       // запись уже есть: пустую территорию дополняем, уже выбранную (в том числе агентом) не меняем
-      if (!hv.terr && terr) { hv.terr = terr; hv.upd = new Date().toISOString(); await this.st.put('b:' + hv.id, hv); }
+      const now = new Date().toISOString();
+      let ch = false;
+      if (!hv.terr && terr) { hv.terr = terr; hv.upd = now; ch = true; }
+      if (setClientLoc(hv, p.loc, now)) ch = true;
+      if (ch) await this.st.put('b:' + hv.id, hv);
       return;
     }
     const name = cleanStr(p.org, 60) || cleanStr(p.name, 60), phone = cleanStr(p.phone, 25), addr = cleanStr(p.addr, 200);
@@ -2456,6 +2475,7 @@ export class Hub {
       const upd = { ['bu:' + uid]: ex.id };
       if (!ex.uid) { ex.uid = uid; upd['b:' + ex.id] = ex; }
       if (!ex.terr && terr) { ex.terr = terr; ex.upd = now; upd['b:' + ex.id] = ex; }
+      if (setClientLoc(ex, p.loc, now)) upd['b:' + ex.id] = ex;
       await this.st.put(upd);
       return;
     }
@@ -2465,6 +2485,7 @@ export class Hub {
     const ref = await this.st.get('ref:' + uid);
     const agent = validAid(ref) && (await this.st.get('a:' + ref)) ? ref : '';
     const rec = { id, name, phone, addr, terr, st: 'new', note: '', agent, uid, chk: false, ver: 0, src: 'order', created: now, upd: now };
+    setClientLoc(rec, p.loc, now);
     await this.st.put(Object.assign({ ['b:' + id]: rec, ['bu:' + uid]: id, bn: n + 1 }, this.idxOf(rec)));
   }
   /* Поля записи из запроса: проверяет только присланные. role решает, какие территории можно выбрать. */
@@ -2494,6 +2515,20 @@ export class Hub {
   dupJson(e, role) {
     return json({ error: 'dup', exists: { name: e.name, terr: e.terr, mine: role.r === 'owner' || (role.ag && e.agent === role.ag.id) } }, 409);
   }
+  /* Что делать с точкой: b.loc {lat,lng} — поставить; b.loc === null — убрать; b.accept === true — принять точку, присланную клиентом.
+     by — кто поставил: owner, agent или client (принята от клиента). */
+  locChange(role, rec, b, now) {
+    if (!b || typeof b !== 'object') return {};
+    if (b.accept === true) {
+      if (!rec.cloc) return { err: 'no_client_loc' };
+      return { accepted: { lat: rec.cloc.lat, lng: rec.cloc.lng, t: now, by: 'client' } };
+    }
+    if (b.loc === undefined) return {};
+    if (b.loc === null) return { clear: true };
+    const l = cleanLoc(b.loc);
+    if (!l) return { err: 'bad_loc' };
+    return { set: { lat: l.lat, lng: l.lng, t: now, by: role.r === 'owner' ? 'owner' : 'agent' } };
+  }
   async baseCreate(role, b) {
     const f = await this.baseFields(Object.assign({ terr: '' }, b), role);
     if (f.err) return json({ error: f.err }, 400);
@@ -2506,6 +2541,9 @@ export class Hub {
     if (dup) return this.dupJson(dup, role);
     const now = new Date().toISOString(), id = await this.newBid();
     const rec = { id, name: v.name, phone: v.phone, addr: v.addr || '', terr: v.terr || '', st: v.st || 'new', note: v.note || '', agent: role.r === 'agent' ? role.ag.id : (v.agent || ''), uid: 0, chk: true, ver: 1, src: 'agent', created: now, upd: now };
+    const lc = this.locChange(role, {}, b, now);
+    if (lc.err) return json({ error: lc.err }, 400);
+    if (lc.set) rec.loc = lc.set;
     await this.st.put(Object.assign({ ['b:' + id]: rec, bn: n + 1 }, this.idxOf(rec)));
     return json({ item: baseOwn(rec) });
   }
@@ -2518,6 +2556,12 @@ export class Hub {
     const v = f.v, next = Object.assign({}, rec, v);
     const dup = await this.findDup(next.phone, next.name, next.addr, rec.id);
     if (dup) return this.dupJson(dup, role);
+    // точка магазина: только владелец и агент (эта запись — его зона); клиент и дистрибьютор её не меняют
+    const lc = this.locChange(role, rec, b, new Date().toISOString());
+    if (lc.err) return json({ error: lc.err }, lc.err === 'no_client_loc' ? 409 : 400);
+    if (lc.set) { next.loc = lc.set; delete next.cloc; }
+    else if (lc.clear) { delete next.loc; }
+    if (lc.accepted) { next.loc = lc.accepted; delete next.cloc; }
     const upd = {}, del = [];
     const was = this.idxOf(rec), now = this.idxOf(next);
     Object.keys(was).forEach(k => { if (!(k in now)) del.push(k); });
@@ -2550,6 +2594,7 @@ export class Hub {
     const terr = String(sp.get('terr') || '').slice(0, 12), f = String(sp.get('f') || '');
     const ag = role.r === 'owner' ? String(sp.get('ag') || '').slice(0, 12) : '';
     const byNew = sp.get('sort') === 'new';
+    const here = sp.get('sort') === 'near' ? cleanLoc({ lat: sp.get('lat'), lng: sp.get('lng') }) : null;
     const q = String(sp.get('q') || '').trim().toLowerCase().slice(0, 40);
     const off = Math.max(0, Math.min(MAX_BASE, parseInt(sp.get('off') || '0', 10) || 0));
     const all = [...(await this.st.list({ prefix: 'b:' })).values()];
@@ -2565,10 +2610,14 @@ export class Hub {
     const counts = {};
     pre.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
     const rows = pre.filter(b => !terr || (terr === '-' ? !b.terr : b.terr === terr));
-    rows.sort(byNew ? (x, y) => String(y.created || '').localeCompare(String(x.created || '')) || lowName(x, y) : lowName);
+    // «Ближайшие»: сначала магазины с точкой по расстоянию от того, кто смотрит, потом остальные по названию
+    const dist = new Map();
+    if (here) rows.forEach(b => { if (b.loc) dist.set(b.id, distKm(here, b.loc)); });
+    if (here) rows.sort((x, y) => (dist.has(x.id) ? 0 : 1) - (dist.has(y.id) ? 0 : 1) || (dist.get(x.id) || 0) - (dist.get(y.id) || 0) || lowName(x, y));
+    else rows.sort(byNew ? (x, y) => String(y.created || '').localeCompare(String(x.created || '')) || lowName(x, y) : lowName);
     const out = {
       role: role.r, total: rows.length, all: scope.length, counts, more: off + BASE_PAGE < rows.length,
-      items: rows.slice(off, off + BASE_PAGE).map(full ? baseOwn : basePub),
+      items: rows.slice(off, off + BASE_PAGE).map(b => { const o = (full ? baseOwn : basePub)(b); if (dist.has(b.id)) o.d = Math.round(dist.get(b.id) * 10) / 10; return o; }),
       terrs: (await this.terrs()).map(t => ({ id: t.id, name: t.name }))
     };
     if (full) out.unchk = scope.filter(b => !b.chk).length;
