@@ -69,6 +69,15 @@ function checkJpeg(u, lim) {
   return !(w < minW || h < minH || w > maxSide || h > maxSide);
 }
 const PROD_PHOTO_LIM = { minW: 64, minH: 64, maxSide: 2000 };
+/* Фото товара: до трёх. Первое (pv) показывается на карточке в каталоге и лежит там же, где лежало единственное фото раньше (p:<товар>);
+   второе и третье (pv2, pv3) лежат в p2:<товар> и p3:<товар>. Фото всегда идут подряд, без дыр: убрали первое, второе встаёт на его место. */
+const PHOTOS_MAX = 3;
+const photoKey = (id, n) => (n > 1 ? 'p' + n + ':' : 'p:') + id;
+const photoVers = it => {
+  const v = [it.pv, it.pv2, it.pv3].map(x => (typeof x === 'string' ? x : ''));
+  const n = v.findIndex(x => !x);
+  return n < 0 ? v : v.slice(0, n);
+};
 
 const json = (obj, status) => new Response(JSON.stringify(obj), {
   status: status || 200,
@@ -195,7 +204,9 @@ function sanitizeProd(d, old) {
       on: o.on !== false,
       tag: o.tag === 'sale' || o.tag === 'new' ? o.tag : '',
       old: o.tag === 'sale' ? Math.round(clampN(o.old, 0, 1e8, 0)) : 0,
-      pv: prev && typeof prev.pv === 'string' ? prev.pv : ''
+      pv: prev && typeof prev.pv === 'string' ? prev.pv : '',
+      pv2: prev && typeof prev.pv2 === 'string' ? prev.pv2 : '',
+      pv3: prev && typeof prev.pv3 === 'string' ? prev.pv3 : ''
     });
   });
   return { cats, items };
@@ -1246,19 +1257,21 @@ export class Shop {
     await this.ensureClients();
     const prod = await this.getProd(), orders = await this.allOrders();
     const idx = await this.clientsIdx(), cmap = await this.getMany(idx.map(x => 'c:' + x));
-    const withPhoto = prod.items.filter(it => it.pv);
+    // все фото всех товаров: первое как photos/<товар>.jpg, второе и третье как photos/<товар>-2.jpg и -3.jpg
+    const withPhoto = [];
+    prod.items.forEach(it => photoVers(it).forEach((v, i) => withPhoto.push({ id: it.id, n: i + 1 })));
     const photos = [];
     let used = 0;
     for (let i = 0; i < withPhoto.length; i += 20) {
       const part = withPhoto.slice(i, i + 20);
-      const m = await this.getMany(part.map(it => 'p:' + it.id));
-      for (const it of part) {
-        const b = m.get('p:' + it.id);
+      const m = await this.getMany(part.map(x => photoKey(x.id, x.n)));
+      for (const x of part) {
+        const b = m.get(photoKey(x.id, x.n));
         if (!b || !b.length) continue;
         const u = b instanceof Uint8Array ? b : new Uint8Array(b);
         if (used + u.length > BACKUP_PHOTO_BUDGET) continue;
         used += u.length;
-        photos.push({ name: 'photos/' + it.id + '.jpg', data: u });
+        photos.push({ name: 'photos/' + x.id + (x.n > 1 ? '-' + x.n : '') + '.jpg', data: u });
       }
     }
     const at = new Date().toISOString();
@@ -1361,7 +1374,7 @@ export class Shop {
       if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
       if (path === '/webhook' && method === 'POST') return await this.webhook(request);
       if (path === '/setup') return await this.setup(request);
-      if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5));
+      if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5), new URL(request.url).searchParams.get('n'));
       if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd(), off: await this.isOff() });
       if (path.startsWith('/api/')) return await this.api(request, path, method);
       return json({ error: 'not_found' }, 404);
@@ -1589,13 +1602,17 @@ export class Shop {
       if (path.startsWith('/api/admin/photo/') && (method === 'PUT' || method === 'DELETE')) {
         const id = path.slice('/api/admin/photo/'.length);
         if (!validId(id)) return json({ error: 'not_found' }, 404);
-        if (method === 'DELETE') return await this.setPhoto(id, null);
+        // ?n=1..3 — какое по счёту фото; без n это первое (так работало, пока фото было одно)
+        const rawN = new URL(request.url).searchParams.get('n');
+        const n = rawN === null ? 1 : Number(rawN);
+        if (!Number.isInteger(n) || n < 1 || n > PHOTOS_MAX) return json({ error: 'bad_slot' }, 400);
+        if (method === 'DELETE') return await this.setPhoto(id, null, n);
         // фото приходит как есть, байтами (JPEG), без base64: так сервер почти ничего не считает
         if (Number(request.headers.get('content-length') || 0) > PROD_PHOTO_MAX) return json({ error: 'too_big' }, 413);
         const bytes = new Uint8Array(await request.arrayBuffer());
         if (bytes.length > PROD_PHOTO_MAX) return json({ error: 'too_big' }, 413);
         if (!checkJpeg(bytes, PROD_PHOTO_LIM)) return json({ error: 'bad_photo' }, 400);
-        return await this.setPhoto(id, bytes);
+        return await this.setPhoto(id, bytes, n);
       }
     }
     return json({ error: 'not_found' }, 404);
@@ -1742,7 +1759,7 @@ export class Shop {
     const upd = { prod };
     if (gone.some(id => stk[id])) { gone.forEach(id => { delete stk[id]; }); upd.stk = stk; }   // остаток удалённого товара не копим
     await this.st.put(upd);
-    if (gone.length) await this.st.delete(gone.map(id => 'p:' + id));   // фото удалённых товаров не копим
+    if (gone.length) await this.st.delete(gone.flatMap(id => [1, 2, 3].map(n => photoKey(id, n))));   // фото удалённых товаров не копим
     await this.hubSync();
     return publicProd(prod, stk);
   }
@@ -1811,24 +1828,39 @@ export class Shop {
     await this.stockAlert(low);
     return json({ stk });
   }
-  async setPhoto(id, bytes) {
+  /* Кладёт фото под номером n (замена или добавление в конец) или убирает его, а следующие сдвигает на одно место вперёд.
+     Номер больше «сколько есть + 1» нельзя: фото идут подряд. Ответ: версии всех трёх мест (пустая строка, если места нет). */
+  async setPhoto(id, bytes, n) {
+    n = n || 1;
     const prod = await this.getProd();
     const it = prod.items.find(x => x.id === id);
     if (!it) return json({ error: 'not_found' }, 404);
+    const vers = photoVers(it);
+    const put = {}, del = [];
     if (bytes) {
-      it.pv = randId(6);
-      await this.st.put({ ['p:' + id]: bytes, prod });
-    } else {
-      it.pv = '';
-      await this.st.put('prod', prod);
-      await this.st.delete('p:' + id);
+      if (n > vers.length + 1) return json({ error: 'bad_slot' }, 400);
+      vers[n - 1] = randId(6);
+      put[photoKey(id, n)] = bytes;
+    } else if (n <= vers.length) {
+      for (let i = n; i < vers.length; i++) {
+        // фото i+1 переезжает на место i, под новой версией, чтобы адрес в кэше не совпал ни с каким прежним
+        put[photoKey(id, i)] = await this.st.get(photoKey(id, i + 1));
+        vers[i - 1] = randId(6);
+      }
+      del.push(photoKey(id, vers.length));
+      vers.length--;
     }
-    return json({ pv: it.pv });
+    it.pv = vers[0] || ''; it.pv2 = vers[1] || ''; it.pv3 = vers[2] || '';
+    await this.st.put(Object.assign(put, { prod }));
+    if (del.length) await this.st.delete(del);
+    return json({ pv: it.pv, pv2: it.pv2, pv3: it.pv3 });
   }
-  /* Фото товара: открыто всем, как обычная картинка в каталоге. Адрес с ?v= меняется вместе с фото, поэтому кэш вечный. */
-  async image(id) {
+  /* Фото товара: открыто всем, как обычная картинка в каталоге. Адрес с ?v= меняется вместе с фото, поэтому кэш вечный.
+     ?n=2 и ?n=3 — второе и третье фото; без n это первое. */
+  async image(id, n) {
     if (!validId(id)) return new Response('not found', { status: 404 });
-    const bytes = await this.st.get('p:' + id);
+    const k = Number(n);
+    const bytes = await this.st.get(photoKey(id, Number.isInteger(k) && k >= 1 && k <= PHOTOS_MAX ? k : 1));
     if (!bytes) return new Response('not found', { status: 404 });
     return new Response(bytes, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
   }
