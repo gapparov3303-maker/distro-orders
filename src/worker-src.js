@@ -339,6 +339,21 @@ const newClient = (uid, since) => ({ uid, name: '', phone: '', org: '', addrs: [
 /* то, что клиент видит о себе: заметка, группа и блокировка остаются у продавца */
 const clientPublic = c => c ? { name: c.name, phone: c.phone, org: c.org, addrs: c.addrs } : null;
 const sameAddr = (a, b) => a.toLowerCase() === b.toLowerCase();
+/* Что дистрибьютор знает о магазине из общей базы: заказы у него, его заметка, группа и блокировка.
+   cs: записи клиентов этого дистрибьютора, относящиеся к магазину (у магазина может быть несколько сотрудников со своими аккаунтами);
+   bn: заметка и группа, которые дистрибьютор ведёт по номеру магазина в базе (работает и у магазина без аккаунта). */
+function mineRow(bid, cs, bn) {
+  const r = { bid, has: cs.length > 0, n: 0, ds: 0, sum: 0, last: '', blocked: false, note: '', grp: '', tg: '' };
+  for (const c of cs) {
+    r.n += Number(c.n) || 0; r.ds += Number(c.ds) || 0; r.sum += Number(c.sum) || 0;
+    if (String(c.last || '') > r.last) r.last = String(c.last);
+    if (c.blocked) r.blocked = true;
+    if (!r.tg && c.tg && c.tg.username) r.tg = String(c.tg.username);
+  }
+  const src = bn || cs.find(c => c.note || c.grp) || {};
+  r.note = src.note || ''; r.grp = src.grp || '';
+  return r;
+}
 /* Поля клиента из запроса. Приходит только то, что меняют; admin разрешает ещё заметку, группу и блокировку. */
 function cleanClient(b, admin) {
   if (!b || typeof b !== 'object' || Array.isArray(b)) return { err: 'bad_request' };
@@ -959,18 +974,23 @@ function statRange(period) {
   if (period === 'prev') { const last = addDays(first, -1); return { period, from: last.slice(0, 7) + '-01', to: last }; }
   return { period: 'month', from: first, to: today };
 }
-function rpAdd(rp, o, pct) {
+function rpAdd(rp, o, pct, catOf) {
   const total = Number(o.total) || 0;
+  if (!rp.n) rp.v = 2;   // день начат с подсчётом заказов по товарам и категориям (у записей до этого счёта поля v нет)
   if (rp.cb === undefined) rp.cb = Math.max(0, (Number(rp.sum) || 0) - (Number(rp.fee) || 0));   // запись дня, начатая до комиссии
   const base = Math.max(0, total - (Number(o.fee) || 0));
   rp.cb += base; rp.cm = (Number(rp.cm) || 0) + Math.round(base * (Number(pct) || 0) / 100);
   rp.n += 1; rp.sum += total; rp.disc += Number(o.disc) || 0; rp.fee += Number(o.fee) || 0;
+  const seen = new Set(), cats = new Set();
   for (const it of o.items || []) {
     const qty = Number(it.qty) || 0;
     let x = rp.items.find(y => y.id === it.id);
-    if (!x) { x = { id: String(it.id), name: cleanStr(it.name, 60), qty: 0, sum: 0 }; rp.items.push(x); }
+    if (!x) { x = { id: String(it.id), name: cleanStr(it.name, 60), qty: 0, sum: 0 }; if (catOf) x.c = catOf(String(it.id)); rp.items.push(x); }
     x.qty += qty; x.sum += qty * (Number(it.price) || 0);
+    if (rp.v === 2 && !seen.has(x.id)) { seen.add(x.id); x.n = (Number(x.n) || 0) + 1; }
+    if (catOf) cats.add(x.c !== undefined ? x.c : catOf(x.id));
   }
+  if (rp.v === 2 && cats.size) { rp.cn = rp.cn || {}; cats.forEach(c => { rp.cn[c] = (Number(rp.cn[c]) || 0) + 1; }); }
   if (o.uid) {
     let c = rp.cl.find(y => y.uid === o.uid);
     if (!c) { if (rp.cl.length >= 400) return; c = { uid: o.uid, name: '', org: '', n: 0, sum: 0 }; rp.cl.push(c); }
@@ -1029,6 +1049,47 @@ function reportBuild(o) {
     series, months: [...months.values()].sort((a, b) => a.m.localeCompare(b.m)),
     prods: prodsOut, cl: clOut, buy: { window: W, cover: RP_COVER, list: list.slice(0, 30) }
   };
+}
+/* Продажи за период для владельца: по товарам, по категориям, по клиентам. days — дни периода, map — «rp:<день>» → запись.
+   Заказов по товару и по категории считаются только за дни с полем v (с запуска этого раздела), за прежние дни остаются штуки и суммы (partial).
+   Категория продажи — та, что была у товара в день продажи (поле c записи); у записей без неё берётся нынешний каталог.
+   Если такой категории в каталоге уже нет, продажа попадает в «Без категории» (name ''). */
+function analyticsBuild(o) {
+  const { days, map, prod } = o;
+  const catOf = new Map(prod.items.map(p => [p.id, p.cat])), nameOf = new Map(prod.items.map(p => [p.id, p.name]));
+  const catById = new Map(prod.cats.map(c => [c.id, c]));
+  const tot = { n: 0, sum: 0 }, prods = new Map(), cats = new Map(), cls = new Map();
+  let partial = false;
+  const catRow = id => {
+    const c = catById.get(id), key = c ? id : '';
+    let a = cats.get(key);
+    if (!a) { a = { name: c ? c.name : '', uz: c ? (c.uz || '') : '', n: 0, qty: 0, sum: 0 }; cats.set(key, a); }
+    return a;
+  };
+  for (const d of days) {
+    const r = map.get('rp:' + d);
+    if (!r) continue;
+    tot.n += Number(r.n) || 0; tot.sum += Number(r.sum) || 0;
+    const counted = r.v === 2;
+    if (!counted && r.n > 0) partial = true;
+    for (const x of r.items || []) {
+      let a = prods.get(x.id);
+      if (!a) { a = { id: x.id, name: x.name, n: 0, qty: 0, sum: 0 }; prods.set(x.id, a); }
+      a.qty += Number(x.qty) || 0; a.sum += Number(x.sum) || 0; a.name = nameOf.get(x.id) || x.name || a.name;
+      if (counted) a.n += Number(x.n) || 0;
+      const c = catRow(x.c !== undefined ? x.c : (catOf.get(x.id) || ''));
+      c.qty += Number(x.qty) || 0; c.sum += Number(x.sum) || 0;
+    }
+    if (counted && r.cn) for (const k of Object.keys(r.cn)) catRow(k).n += Number(r.cn[k]) || 0;
+    for (const c of r.cl || []) {
+      let a = cls.get(c.uid);
+      if (!a) { a = { uid: c.uid, name: c.name, org: c.org, n: 0, sum: 0, last: '' }; cls.set(c.uid, a); }
+      a.n += Number(c.n) || 0; a.sum += Number(c.sum) || 0; a.name = c.name || a.name; a.org = c.org || a.org;
+      if (d > a.last) a.last = d;
+    }
+  }
+  const top = (m, cap) => [...m.values()].sort((a, b) => b.sum - a.sum || b.n - a.n).slice(0, cap);
+  return { tot, partial, since: o.since || '', prods: top(prods, 500), cats: [...cats.values()].sort((a, b) => b.sum - a.sum), cls: top(cls, 1000) };
 }
 const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const ruDay = d => d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4);
@@ -1171,19 +1232,31 @@ export class Shop {
   async ensureReports() {
     if (await this.st.get('rpx') !== undefined) return;
     const done = (await this.getOrders((await this.st.get('hist')) || [])).filter(o => o.status === 'done');
-    const byDay = new Map();
+    const byDay = new Map(), catOf = await this.catOf();
     let first = null;
     for (const o of done) {
       const d = dayOf(o.statusAt || o.createdAt);
       let r = byDay.get(d);
       if (!r) { r = newRp(); byDay.set(d, r); }
-      rpAdd(r, o);
+      rpAdd(r, o, 0, catOf);
       if (!first || d < first) first = d;
     }
     const days = [...byDay.keys()].sort().slice(-RP_KEEP);
     const upd = { rpx: days, rp0: first || dayOf(new Date().toISOString()) };
     days.forEach(d => { upd['rp:' + d] = byDay.get(d); });
     await this.st.put(upd);
+  }
+  /* Категория товара по его номеру в нынешнем каталоге ('' — товара или категории нет). */
+  async catOf() {
+    const prod = await this.getProd(), cat = new Map(prod.items.map(p => [p.id, p.cat]));
+    return id => cat.get(id) || '';
+  }
+  /* Продажи за период для раздела «Аналитика» владельца. */
+  async analytics(from, to) {
+    await this.ensureReports();
+    const days = ((await this.st.get('rpx')) || []).filter(d => d >= from && d <= to);
+    const map = await this.getMany(days.map(d => 'rp:' + d));
+    return analyticsBuild({ days, map, prod: await this.getProd(), since: (await this.st.get('rp0')) || '' });
   }
   async report(days) {
     await this.ensureReports();
@@ -1478,7 +1551,16 @@ export class Shop {
       const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
       return json({ clients: idx.map(x => map.get('c:' + x)).filter(Boolean).map(c => ({ uid: c.uid, name: c.name, phone: c.phone, org: c.org, addr: (c.addrs || [])[0] || '' })) });
     }
+    if (path === '/__/mine') return json({ rows: await this.mineRows(b.items) });
+    if (path === '/__/mine-ids') return json({ uids: await this.mineIds() });
+    if (path === '/__/mine-set') return await this.mineSet(b);
+    if (path === '/__/mine-orders') return json({ orders: await this.mineOrders(b.uids) });
     if (path === '/__/stats') return json(await this.commRange(String(b.from || ''), String(b.to || '')));
+    if (path === '/__/analytics') {
+      const ymd = /^\d{4}-\d\d-\d\d$/;
+      if (!ymd.test(String(b.from)) || !ymd.test(String(b.to))) return json({ error: 'bad_request' }, 400);
+      return json(await this.analytics(b.from, b.to));
+    }
     if (path === '/__/cpct') {
       const pct = cleanPct(b.pct);
       if (pct === null) return json({ error: 'bad_pct' }, 400);
@@ -1687,7 +1769,63 @@ export class Shop {
     c.tg = { username: cleanStr(u.username || '', 40), name: cleanStr([u.first_name, u.last_name].filter(Boolean).join(' '), 80) };
     upd['c:' + u.id] = c;
     await this.st.put(upd);
+    await this.hubProfile(u.id, c);
     return json({ profile: clientPublic(c) });
+  }
+  /* Магазин заполнил профиль: он попадает в общую базу и без заказа (если там его ещё нет). */
+  async hubProfile(uid, c) {
+    if (!this.env.HUB) return;
+    const name = cleanStr(c.org, 60) || cleanStr(c.name, 60);
+    if (name.length < 2 || !phoneOk(String(c.phone || ''))) return;
+    try { await hubCall(this.env, '/__/profile', { did: this.did, uid, prof: { name: c.name, phone: c.phone, org: c.org, addr: (c.addrs || [])[0] || '' } }); }
+    catch (e) { console.error('hub profile failed', e && e.message || e); }
+  }
+
+  /* --- клиенты в общей базе: данные дистрибьютора о магазине (площадка спрашивает их только у самого дистрибьютора) ---
+     Заметка и группа лежат по номеру магазина в базе (bn:<номер>), поэтому их можно вести и у магазина, который ещё не заходил в приложение.
+     Если у магазина есть запись клиента c:<uid>, заметка и группа дублируются и туда: так они попадают в карточку заказа в Telegram.
+     Блокировка живёт только в c:<uid>: она нужна при оформлении заказа. */
+  mineUids(x) { return (Array.isArray(x && x.uids) ? x.uids : []).slice(0, 10).map(Number).filter(Number.isSafeInteger); }
+  async mineRows(items) {
+    await this.ensureClients();
+    const list = (Array.isArray(items) ? items : []).slice(0, 60).filter(x => x && typeof x.bid === 'string' && /^b[a-z0-9]{4,12}$/.test(x.bid));
+    const uids = [...new Set(list.flatMap(x => this.mineUids(x)))];
+    const cm = await this.getMany(uids.map(u => 'c:' + u));
+    const bm = await this.getMany(list.map(x => 'bn:' + x.bid));
+    return list.map(x => mineRow(x.bid, this.mineUids(x).map(u => cm.get('c:' + u)).filter(Boolean), bm.get('bn:' + x.bid)));
+  }
+  /* Номера клиентов, которые заказывали у этого дистрибьютора (не считая отменённых). */
+  async mineIds() {
+    await this.ensureClients();
+    const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
+    return idx.filter(x => { const c = map.get('c:' + x); return c && c.n > 0; });
+  }
+  async mineSet(b) {
+    await this.ensureClients();
+    const bid = typeof b.bid === 'string' && /^b[a-z0-9]{4,12}$/.test(b.bid) ? b.bid : '';
+    if (!bid) return json({ error: 'bad_request' }, 400);
+    const uids = this.mineUids(b);
+    const v = cleanClient({ note: b.note, grp: b.grp, blocked: b.blocked }, true);
+    if (v.err) return json({ error: v.err }, 400);
+    const cs = (await Promise.all(uids.map(u => this.getClient(u)))).filter(Boolean);
+    if (v.v.blocked !== undefined && !cs.length) return json({ error: 'no_client' }, 409);
+    const upd = {};
+    if (v.v.note !== undefined || v.v.grp !== undefined) {
+      const bn = (await this.st.get('bn:' + bid)) || { note: '', grp: '' };
+      if (v.v.note !== undefined) bn.note = v.v.note;
+      if (v.v.grp !== undefined) bn.grp = v.v.grp;
+      upd['bn:' + bid] = bn;
+    }
+    for (const c of cs) { Object.assign(c, v.v); upd['c:' + c.uid] = c; }
+    if (Object.keys(upd).length) await this.st.put(upd);
+    return json({ row: (await this.mineRows([{ bid, uids }]))[0] });
+  }
+  /* Последние заказы магазина у этого дистрибьютора. */
+  async mineOrders(uids) {
+    const ids = [];
+    for (const u of this.mineUids({ uids })) for (const id of (await this.st.get('m:' + u)) || []) if (!ids.includes(id)) ids.push(id);
+    const orders = await this.getOrders(ids);
+    return orders.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30).map(adminOrder);
   }
 
   /* Избранное клиента: хранится отдельно от базы клиентов, поэтому тот, кто только отмечает товары, в базе не появляется. */
@@ -2062,7 +2200,7 @@ export class Shop {
       if (to === 'done') {
         const day = dayOf(o.statusAt);
         const rp = (await this.st.get('rp:' + day)) || newRp();
-        rpAdd(rp, o, await this.getPct());
+        rpAdd(rp, o, await this.getPct(), await this.catOf());
         upd['rp:' + day] = rp;
         const idx = (await this.st.get('rpx')) || [];
         if (!idx.includes(day)) {
@@ -2396,6 +2534,13 @@ export class Hub {
       try { await this.baseTouch(uid, b.prof); } catch (e) { console.error('base touch failed', e && e.message || e); }
       return json({ ok: true });
     }
+    if (path === '/__/profile') {
+      // магазин заполнил профиль у дистрибьютора: заносим в общую базу, если его там ещё нет
+      const uid = Number(b.uid);
+      if (!validDid(b.did) || !Number.isSafeInteger(uid)) return json({ ok: false });
+      try { await this.baseTouch(uid, b.prof, 'profile'); } catch (e) { console.error('base touch failed', e && e.message || e); }
+      return json({ ok: true });
+    }
     return json({ error: 'not_found' }, 404);
   }
   /* У каких дистрибьюторов у человека есть заказы. Кто заказывал до площадки, найдётся у первого: это проверяется один раз. */
@@ -2451,7 +2596,7 @@ export class Hub {
   /* Ключи поиска повторов записи: что положить и что убрать при смене телефона, названия или адреса. */
   idxOf(b) { const o = { ['bp:' + phoneKey(b.phone)]: b.id }, k = nameKey(b.name, b.addr); if (k) o['bk:' + k] = b.id; return o; }
   /* Магазин оформил заказ. Есть в базе — ничего не меняем (данные могла проверить агент); нет — добавляем из заказа, агент потом проверит. */
-  async baseTouch(uid, p) {
+  async baseTouch(uid, p, src) {
     if (!p || typeof p !== 'object' || !Number.isSafeInteger(uid)) return;
     // территорию называет сам магазин в заказе; принимаем только из списка владельца
     const tid = cleanStr(p.terr, 12), terr = tid && (await this.terrs()).some(t => t.id === tid) ? tid : '';
@@ -2484,7 +2629,7 @@ export class Hub {
     const id = await this.newBid();
     const ref = await this.st.get('ref:' + uid);
     const agent = validAid(ref) && (await this.st.get('a:' + ref)) ? ref : '';
-    const rec = { id, name, phone, addr, terr, st: 'new', note: '', agent, uid, chk: false, ver: 0, src: 'order', created: now, upd: now };
+    const rec = { id, name, phone, addr, terr, st: 'new', note: '', agent, uid, chk: false, ver: 0, src: src || 'order', created: now, upd: now };
     setClientLoc(rec, p.loc, now);
     await this.st.put(Object.assign({ ['b:' + id]: rec, ['bu:' + uid]: id, bn: n + 1 }, this.idxOf(rec)));
   }
@@ -2589,7 +2734,7 @@ export class Hub {
   /* Список для экрана «База»: владелец видит всё, агент свою зону, дистрибьютор всех, кроме отказавшихся (без заметок и статусов).
      Фильтры (кроме района и поиска только у владельца и агента): f — статус (new, chk «не проверен», talk, app «в приложении», refuse),
      ag — агент (только владелец; «-» без агента), sort=new — сначала новые. Счётчики по районам считаются уже с учётом статуса, агента и поиска. */
-  async baseList(role, url) {
+  async baseList(role, url, uid) {
     const sp = url.searchParams;
     const terr = String(sp.get('terr') || '').slice(0, 12), f = String(sp.get('f') || '');
     const ag = role.r === 'owner' ? String(sp.get('ag') || '').slice(0, 12) : '';
@@ -2606,7 +2751,11 @@ export class Hub {
     const stOk = b => !full || !f || (f === 'chk' ? !b.chk : f === 'app' ? !!b.uid : b.st === f);
     const agOk = b => !ag || (ag === '-' ? !b.agent : b.agent === ag);
     const qOk = b => !q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd));
-    const pre = scope.filter(b => stOk(b) && agOk(b) && qOk(b));
+    // «Мои клиенты»: те, кто заказывал у дистрибьютора (у владельца: у любого дистрибьютора)
+    const sh = role.r === 'agent' ? '' : await this.mineShop(uid, sp.get('sh'));
+    let mine = null;
+    if (sp.get('mine') === '1' && role.r !== 'agent') mine = await this.mineBids(role, sh);
+    const pre = scope.filter(b => stOk(b) && agOk(b) && qOk(b) && (!mine || mine.has(b.id)));
     const counts = {};
     pre.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
     const rows = pre.filter(b => !terr || (terr === '-' ? !b.terr : b.terr === terr));
@@ -2620,10 +2769,102 @@ export class Hub {
       items: rows.slice(off, off + BASE_PAGE).map(b => { const o = (full ? baseOwn : basePub)(b); if (dist.has(b.id)) o.d = Math.round(dist.get(b.id) * 10) / 10; return o; }),
       terrs: (await this.terrs()).map(t => ({ id: t.id, name: t.name }))
     };
+    if (role.r !== 'agent') {
+      // данные клиента: у дистрибьютора только его, у владельца заказы у всех дистрибьюторов
+      const ext = await this.mineAttach(role, sh, out.items.map(o => all.find(b => b.id === o.id)).filter(Boolean));
+      out.items.forEach(o => { const e = ext.get(o.id); if (e) { if (e.m) o.m = e.m; if (e.my) o.my = e.my; } });
+      out.sh = sh;
+    }
     if (full) out.unchk = scope.filter(b => !b.chk).length;
     if (role.r === 'agent') out.mine = role.ag.terr || [];
     if (role.r === 'owner') out.agents = (await this.allAgents()).map(a => ({ id: a.id, name: a.name }));
     return json(out);
+  }
+  /* --- данные клиента для дистрибьютора и владельца ---
+     Номер аккаунта (uid) наружу не выходит: площадка сама переводит номер магазина в номера аккаунтов и спрашивает дистрибьютора. */
+  /* От чьего имени человек смотрит клиентов: только магазин (дистрибьютор), где он продавец. */
+  async mineShop(uid, sh) {
+    const sells = await this.sellsOf(uid);
+    return validDid(sh) && sells.includes(sh) ? sh : (sells[0] || '');
+  }
+  /* Соответствие «номер магазина в базе» ↔ «номера аккаунтов». */
+  async uidMap() {
+    const bidOf = new Map(), uidsOf = new Map();
+    (await this.st.list({ prefix: 'bu:' })).forEach((bid, k) => {
+      const u = Number(k.slice(3));
+      bidOf.set(u, bid);
+      const a = uidsOf.get(bid) || [];
+      a.push(u);
+      uidsOf.set(bid, a);
+    });
+    return { bidOf, uidsOf };
+  }
+  /* Номера записей базы, которые заказывали у дистрибьютора sh (у владельца у любого). */
+  async mineBids(role, sh) {
+    const targets = role.r === 'owner' ? (await this.allRecs()).map(r => r.id) : (sh ? [sh] : []);
+    const um = await this.uidMap();
+    const out = new Set();
+    const res = await Promise.all(targets.map(d => shopCall(this.env, d, '/__/mine-ids', {})));
+    res.forEach(r => (r.ok && r.data && Array.isArray(r.data.uids) ? r.data.uids : []).forEach(u => { const bid = um.bidOf.get(Number(u)); if (bid) out.add(bid); }));
+    return out;
+  }
+  /* Для записей базы: m (заказы) и my (заметка, группа, блокировка у дистрибьютора sh). */
+  async mineAttach(role, sh, recs, um) {
+    const out = new Map();
+    if (!recs.length) return out;
+    um = um || await this.uidMap();
+    const items = recs.map(b => ({ bid: b.id, uids: [...new Set([...(um.uidsOf.get(b.id) || []), ...(b.uid ? [b.uid] : [])])].slice(0, 10) }));
+    const owner = role.r === 'owner';
+    const recsAll = owner ? await this.allRecs() : [];
+    const targets = owner ? recsAll.map(r => r.id) : (sh ? [sh] : []);
+    const res = await Promise.all(targets.map(async d => ({ d, r: await shopCall(this.env, d, '/__/mine', { items }) })));
+    const name = new Map(recsAll.map(r => [r.id, r.name]));
+    recs.forEach(b => {
+      const m = { n: 0, ds: 0, sum: 0, last: '' }, by = [];
+      let my = null;
+      res.forEach(x => {
+        const row = x.r.ok && x.r.data && Array.isArray(x.r.data.rows) ? x.r.data.rows.find(w => w.bid === b.id) : null;
+        if (!row) return;
+        m.n += row.n; m.ds += row.ds; m.sum += row.sum;
+        if (row.last > m.last) m.last = row.last;
+        if (row.n > 0) by.push({ did: x.d, name: name.get(x.d) || '', n: row.n, sum: row.sum });
+        if (x.d === sh) my = { has: row.has, note: row.note, grp: row.grp, blocked: row.blocked, tg: row.tg };
+      });
+      const e = {};
+      if (m.n > 0) { e.m = m; if (owner) e.m.by = by; }
+      if (my && (my.has || my.note || my.grp || my.blocked)) e.my = my;
+      out.set(b.id, e);
+    });
+    return out;
+  }
+  /* Карточка магазина у дистрибьютора: заказы и история (GET), заметка, группа, блокировка (PUT). */
+  async baseMine(role, uid, bid, method, request) {
+    if (role.r === 'agent') return json({ error: 'forbidden' }, 403);
+    const rec = await this.st.get('b:' + bid);
+    if (!rec || (role.r === 'dist' && rec.st === 'refuse')) return json({ error: 'not_found' }, 404);
+    const um = await this.uidMap();
+    const uids = [...new Set([...(um.uidsOf.get(bid) || []), ...(rec.uid ? [rec.uid] : [])])].slice(0, 10);
+    if (method === 'GET') {
+      const sh = await this.mineShop(uid, new URL(request.url).searchParams.get('sh'));
+      const ext = (await this.mineAttach(role, sh, [rec], um)).get(bid) || {};
+      const recsAll = await this.allRecs();
+      const targets = role.r === 'owner' ? recsAll.map(r => r.id) : (sh ? [sh] : []);
+      const res = await Promise.all(targets.map(async d => ({ d, r: await shopCall(this.env, d, '/__/mine-orders', { uids }) })));
+      const name = new Map(recsAll.map(r => [r.id, r.name]));
+      const orders = [];
+      res.forEach(x => (x.r.ok && x.r.data && Array.isArray(x.r.data.orders) ? x.r.data.orders : []).forEach(o => orders.push(Object.assign(o, { did: x.d, shopName: name.get(x.d) || '' }))));
+      orders.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      return json({ sh, m: ext.m || null, my: ext.my || null, orders: orders.slice(0, 30) });
+    }
+    const rd = await this.readBody(request, 3000);
+    if (rd.err || !rd.body || typeof rd.body !== 'object') return json({ error: 'bad_request' }, 400);
+    const sells = await this.sellsOf(uid);
+    const sh = validDid(rd.body.sh) && sells.includes(rd.body.sh) ? rd.body.sh : '';
+    if (!sh) return json({ error: 'forbidden' }, 403);
+    const r = await shopCall(this.env, sh, '/__/mine-set', { bid, uids, note: rd.body.note, grp: rd.body.grp, blocked: rd.body.blocked });
+    if (!r.ok) return json({ error: (r.data && r.data.error) || 'bad_request' }, r.status || 400);
+    const row = r.data.row;
+    return json({ my: { has: row.has, note: row.note, grp: row.grp, blocked: row.blocked, tg: row.tg } });
   }
   /* Для владельца: территории и агенты со счётчиками. */
   async peopleState() {
@@ -2842,7 +3083,9 @@ export class Hub {
     if (path === '/api/hub/base' || path.startsWith('/api/hub/base/')) {
       const role = await this.baseRole(uid);
       if (!role) return json({ error: 'forbidden' }, 403);
-      if (path === '/api/hub/base' && method === 'GET') return await this.baseList(role, new URL(request.url));
+      if (path === '/api/hub/base' && method === 'GET') return await this.baseList(role, new URL(request.url), uid);
+      const mm = path.match(/^\/api\/hub\/base\/(b[a-z0-9]{4,12})\/mine$/);
+      if (mm && (method === 'GET' || method === 'PUT')) return await this.baseMine(role, uid, mm[1], method, request);
       if (role.r === 'dist') return json({ error: 'forbidden' }, 403);
       const rd = await this.readBody(request, 3000);
       if (path === '/api/hub/base' && method === 'POST') {
@@ -2882,6 +3125,7 @@ export class Hub {
       await this.st.put('title', t);
       return json({ title: t });
     }
+    if (path === '/api/hub/admin/analytics' && method === 'GET') return await this.adminAnalytics(new URL(request.url));
     if (path === '/api/hub/admin/stats' && method === 'GET') {
       const rg = statRange(new URL(request.url).searchParams.get('period') || 'month');
       const recs = await this.allRecs();
@@ -2920,6 +3164,56 @@ export class Hub {
       }
     }
     return json({ error: 'not_found' }, 404);
+  }
+  /* Аналитика продаж, владелец: только выданные заказы за период (7/30/90/365 дней), по всем дистрибьюторам или по одному (?sh=).
+     Категории сводятся по названию, магазины по записи базы (номера аккаунтов наружу не уходят). */
+  async adminAnalytics(url) {
+    const sp = url.searchParams, d = Number(sp.get('days'));
+    const days = RP_RANGES.includes(d) ? d : 30;
+    const to = dayOf(new Date().toISOString()), from = addDays(to, -(days - 1));
+    const recs = await this.allRecs();
+    const sh = recs.some(r => r.id === sp.get('sh')) ? sp.get('sh') : '';
+    const res = await Promise.all((sh ? recs.filter(r => r.id === sh) : recs).map(async r => ({ r, x: await shopCall(this.env, r.id, '/__/analytics', { from, to }) })));
+    const um = await this.uidMap();
+    const tot = { n: 0, sum: 0, shops: 0 }, cats = new Map(), prods = [], stores = new Map();
+    let partial = false, failed = 0, since = '';
+    for (const { r, x } of res) {
+      const a = x.ok && x.data && x.data.tot ? x.data : null;
+      if (!a) { failed++; continue; }
+      tot.n += a.tot.n; tot.sum += a.tot.sum;
+      if (a.tot.n > 0) tot.shops++;
+      if (a.partial) partial = true;
+      if (a.since && (!since || a.since < since)) since = a.since;
+      for (const c of a.cats) {
+        const key = String(c.name || '').trim().toLowerCase();
+        const e = cats.get(key) || { name: c.name, uz: c.uz || '', n: 0, qty: 0, sum: 0 };
+        e.n += c.n; e.qty += c.qty; e.sum += c.sum; if (!e.uz && c.uz) e.uz = c.uz;
+        cats.set(key, e);
+      }
+      for (const p of a.prods) prods.push({ name: p.name, shop: r.id, shopName: r.name, n: p.n, qty: p.qty, sum: p.sum });
+      for (const c of a.cls) {
+        const bid = um.bidOf.get(Number(c.uid)), key = bid || 'u' + c.uid;
+        const e = stores.get(key) || { bid, name: c.name || '', org: c.org || '', n: 0, sum: 0, shops: new Set(), last: '' };
+        e.n += c.n; e.sum += c.sum; e.shops.add(r.id); if (c.last > e.last) e.last = c.last;
+        stores.set(key, e);
+      }
+    }
+    const bids = [...new Set([...stores.values()].map(e => e.bid).filter(Boolean))], nm = new Map();
+    for (let i = 0; i < bids.length; i += 100) {
+      const got = await this.st.get(bids.slice(i, i + 100).map(b => 'b:' + b));
+      got.forEach(rec => { if (rec && rec.name) nm.set(rec.id, rec.name); });
+    }
+    const storesOut = [...stores.values()].map(e => ({ name: nm.get(e.bid) || e.name, n: e.n, sum: e.sum, nd: e.shops.size, last: e.last }))
+      .sort((a, b) => b.sum - a.sum || b.n - a.n);
+    prods.sort((a, b) => b.sum - a.sum || b.n - a.n);
+    return json({
+      days, from, to, sh, since, partial, failed,
+      shops: recs.map(r => ({ id: r.id, name: r.name })),
+      tot: Object.assign(tot, { stores: storesOut.length }),
+      cats: [...cats.values()].sort((a, b) => b.sum - a.sum),
+      prods: prods.slice(0, 300), nprods: prods.length,
+      stores: storesOut.slice(0, 300), nstores: storesOut.length
+    });
   }
   /* Проверка товаров, владелец: список со всех дистрибьюторов, одобрить, вернуть с причиной, поправить, фото. */
   async adminMod(request, path, method) {
