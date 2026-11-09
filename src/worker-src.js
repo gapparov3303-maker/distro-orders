@@ -339,6 +339,21 @@ const newClient = (uid, since) => ({ uid, name: '', phone: '', org: '', addrs: [
 /* то, что клиент видит о себе: заметка, группа и блокировка остаются у продавца */
 const clientPublic = c => c ? { name: c.name, phone: c.phone, org: c.org, addrs: c.addrs } : null;
 const sameAddr = (a, b) => a.toLowerCase() === b.toLowerCase();
+/* Что дистрибьютор знает о магазине из общей базы: заказы у него, его заметка, группа и блокировка.
+   cs: записи клиентов этого дистрибьютора, относящиеся к магазину (у магазина может быть несколько сотрудников со своими аккаунтами);
+   bn: заметка и группа, которые дистрибьютор ведёт по номеру магазина в базе (работает и у магазина без аккаунта). */
+function mineRow(bid, cs, bn) {
+  const r = { bid, has: cs.length > 0, n: 0, ds: 0, sum: 0, last: '', blocked: false, note: '', grp: '', tg: '' };
+  for (const c of cs) {
+    r.n += Number(c.n) || 0; r.ds += Number(c.ds) || 0; r.sum += Number(c.sum) || 0;
+    if (String(c.last || '') > r.last) r.last = String(c.last);
+    if (c.blocked) r.blocked = true;
+    if (!r.tg && c.tg && c.tg.username) r.tg = String(c.tg.username);
+  }
+  const src = bn || cs.find(c => c.note || c.grp) || {};
+  r.note = src.note || ''; r.grp = src.grp || '';
+  return r;
+}
 /* Поля клиента из запроса. Приходит только то, что меняют; admin разрешает ещё заметку, группу и блокировку. */
 function cleanClient(b, admin) {
   if (!b || typeof b !== 'object' || Array.isArray(b)) return { err: 'bad_request' };
@@ -1478,6 +1493,10 @@ export class Shop {
       const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
       return json({ clients: idx.map(x => map.get('c:' + x)).filter(Boolean).map(c => ({ uid: c.uid, name: c.name, phone: c.phone, org: c.org, addr: (c.addrs || [])[0] || '' })) });
     }
+    if (path === '/__/mine') return json({ rows: await this.mineRows(b.items) });
+    if (path === '/__/mine-ids') return json({ uids: await this.mineIds() });
+    if (path === '/__/mine-set') return await this.mineSet(b);
+    if (path === '/__/mine-orders') return json({ orders: await this.mineOrders(b.uids) });
     if (path === '/__/stats') return json(await this.commRange(String(b.from || ''), String(b.to || '')));
     if (path === '/__/cpct') {
       const pct = cleanPct(b.pct);
@@ -1687,7 +1706,63 @@ export class Shop {
     c.tg = { username: cleanStr(u.username || '', 40), name: cleanStr([u.first_name, u.last_name].filter(Boolean).join(' '), 80) };
     upd['c:' + u.id] = c;
     await this.st.put(upd);
+    await this.hubProfile(u.id, c);
     return json({ profile: clientPublic(c) });
+  }
+  /* Магазин заполнил профиль: он попадает в общую базу и без заказа (если там его ещё нет). */
+  async hubProfile(uid, c) {
+    if (!this.env.HUB) return;
+    const name = cleanStr(c.org, 60) || cleanStr(c.name, 60);
+    if (name.length < 2 || !phoneOk(String(c.phone || ''))) return;
+    try { await hubCall(this.env, '/__/profile', { did: this.did, uid, prof: { name: c.name, phone: c.phone, org: c.org, addr: (c.addrs || [])[0] || '' } }); }
+    catch (e) { console.error('hub profile failed', e && e.message || e); }
+  }
+
+  /* --- клиенты в общей базе: данные дистрибьютора о магазине (площадка спрашивает их только у самого дистрибьютора) ---
+     Заметка и группа лежат по номеру магазина в базе (bn:<номер>), поэтому их можно вести и у магазина, который ещё не заходил в приложение.
+     Если у магазина есть запись клиента c:<uid>, заметка и группа дублируются и туда: так они попадают в карточку заказа в Telegram.
+     Блокировка живёт только в c:<uid>: она нужна при оформлении заказа. */
+  mineUids(x) { return (Array.isArray(x && x.uids) ? x.uids : []).slice(0, 10).map(Number).filter(Number.isSafeInteger); }
+  async mineRows(items) {
+    await this.ensureClients();
+    const list = (Array.isArray(items) ? items : []).slice(0, 60).filter(x => x && typeof x.bid === 'string' && /^b[a-z0-9]{4,12}$/.test(x.bid));
+    const uids = [...new Set(list.flatMap(x => this.mineUids(x)))];
+    const cm = await this.getMany(uids.map(u => 'c:' + u));
+    const bm = await this.getMany(list.map(x => 'bn:' + x.bid));
+    return list.map(x => mineRow(x.bid, this.mineUids(x).map(u => cm.get('c:' + u)).filter(Boolean), bm.get('bn:' + x.bid)));
+  }
+  /* Номера клиентов, которые заказывали у этого дистрибьютора (не считая отменённых). */
+  async mineIds() {
+    await this.ensureClients();
+    const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
+    return idx.filter(x => { const c = map.get('c:' + x); return c && c.n > 0; });
+  }
+  async mineSet(b) {
+    await this.ensureClients();
+    const bid = typeof b.bid === 'string' && /^b[a-z0-9]{4,12}$/.test(b.bid) ? b.bid : '';
+    if (!bid) return json({ error: 'bad_request' }, 400);
+    const uids = this.mineUids(b);
+    const v = cleanClient({ note: b.note, grp: b.grp, blocked: b.blocked }, true);
+    if (v.err) return json({ error: v.err }, 400);
+    const cs = (await Promise.all(uids.map(u => this.getClient(u)))).filter(Boolean);
+    if (v.v.blocked !== undefined && !cs.length) return json({ error: 'no_client' }, 409);
+    const upd = {};
+    if (v.v.note !== undefined || v.v.grp !== undefined) {
+      const bn = (await this.st.get('bn:' + bid)) || { note: '', grp: '' };
+      if (v.v.note !== undefined) bn.note = v.v.note;
+      if (v.v.grp !== undefined) bn.grp = v.v.grp;
+      upd['bn:' + bid] = bn;
+    }
+    for (const c of cs) { Object.assign(c, v.v); upd['c:' + c.uid] = c; }
+    if (Object.keys(upd).length) await this.st.put(upd);
+    return json({ row: (await this.mineRows([{ bid, uids }]))[0] });
+  }
+  /* Последние заказы магазина у этого дистрибьютора. */
+  async mineOrders(uids) {
+    const ids = [];
+    for (const u of this.mineUids({ uids })) for (const id of (await this.st.get('m:' + u)) || []) if (!ids.includes(id)) ids.push(id);
+    const orders = await this.getOrders(ids);
+    return orders.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30).map(adminOrder);
   }
 
   /* Избранное клиента: хранится отдельно от базы клиентов, поэтому тот, кто только отмечает товары, в базе не появляется. */
@@ -2396,6 +2471,13 @@ export class Hub {
       try { await this.baseTouch(uid, b.prof); } catch (e) { console.error('base touch failed', e && e.message || e); }
       return json({ ok: true });
     }
+    if (path === '/__/profile') {
+      // магазин заполнил профиль у дистрибьютора: заносим в общую базу, если его там ещё нет
+      const uid = Number(b.uid);
+      if (!validDid(b.did) || !Number.isSafeInteger(uid)) return json({ ok: false });
+      try { await this.baseTouch(uid, b.prof, 'profile'); } catch (e) { console.error('base touch failed', e && e.message || e); }
+      return json({ ok: true });
+    }
     return json({ error: 'not_found' }, 404);
   }
   /* У каких дистрибьюторов у человека есть заказы. Кто заказывал до площадки, найдётся у первого: это проверяется один раз. */
@@ -2451,7 +2533,7 @@ export class Hub {
   /* Ключи поиска повторов записи: что положить и что убрать при смене телефона, названия или адреса. */
   idxOf(b) { const o = { ['bp:' + phoneKey(b.phone)]: b.id }, k = nameKey(b.name, b.addr); if (k) o['bk:' + k] = b.id; return o; }
   /* Магазин оформил заказ. Есть в базе — ничего не меняем (данные могла проверить агент); нет — добавляем из заказа, агент потом проверит. */
-  async baseTouch(uid, p) {
+  async baseTouch(uid, p, src) {
     if (!p || typeof p !== 'object' || !Number.isSafeInteger(uid)) return;
     // территорию называет сам магазин в заказе; принимаем только из списка владельца
     const tid = cleanStr(p.terr, 12), terr = tid && (await this.terrs()).some(t => t.id === tid) ? tid : '';
@@ -2484,7 +2566,7 @@ export class Hub {
     const id = await this.newBid();
     const ref = await this.st.get('ref:' + uid);
     const agent = validAid(ref) && (await this.st.get('a:' + ref)) ? ref : '';
-    const rec = { id, name, phone, addr, terr, st: 'new', note: '', agent, uid, chk: false, ver: 0, src: 'order', created: now, upd: now };
+    const rec = { id, name, phone, addr, terr, st: 'new', note: '', agent, uid, chk: false, ver: 0, src: src || 'order', created: now, upd: now };
     setClientLoc(rec, p.loc, now);
     await this.st.put(Object.assign({ ['b:' + id]: rec, ['bu:' + uid]: id, bn: n + 1 }, this.idxOf(rec)));
   }
@@ -2589,7 +2671,7 @@ export class Hub {
   /* Список для экрана «База»: владелец видит всё, агент свою зону, дистрибьютор всех, кроме отказавшихся (без заметок и статусов).
      Фильтры (кроме района и поиска только у владельца и агента): f — статус (new, chk «не проверен», talk, app «в приложении», refuse),
      ag — агент (только владелец; «-» без агента), sort=new — сначала новые. Счётчики по районам считаются уже с учётом статуса, агента и поиска. */
-  async baseList(role, url) {
+  async baseList(role, url, uid) {
     const sp = url.searchParams;
     const terr = String(sp.get('terr') || '').slice(0, 12), f = String(sp.get('f') || '');
     const ag = role.r === 'owner' ? String(sp.get('ag') || '').slice(0, 12) : '';
@@ -2606,7 +2688,11 @@ export class Hub {
     const stOk = b => !full || !f || (f === 'chk' ? !b.chk : f === 'app' ? !!b.uid : b.st === f);
     const agOk = b => !ag || (ag === '-' ? !b.agent : b.agent === ag);
     const qOk = b => !q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd));
-    const pre = scope.filter(b => stOk(b) && agOk(b) && qOk(b));
+    // «Мои клиенты»: те, кто заказывал у дистрибьютора (у владельца: у любого дистрибьютора)
+    const sh = role.r === 'agent' ? '' : await this.mineShop(uid, sp.get('sh'));
+    let mine = null;
+    if (sp.get('mine') === '1' && role.r !== 'agent') mine = await this.mineBids(role, sh);
+    const pre = scope.filter(b => stOk(b) && agOk(b) && qOk(b) && (!mine || mine.has(b.id)));
     const counts = {};
     pre.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
     const rows = pre.filter(b => !terr || (terr === '-' ? !b.terr : b.terr === terr));
@@ -2620,10 +2706,102 @@ export class Hub {
       items: rows.slice(off, off + BASE_PAGE).map(b => { const o = (full ? baseOwn : basePub)(b); if (dist.has(b.id)) o.d = Math.round(dist.get(b.id) * 10) / 10; return o; }),
       terrs: (await this.terrs()).map(t => ({ id: t.id, name: t.name }))
     };
+    if (role.r !== 'agent') {
+      // данные клиента: у дистрибьютора только его, у владельца заказы у всех дистрибьюторов
+      const ext = await this.mineAttach(role, sh, out.items.map(o => all.find(b => b.id === o.id)).filter(Boolean));
+      out.items.forEach(o => { const e = ext.get(o.id); if (e) { if (e.m) o.m = e.m; if (e.my) o.my = e.my; } });
+      out.sh = sh;
+    }
     if (full) out.unchk = scope.filter(b => !b.chk).length;
     if (role.r === 'agent') out.mine = role.ag.terr || [];
     if (role.r === 'owner') out.agents = (await this.allAgents()).map(a => ({ id: a.id, name: a.name }));
     return json(out);
+  }
+  /* --- данные клиента для дистрибьютора и владельца ---
+     Номер аккаунта (uid) наружу не выходит: площадка сама переводит номер магазина в номера аккаунтов и спрашивает дистрибьютора. */
+  /* От чьего имени человек смотрит клиентов: только магазин (дистрибьютор), где он продавец. */
+  async mineShop(uid, sh) {
+    const sells = await this.sellsOf(uid);
+    return validDid(sh) && sells.includes(sh) ? sh : (sells[0] || '');
+  }
+  /* Соответствие «номер магазина в базе» ↔ «номера аккаунтов». */
+  async uidMap() {
+    const bidOf = new Map(), uidsOf = new Map();
+    (await this.st.list({ prefix: 'bu:' })).forEach((bid, k) => {
+      const u = Number(k.slice(3));
+      bidOf.set(u, bid);
+      const a = uidsOf.get(bid) || [];
+      a.push(u);
+      uidsOf.set(bid, a);
+    });
+    return { bidOf, uidsOf };
+  }
+  /* Номера записей базы, которые заказывали у дистрибьютора sh (у владельца у любого). */
+  async mineBids(role, sh) {
+    const targets = role.r === 'owner' ? (await this.allRecs()).map(r => r.id) : (sh ? [sh] : []);
+    const um = await this.uidMap();
+    const out = new Set();
+    const res = await Promise.all(targets.map(d => shopCall(this.env, d, '/__/mine-ids', {})));
+    res.forEach(r => (r.ok && r.data && Array.isArray(r.data.uids) ? r.data.uids : []).forEach(u => { const bid = um.bidOf.get(Number(u)); if (bid) out.add(bid); }));
+    return out;
+  }
+  /* Для записей базы: m (заказы) и my (заметка, группа, блокировка у дистрибьютора sh). */
+  async mineAttach(role, sh, recs, um) {
+    const out = new Map();
+    if (!recs.length) return out;
+    um = um || await this.uidMap();
+    const items = recs.map(b => ({ bid: b.id, uids: [...new Set([...(um.uidsOf.get(b.id) || []), ...(b.uid ? [b.uid] : [])])].slice(0, 10) }));
+    const owner = role.r === 'owner';
+    const recsAll = owner ? await this.allRecs() : [];
+    const targets = owner ? recsAll.map(r => r.id) : (sh ? [sh] : []);
+    const res = await Promise.all(targets.map(async d => ({ d, r: await shopCall(this.env, d, '/__/mine', { items }) })));
+    const name = new Map(recsAll.map(r => [r.id, r.name]));
+    recs.forEach(b => {
+      const m = { n: 0, ds: 0, sum: 0, last: '' }, by = [];
+      let my = null;
+      res.forEach(x => {
+        const row = x.r.ok && x.r.data && Array.isArray(x.r.data.rows) ? x.r.data.rows.find(w => w.bid === b.id) : null;
+        if (!row) return;
+        m.n += row.n; m.ds += row.ds; m.sum += row.sum;
+        if (row.last > m.last) m.last = row.last;
+        if (row.n > 0) by.push({ did: x.d, name: name.get(x.d) || '', n: row.n, sum: row.sum });
+        if (x.d === sh) my = { has: row.has, note: row.note, grp: row.grp, blocked: row.blocked, tg: row.tg };
+      });
+      const e = {};
+      if (m.n > 0) { e.m = m; if (owner) e.m.by = by; }
+      if (my && (my.has || my.note || my.grp || my.blocked)) e.my = my;
+      out.set(b.id, e);
+    });
+    return out;
+  }
+  /* Карточка магазина у дистрибьютора: заказы и история (GET), заметка, группа, блокировка (PUT). */
+  async baseMine(role, uid, bid, method, request) {
+    if (role.r === 'agent') return json({ error: 'forbidden' }, 403);
+    const rec = await this.st.get('b:' + bid);
+    if (!rec || (role.r === 'dist' && rec.st === 'refuse')) return json({ error: 'not_found' }, 404);
+    const um = await this.uidMap();
+    const uids = [...new Set([...(um.uidsOf.get(bid) || []), ...(rec.uid ? [rec.uid] : [])])].slice(0, 10);
+    if (method === 'GET') {
+      const sh = await this.mineShop(uid, new URL(request.url).searchParams.get('sh'));
+      const ext = (await this.mineAttach(role, sh, [rec], um)).get(bid) || {};
+      const recsAll = await this.allRecs();
+      const targets = role.r === 'owner' ? recsAll.map(r => r.id) : (sh ? [sh] : []);
+      const res = await Promise.all(targets.map(async d => ({ d, r: await shopCall(this.env, d, '/__/mine-orders', { uids }) })));
+      const name = new Map(recsAll.map(r => [r.id, r.name]));
+      const orders = [];
+      res.forEach(x => (x.r.ok && x.r.data && Array.isArray(x.r.data.orders) ? x.r.data.orders : []).forEach(o => orders.push(Object.assign(o, { did: x.d, shopName: name.get(x.d) || '' }))));
+      orders.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      return json({ sh, m: ext.m || null, my: ext.my || null, orders: orders.slice(0, 30) });
+    }
+    const rd = await this.readBody(request, 3000);
+    if (rd.err || !rd.body || typeof rd.body !== 'object') return json({ error: 'bad_request' }, 400);
+    const sells = await this.sellsOf(uid);
+    const sh = validDid(rd.body.sh) && sells.includes(rd.body.sh) ? rd.body.sh : '';
+    if (!sh) return json({ error: 'forbidden' }, 403);
+    const r = await shopCall(this.env, sh, '/__/mine-set', { bid, uids, note: rd.body.note, grp: rd.body.grp, blocked: rd.body.blocked });
+    if (!r.ok) return json({ error: (r.data && r.data.error) || 'bad_request' }, r.status || 400);
+    const row = r.data.row;
+    return json({ my: { has: row.has, note: row.note, grp: row.grp, blocked: row.blocked, tg: row.tg } });
   }
   /* Для владельца: территории и агенты со счётчиками. */
   async peopleState() {
@@ -2842,7 +3020,9 @@ export class Hub {
     if (path === '/api/hub/base' || path.startsWith('/api/hub/base/')) {
       const role = await this.baseRole(uid);
       if (!role) return json({ error: 'forbidden' }, 403);
-      if (path === '/api/hub/base' && method === 'GET') return await this.baseList(role, new URL(request.url));
+      if (path === '/api/hub/base' && method === 'GET') return await this.baseList(role, new URL(request.url), uid);
+      const mm = path.match(/^\/api\/hub\/base\/(b[a-z0-9]{4,12})\/mine$/);
+      if (mm && (method === 'GET' || method === 'PUT')) return await this.baseMine(role, uid, mm[1], method, request);
       if (role.r === 'dist') return json({ error: 'forbidden' }, 403);
       const rd = await this.readBody(request, 3000);
       if (path === '/api/hub/base' && method === 'POST') {

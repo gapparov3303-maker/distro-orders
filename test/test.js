@@ -4207,6 +4207,164 @@ await t('точка: «ближайшие» — по расстоянию от �
   assert.deepEqual(ag.items.map(x => x.name), ['Ближний', 'Средний', 'Дальний', 'Без точки']);
 });
 
+/* ---------- одна база на всех: клиенты дистрибьютора внутри «Базы» ---------- */
+const iJ2 = () => initDataFor(JAS2);
+const prof = (sid, u, body) => callS(sid, 'PUT', '/api/profile', { init: u.init(), body });
+async function twoShopWorld() {
+  const { sid } = await shopWorld('Альфа Трейд');
+  const d2 = await addShop('Бета Опт');
+  await send(adminMsg(JAS2, d2.code, 3));
+  const put = await callS(d2.shop.id, 'PUT', '/api/admin/products', { init: iJ2(), body: { prod: SAMPLE_PROD() } });
+  assert.equal(put.status, 200);
+  await approveAll(d2.shop.id, iJ2());
+  tgLog = [];
+  return { sid, sid2: d2.shop.id };
+}
+const byName = (list, n) => list.items.find(x => x.name === n);
+
+await t('одна база: магазин попадает в базу, когда заполнил профиль, без заказа; повторно не дублируется', async () => {
+  const { sid } = await twoShopWorld();
+  const u = newUser();
+  assert.equal((await baseGet()).items.length, 0);
+  assert.equal((await prof(sid, u, { name: 'Ромашка', phone: '+998 90 111 22 33', org: '', addrs: ['Навои, ул. Галаба 5'] })).status, 200);
+  const o = await baseGet();
+  assert.equal(o.items.length, 1);
+  const r = byName(o, 'Ромашка');
+  assert.deepEqual([r.phone, r.addr, r.app, r.chk], ['+998 90 111 22 33', 'Навои, ул. Галаба 5', true, false]);
+  await prof(sid, u, { name: 'Ромашка', phone: '+998 90 111 22 33', addrs: ['Навои, ул. Галаба 5'] });
+  assert.equal((await baseGet()).items.length, 1, 'повторное сохранение профиля не создаёт второй записи');
+  // без телефона или с названием из одной буквы в базу не идёт
+  const u2 = newUser();
+  await prof(sid, u2, { name: 'Роза', phone: '' });
+  await prof(sid, newUser(), { name: 'А', phone: '+998 90 222 33 44' });
+  assert.equal((await baseGet()).items.length, 1);
+  // дистрибьютор видит магазин в общей базе, но номера аккаунта в ответе нет
+  const dl = await baseGet('', iD());
+  assert.equal(dl.items.length, 1);
+  assert.ok(!JSON.stringify(dl).includes('"uid"'));
+  // потом тот же магазин заказывает: запись та же, не вторая
+  await ordBase(sid, u, { name: 'Ромашка', phone: '+998 90 111 22 33' });
+  assert.equal((await baseGet()).items.length, 1);
+});
+
+await t('одна база: «Мои клиенты» и заказы у дистрибьютора свои, у владельца по всем дистрибьюторам', async () => {
+  const { sid, sid2 } = await twoShopWorld();
+  const [a, b, c] = [newUser(), newUser(), newUser()];
+  await prof(sid, b, { name: 'Только профиль', phone: '+998 90 333 44 55' });
+  await ordBase(sid, a, { name: 'Ромашка', phone: '+998 90 111 22 33' });
+  await ordBase(sid2, a, { name: 'Ромашка', phone: '+998 90 111 22 33' });
+  await ordBase(sid2, a, { name: 'Ромашка', phone: '+998 90 111 22 33' });
+  await ordBase(sid2, c, { name: 'Лилия', phone: '+998 90 444 55 66' });
+  assert.equal((await baseGet()).items.length, 3, 'в общей базе все три магазина');
+  // дистрибьютор Альфа: только те, кто заказывал у него
+  const da = await baseGet('?mine=1&sh=' + sid, iD());
+  assert.deepEqual(da.items.map(x => x.name), ['Ромашка']);
+  assert.equal(da.items[0].m.n, 1);
+  assert.equal(da.items[0].m.by, undefined, 'у дистрибьютора нет разбивки по чужим дистрибьюторам');
+  assert.equal(da.sh, sid);
+  // без «Мои клиенты» в списке все, но заказы считаются только его
+  const all = await baseGet('?sh=' + sid, iD());
+  assert.equal(all.items.length, 3);
+  assert.equal(byName(all, 'Ромашка').m.n, 1);
+  assert.equal(byName(all, 'Лилия').m, undefined);
+  // дистрибьютор Бета: Ромашка (2 заказа у него) и Лилия
+  const db = await baseGet('?mine=1&sh=' + sid2, iJ2());
+  assert.deepEqual(db.items.map(x => [x.name, x.m.n]), [['Лилия', 1], ['Ромашка', 2]]);
+  // чужой sh подменить нельзя: берётся свой магазин
+  const fake = await baseGet('?mine=1&sh=' + sid2, iD());
+  assert.deepEqual(fake.items.map(x => x.name), ['Ромашка']);
+  assert.equal(fake.items[0].m.n, 1);
+  // владелец видит заказы у всех
+  const ow = await baseGet('?mine=1');
+  assert.deepEqual(ow.items.map(x => [x.name, x.m.n]), [['Лилия', 1], ['Ромашка', 3]]);
+  const rm = byName(ow, 'Ромашка').m;
+  assert.deepEqual(rm.by.map(x => [x.name, x.n]).sort(), [['Альфа Трейд', 1], ['Бета Опт', 2]]);
+  assert.ok(rm.last, 'есть дата последнего заказа');
+  assert.equal(rm.sum, 0, 'сумма считается только по выданным: новые не в счёте');
+  // агент и посторонние данных клиентов не получают
+  await adm('POST', '/terr', { names: ['Навои'] });
+  const ag = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [] }));
+  await send(agentMsg(AGT, ag.code, 70));
+  const agl = await baseGet('', iG());
+  assert.ok(agl.items.every(x => x.m === undefined && x.my === undefined) && agl.sh === undefined);
+  assert.equal((await call('GET', '/api/hub/base/' + all.items[0].id + '/mine', { init: iG() })).status, 403);
+  assert.equal((await call('GET', '/api/hub/base/' + all.items[0].id + '/mine')).status, 401);
+  assert.equal((await call('GET', '/api/hub/base/' + all.items[0].id + '/mine', { init: newUser().init() })).status, 403);
+});
+
+await t('одна база: заметка, группа и блокировка у каждого дистрибьютора свои, история заказов', async () => {
+  const { sid, sid2 } = await twoShopWorld();
+  const a = newUser();
+  await ordBase(sid, a, { name: 'Ромашка', phone: '+998 90 111 22 33' });
+  await ordBase(sid2, a, { name: 'Ромашка', phone: '+998 90 111 22 33' });
+  const bid = byName(await baseGet(), 'Ромашка').id;
+  const mine = (sh, init) => call('GET', '/api/hub/base/' + bid + '/mine?sh=' + sh, { init });
+  const set = (body, init) => call('PUT', '/api/hub/base/' + bid + '/mine', { init, body });
+  // Альфа ведёт свою заметку и группу
+  const r1 = await set({ sh: sid, note: 'Платит в конце недели', grp: 'Магазин' }, iD());
+  assert.equal(r1.status, 200);
+  const r1j = await jsonOf(r1);
+  assert.deepEqual([r1j.my.note, r1j.my.grp], ['Платит в конце недели', 'Магазин']);
+  // Бета её не видит, у Беты своя
+  const mb = await jsonOf(await mine(sid2, iJ2()));
+  assert.ok(!mb.my || (!mb.my.note && !mb.my.grp), 'чужая заметка не видна');
+  await set({ sh: sid2, note: 'Вежливый, звонить после 10' }, iJ2());
+  const ma = await jsonOf(await mine(sid, iD()));
+  assert.equal(ma.my.note, 'Платит в конце недели');
+  assert.equal((await jsonOf(await mine(sid2, iJ2()))).my.note, 'Вежливый, звонить после 10');
+  // владелец (продавец первого дистрибьютора) своих заметок у чужих не видит
+  const mo = await jsonOf(await mine('main', iS()));
+  assert.ok(!mo.my || !mo.my.note);
+  // в списке «Базы» у дистрибьютора своя заметка
+  assert.equal(byName(await baseGet('?sh=' + sid, iD()), 'Ромашка').my.note, 'Платит в конце недели');
+  assert.equal(byName(await baseGet('?sh=' + sid2, iJ2()), 'Ромашка').my.note, 'Вежливый, звонить после 10');
+  // заметка попадает в карточку заказа в Telegram
+  tgLog = [];
+  await ordBase(sid, a, { name: 'Ромашка', phone: '+998 90 111 22 33' });
+  const card = tgLog.filter(x => x.method === 'sendMessage').map(x => x.payload.text).join('\n');
+  assert.ok(card.includes('Платит в конце недели') && card.includes('Магазин'), 'заметка и группа в карточке заказа');
+  // история: у дистрибьютора только его заказы, у владельца все с названием дистрибьютора
+  const ha = await jsonOf(await mine(sid, iD()));
+  assert.equal(ha.orders.length, 2);
+  assert.ok(ha.orders.every(o => o.did === sid && o.items.length && o.total > 0) && !JSON.stringify(ha).includes('"uid"'));
+  const ho = await jsonOf(await mine('main', iS()));
+  assert.deepEqual(ho.orders.map(o => o.shopName).sort(), ['Альфа Трейд', 'Альфа Трейд', 'Бета Опт']);
+  assert.equal(ho.m.n, 3);
+  // блокировка: клиент больше не может заказать именно у этого дистрибьютора
+  const bl = await set({ sh: sid, blocked: true }, iD());
+  assert.equal((await jsonOf(bl)).my.blocked, true);
+  const denied = await callS(sid, 'POST', '/api/order', { init: a.init(), body: { cart: CART, form: formFor(S.DEFAULT, 'pickup', { name: 'Ромашка', phone: '+998 90 111 22 33' }), lang: 'ru', expectTotal: 1394000 } });
+  assert.equal(denied.status, 403);
+  assert.equal((await ordBase(sid2, a, { name: 'Ромашка', phone: '+998 90 111 22 33' })).order.status, 'new', 'у другого дистрибьютора заказ проходит');
+  assert.equal((await jsonOf(await set({ sh: sid, blocked: false }, iD()))).my.blocked, false);
+  assert.equal((await ordBase(sid, a, { name: 'Ромашка', phone: '+998 90 111 22 33' })).order.status, 'new');
+  // правила доступа
+  assert.equal((await set({ sh: sid2, note: 'x' }, iD())).status, 403, 'чужой дистрибьютор не правит');
+  assert.equal((await set({ sh: sid, note: 'x' }, iG())).status, 403);
+  assert.equal((await set({ sh: sid, note: 'x'.repeat(600) }, iD())).status, 200, 'длинная заметка обрезается');
+  assert.equal((await jsonOf(await mine(sid, iD()))).my.note.length, 500);
+  assert.equal((await set({ sh: sid, grp: 'я'.repeat(50) }, iD())).status, 200);
+  assert.equal((await jsonOf(await mine(sid, iD()))).my.grp.length, 30);
+  assert.equal((await set({ sh: sid, note: 5 }, iD())).status, 400);
+  assert.equal((await call('PUT', '/api/hub/base/bnotfound1/mine', { init: iD(), body: { sh: sid, note: 'x' } })).status, 404);
+});
+
+await t('одна база: заметка у магазина без аккаунта (добавил агент); блокировать такого нельзя; «Отказался» дистрибьютору не виден', async () => {
+  const { sid } = await twoShopWorld();
+  const cr = await jsonOf(await baseSend('POST', '', { name: 'Магазин у базара', phone: '+998 90 777 88 99', addr: 'Базар', st: 'new' }));
+  const bid = cr.item.id;
+  const set = body => call('PUT', '/api/hub/base/' + bid + '/mine', { init: iD(), body });
+  const r = await set({ sh: sid, note: 'Ходит сам, без телефона' });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).my.note, 'Ходит сам, без телефона');
+  assert.equal((await set({ sh: sid, blocked: true })).status, 409, 'нет аккаунта: блокировать нечего');
+  assert.equal(byName(await baseGet('?sh=' + sid, iD()), 'Магазин у базара').my.note, 'Ходит сам, без телефона');
+  assert.deepEqual((await baseGet('?mine=1&sh=' + sid, iD())).items, [], 'не заказывал: в «Моих клиентах» его нет');
+  await baseSend('PUT', '/' + bid, { st: 'refuse' });
+  assert.equal((await call('GET', '/api/hub/base/' + bid + '/mine?sh=' + sid, { init: iD() })).status, 404);
+  assert.equal((await set({ sh: sid, note: 'ещё' })).status, 404);
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
