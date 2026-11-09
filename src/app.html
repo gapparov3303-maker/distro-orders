@@ -450,7 +450,7 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .alink{display:flex;align-items:center;gap:8px;margin-bottom:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:5px 6px 5px 12px}
 .alink .mono{flex:1;min-width:0;background:transparent;padding:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;letter-spacing:0;user-select:text}
 .bpage .search{margin-bottom:10px}
-.bbar{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;margin:0 -2px 2px;scrollbar-width:none}
+.bbar{position:relative;display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;margin:0 -2px 2px;scrollbar-width:none}
 .bbar::-webkit-scrollbar{display:none}
 .bbar .chip{flex:none;height:42px;padding:0 14px;gap:6px;white-space:nowrap;font-size:14px}
 .chip svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
@@ -567,6 +567,29 @@ div.lgd{cursor:default}
 .rvform .err,.fs-foot .err{color:var(--bad);font-size:13px;min-height:0}
 .fs-foot .err:empty{display:none}
 .fs-foot .err{margin-bottom:8px}
+/* точка магазина */
+.lchip{appearance:none;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;height:32px;padding:0 12px 0 9px;font:600 13px var(--f-body);display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap}
+.lchip svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lchip.add{border-style:dashed;color:var(--accent)}
+.lchip[disabled],.llink[disabled]{opacity:.5}
+.bloc{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.lchips{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.dkm{font-size:13px;font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.llink{appearance:none;border:0;background:transparent;color:var(--accent);font:600 13px var(--f-body);cursor:pointer;padding:6px 2px}
+.cloc{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:var(--info-soft);color:var(--info);border-radius:10px;padding:8px 10px;font-size:13px;font-weight:600}
+.cloc i{display:inline-block;font-style:normal;font-size:11px;font-weight:700;background:var(--surface);border-radius:999px;padding:1px 7px;margin-left:4px;color:var(--ink-2)}
+.locbtns{display:flex;gap:6px;flex-wrap:wrap}
+.locok{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:var(--ok-soft);color:var(--ok);border-radius:10px;padding:8px 10px;font-weight:600;font-size:14px}
+.locok i{font-style:normal;font-size:12px;color:var(--warn)}
+.locbtn{display:flex;width:100%;gap:8px}
+.locbtn svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.locform{display:grid;gap:8px}
+.locpaste{display:flex;gap:8px;align-items:center}
+.locpaste input{flex:1;min-width:0}
+.locform .err{min-height:0}
+.oloc{margin:6px 0}
+.mapbtns{display:grid;gap:10px;margin:6px 0 12px}
+.mapco{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0 10px;color:var(--ink-2)}
 @media (prefers-reduced-motion:no-preference){.chip,.seg button{transition:border-color .12s,background-color .12s}}
 </style>
 </head><body>
@@ -593,7 +616,7 @@ const MAX_QTY=500,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
   view:'shops',sellerTab:'orders',filter:'active',
   cfg:clone(DEFAULT),
-  form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:''},
+  form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:'',loc:null},
   region:'',showFar:false,regSent:false,regOnly:null,
   myOrders:[],allOrders:[],stats:{doneSum:0,doneCount:0},
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
@@ -610,7 +633,7 @@ const S={
   hub:{title:'',shops:[],me:null,terrs:[],loaded:false,err:false},
   own:{shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
-  base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:''}
+  base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:''}
 };
 const view=$('#view');
 let toastT=null,saveT=null;
@@ -1062,6 +1085,7 @@ function formHTML(pk){
     +'<div><label class="lab" for="f-date">'+(del?L('Дата доставки','Yetkazib berish sanasi'):L('Дата получения','Olish sanasi'))+'</label><input type="date" id="f-date" data-f="date" min="'+pk.min+'" max="'+pk.max+'" value="'+esc(S.form.date)+'"><div class="err" id="e-date"></div></div>'
     +'<div><label class="lab" for="f-time">'+L('Время','Vaqt')+'</label><select id="f-time" data-f="time"></select><div class="err" id="e-time"></div></div>'
     +'<div class="full"><label class="lab" for="f-comment">'+L('Пожелания к заказу','Buyurtmaga istaklar')+'</label><textarea id="f-comment" data-f="comment" placeholder="'+esc(L('Как позвонить, пожелания к упаковке','Qachon qoʻngʻiroq qilish, qadoqlash boʻyicha istaklar'))+'">'+esc(S.form.comment)+'</textarea></div>'
+    +'<div class="full locbox" id="locbox">'+locBoxHTML()+'</div>'
     +'</div>';
 }
 /* сохранённые адреса из профиля: нажал и адрес подставился */
@@ -1173,7 +1197,7 @@ async function submitOrder(){
   const f=S.form,del=mode()==='delivery';
   const r=await api('POST','/api/order',{
     cart:lines.map(l=>({id:l.p.id,qty:l.qty})),
-    form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',region:del?orderRegion():'',terr:terrKnown()?S.hub.me.card.terr:(terrCur()==='-'?'':terrCur()),date:f.date,time:f.time,comment:f.comment.trim()},
+    form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',region:del?orderRegion():'',terr:terrKnown()?S.hub.me.card.terr:(terrCur()==='-'?'':terrCur()),date:f.date,time:f.time,comment:f.comment.trim(),loc:f.loc||undefined},
     lang:LANG,expectTotal:cartPay()
   });
   S.busy=false;
@@ -1229,7 +1253,7 @@ async function submitOrder(){
   S.shopPlaced={order};S.shopStep='list';
   loadHub();   // магазин уже в общей базе: поле района больше не нужно
   S.myOrders=[order].concat(S.myOrders.filter(o=>!(o.id===order.id&&(o.did||S.did)===S.did)));
-  S.form.comment='';
+  S.form.comment='';S.form.loc=null;   // точка относится к одному заказу: в следующий раз магазин может быть уже в другом месте
   if(!S.profile)S.profile={name:order.name,phone:order.phone,org:'',addrs:order.mode==='delivery'&&order.address?[order.address]:[]};
   else{
     if(!S.profile.name)S.profile.name=order.name;
@@ -1272,6 +1296,7 @@ function orderCard(o,m){
     +discRow(o,'pl')
     +(o.fee>0?'<div class="pl"><span>'+L('Стоимость доставки','Yetkazib berish narxi')+'</span><span>'+money(o.fee)+'</span></div>':'')
     +(m==='seller'?'<div class="cust"><b>'+esc(o.name)+'</b>'+(o.org?' <span>'+esc(o.org)+'</span>':'')+' <span>'+esc(o.phone)+'</span>'+(o.tg&&o.tg.username?' <span>@'+esc(o.tg.username)+'</span>':'')+' <button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(o.phone)+'">'+L('Копировать','Nusxalash')+'</button></div>':'')
+    +(m==='seller'&&o.loc?'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+o.loc.lat+'" data-lng="'+o.loc.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>':'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
     +'<div class="tot"><b>'+money(o.total)+'</b><span>'+L('оплата при получении','olganda toʻlanadi')+'</span></div>'
     +(acts?'<div class="acts">'+acts+'</div>':'')
@@ -1452,7 +1477,8 @@ function printPick(){
 }
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
-  if(S.pick)closePick();
+  if(document.getElementById('mapsheet'))closeMapSheet();
+  else if(S.pick)closePick();
   else if(S.view==='review'&&(S.rv.ret||S.rv.edit))rvClose();
   else if(S.view==='base'&&(S.base.sheet||S.base.legend)){S.base.sheet=false;S.base.legend=false;paintSheet()}
 });
@@ -2401,6 +2427,133 @@ async function cancelMine(id,d){
   applyOrder(r.data.order,undefined,od);
 }
 
+/* ---------- местоположение ---------- */
+/* Где сейчас телефон: ok({lat,lng},точность в метрах) или fail('denied'|'na'|'fail'|'timeout') */
+function getPos(ok,fail){
+  if(!navigator.geolocation){fail('na');return}
+  let done=false;
+  const fin=(f,a,b)=>{if(done)return;done=true;clearTimeout(to);f(a,b)};
+  const to=setTimeout(()=>fin(fail,'timeout'),20000);
+  try{
+    navigator.geolocation.getCurrentPosition(p=>{const l=cleanLoc({lat:p.coords.latitude,lng:p.coords.longitude});if(l)fin(ok,l,p.coords.accuracy);else fin(fail,'fail')},e=>fin(fail,e&&e.code===1?'denied':'fail'),{enableHighAccuracy:true,timeout:15000,maximumAge:20000});
+  }catch(e){fin(fail,'fail')}
+}
+const geoErr=k=>k==='denied'?L('Нет доступа к геолокации. Разрешите её для Telegram в настройках телефона.','Geolokatsiyaga ruxsat yoʻq. Telefon sozlamalarida Telegram uchun ruxsat bering.')
+  :L('Не удалось определить местоположение. Включите геолокацию на телефоне и выйдите на открытое место.','Joylashuvni aniqlab boʻlmadi. Telefonda geolokatsiyani yoqing va ochiq joyga chiqing.');
+const fmtKm=d=>d<1?L(Math.round(d*10)*100+' м',Math.round(d*10)*100+' m'):L(String(d).replace('.',',')+' км',d+' km');
+/* выбор карты: Яндекс.Карты или Google Maps */
+function openMapSheet(lat,lng,title){
+  const loc=cleanLoc({lat,lng});if(!loc)return;
+  closeMapSheet();
+  S.map=loc;
+  const el=document.createElement('div');el.id='mapsheet';
+  const co=loc.lat.toFixed(5)+', '+loc.lng.toFixed(5);
+  el.innerHTML='<div class="fs-bg" data-act="mapx"></div><div class="fs" role="dialog" aria-modal="true" aria-label="'+esc(L('Открыть на карте','Xaritada ochish'))+'"><div class="fs-grab"></div>'
+    +'<div class="fs-head"><h2>'+L('Открыть на карте','Xaritada ochish')+'</h2><button type="button" class="lnk" data-act="mapx">'+L('Закрыть','Yopish')+'</button></div>'
+    +'<div class="fs-body">'+(title?'<div class="rsum"><b>'+esc(title)+'</b></div>':'')
+    +'<div class="mapbtns"><button type="button" class="btn" data-act="mapgo" data-k="y">'+L('Яндекс.Карты','Yandex Xaritalar')+'</button><button type="button" class="btn ghost" data-act="mapgo" data-k="g">Google Maps</button></div>'
+    +'<div class="mapco"><span class="mono small">'+esc(co)+'</span><button type="button" class="lnk" data-act="copy" data-v="'+esc(co)+'" data-ok="'+esc(L('Координаты скопированы','Koordinatalar nusxalandi'))+'" data-lab="">'+L('Копировать','Nusxalash')+'</button></div></div></div>';
+  document.body.appendChild(el);
+  document.documentElement.classList.add('sh-open');
+}
+function closeMapSheet(){
+  const el=document.getElementById('mapsheet');
+  if(el)el.remove();
+  S.map=null;
+  setScrollLock();
+}
+function mapGo(k){
+  if(!S.map)return;
+  const url=mapUrl(k==='g'?'g':'y',S.map);
+  try{if(S.tg&&S.tg.openLink){S.tg.openLink(url);closeMapSheet();return}}catch(e){}
+  window.open(url,'_blank','noopener');
+  closeMapSheet();
+}
+/* --- клиент: точка в заказе (необязательно, хранится только в заказе) --- */
+function locBoxHTML(){
+  const l=S.form.loc;
+  if(S.locBusy)return '<div class="unit" style="margin:0">'+L('Определяем местоположение…','Joylashuv aniqlanmoqda…')+'</div>';
+  if(l)return '<div class="locok"><span>✓ '+L('Местоположение указано','Joylashuv koʻrsatildi')+'</span><span class="locbtns"><button type="button" class="btn ghost sm" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="">'+L('На карте','Xaritada')+'</button><button type="button" class="btn ghost sm" data-act="locclear">'+L('Убрать','Olib tashlash')+'</button></span></div>';
+  return '<button type="button" class="btn ghost locbtn" data-act="locmark">'+ICO.pin+'<span>'+L('Указать моё местоположение','Joylashuvimni koʻrsatish')+'</span></button>'
+    +'<div class="unit" style="margin:6px 0 0">'+L('Необязательно. Продавец увидит точку на карте, так проще найти магазин.','Majburiy emas. Sotuvchi nuqtani xaritada koʻradi, doʻkonni topish osonroq.')+'</div>';
+}
+function paintLocBox(){const el=$('#locbox');if(el)el.innerHTML=locBoxHTML()}
+function locMark(){
+  if(S.locBusy)return;
+  S.locBusy=true;paintLocBox();
+  getPos(l=>{S.locBusy=false;S.form.loc=l;paintLocBox();toast(L('Местоположение добавлено к заказу','Joylashuv buyurtmaga qoʻshildi'))},k=>{S.locBusy=false;paintLocBox();toast(geoErr(k))});
+}
+/* --- база магазинов --- */
+/* строка точки в карточке: у всех «На карте» и расстояние; у агента и владельца ещё «Обновить», «Отметить здесь» и предложение клиента */
+function baseLocHTML(x){
+  const w=baseW(),id=esc(x.id),busy=S.base.mark===x.id;
+  let h='';
+  if(x.loc)h+='<span class="lchips"><button type="button" class="lchip" data-act="map" data-lat="'+x.loc.lat+'" data-lng="'+x.loc.lng+'" data-t="'+esc(x.name)+'">'+ICO.pin+L('На карте','Xaritada')+'</button>'
+    +(x.d!==undefined?'<span class="dkm">'+esc(fmtKm(x.d))+'</span>':'')
+    +(w?'<button type="button" class="llink" data-act="baseloc" data-id="'+id+'"'+(S.base.mark?' disabled':'')+'>'+(busy?L('Определяем…','Aniqlanmoqda…'):L('Обновить','Yangilash'))+'</button>':'')+'</span>';
+  else if(w)h+='<button type="button" class="lchip add" data-act="baseloc" data-id="'+id+'"'+(S.base.mark?' disabled':'')+'>'+ICO.pin+(busy?L('Определяем…','Aniqlanmoqda…'):L('Отметить здесь','Shu yerda belgilash'))+'</button>';
+  let c='';
+  if(w&&x.cloc)c='<div class="cloc"><span>'+L('Клиент прислал точку','Mijoz nuqta yubordi')+' <i>'+L('отмечено клиентом','mijoz belgilagan')+'</i></span><span class="locbtns"><button type="button" class="btn ghost sm" data-act="map" data-lat="'+x.cloc.lat+'" data-lng="'+x.cloc.lng+'" data-t="'+esc(x.name)+'">'+L('На карте','Xaritada')+'</button><button type="button" class="btn sm" data-act="baseaccept" data-id="'+id+'"'+(S.base.mark?' disabled':'')+'>'+L('Принять','Qabul qilish')+'</button></span></div>';
+  return (h?'<div class="bloc">'+h+'</div>':'')+c;
+}
+/* «Отметить здесь» и «Обновить»: берём место, где стоит агент; не вышло — открываем форму, там можно вставить ссылку на карту */
+function baseMark(id){
+  const b=S.base,x=b.items.find(y=>y.id===id);
+  if(!x||b.mark||b.busy)return;
+  const go=()=>{
+    b.mark=id;paintBase();
+    getPos(async l=>{
+      const r=await api('PUT','/api/hub/base/'+encodeURIComponent(id),{loc:{lat:l.lat,lng:l.lng}});
+      b.mark='';
+      if(!r.ok){toast(baseErr(r.data&&r.data.error));paintBase();return}
+      toast(L('Точка магазина сохранена','Doʻkon nuqtasi saqlandi'));
+      loadBase(true);
+    },k=>{
+      b.mark='';
+      toast(geoErr(k)+' '+L('Можно вставить ссылку на карту в форме.','Formaga xarita havolasini qoʻyish mumkin.'));
+      baseOpenForm(x);
+    });
+  };
+  if(x.loc)askConfirm(L('Заменить точку магазина на ваше текущее местоположение? Вы сейчас у магазина?','Doʻkon nuqtasini hozirgi joylashuvingizga almashtiraylikmi? Hozir doʻkon yonidamisiz?'),go);
+  else go();
+}
+async function baseAccept(id){
+  const b=S.base;if(b.mark||b.busy)return;
+  b.mark=id;paintBase();
+  const r=await api('PUT','/api/hub/base/'+encodeURIComponent(id),{accept:true});
+  b.mark='';
+  if(!r.ok){toast(r.data&&r.data.error==='no_client_loc'?L('Точки от клиента уже нет','Mijoz nuqtasi endi yoʻq'):baseErr(r.data&&r.data.error));loadBase(true);return}
+  toast(L('Точка принята','Nuqta qabul qilindi'));
+  loadBase(true);
+}
+/* «Ближайшие»: спрашиваем, где вы сейчас, и сортируем магазины с точкой по расстоянию */
+function baseNear(){
+  const b=S.base;
+  toast(L('Определяем, где вы…','Qayerdaligingiz aniqlanmoqda…'));
+  getPos(l=>{b.near={lat:l.lat,lng:l.lng};b.sort='near';loadBase(true)},k=>toast(geoErr(k)));
+}
+/* блок «Местоположение» в форме магазина: точка хранится в форме и уходит на сервер вместе с остальным по кнопке «Сохранить» */
+function baseLocFormHTML(){
+  const b=S.base,l=b.fm.loc;
+  return '<div class="full"><span class="lab">'+L('Местоположение','Joylashuv')+'</span><div class="locform">'
+    +(l?'<div class="locok"><span>✓ '+l.lat.toFixed(5)+', '+l.lng.toFixed(5)+(b.fm.locDirty?' <i>'+L('не сохранено','saqlanmagan')+'</i>':'')+'</span><span class="locbtns"><button type="button" class="btn ghost sm" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="">'+L('На карте','Xaritada')+'</button><button type="button" class="btn ghost sm" data-act="bfloc-clear">'+L('Убрать','Olib tashlash')+'</button></span></div>'
+      :'<div class="unit" style="margin:0">'+L('Точка не отмечена. Если вы у магазина, нажмите «Отметить здесь».','Nuqta belgilanmagan. Doʻkon yonida boʻlsangiz, «Shu yerda belgilash» tugmasini bosing.')+'</div>')
+    +'<button type="button" class="btn ghost locbtn" data-act="bfloc-here"'+(b.locBusy?' disabled':'')+'>'+ICO.pin+'<span>'+(b.locBusy?L('Определяем…','Aniqlanmoqda…'):l?L('Обновить здесь','Shu yerda yangilash'):L('Отметить здесь','Shu yerda belgilash'))+'</span></button>'
+    +'<div class="locpaste"><input type="text" id="bf-link" data-bf-link="1" value="'+esc(b.link)+'" placeholder="'+esc(L('или ссылка на карту, или «41.5543, 60.6361»','yoki xarita havolasi, yoki «41.5543, 60.6361»'))+'" autocomplete="off" aria-label="'+esc(L('Ссылка на карту или координаты','Xarita havolasi yoki koordinatalar'))+'"><button type="button" class="btn ghost sm" data-act="bfloc-link">'+L('Применить','Qoʻllash')+'</button></div>'
+    +'<div class="err" id="bflerr" role="alert"></div></div></div>';
+}
+function bfLocHere(){
+  const b=S.base;if(b.locBusy)return;
+  b.locBusy=true;paintBase();
+  getPos(l=>{b.locBusy=false;b.fm.loc={lat:l.lat,lng:l.lng};b.fm.locDirty=true;paintBase()},k=>{b.locBusy=false;paintBase();const e=$('#bflerr');if(e)e.textContent=geoErr(k)});
+}
+function bfLocLink(){
+  const b=S.base,l=parseGeo(b.link),e=$('#bflerr');
+  if(!String(b.link||'').trim()){if(e)e.textContent=L('Вставьте ссылку на карту или координаты.','Xarita havolasini yoki koordinatalarni qoʻying.');return}
+  if(!l){if(e)e.textContent=L('Не нашёл координаты. Откройте точку на карте и скопируйте ссылку из адресной строки браузера или координаты вида «41.5543, 60.6361». Короткие ссылки (maps.app.goo.gl) не подойдут.','Koordinatalar topilmadi. Nuqtani xaritada ochib, brauzer manzil satridagi havolani yoki «41.5543, 60.6361» koʻrinishidagi koordinatalarni nusxalang. Qisqa havolalar (maps.app.goo.gl) mos kelmaydi.');return}
+  b.fm.loc=l;b.fm.locDirty=true;b.link='';paintBase();
+}
+
 /* ---------- проверка товаров: владелец ---------- */
 const modN=()=>S.hub.me&&Number(S.hub.me.modN)||0;
 const catLabel=p=>(LANG==='uz'&&p.catUz)||p.catName||'';
@@ -2844,13 +2997,14 @@ const baseErr=e=>({
   need_terr:L('Выберите территорию','Hududni tanlang'),
   too_many:L('В базе уже максимум магазинов','Bazada doʻkonlar maksimal sonda'),
   forbidden:L('Это действие вам недоступно','Bu amal siz uchun mavjud emas'),
+  bad_loc:L('Точка не распознана. Отметьте её заново.','Nuqta aniqlanmadi. Uni qaytadan belgilang.'),
   not_found:L('Записи уже нет. Обновите список.','Yozuv topilmadi. Roʻyxatni yangilang.')
 }[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
 const dupTxt=x=>L('Такой магазин уже есть в базе: «'+(x&&x.name||'')+'»'+(x&&x.terr&&terrName(x.terr)?' ('+terrName(x.terr)+')':'')+'. Повторно добавить нельзя'+(x&&x.mine?'. Откройте его в списке и исправьте данные.':': его ведёт другой агент.'),
   'Bunday doʻkon bazada bor: «'+(x&&x.name||'')+'»'+(x&&x.terr&&terrName(x.terr)?' ('+terrName(x.terr)+')':'')+'. Qayta qoʻshib boʻlmaydi'+(x&&x.mine?'. Uni roʻyxatdan ochib, maʼlumotlarni tuzating.':': uni boshqa agent yuritadi.'));
 async function loadBase(reset){
   const b=S.base,seq=++b.seq;
-  const r=await api('GET','/api/hub/base?terr='+encodeURIComponent(b.terr)+'&f='+encodeURIComponent(b.f)+'&ag='+encodeURIComponent(b.ag)+'&sort='+encodeURIComponent(b.sort)+'&q='+encodeURIComponent(b.q)+'&off='+(reset?0:b.items.length));
+  const r=await api('GET','/api/hub/base?terr='+encodeURIComponent(b.terr)+'&f='+encodeURIComponent(b.f)+'&ag='+encodeURIComponent(b.ag)+'&sort='+encodeURIComponent(b.sort)+(b.sort==='near'&&b.near?'&lat='+b.near.lat+'&lng='+b.near.lng:'')+'&q='+encodeURIComponent(b.q)+'&off='+(reset?0:b.items.length));
   if(seq!==b.seq)return;
   if(!r.ok||!r.data||!Array.isArray(r.data.items)){
     if(!b.loaded)b.err=true;else toast(baseErr(r.data&&r.data.error));
@@ -2877,6 +3031,7 @@ const ICO={
   del:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.8 12.5h9.4L17.5 7M10 11v5M14 11v5"/></svg>',
   tel:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l1.5 4-2 1.3a11 11 0 0 0 5.2 5.2L15 12.5l4 1.5v4a1.5 1.5 0 0 1-1.6 1.5C10.7 19 5 13.3 4.5 5.6A1.5 1.5 0 0 1 5 4z"/></svg>',
   chev:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>',
+  pin:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>',
   filt:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>'
 };
 /* знаки на карточке: что значит каждый — в окне «?»; нажатие на знак оставляет в списке только такие магазины */
@@ -2914,6 +3069,7 @@ function baseCardHTML(x){
   return '<article class="bcard'+(w&&x.st==='refuse'?' dim':'')+'"><div class="bh"><h3>'+esc(x.name)+'</h3>'+(signs?'<span class="bsigns">'+signs+'</span>':'')+'<span class="dtag">'+esc(tn||(w?L('без района','rayonsiz'):''))+'</span></div>'
     +(x.addr?'<div class="dmeta">'+esc(x.addr)+'</div>':'')
     +(w&&x.note?'<div class="bnote">'+esc(x.note)+'</div>':'')
+    +baseLocHTML(x)
     +'<div class="bact'+(w&&!x.chk&&canDel?' tight':'')+'"><a class="bphone" href="'+esc(telHref(x.phone))+'">'+ICO.tel+'<span>'+esc(x.phone)+'</span></a>'
     +'<div class="bic"><button type="button" class="ibtn" data-act="copy" data-v="'+esc(x.phone)+'" data-ok="'+esc(L('Телефон скопирован','Telefon nusxalandi'))+'" data-lab="" aria-label="'+esc(L('Копировать телефон','Telefonni nusxalash'))+'">'+ICO.copy+'</button>'
     +(w?(!x.chk?ib(' ok','basechk','ok',L('Проверено','Tekshirildi'),b.busy?' disabled':''):'')+ib('','baseedit','edit',L('Изменить','Tahrirlash'))+(canDel?ib('','basedel','del',L('Удалить','Oʻchirish'),b.busy?' disabled':''):''):'')
@@ -2930,6 +3086,7 @@ function baseFormHTML(){
     +'<div class="full"><label class="lab" for="bf-addr">'+L('Адрес','Manzil')+'</label><input type="text" id="bf-addr" data-bf="addr" maxlength="200" value="'+esc(f.addr)+'" autocomplete="off"></div>'
     +'<div><label class="lab" for="bf-st">'+L('Статус','Holat')+'</label><select id="bf-st" data-bf="st">'+['new','talk','refuse'].map(k=>opt(k,BST()[k],f.st)).join('')+'</select></div>'
     +(b.role==='owner'?'<div><label class="lab" for="bf-agent">'+L('Агент','Agent')+'</label><select id="bf-agent" data-bf="agent">'+opt('','—',f.agent)+b.agents.map(a=>opt(a.id,a.name,f.agent)).join('')+'</select></div>':'')
+    +baseLocFormHTML()
     +'<div class="full"><label class="lab" for="bf-note">'+L('Заметка о визите (магазин и дистрибьюторы её не видят)','Tashrif haqida eslatma (doʻkon va distribyutorlar koʻrmaydi)')+'</label><textarea id="bf-note" data-bf="note" rows="3" maxlength="500">'+esc(f.note)+'</textarea></div>'
     +'</div><div class="err" id="bferr" role="alert">'+esc(b.ferr)+'</div>'
     +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="basesave"'+(b.busy?' disabled':'')+'>'+(b.busy?L('Сохраняем…','Saqlanmoqda…'):L('Сохранить','Saqlash'))+'</button><button type="button" class="btn ghost" data-act="basecancel"'+(b.busy?' disabled':'')+'>'+L('Отмена','Bekor qilish')+'</button></div></div>';
@@ -2959,6 +3116,7 @@ function paintBase(){
     +'<select data-bterr="1" aria-label="'+esc(L('Район','Rayon'))+'"><option value=""'+(b.terr?'':' selected')+'>'+esc(L('Все районы','Barcha rayonlar'))+' · '+tsum+'</option>'
     +tl.map(t=>'<option value="'+esc(t.id)+'"'+(b.terr===t.id?' selected':'')+'>'+esc(t.name)+' · '+t.n+'</option>').join('')+'</select></div>';
   if(w&&b.f){const nm=(BSTAT().find(x=>x[0]===b.f)||[])[1];bar+='<button type="button" class="chip on x" data-act="bclr" data-k="f">'+esc(L(nm||'',(BSTAT().find(x=>x[0]===b.f)||[])[2]||''))+'<span class="xx" aria-hidden="true">✕</span><span class="sr">'+esc(L('Сбросить','Bekor qilish'))+'</span></button>'}
+  if(w&&b.sort==='near')bar+='<button type="button" class="chip on x" data-act="bclr" data-k="sort">'+ICO.pin+L('Ближайшие','Eng yaqinlari')+'<span class="xx" aria-hidden="true">✕</span><span class="sr">'+esc(L('Сбросить','Bekor qilish'))+'</span></button>';
   if(owner&&b.ag)bar+='<button type="button" class="chip on x" data-act="bclr" data-k="ag">'+esc(bAgName(b.ag))+'<span class="xx" aria-hidden="true">✕</span><span class="sr">'+esc(L('Сбросить','Bekor qilish'))+'</span></button>';
   bar+='</div>';
   h+=bar+'<div class="bfound">'+L('Найдено: ','Topildi: ')+num(b.total)+'</div>';
@@ -2986,7 +3144,7 @@ function paintSheet(){
   const tl=bTerrList(),tsum=Object.keys(b.counts).reduce((a,k)=>a+b.counts[k],0);
   h+=grp(L('Район','Rayon'),bChip('bset','terr','',L('Все','Hammasi'),tsum,b.terr==='')+tl.map(t=>bChip('bset','terr',t.id,t.name,t.n,b.terr===t.id)).join(''));
   if(owner)h+=grp(L('Агент','Agent'),bChip('bset','ag','',L('Все','Hammasi'),undefined,b.ag==='')+b.agents.map(a=>bChip('bset','ag',a.id,a.name,undefined,b.ag===a.id)).join('')+bChip('bset','ag','-',L('Без агента','Agentsiz'),undefined,b.ag==='-'));
-  h+=grp(L('Порядок','Tartib'),bChip('bset','sort','',L('По названию','Nomi boʻyicha'),undefined,b.sort==='')+bChip('bset','sort','new',L('Сначала новые','Avval yangilari'),undefined,b.sort==='new'));
+  h+=grp(L('Порядок','Tartib'),bChip('bset','sort','',L('По названию','Nomi boʻyicha'),undefined,b.sort==='')+bChip('bset','sort','new',L('Сначала новые','Avval yangilari'),undefined,b.sort==='new')+bChip('bset','sort','near',L('Ближайшие','Eng yaqinlari'),undefined,b.sort==='near'));
   const n=b.total;
   el.innerHTML='<div class="fs-bg" data-act="bsheetx"></div><div class="fs" role="dialog" aria-modal="true" aria-label="'+esc(L('Фильтры','Filtrlar'))+'"><div class="fs-grab"></div>'
     +'<div class="fs-head"><h2>'+L('Фильтры','Filtrlar')+'</h2><button type="button" class="lnk" data-act="breset">'+L('Сбросить','Tozalash')+'</button></div><div class="fs-body">'+h+'</div>'
@@ -2998,7 +3156,7 @@ function baseOpenForm(x){
   let terr=x?x.terr:(b.terr&&b.terr!=='-'?b.terr:'');
   if(!x&&b.role==='agent'&&!terr&&b.mine.length===1)terr=b.mine[0];
   b.edit=x?x.id:'new';b.ferr='';
-  b.fm=x?{name:x.name,phone:x.phone,addr:x.addr||'',terr:x.terr||'',st:x.st||'new',note:x.note||'',agent:x.agent||''}:{name:'',phone:'',addr:'',terr,st:'new',note:'',agent:''};
+  b.fm=x?{name:x.name,phone:x.phone,addr:x.addr||'',terr:x.terr||'',st:x.st||'new',note:x.note||'',agent:x.agent||'',loc:x.loc?{lat:x.loc.lat,lng:x.loc.lng}:null,locDirty:false}:{name:'',phone:'',addr:'',terr,st:'new',note:'',agent:'',loc:null,locDirty:false};b.link='';
   paintBase();
   const f=$('#bform');if(f)try{f.scrollIntoView({block:'start',behavior:'smooth'})}catch(e){}
 }
@@ -3006,6 +3164,7 @@ async function baseSave(){
   const b=S.base;if(b.busy||b.edit===null)return;
   const f=b.fm,body={name:f.name.trim(),phone:f.phone.trim(),addr:f.addr.trim(),terr:f.terr,st:f.st,note:f.note.trim()};
   if(b.role==='owner')body.agent=f.agent||'';
+  if(f.locDirty)body.loc=f.loc?{lat:f.loc.lat,lng:f.loc.lng}:null;   // точку шлём, только если её меняли
   if(body.name.length<2){b.ferr=baseErr('bad_name');paintBase();return}
   if(body.phone.replace(/\D/g,'').length<9){b.ferr=baseErr('bad_phone');paintBase();return}
   const isNew=b.edit==='new';
@@ -3336,13 +3495,27 @@ document.addEventListener('click',e=>{
   else if(a==='bsheet'){S.base.sheet=true;S.base.legend=false;paintSheet()}
   else if(a==='blegend'){S.base.legend=true;S.base.sheet=false;paintSheet()}
   else if(a==='bsheetx'){S.base.sheet=false;S.base.legend=false;paintSheet()}
-  else if(a==='bset'){const k=t.dataset.k;if(['f','terr','ag','sort'].includes(k)){S.base[k]=t.dataset.v;loadBase(true)}}
-  else if(a==='bclr'){const k=t.dataset.k;if(k==='f'||k==='ag'){S.base[k]='';loadBase(true)}}
+  else if(a==='bset'){
+    const k=t.dataset.k;
+    if(k==='sort'&&t.dataset.v==='near')baseNear();
+    else if(['f','terr','ag','sort'].includes(k)){S.base[k]=t.dataset.v;loadBase(true)}
+  }
+  else if(a==='bclr'){const k=t.dataset.k;if(k==='f'||k==='ag'||k==='sort'){S.base[k]='';loadBase(true)}}
   else if(a==='breset'){Object.assign(S.base,{f:'',terr:'',ag:'',sort:''});loadBase(true)}
   else if(a==='bsign'){const b=S.base;b.f=b.f===t.dataset.v?'':t.dataset.v;b.legend=false;loadBase(true);window.scrollTo(0,0)}
   else if(a==='basemore')loadBase(false);
   else if(a==='basenew')baseOpenForm(null);
   else if(a==='baseedit')baseOpenForm(S.base.items.find(x=>x.id===t.dataset.id)||null);
+  else if(a==='map')openMapSheet(t.dataset.lat,t.dataset.lng,t.dataset.t||'');
+  else if(a==='mapx')closeMapSheet();
+  else if(a==='mapgo')mapGo(t.dataset.k);
+  else if(a==='locmark')locMark();
+  else if(a==='locclear'){S.form.loc=null;paintLocBox()}
+  else if(a==='baseloc')baseMark(t.dataset.id);
+  else if(a==='baseaccept')baseAccept(t.dataset.id);
+  else if(a==='bfloc-here')bfLocHere();
+  else if(a==='bfloc-link')bfLocLink();
+  else if(a==='bfloc-clear'){S.base.fm.loc=null;S.base.fm.locDirty=true;paintBase()}
   else if(a==='basecancel'){S.base.edit=null;S.base.ferr='';paintBase()}
   else if(a==='basesave')baseSave();
   else if(a==='basechk')baseCheck(t.dataset.id);
@@ -3579,6 +3752,7 @@ document.addEventListener('input',e=>{
   else if(t.dataset.opct!==undefined)S.own.pcts[t.dataset.opct]=t.value;
   else if(t.dataset.bq!==undefined){S.base.q=t.value;clearTimeout(S.base.qt);S.base.qt=setTimeout(()=>loadBase(true),350)}
   else if(t.dataset.bf!==undefined)S.base.fm[t.dataset.bf]=t.value;
+  else if(t.dataset.bfLink!==undefined)S.base.link=t.value;
   else if(t.dataset.aterr!==undefined){const set=new Set(S.own.aterr);if(t.checked)set.add(t.dataset.aterr);else set.delete(t.dataset.aterr);S.own.aterr=[...set]}
   else if(t.dataset.agterr!==undefined){
     const [aid,tid]=t.dataset.agterr.split(':'),ag=S.own.ppl&&S.own.ppl.agents.find(x=>x.id===aid);
