@@ -2748,7 +2748,9 @@ await t('резервная копия содержит продажи по дн
   const days = Object.keys(bk.reports.days);
   assert.equal(days.length, 1);
   assert.equal(bk.reports.days[days[0]].n, 1);
-  assert.deepEqual(bk.reports.days[days[0]].items, [{ id: 'p4', name: 'Макароны', qty: 12, sum: 84000 }]);
+  assert.deepEqual(bk.reports.days[days[0]].items, [{ id: 'p4', name: 'Макароны', qty: 12, sum: 84000, c: 'groats', n: 1 }]);
+  assert.equal(bk.reports.days[days[0]].v, 2, 'день начат со счётом заказов по товарам');
+  assert.deepEqual(bk.reports.days[days[0]].cn, { groats: 1 }, 'заказ засчитан в категорию «Крупы и макароны»');
   assert.ok(bk.reports.since);
   assert.deepEqual(bk.prod.items[3].tiers, [{ n: 10, price: 7000 }]);
   // загрузка прайса меняет цену, но ступени и упаковки остаются
@@ -4363,6 +4365,122 @@ await t('одна база: заметка у магазина без аккау
   await baseSend('PUT', '/' + bid, { st: 'refuse' });
   assert.equal((await call('GET', '/api/hub/base/' + bid + '/mine?sh=' + sid, { init: iD() })).status, 404);
   assert.equal((await set({ sh: sid, note: 'ещё' })).status, 404);
+});
+
+/* ---------- аналитика владельца: продажи по категориям, товарам и магазинам ---------- */
+const anaGet = async (qs, init) => jsonOf(await call('GET', '/api/hub/admin/analytics' + (qs || ''), { init: init || iS() }));
+const todayT = () => new Date(Date.now() + 5 * 3600000).toISOString().slice(0, 10);
+async function placeDone(sid, sellerInit, u, cart, form) {
+  const r = await callS(sid, 'POST', '/api/order', { init: u.init(), body: { cart, form: formFor(S.DEFAULT, 'pickup', form), lang: 'ru', expectTotal: totalOf(cart) } });
+  assert.equal(r.status, 200);
+  const id = (await jsonOf(r)).order.id;
+  for (const to of ['accepted', 'ready', 'done']) assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: sellerInit, body: { id, to } })).status, 200);
+  return id;
+}
+const RM = { name: 'Ромашка', phone: '+998 90 111 22 33' }, LI = { name: 'Лилия', phone: '+998 90 444 55 66' };
+async function anaWorld() {
+  const w = await twoShopWorld();
+  const [a, c, b] = [newUser(), newUser(), newUser()];
+  await placeDone(w.sid, iD(), a, [{ id: 'p1', qty: 2 }, { id: 'p2', qty: 1 }], RM);   // 164 000 + 410 000
+  await placeDone(w.sid2, iJ2(), a, [{ id: 'p2', qty: 1 }], RM);                          // 410 000
+  await placeDone(w.sid2, iJ2(), a, [{ id: 'p1', qty: 1 }], RM);                          // 82 000
+  await placeDone(w.sid2, iJ2(), c, [{ id: 'p1', qty: 1 }], LI);                          // 82 000
+  // заказы, которые не выданы, в аналитику не входят
+  await ordBase(w.sid, b, { name: 'Незавершённый', phone: '+998 90 555 66 77' });
+  const x = await ordBase(w.sid2, b, { name: 'Незавершённый', phone: '+998 90 555 66 77' });
+  assert.equal((await callS(w.sid2, 'POST', '/api/admin/status', { init: iJ2(), body: { id: x.order.id, to: 'cancelled' } })).status, 200);
+  return w;
+}
+const catRow = (a, n) => a.cats.find(c => c.name === n);
+
+await t('аналитика: только выданные заказы; категории сведены по названию у всех дистрибьюторов', async () => {
+  const { sid, sid2 } = await anaWorld();
+  const a = await anaGet('?days=30');
+  assert.deepEqual([a.days, a.to, a.sh, a.partial, a.failed], [30, todayT(), '', false, 0]);
+  assert.deepEqual(a.tot, { n: 4, sum: 1148000, shops: 2, stores: 2 }, 'невыданные и отменённые не считаются');
+  assert.equal(a.cats.length, 2, 'одинаковые категории двух дистрибьюторов в одной строке');
+  assert.deepEqual([catRow(a, 'Масла').n, catRow(a, 'Масла').qty, catRow(a, 'Масла').sum], [3, 4, 328000]);
+  assert.deepEqual([catRow(a, 'Крупы и макароны').n, catRow(a, 'Крупы и макароны').qty, catRow(a, 'Крупы и макароны').sum], [2, 2, 820000]);
+  assert.equal(a.cats.reduce((s, c) => s + c.sum, 0), a.tot.sum, 'суммы категорий дают общую сумму (скидок нет)');
+  assert.equal(a.cats[0].name, 'Крупы и макароны', 'сначала то, что продано на большую сумму');
+  assert.equal(a.cats[0].uz, 'Yorma va makaron');
+  // товары: у каждого свой дистрибьютор, заказов / штук / сумма
+  assert.equal(a.nprods, 4);
+  const pr = (shop, nm) => a.prods.find(x => x.shop === shop && x.name === nm);
+  assert.deepEqual([pr(sid, 'Масло подсолнечное').n, pr(sid, 'Масло подсолнечное').qty, pr(sid, 'Масло подсолнечное').sum], [1, 2, 164000]);
+  assert.deepEqual([pr(sid2, 'Масло подсолнечное').n, pr(sid2, 'Масло подсолнечное').qty, pr(sid2, 'Масло подсолнечное').sum], [2, 2, 164000]);
+  assert.deepEqual([pr(sid2, 'Рис').n, pr(sid2, 'Рис').qty, pr(sid2, 'Рис').sum, pr(sid2, 'Рис').shopName], [1, 1, 410000, 'Бета Опт']);
+  assert.equal(a.prods[0].sum, 410000, 'по убыванию суммы');
+  // магазины: сведены по записи базы, у Ромашки два дистрибьютора
+  assert.equal(a.nstores, 2);
+  assert.deepEqual(a.stores.map(x => [x.name, x.n, x.sum, x.nd, x.last]), [['Ромашка', 3, 1066000, 2, todayT()], ['Лилия', 1, 82000, 1, todayT()]]);
+  assert.ok(!JSON.stringify(a).includes('"uid"'), 'номера аккаунтов наружу не уходят');
+  assert.ok(['Альфа Трейд', 'Бета Опт'].every(n => a.shops.some(x => x.name === n)), 'в списке дистрибьюторов оба');
+  assert.ok(/^\d{4}-\d\d-\d\d$/.test(a.since));
+});
+
+await t('аналитика: один дистрибьютор, период, доступ только у владельца', async () => {
+  const { sid, sid2 } = await anaWorld();
+  const b = await anaGet('?days=30&sh=' + sid2);
+  assert.deepEqual([b.sh, b.tot.n, b.tot.sum, b.tot.shops, b.tot.stores], [sid2, 3, 574000, 1, 2]);
+  assert.deepEqual([catRow(b, 'Масла').n, catRow(b, 'Масла').qty, catRow(b, 'Масла').sum], [2, 2, 164000]);
+  assert.deepEqual([catRow(b, 'Крупы и макароны').n, catRow(b, 'Крупы и макароны').sum], [1, 410000]);
+  assert.ok(b.prods.every(x => x.shop === sid2));
+  assert.deepEqual(b.stores.map(x => [x.name, x.n, x.nd]), [['Ромашка', 2, 1], ['Лилия', 1, 1]], 'Ромашка у одного дистрибьютора: заказов 2');
+  const al = await anaGet('?days=30&sh=' + sid);
+  assert.deepEqual([al.tot.n, al.tot.sum, al.stores.length], [1, 574000, 1]);
+  // чужой номер дистрибьютора и неверный период: все дистрибьюторы, 30 дней
+  const bad = await anaGet('?days=5&sh=nope');
+  assert.deepEqual([bad.days, bad.sh, bad.tot.n], [30, '', 4]);
+  for (const d of [7, 90, 365]) assert.equal((await anaGet('?days=' + d)).days, d);
+  assert.equal((await anaGet('?days=7')).tot.n, 4, 'сегодняшние заказы в недельном периоде');
+  // доступ
+  assert.equal((await call('GET', '/api/hub/admin/analytics', { init: iD() })).status, 403, 'дистрибьютор не видит');
+  assert.equal((await call('GET', '/api/hub/admin/analytics', { init: newUser().init() })).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/analytics')).status, 401);
+  assert.equal((await call('POST', '/api/hub/admin/analytics', { init: iS(), body: {} })).status, 404);
+});
+
+await t('аналитика: удалённый товар попадает в «Без категории», за прежние дни считаются штуки и суммы без заказов', async () => {
+  const { sid } = await anaWorld();
+  // старый день без счёта заказов (запись сделана до появления раздела)
+  const st = W.shops.get(sid).storage, old = new Date(Date.now() + 5 * 3600000 - 3 * 86400000).toISOString().slice(0, 10);
+  const idx = (await st.get('rpx')) || [];
+  await st.put('rp:' + old, { n: 2, sum: 200000, disc: 0, fee: 0, items: [{ id: 'p1', name: 'Масло подсолнечное', qty: 2, sum: 164000 }], cl: [] });
+  await st.put('rpx', [...idx, old].sort());
+  const wide = await anaGet('?days=7&sh=' + sid);
+  assert.equal(wide.partial, true, 'в периоде есть дни без счёта заказов');
+  assert.deepEqual([wide.tot.n, wide.tot.sum], [3, 774000]);
+  assert.deepEqual([catRow(wide, 'Масла').qty, catRow(wide, 'Масла').sum, catRow(wide, 'Масла').n], [4, 328000, 1], 'штуки и суммы за все дни, заказов только за новые');
+  const p1 = wide.prods.find(x => x.name === 'Масло подсолнечное');
+  assert.deepEqual([p1.qty, p1.sum, p1.n], [4, 328000, 1]);
+  // период короче: старый день не входит, счёт полный
+  const fresh = await anaGet('?days=7&sh=' + sid);
+  assert.equal(fresh.partial, true);
+  await st.put('rpx', idx);
+  assert.equal((await anaGet('?days=7&sh=' + sid)).partial, false, 'без старого дня счёт полный');
+  // товар удалён, а его категория осталась: продажи остаются в ней, заказов и штук поровну
+  const cur = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod;
+  const noItem = Object.assign({}, cur, { items: cur.items.filter(x => x.id !== 'p1') });
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: noItem } })).status, 200);
+  const a1 = await anaGet('?days=30&sh=' + sid);
+  assert.equal(catRow(a1, ''), undefined, 'категория жива: «Без категории» нет');
+  assert.deepEqual([catRow(a1, 'Масла').n, catRow(a1, 'Масла').qty, catRow(a1, 'Масла').sum], [1, 2, 164000]);
+  assert.ok(a1.prods.some(x => x.name === 'Масло подсолнечное' && x.qty === 2), 'товар в списке остался');
+  // удалена и категория: продажи уходят в «Без категории», суммы не теряются
+  const noCat = Object.assign({}, noItem, { cats: noItem.cats.filter(c => c.id !== 'oil') });
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: noCat } })).status, 200);
+  const a = await anaGet('?days=30&sh=' + sid);
+  assert.equal(catRow(a, 'Масла'), undefined, 'категории «Масла» больше нет');
+  assert.deepEqual([catRow(a, '').n, catRow(a, '').qty, catRow(a, '').sum], [1, 2, 164000]);
+  assert.deepEqual([catRow(a, 'Крупы и макароны').qty, catRow(a, 'Крупы и макароны').sum], [1, 410000]);
+  assert.equal(a.cats.reduce((x, c) => x + c.sum, 0), a.tot.sum, 'сумма по строкам не потерялась');
+});
+
+await t('аналитика: площадка без продаж отвечает нулями, а не ошибкой', async () => {
+  await twoShopWorld();
+  const a = await anaGet('?days=30');
+  assert.deepEqual([a.tot, a.cats, a.prods, a.stores, a.nprods, a.nstores, a.partial, a.failed], [{ n: 0, sum: 0, shops: 0, stores: 0 }, [], [], [], 0, 0, false, 0]);
 });
 
 /* ---------- итог ---------- */

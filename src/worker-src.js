@@ -974,18 +974,23 @@ function statRange(period) {
   if (period === 'prev') { const last = addDays(first, -1); return { period, from: last.slice(0, 7) + '-01', to: last }; }
   return { period: 'month', from: first, to: today };
 }
-function rpAdd(rp, o, pct) {
+function rpAdd(rp, o, pct, catOf) {
   const total = Number(o.total) || 0;
+  if (!rp.n) rp.v = 2;   // день начат с подсчётом заказов по товарам и категориям (у записей до этого счёта поля v нет)
   if (rp.cb === undefined) rp.cb = Math.max(0, (Number(rp.sum) || 0) - (Number(rp.fee) || 0));   // запись дня, начатая до комиссии
   const base = Math.max(0, total - (Number(o.fee) || 0));
   rp.cb += base; rp.cm = (Number(rp.cm) || 0) + Math.round(base * (Number(pct) || 0) / 100);
   rp.n += 1; rp.sum += total; rp.disc += Number(o.disc) || 0; rp.fee += Number(o.fee) || 0;
+  const seen = new Set(), cats = new Set();
   for (const it of o.items || []) {
     const qty = Number(it.qty) || 0;
     let x = rp.items.find(y => y.id === it.id);
-    if (!x) { x = { id: String(it.id), name: cleanStr(it.name, 60), qty: 0, sum: 0 }; rp.items.push(x); }
+    if (!x) { x = { id: String(it.id), name: cleanStr(it.name, 60), qty: 0, sum: 0 }; if (catOf) x.c = catOf(String(it.id)); rp.items.push(x); }
     x.qty += qty; x.sum += qty * (Number(it.price) || 0);
+    if (rp.v === 2 && !seen.has(x.id)) { seen.add(x.id); x.n = (Number(x.n) || 0) + 1; }
+    if (catOf) cats.add(x.c !== undefined ? x.c : catOf(x.id));
   }
+  if (rp.v === 2 && cats.size) { rp.cn = rp.cn || {}; cats.forEach(c => { rp.cn[c] = (Number(rp.cn[c]) || 0) + 1; }); }
   if (o.uid) {
     let c = rp.cl.find(y => y.uid === o.uid);
     if (!c) { if (rp.cl.length >= 400) return; c = { uid: o.uid, name: '', org: '', n: 0, sum: 0 }; rp.cl.push(c); }
@@ -1044,6 +1049,47 @@ function reportBuild(o) {
     series, months: [...months.values()].sort((a, b) => a.m.localeCompare(b.m)),
     prods: prodsOut, cl: clOut, buy: { window: W, cover: RP_COVER, list: list.slice(0, 30) }
   };
+}
+/* Продажи за период для владельца: по товарам, по категориям, по клиентам. days — дни периода, map — «rp:<день>» → запись.
+   Заказов по товару и по категории считаются только за дни с полем v (с запуска этого раздела), за прежние дни остаются штуки и суммы (partial).
+   Категория продажи — та, что была у товара в день продажи (поле c записи); у записей без неё берётся нынешний каталог.
+   Если такой категории в каталоге уже нет, продажа попадает в «Без категории» (name ''). */
+function analyticsBuild(o) {
+  const { days, map, prod } = o;
+  const catOf = new Map(prod.items.map(p => [p.id, p.cat])), nameOf = new Map(prod.items.map(p => [p.id, p.name]));
+  const catById = new Map(prod.cats.map(c => [c.id, c]));
+  const tot = { n: 0, sum: 0 }, prods = new Map(), cats = new Map(), cls = new Map();
+  let partial = false;
+  const catRow = id => {
+    const c = catById.get(id), key = c ? id : '';
+    let a = cats.get(key);
+    if (!a) { a = { name: c ? c.name : '', uz: c ? (c.uz || '') : '', n: 0, qty: 0, sum: 0 }; cats.set(key, a); }
+    return a;
+  };
+  for (const d of days) {
+    const r = map.get('rp:' + d);
+    if (!r) continue;
+    tot.n += Number(r.n) || 0; tot.sum += Number(r.sum) || 0;
+    const counted = r.v === 2;
+    if (!counted && r.n > 0) partial = true;
+    for (const x of r.items || []) {
+      let a = prods.get(x.id);
+      if (!a) { a = { id: x.id, name: x.name, n: 0, qty: 0, sum: 0 }; prods.set(x.id, a); }
+      a.qty += Number(x.qty) || 0; a.sum += Number(x.sum) || 0; a.name = nameOf.get(x.id) || x.name || a.name;
+      if (counted) a.n += Number(x.n) || 0;
+      const c = catRow(x.c !== undefined ? x.c : (catOf.get(x.id) || ''));
+      c.qty += Number(x.qty) || 0; c.sum += Number(x.sum) || 0;
+    }
+    if (counted && r.cn) for (const k of Object.keys(r.cn)) catRow(k).n += Number(r.cn[k]) || 0;
+    for (const c of r.cl || []) {
+      let a = cls.get(c.uid);
+      if (!a) { a = { uid: c.uid, name: c.name, org: c.org, n: 0, sum: 0, last: '' }; cls.set(c.uid, a); }
+      a.n += Number(c.n) || 0; a.sum += Number(c.sum) || 0; a.name = c.name || a.name; a.org = c.org || a.org;
+      if (d > a.last) a.last = d;
+    }
+  }
+  const top = (m, cap) => [...m.values()].sort((a, b) => b.sum - a.sum || b.n - a.n).slice(0, cap);
+  return { tot, partial, since: o.since || '', prods: top(prods, 500), cats: [...cats.values()].sort((a, b) => b.sum - a.sum), cls: top(cls, 1000) };
 }
 const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const ruDay = d => d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4);
@@ -1186,19 +1232,31 @@ export class Shop {
   async ensureReports() {
     if (await this.st.get('rpx') !== undefined) return;
     const done = (await this.getOrders((await this.st.get('hist')) || [])).filter(o => o.status === 'done');
-    const byDay = new Map();
+    const byDay = new Map(), catOf = await this.catOf();
     let first = null;
     for (const o of done) {
       const d = dayOf(o.statusAt || o.createdAt);
       let r = byDay.get(d);
       if (!r) { r = newRp(); byDay.set(d, r); }
-      rpAdd(r, o);
+      rpAdd(r, o, 0, catOf);
       if (!first || d < first) first = d;
     }
     const days = [...byDay.keys()].sort().slice(-RP_KEEP);
     const upd = { rpx: days, rp0: first || dayOf(new Date().toISOString()) };
     days.forEach(d => { upd['rp:' + d] = byDay.get(d); });
     await this.st.put(upd);
+  }
+  /* Категория товара по его номеру в нынешнем каталоге ('' — товара или категории нет). */
+  async catOf() {
+    const prod = await this.getProd(), cat = new Map(prod.items.map(p => [p.id, p.cat]));
+    return id => cat.get(id) || '';
+  }
+  /* Продажи за период для раздела «Аналитика» владельца. */
+  async analytics(from, to) {
+    await this.ensureReports();
+    const days = ((await this.st.get('rpx')) || []).filter(d => d >= from && d <= to);
+    const map = await this.getMany(days.map(d => 'rp:' + d));
+    return analyticsBuild({ days, map, prod: await this.getProd(), since: (await this.st.get('rp0')) || '' });
   }
   async report(days) {
     await this.ensureReports();
@@ -1498,6 +1556,11 @@ export class Shop {
     if (path === '/__/mine-set') return await this.mineSet(b);
     if (path === '/__/mine-orders') return json({ orders: await this.mineOrders(b.uids) });
     if (path === '/__/stats') return json(await this.commRange(String(b.from || ''), String(b.to || '')));
+    if (path === '/__/analytics') {
+      const ymd = /^\d{4}-\d\d-\d\d$/;
+      if (!ymd.test(String(b.from)) || !ymd.test(String(b.to))) return json({ error: 'bad_request' }, 400);
+      return json(await this.analytics(b.from, b.to));
+    }
     if (path === '/__/cpct') {
       const pct = cleanPct(b.pct);
       if (pct === null) return json({ error: 'bad_pct' }, 400);
@@ -2137,7 +2200,7 @@ export class Shop {
       if (to === 'done') {
         const day = dayOf(o.statusAt);
         const rp = (await this.st.get('rp:' + day)) || newRp();
-        rpAdd(rp, o, await this.getPct());
+        rpAdd(rp, o, await this.getPct(), await this.catOf());
         upd['rp:' + day] = rp;
         const idx = (await this.st.get('rpx')) || [];
         if (!idx.includes(day)) {
@@ -3062,6 +3125,7 @@ export class Hub {
       await this.st.put('title', t);
       return json({ title: t });
     }
+    if (path === '/api/hub/admin/analytics' && method === 'GET') return await this.adminAnalytics(new URL(request.url));
     if (path === '/api/hub/admin/stats' && method === 'GET') {
       const rg = statRange(new URL(request.url).searchParams.get('period') || 'month');
       const recs = await this.allRecs();
@@ -3100,6 +3164,56 @@ export class Hub {
       }
     }
     return json({ error: 'not_found' }, 404);
+  }
+  /* Аналитика продаж, владелец: только выданные заказы за период (7/30/90/365 дней), по всем дистрибьюторам или по одному (?sh=).
+     Категории сводятся по названию, магазины по записи базы (номера аккаунтов наружу не уходят). */
+  async adminAnalytics(url) {
+    const sp = url.searchParams, d = Number(sp.get('days'));
+    const days = RP_RANGES.includes(d) ? d : 30;
+    const to = dayOf(new Date().toISOString()), from = addDays(to, -(days - 1));
+    const recs = await this.allRecs();
+    const sh = recs.some(r => r.id === sp.get('sh')) ? sp.get('sh') : '';
+    const res = await Promise.all((sh ? recs.filter(r => r.id === sh) : recs).map(async r => ({ r, x: await shopCall(this.env, r.id, '/__/analytics', { from, to }) })));
+    const um = await this.uidMap();
+    const tot = { n: 0, sum: 0, shops: 0 }, cats = new Map(), prods = [], stores = new Map();
+    let partial = false, failed = 0, since = '';
+    for (const { r, x } of res) {
+      const a = x.ok && x.data && x.data.tot ? x.data : null;
+      if (!a) { failed++; continue; }
+      tot.n += a.tot.n; tot.sum += a.tot.sum;
+      if (a.tot.n > 0) tot.shops++;
+      if (a.partial) partial = true;
+      if (a.since && (!since || a.since < since)) since = a.since;
+      for (const c of a.cats) {
+        const key = String(c.name || '').trim().toLowerCase();
+        const e = cats.get(key) || { name: c.name, uz: c.uz || '', n: 0, qty: 0, sum: 0 };
+        e.n += c.n; e.qty += c.qty; e.sum += c.sum; if (!e.uz && c.uz) e.uz = c.uz;
+        cats.set(key, e);
+      }
+      for (const p of a.prods) prods.push({ name: p.name, shop: r.id, shopName: r.name, n: p.n, qty: p.qty, sum: p.sum });
+      for (const c of a.cls) {
+        const bid = um.bidOf.get(Number(c.uid)), key = bid || 'u' + c.uid;
+        const e = stores.get(key) || { bid, name: c.name || '', org: c.org || '', n: 0, sum: 0, shops: new Set(), last: '' };
+        e.n += c.n; e.sum += c.sum; e.shops.add(r.id); if (c.last > e.last) e.last = c.last;
+        stores.set(key, e);
+      }
+    }
+    const bids = [...new Set([...stores.values()].map(e => e.bid).filter(Boolean))], nm = new Map();
+    for (let i = 0; i < bids.length; i += 100) {
+      const got = await this.st.get(bids.slice(i, i + 100).map(b => 'b:' + b));
+      got.forEach(rec => { if (rec && rec.name) nm.set(rec.id, rec.name); });
+    }
+    const storesOut = [...stores.values()].map(e => ({ name: nm.get(e.bid) || e.name, n: e.n, sum: e.sum, nd: e.shops.size, last: e.last }))
+      .sort((a, b) => b.sum - a.sum || b.n - a.n);
+    prods.sort((a, b) => b.sum - a.sum || b.n - a.n);
+    return json({
+      days, from, to, sh, since, partial, failed,
+      shops: recs.map(r => ({ id: r.id, name: r.name })),
+      tot: Object.assign(tot, { stores: storesOut.length }),
+      cats: [...cats.values()].sort((a, b) => b.sum - a.sum),
+      prods: prods.slice(0, 300), nprods: prods.length,
+      stores: storesOut.slice(0, 300), nstores: storesOut.length
+    });
   }
   /* Проверка товаров, владелец: список со всех дистрибьюторов, одобрить, вернуть с причиной, поправить, фото. */
   async adminMod(request, path, method) {
