@@ -3560,6 +3560,67 @@ await t('база: поиск, территории, проверка и стр�
   assert.ok(Array.isArray((await baseGet()).agents));
 });
 
+await t('база: фильтры «новые», «в приложении», агент и порядок «сначала новые»; районы считаются с учётом фильтров', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const tn = t1.terr[0].id, tk = t1.terr[1].id;
+  const made = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [tn] }));
+  await send(agentMsg(AGT, made.code, 2));
+  const mk = async (name, n, over) => (await jsonOf(await baseSend('POST', '', Object.assign({ name, phone: '+998 90 100 00 0' + n, addr: 'ул. ' + name }, over)))).item;
+  const a = await mk('Альфа', 1, { terr: tn });
+  const b = await mk('Бета', 2, { terr: tn, agent: made.agentId });
+  const c = await mk('Гамма', 3, { terr: tk });
+  const d = await mk('Дельта', 4, { terr: tk, agent: made.agentId });
+  assert.equal((await baseSend('PUT', '/' + b.id, { st: 'talk' })).status, 200);
+  assert.equal((await baseSend('PUT', '/' + d.id, { st: 'refuse' })).status, 200);
+  await ordBase(sid, newUser(), { name: 'Эпсилон', phone: '+998 91 100 00 05' });
+  // сохранённое время создания делаем разным, чтобы порядок «сначала новые» не зависел от скорости теста
+  for (const [x, day] of [[a, 1], [b, 2], [c, 3], [d, 4]]) { const r = await W.hubStorage.get('b:' + x.id); r.created = '2026-11-0' + day + 'T10:00:00.000Z'; await W.hubStorage.put('b:' + x.id, r); }
+  const eps = (await baseGet('?q=' + encodeURIComponent('Эпсилон'))).items[0];
+  { const r = await W.hubStorage.get('b:' + eps.id); r.created = '2026-11-05T10:00:00.000Z'; await W.hubStorage.put('b:' + eps.id, r); }
+  const nm = async (qs, init) => (await baseGet(qs, init)).items.map(x => x.name);
+  assert.equal((await baseGet()).total, 5);
+  assert.deepEqual(await nm('?f=new'), ['Альфа', 'Гамма', 'Эпсилон'], 'статус «Новый»');
+  assert.deepEqual(await nm('?f=talk'), ['Бета']);
+  assert.deepEqual(await nm('?f=refuse'), ['Дельта']);
+  assert.deepEqual(await nm('?f=app'), ['Эпсилон'], 'в приложении — те, у кого есть аккаунт');
+  assert.deepEqual(await nm('?f=chk'), ['Эпсилон'], 'не проверен — из заказа');
+  // агент
+  assert.deepEqual(await nm('?ag=' + made.agentId), ['Бета', 'Дельта']);
+  assert.deepEqual(await nm('?ag=-'), ['Альфа', 'Гамма', 'Эпсилон'], 'без агента');
+  // фильтры складываются
+  assert.deepEqual(await nm('?f=refuse&ag=' + made.agentId), ['Дельта']);
+  assert.deepEqual(await nm('?f=talk&ag=-'), []);
+  assert.deepEqual(await nm('?f=new&terr=' + tk), ['Гамма']);
+  assert.deepEqual(await nm('?f=new&ag=-&q=' + encodeURIComponent('аль')), ['Альфа']);
+  // порядок
+  assert.deepEqual(await nm('?sort=new'), ['Эпсилон', 'Дельта', 'Гамма', 'Бета', 'Альфа'], 'сначала новые');
+  assert.deepEqual(await nm(''), ['Альфа', 'Бета', 'Гамма', 'Дельта', 'Эпсилон'], 'по умолчанию по названию');
+  assert.deepEqual(await nm('?sort=new&terr=' + tk), ['Дельта', 'Гамма']);
+  // районы считаются с учётом статуса, агента и поиска, но не района
+  assert.deepEqual((await baseGet()).counts, { [tn]: 2, [tk]: 2, '': 1 });
+  assert.deepEqual((await baseGet('?f=new')).counts, { [tn]: 1, [tk]: 1, '': 1 });
+  assert.deepEqual((await baseGet('?ag=' + made.agentId)).counts, { [tn]: 1, [tk]: 1 });
+  assert.deepEqual((await baseGet('?q=' + encodeURIComponent('Гамма'))).counts, { [tk]: 1 });
+  const ft = await baseGet('?f=new&terr=' + tk);
+  assert.deepEqual([ft.total, ft.all, ft.counts], [1, 5, { [tn]: 1, [tk]: 1, '': 1 }], 'выбор района не меняет счётчики районов');
+  assert.equal((await baseGet('?f=app')).unchk, 1);
+  // агент: только своя зона; фильтр по другому агенту ему не нужен и игнорируется; «в приложении» работает
+  const ag = await baseGet('', iG());
+  assert.deepEqual(ag.items.map(x => x.name), ['Альфа', 'Бета', 'Дельта', 'Эпсилон'], 'агент не видит Кармана без своих');
+  assert.deepEqual((await baseGet('?ag=-', iG())).items.map(x => x.name), ['Альфа', 'Бета', 'Дельта', 'Эпсилон'], 'агент не выбирает агентов');
+  assert.deepEqual((await baseGet('?f=app', iG())).items.map(x => x.name), ['Эпсилон']);
+  assert.deepEqual((await baseGet('?f=talk&terr=' + tn, iG())).items.map(x => x.name), ['Бета']);
+  assert.deepEqual((await baseGet('?sort=new', iG())).items.map(x => x.name), ['Эпсилон', 'Дельта', 'Бета', 'Альфа']);
+  assert.ok(!('agents' in ag));
+  // дистрибьютор: статусы, «в приложении» и агента не выбирает; район, поиск и порядок работают; отказавшихся не видит
+  assert.deepEqual((await baseGet('?f=app&ag=-', iD())).items.map(x => x.name), ['Альфа', 'Бета', 'Гамма', 'Эпсилон']);
+  assert.deepEqual((await baseGet('?terr=' + tk, iD())).items.map(x => x.name), ['Гамма']);
+  assert.deepEqual((await baseGet('', iD())).counts, { [tn]: 2, [tk]: 1, '': 1 });
+  assert.deepEqual((await baseGet('?sort=new', iD())).items.map(x => x.name), ['Эпсилон', 'Гамма', 'Бета', 'Альфа']);
+});
+
 await t('база: территории и агенты — без повторов, удаляются только пустые; новый код отключает прежний аккаунт', async () => {
   await shopWorld();
   let r = await adm('POST', '/terr', { names: ['Навои', 'навои', ' Зарафшан ', 'x', 5] });

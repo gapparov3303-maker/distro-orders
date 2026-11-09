@@ -2628,23 +2628,30 @@ export class Hub {
     await this.st.put('bn', Math.max(0, ((await this.st.get('bn')) || 1) - 1));
     return json({ ok: true });
   }
-  /* Список для экрана «База»: владелец видит всё, агент свою зону, дистрибьютор всех, кроме отказавшихся (без заметок и статусов). */
+  /* Список для экрана «База»: владелец видит всё, агент свою зону, дистрибьютор всех, кроме отказавшихся (без заметок и статусов).
+     Фильтры (кроме района и поиска только у владельца и агента): f — статус (new, chk «не проверен», talk, app «в приложении», refuse),
+     ag — агент (только владелец; «-» без агента), sort=new — сначала новые. Счётчики по районам считаются уже с учётом статуса, агента и поиска. */
   async baseList(role, url) {
     const sp = url.searchParams;
     const terr = String(sp.get('terr') || '').slice(0, 12), f = String(sp.get('f') || '');
+    const ag = role.r === 'owner' ? String(sp.get('ag') || '').slice(0, 12) : '';
+    const byNew = sp.get('sort') === 'new';
     const q = String(sp.get('q') || '').trim().toLowerCase().slice(0, 40);
     const off = Math.max(0, Math.min(MAX_BASE, parseInt(sp.get('off') || '0', 10) || 0));
     const all = [...(await this.st.list({ prefix: 'b:' })).values()];
     let scope = all;
     if (role.r === 'agent') scope = all.filter(b => this.inScope(role.ag, b));
     else if (role.r === 'dist') scope = all.filter(b => b.st !== 'refuse');
-    const counts = {};
-    scope.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
     const qd = q.replace(/\D/g, '');
     const full = role.r !== 'dist';
-    const rows = scope.filter(b => (!terr || (terr === '-' ? !b.terr : b.terr === terr))
-      && (!full || !f || (f === 'chk' ? !b.chk : b.st === f))
-      && (!q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd)))).sort(lowName);
+    const stOk = b => !full || !f || (f === 'chk' ? !b.chk : f === 'app' ? !!b.uid : b.st === f);
+    const agOk = b => !ag || (ag === '-' ? !b.agent : b.agent === ag);
+    const qOk = b => !q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd));
+    const pre = scope.filter(b => stOk(b) && agOk(b) && qOk(b));
+    const counts = {};
+    pre.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
+    const rows = pre.filter(b => !terr || (terr === '-' ? !b.terr : b.terr === terr));
+    rows.sort(byNew ? (x, y) => String(y.created || '').localeCompare(String(x.created || '')) || lowName(x, y) : lowName);
     const out = {
       role: role.r, total: rows.length, all: scope.length, counts, more: off + BASE_PAGE < rows.length,
       items: rows.slice(off, off + BASE_PAGE).map(full ? baseOwn : basePub),
