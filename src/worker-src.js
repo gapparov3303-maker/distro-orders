@@ -1868,7 +1868,7 @@ export class Shop {
     const pick = i => seg === 'ok' ? (!i.ms && i.ma) : i.ms === seg;
     const rows = prod.items.filter(pick).sort((a, b) => String(b.ma || b.mt || '').localeCompare(String(a.ma || a.mt || ''))).slice(0, 150)
       .map(i => Object.assign({}, i, { catName: (cat.get(i.cat) || {}).name || '', catUz: (cat.get(i.cat) || {}).uz || '' }));
-    return { items: rows, counts, name: (await this.getCfg()).shop.name || '' };
+    return { items: rows, counts, name: (await this.getCfg()).shop.name || '', cats: prod.cats };
   }
   async modApprove(b) {
     const prod = await this.getProd(), ids = new Set((Array.isArray(b.ids) ? b.ids : []).filter(validId));
@@ -1895,7 +1895,7 @@ export class Shop {
     it.ms = 'ret'; it.mt = new Date().toISOString(); it.mc = reason; delete it.ma;
     await this.st.put('prod', prod);
     await this.hubSync();
-    await this.modTellSellers('↩️ Товар «' + it.name + '» возвращён на доработку.\nЧто исправить: ' + reason + '\nОткройте «Продавец» → «Товары», исправьте и отправьте снова.', b.origin);
+    await this.modTellSellers('↩️ Товар «' + it.name + '» возвращён на доработку.\nЧто исправить: ' + reason + '\nОткройте «Продавец» → «Каталог», исправьте и отправьте снова.', b.origin);
     return json({ ok: true });
   }
   /* Владелец правит товар сам (текст, цена, упаковка); статус проверки при этом не меняется. */
@@ -2884,7 +2884,7 @@ export class Hub {
         if (!d) return;
         const dn = d.name || r.name;
         counts.wait += d.counts.wait; counts.ret += d.counts.ret; counts.ok += d.counts.ok;
-        if (d.items.length) shops.push({ id: r.id, name: dn, n: d.items.length });
+        if (d.items.length) shops.push({ id: r.id, name: dn, n: d.items.length, cats: d.cats || [] });
         d.items.forEach(i => items.push(Object.assign({}, i, { did: r.id, dname: dn })));
       });
       items.sort((a, b) => String(b.ma || b.mt || '').localeCompare(String(a.ma || a.mt || '')));

@@ -3150,7 +3150,7 @@ await t('площадка: страница приложения отдаётс�
   const code = scripts.join('\n');
   assert.ok(code.includes("'x-shop'"), 'приложение не присылает номер дистрибьютора');
   assert.ok(code.includes('/api/hub/orders') && code.includes('/api/shops'));
-  assert.ok(code.includes("'/img/'+encodeURIComponent(S.did"), 'картинки должны брать номер дистрибьютора');
+  assert.ok(code.includes("'/img/'+encodeURIComponent(did||S.did"), 'картинки должны брать номер дистрибьютора (по умолчанию открытого)');
   assert.ok(!html.includes('/*SHARED*/'), 'метка общего кода должна быть заменена');
 });
 
@@ -3534,7 +3534,7 @@ await t('проверка: владелец видит товары всех д�
   assert.equal((await jsonOf(await call('GET', '/api/shops', { init: iD() }))).me.modN, undefined, 'продавцу счётчик не нужен');
   const l = await oMod('wait');
   assert.deepEqual(l.counts, { wait: 3, ret: 0, ok: 4 });
-  assert.deepEqual(l.items.map(i => [i.did, i.dname, i.id]).sort(), [[sid, 'Навои Фуд', 'n1'], [sid, 'Навои Фуд', 'n2'], [sid2, 'Зарафшан Опт', 'z1']]);
+  assert.deepEqual(l.items.map(i => [i.did === sid ? 'sid' : i.did === sid2 ? 'sid2' : '?', i.dname, i.id]).sort(), [['sid', 'Навои Фуд', 'n1'], ['sid', 'Навои Фуд', 'n2'], ['sid2', 'Зарафшан Опт', 'z1']]);   // идентификаторы случайные: порядок по ним не сравниваем
   assert.deepEqual(l.shops.map(x => [x.name, x.n]).sort(), [['Зарафшан Опт', 1], ['Навои Фуд', 2]]);
   const z = l.items.find(i => i.id === 'z1');
   assert.deepEqual([z.catName, z.price, z.ms], ['Соусы', 30000, 'wait']);
