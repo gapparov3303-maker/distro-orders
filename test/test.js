@@ -368,6 +368,85 @@ await t('фото товара: при удалении товара его фо
   await putProd(SAMPLE_PROD());
 });
 
+await t('фото товара: до трёх фото, порядок без пропусков, отдача по номеру', async () => {
+  const a = jpegBytes(800, 600, 6000), b = jpegBytes(700, 700, 7000), c = jpegBytes(640, 480, 8000);
+  const img = async (v, n) => call('GET', '/img/p2?v=' + v + (n ? '&n=' + n : ''));
+  // второе фото нельзя положить, пока нет первого; четвёртого не бывает
+  assert.equal((await putPhoto('p2?n=2', b)).status, 400);
+  assert.equal((await jsonOf(await putPhoto('p2?n=2', b))).error, 'bad_slot');
+  assert.equal((await putPhoto('p2?n=4', b)).status, 400);
+  assert.equal((await putPhoto('p2?n=0', b)).status, 400);
+  assert.equal((await putPhoto('p2?n=abc', b)).status, 400);
+  // обычная загрузка без номера = главное фото (как раньше)
+  let r = await jsonOf(await putPhoto('p2', a));
+  assert.ok(r.pv && !r.pv2 && !r.pv3);
+  assert.equal((await putPhoto('p2?n=3', c)).status, 400);                  // через пропуск нельзя
+  r = await jsonOf(await putPhoto('p2?n=2', b));
+  assert.ok(r.pv && r.pv2 && !r.pv3);
+  r = await jsonOf(await putPhoto('p2?n=3', c));
+  assert.ok(r.pv && r.pv2 && r.pv3);
+  const it = (await getProd()).items.find(x => x.id === 'p2');
+  assert.deepEqual([it.pv, it.pv2, it.pv3], [r.pv, r.pv2, r.pv3]);
+  assert.deepEqual(new Uint8Array(await (await img(r.pv)).arrayBuffer()), a);
+  assert.deepEqual(new Uint8Array(await (await img(r.pv, 1)).arrayBuffer()), a);
+  assert.deepEqual(new Uint8Array(await (await img(r.pv2, 2)).arrayBuffer()), b);
+  assert.deepEqual(new Uint8Array(await (await img(r.pv3, 3)).arrayBuffer()), c);
+  assert.ok((await img(r.pv3, 3)).headers.get('cache-control').includes('immutable'));
+  assert.equal((await call('GET', '/img/p2?n=4')).status, 200);             // неверный номер = главное фото
+  assert.deepEqual(new Uint8Array(await (await call('GET', '/img/p2?n=4')).arrayBuffer()), a);
+  // замена второго меняет только его версию
+  const b2 = jpegBytes(500, 500, 4000);
+  const r2 = await jsonOf(await putPhoto('p2?n=2', b2));
+  assert.equal(r2.pv, r.pv); assert.equal(r2.pv3, r.pv3); assert.notEqual(r2.pv2, r.pv2);
+  assert.deepEqual(new Uint8Array(await (await img(r2.pv2, 2)).arrayBuffer()), b2);
+  // текстовые правки не трогают версии всех трёх
+  const cur = await getProd();
+  const ci = cur.items.find(x => x.id === 'p2');
+  ci.name = 'Другое имя'; ci.pv2 = 'EVIL'; ci.pv3 = 'EVIL'; ci.pv = 'EVIL';
+  const sv = (await jsonOf(await putProd(cur))).prod.items.find(x => x.id === 'p2');
+  assert.deepEqual([sv.pv, sv.pv2, sv.pv3], [r2.pv, r2.pv2, r2.pv3]);
+  // удаление среднего сдвигает третье на его место, версии новые
+  const d = await jsonOf(await call('DELETE', '/api/admin/photo/p2?n=2', { init: iS() }));
+  assert.equal(d.pv, r2.pv);
+  assert.ok(d.pv2 && d.pv2 !== r2.pv2 && d.pv2 !== r2.pv3);
+  assert.equal(d.pv3, '');
+  assert.deepEqual(new Uint8Array(await (await img(d.pv2, 2)).arrayBuffer()), c);
+  assert.equal((await call('GET', '/img/p2?n=3')).status, 404);             // третьего фото больше нет
+  assert.equal(await W.storage.get('p3:p2'), undefined);
+  // удаление главного сдвигает всё влево
+  const d1 = await jsonOf(await call('DELETE', '/api/admin/photo/p2', { init: iS() }));
+  assert.ok(d1.pv && d1.pv !== r2.pv && !d1.pv2 && !d1.pv3);
+  assert.deepEqual(new Uint8Array(await (await img(d1.pv)).arrayBuffer()), c);
+  assert.equal(await W.storage.get('p2:p2'), undefined);
+  // удаление несуществующего номера не ломает
+  assert.equal((await call('DELETE', '/api/admin/photo/p2?n=3', { init: iS() })).status, 200);
+  assert.equal((await call('DELETE', '/api/admin/photo/p2?n=9', { init: iS() })).status, 400);
+  // последнее фото
+  const d2 = await jsonOf(await call('DELETE', '/api/admin/photo/p2', { init: iS() }));
+  assert.deepEqual([d2.pv, d2.pv2, d2.pv3], ['', '', '']);
+  assert.equal((await call('GET', '/img/p2')).status, 404);
+  assert.equal((await putPhoto('nope?n=2', a)).status, 404);
+  await putProd(SAMPLE_PROD());
+});
+
+await t('фото товара: при удалении товара удаляются все три фото', async () => {
+  for (const n of [1, 2, 3]) assert.equal((await putPhoto('p4?n=' + n, jpegBytes(800, 600, 4000 + n))).status, 200);
+  assert.ok(await W.storage.get('p:p4') && await W.storage.get('p2:p4') && await W.storage.get('p3:p4'));
+  const cur = await getProd();
+  cur.items = cur.items.filter(i => i.id !== 'p4');
+  await putProd(cur);
+  for (const k of ['p:p4', 'p2:p4', 'p3:p4']) assert.equal(await W.storage.get(k), undefined, k);
+  await putProd(SAMPLE_PROD());
+});
+
+await t('фото товара: клиент и гость не загружают и не удаляют', async () => {
+  assert.equal((await putPhoto('p1?n=1', jpegBytes(), iA())).status, 403);
+  assert.equal((await putPhoto('p1', jpegBytes(), 'bad')).status >= 400, true);
+  assert.equal((await call('DELETE', '/api/admin/photo/p1?n=1', { init: iA() })).status, 403);
+  assert.equal((await getProd()).items.find(x => x.id === 'p1').pv, '');
+  await putProd(SAMPLE_PROD());
+});
+
 /* ---------- заказы ---------- */
 let orderA, clientA;
 await t('заказ с самовывозом: сервер сам считает цену, продавцу приходит карточка, клиенту подтверждение', async () => {
@@ -1861,6 +1940,22 @@ await t('резервная копия: архив с данными и фото
   assert.ok(new TextDecoder().decode(z['README.txt']).includes('backup.json'));
 });
 
+await t('резервная копия: все три фото товара попадают в архив с отдельными именами', async () => {
+  await stockWorld();
+  const f = [jpegBytes(800, 600, 5000), jpegBytes(700, 600, 6000), jpegBytes(600, 600, 7000)];
+  for (let n = 1; n <= 3; n++) assert.equal((await putPhoto('p1?n=' + n, f[n - 1])).status, 200);
+  tgLog = [];
+  const d = await jsonOf(await exportReq('backup'));
+  assert.equal(d.ok, true);
+  const z = unzip(lastDoc().file.bytes);
+  assert.deepEqual(Object.keys(z).sort(), ['README.txt', 'backup.json', 'photos/p1-2.jpg', 'photos/p1-3.jpg', 'photos/p1.jpg']);
+  assert.deepEqual(Buffer.from(z['photos/p1-3.jpg']), Buffer.from(f[2]));
+  const bk = JSON.parse(new TextDecoder().decode(z['backup.json']));
+  assert.deepEqual(bk.photos, { saved: 3, of: 3 });
+  assert.deepEqual([bk.prod.items[0].pv2 !== '', bk.prod.items[0].pv3 !== ''], [true, true]);
+  await putProd(SAMPLE_PROD());
+});
+
 await t('резервная копия: фото сверх лимита не вешают копию, остальное сохраняется целиком', async () => {
   await stockWorld();
   const prod = SAMPLE_PROD();
@@ -2519,7 +2614,8 @@ await t('отчёты: при первом обращении данные бе�
   await stockWorld();
   const A = newUser();
   // «старые» заказы: до обновления отчётов их выдача нигде не записывалась. Ставим их напрямую в хранилище.
-  const day = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString();
+  const day = n => new Date(Date.now() - n * 86400000).toISOString();                       // настоящая метка времени
+  const tday = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString().slice(0, 10); // дата по Ташкенту
   const mk = (id, ago, total, qty, st) => ({ id, createdAt: day(ago), status: st || 'done', statusAt: day(ago), name: 'Старый клиент', phone: '+998 90 000 00 00', mode: 'pickup', pickupAt: '2026-01-01T10:00', comment: '', uid: 777, items: [{ id: 'p4', name: 'Макароны', amount: 400, unit: 'g', price: 7500, qty }], total, msgs: [] });
   const olds = [mk('Z-OLD01', 12, 75000, 10), mk('Z-OLD02', 3, 30000, 4), mk('Z-OLD03', 3, 45000, 6), mk('Z-OLD04', 2, 7500, 1, 'cancelled')];
   const st = W.storage;
@@ -2528,7 +2624,7 @@ await t('отчёты: при первом обращении данные бе�
   assert.equal(await st.get('rpx'), undefined);
   let d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
   assert.deepEqual([d.tot.n, d.tot.sum], [3, 150000]);
-  assert.equal(d.since, day(12).slice(0, 10));
+  assert.equal(d.since, tday(12));
   assert.equal(d.thin, false);
   assert.deepEqual(d.series.filter(x => x.n).map(x => x.n), [1, 2]);
   assert.deepEqual(d.cl.map(x => [x.name, x.n, x.sum]), [['Старый клиент', 3, 150000]]);
@@ -2543,7 +2639,7 @@ await t('отчёты: при первом обращении данные бе�
   assert.equal((await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report.prev, null);
   // а за 7 дней, когда учёт шёл ещё раньше, сравнение есть
   const r7 = (await jsonOf(await call('GET', '/api/admin/report?days=7', { init: iS() }))).report;
-  assert.equal(r7.since, day(12).slice(0, 10));
+  assert.equal(r7.since, tday(12));
 });
 
 await t('отчёты: сравнение с прошлым периодом, когда учёт шёл уже тогда', async () => {
