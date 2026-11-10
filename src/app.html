@@ -678,7 +678,7 @@ const S={
   an:{days:30,sh:'',tab:'cats',sort:'sum',all:false,data:null,shops:[],err:false,seq:0},
   did:'',epoch:0,switching:false,off:false,otherCart:null,
   hub:{title:'',shops:[],me:null,terrs:[],loaded:false,err:false},
-  own:{shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null},
+  own:{sec:'dist',shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0}
 };
@@ -920,16 +920,19 @@ function menuGroups(){
   if(S.auth&&S.did)shop.push(['profile',L('Профиль','Profil')]);
   g.push([L('Магазин','Doʻkon'),shop]);
   const work=[];
-  if(S.admin&&S.did)work.push(['seller',L('Продавец','Sotuvchi'),newCount(),'',sellerSubs()]);
+  if(S.admin&&S.did)work.push(['seller',L('Продавец','Sotuvchi'),newCount(),'',sellerSubs(),'stab']);
   if(canBase())work.push(['base',L('База','Baza')]);
   if(work.length)g.push([L('Работа','Ish'),work]);
-  if(isOwner())g.push([L('Владелец','Egasi'),[['owner',L('Дистрибьюторы','Distribyutorlar')],['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']]]);
+  if(isOwner())g.push([L('Владелец','Egasi'),ownSecs().map(o=>['o_'+o[0],o[1],0,'',o[2].map(x=>[x[0],x[1]]),'otab']).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
   return g;
 }
 const badgeHTML=(n,c)=>n?' <span class="badge'+(c?' '+c:'')+'">'+n+'</span>':'';
 const menuWide=()=>!!(window.matchMedia&&matchMedia('(min-width:1000px)').matches);
 const menuIsOpen=()=>document.documentElement.classList.contains('mn-open');
-const menuSubOpen=cur=>S.msub===null?cur==='seller':S.msub==='seller';
+/* раздел, где мы сейчас: у «Продавца» это вкладка продавца, у владельца — подраздел площадки */
+const subHere=(i,x,cur)=>i[5]==='otab'?cur==='owner'&&S.own.sec===x[0]:cur==='seller'&&S.sellerTab===x[0];
+const parentHere=(i,cur)=>i[5]==='otab'?cur==='owner'&&i[4].some(x=>x[0]===S.own.sec):cur===i[0];
+const menuSubOpen=(i,cur)=>S.msub===null?parentHere(i,cur):S.msub===i[0];
 function renderNav(){
   const cur=S.view==='shops'?'shop':S.view,groups=menuGroups(),multi=groups.length>1,nav=$('#nav');
   let h='';
@@ -937,11 +940,11 @@ function renderNav(){
     if(multi)h+='<div class="mgh" role="presentation">'+gr[0]+'</div>';
     gr[1].forEach(i=>{
       if(i[4]){
-        const open=menuSubOpen(cur);
-        h+='<button type="button" class="mi mgrp" data-act="msub" data-v="'+i[0]+'" aria-expanded="'+open+'" aria-controls="msub-'+i[0]+'"'+(cur===i[0]?' data-here="1"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])
+        const open=menuSubOpen(i,cur);
+        h+='<button type="button" class="mi mgrp" data-act="msub" data-v="'+i[0]+'" aria-expanded="'+open+'" aria-controls="msub-'+i[0]+'"'+(parentHere(i,cur)?' data-here="1"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])
           +'<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
           +'<div class="msub" id="msub-'+i[0]+'" role="group" aria-label="'+esc(i[1])+'"'+(open?'':' hidden')+'>'
-          +i[4].map(x=>'<button type="button" class="mi" data-act="stab" data-t="'+x[0]+'"'+(cur==='seller'&&S.sellerTab===x[0]?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join('')+'</div>';
+          +i[4].map(x=>'<button type="button" class="mi" data-act="'+(i[5]||'stab')+'" data-t="'+x[0]+'"'+(subHere(i,x,cur)?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join('')+'</div>';
       }else h+='<button type="button" class="mi" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])+'</button>';
     });
   });
@@ -3230,10 +3233,11 @@ function baseFormHTML(){
     +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="basesave"'+(b.busy?' disabled':'')+'>'+(b.busy?L('Сохраняем…','Saqlanmoqda…'):L('Сохранить','Saqlash'))+'</button><button type="button" class="btn ghost" data-act="basecancel"'+(b.busy?' disabled':'')+'>'+L('Отмена','Bekor qilish')+'</button></div></div>';
 }
 function bChip(act,k,v,lab,n,on){return '<button type="button" class="chip" data-act="'+act+'" data-k="'+k+'" data-v="'+esc(v)+'" aria-pressed="'+on+'">'+esc(lab)+(n!==undefined?'<span class="cnt">'+n+'</span>':'')+'</button>'}
-/* районы с учётом остальных фильтров; пустые не показываем (кроме выбранного) */
+/* все добавленные районы, даже пока без клиентов; число — с учётом остальных фильтров. Агенту — его территории */
 function bTerrList(){
   const b=S.base,w=baseW();
-  const l=b.terrs.filter(t=>b.counts[t.id]||b.terr===t.id).map(t=>({id:t.id,name:t.name,n:b.counts[t.id]||0}));
+  const src=b.role==='agent'&&b.mine.length?b.terrs.filter(t=>b.mine.includes(t.id)):b.terrs;   // агент видит свои районы
+  const l=src.map(t=>({id:t.id,name:t.name,n:b.counts[t.id]||0}));
   if(w&&(b.counts['']||b.terr==='-'))l.push({id:'-',name:L('Без района','Rayonsiz'),n:b.counts['']||0});
   return l;
 }
@@ -3407,13 +3411,23 @@ async function ownPct(id){
   renderOwner();
   loadOwnerStats();
 }
-function renderOwner(){
-  const o=S.own;
-  let h='<div class="wrap page"><button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все дистрибьюторы','Barcha distribyutorlar')+'</button><h1>'+L('Дистрибьюторы','Distribyutorlar')+'</h1>';
-  if(!o.loaded)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
-  else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
-  else{
-    h+='<p class="lead">'+L('Каждому дистрибьютору вы даёте личный код. Он пишет боту «/admin КОД», становится продавцом и сам добавляет товары в приложении.','Har bir distribyutorga shaxsiy kod berasiz. U botga «/admin KOD» deb yozadi, sotuvchi boʻladi va mahsulotlarni ilovada oʻzi qoʻshadi.')+'</p>';
+/* раздел владельца: каждый блок на своём экране, заходят в него из меню ☰ (категория → подраздел) */
+const ownSecs=()=>[
+  ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')],['comm',L('Комиссия','Komissiya'),L('Заказы и комиссия','Buyurtmalar va komissiya')]]],
+  ['team',L('Агенты и территории','Agentlar va hududlar'),[['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
+  ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['clients',L('База магазинов','Doʻkonlar bazasi'),L('База магазинов','Doʻkonlar bazasi')]]]
+];
+function ownSecInfo(sec){
+  for(const g of ownSecs()){const x=g[2].find(y=>y[0]===sec);if(x)return {group:g[1],title:x[2]}}
+  return {group:'',title:''};
+}
+function ownOpen(sec){
+  S.own.sec=sec;S.own.perr='';
+  if(S.view!=='owner')go('owner');
+  else{S.msub=null;renderNav();renderOwner();window.scrollTo(0,0)}
+}
+function ownMadeHTML(){
+  const o=S.own;let h='';
     if(o.made){
       const m=o.made;
       h+='<div class="card codebox"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Дистрибьютор добавлен: ','Distribyutor qoʻshildi: ')+m.name)+'</h3>'
@@ -3424,8 +3438,11 @@ function renderOwner(){
         +'<div class="note">'+L('Дистрибьютор открывает бота, отправляет «/admin КОД» (бот сразу удалит сообщение с кодом) и нажимает «Открыть приложение». Заказы будут приходить ему в бот.','Distribyutor botni ochib, «/admin KOD» yuboradi (bot kod yozilgan xabarni darhol oʻchiradi) va «Ilovani ochish» tugmasini bosadi. Buyurtmalar botga keladi.')+'</div>'
         +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="ownmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
     }
-    h+=ownStatsHTML();
-    h+=ownPeopleHTML();
+  return h;
+}
+function ownAddHTML(){
+  const o=S.own;let h='';
+    h+='<p class="lead">'+L('Каждому дистрибьютору вы даёте личный код. Он пишет боту «/admin КОД», становится продавцом и сам добавляет товары в приложении.','Har bir distribyutorga shaxsiy kod berasiz. U botga «/admin KOD» deb yozadi, sotuvchi boʻladi va mahsulotlarni ilovada oʻzi qoʻshadi.')+'</p>';
     const full=o.shops.length>=o.max;
     h+='<div class="card"><h3>'+L('Добавить дистрибьютора','Distribyutor qoʻshish')+'</h3><div class="form">'
       +'<div><label class="lab" for="o-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="o-name" data-own="fname" maxlength="60" value="'+esc(o.fname)+'" autocomplete="off"></div>'
@@ -3433,6 +3450,10 @@ function renderOwner(){
       +'</div><div class="err" id="o-err" role="alert">'+esc(o.err2||'')+'</div>'
       +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="ownadd" data-act="ownadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='add'?L('Добавляем…','Qoʻshilmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
       +(full?'<div class="note" style="margin-top:10px">'+esc(ownErr('too_many'))+'</div>':'')+'</div>';
+  return h;
+}
+function ownListHTML(){
+  const o=S.own;let h='';
     h+=o.shops.map(r=>{
       const sure=o.rc===r.id;
       const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('продавцов: '+r.sellers,'sotuvchilar: '+r.sellers),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
@@ -3444,9 +3465,27 @@ function renderOwner(){
         +(r.link?'<button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(r.link)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Ссылка для клиентов','Mijozlar uchun havola')+'</button>':'')
         +'</div></div>';
     }).join('');
+  if(!o.shops.length)h+='<div class="empty"><b>'+L('Дистрибьюторов пока нет','Distribyutorlar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="otab" data-t="add">'+L('Добавить дистрибьютора','Distribyutor qoʻshish')+'</button></div></div>';
+  return h;
+}
+function ownTitleHTML(){
+  const o=S.own;let h='';
     const tv=o.ftitle===null?o.title:o.ftitle;
     h+='<div class="card"><h3>'+L('Название площадки','Platforma nomi')+'</h3><div class="unit">'+L('Показывается наверху списка дистрибьюторов.','Distribyutorlar roʻyxati tepasida koʻrsatiladi.')+'</div><div class="form"><div class="full"><input type="text" id="o-title" data-own="ftitle" maxlength="60" value="'+esc(tv)+'" aria-label="'+esc(L('Название площадки','Platforma nomi'))+'"></div></div>'
       +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="owntitle"'+(o.busy?' disabled':'')+'>'+L('Сохранить название','Nomni saqlash')+'</button></div></div>';
+  return h;
+}
+function renderOwner(){
+  const o=S.own,sec=o.sec||'dist',info=ownSecInfo(sec);
+  let h='<div class="wrap page"><button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все дистрибьюторы','Barcha distribyutorlar')+'</button><div class="eyebrow" style="margin-top:12px">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1>';
+  if(!o.loaded)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
+  else{
+    if(sec==='dist')h+=ownMadeHTML()+ownListHTML();
+    else if(sec==='add')h+=ownMadeHTML()+ownAddHTML();
+    else if(sec==='comm')h+=ownStatsHTML();
+    else if(sec==='title')h+=ownTitleHTML();
+    else h+=ownPeopleHTML(sec);
   }
   view.innerHTML=h+'</div>';
 }
@@ -3516,23 +3555,29 @@ async function peopleCall(method,path,body){
   renderOwner();
   return r.data;
 }
-function ownPeopleHTML(){
+function ownPeopleHTML(part){
   const o=S.own,p=o.ppl,dis=o.pbusy?' disabled':'';
-  if(!p)return '<div class="card"><h3>'+L('База магазинов','Doʻkonlar bazasi')+'</h3><div class="unit">'+L('Загружаем…','Yuklanmoqda…')+'</div></div>';
-  let h='<div class="card"><h3>'+L('База магазинов','Doʻkonlar bazasi')+'</h3><div class="unit">'+L('Магазин попадает в базу сам при первом заказе. Агент проверяет данные после визита и добавляет тех, кого ещё нет. Дистрибьюторы видят всю базу (название, адрес, телефон, территорию), но не заметки агентов.','Doʻkon birinchi buyurtmada bazaga oʻzi tushadi. Agent tashrifdan keyin maʼlumotlarni tekshiradi va hali yoʻqlarini qoʻshadi. Distribyutorlar butun bazani koʻradi (nomi, manzil, telefon, hudud), lekin agent eslatmalarini emas.')+'</div>'
+  if(!p)return '<div class="card"><h3>'+esc(ownSecInfo(part).title)+'</h3><div class="unit">'+L('Загружаем…','Yuklanmoqda…')+'</div></div>';
+  let h='';
+  if(part==='clients'){
+  h+='<div class="card"><h3>'+L('База магазинов','Doʻkonlar bazasi')+'</h3><div class="unit">'+L('Магазин попадает в базу сам при первом заказе. Агент проверяет данные после визита и добавляет тех, кого ещё нет. Дистрибьюторы видят всю базу (название, адрес, телефон, территорию), но не заметки агентов.','Doʻkon birinchi buyurtmada bazaga oʻzi tushadi. Agent tashrifdan keyin maʼlumotlarni tekshiradi va hali yoʻqlarini qoʻshadi. Distribyutorlar butun bazani koʻradi (nomi, manzil, telefon, hudud), lekin agent eslatmalarini emas.')+'</div>'
     +'<div class="sum"><div class="r"><span>'+L('Магазинов в базе','Bazadagi doʻkonlar')+'</span><span>'+num(p.total)+'</span></div><div class="r"><span>'+L('Без территории','Hududsiz')+'</span><span>'+num(p.free)+'</span></div></div>'
     +(o.perr?'<div class="err" role="alert" style="margin-top:8px">'+esc(o.perr)+'</div>':'')
     +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="nav" data-v="base">'+L('Открыть базу','Bazani ochish')+'</button>'
     +'<button type="button" class="btn ghost" data-act="baseimport"'+dis+'>'+L('Перенести клиентов дистрибьюторов','Distribyutorlar mijozlarini oʻtkazish')+'</button></div>'
     +'<div class="unit" style="margin-top:8px">'+L('Перенос нужен один раз: клиенты, которые уже заказывали у дистрибьюторов, попадут в общую базу. Кто уже есть, не добавится повторно.','Oʻtkazish bir marta kerak: distribyutorlarga allaqachon buyurtma bergan mijozlar umumiy bazaga tushadi. Bor boʻlganlar qayta qoʻshilmaydi.')+'</div>'
     +(o.imp?'<div class="note" style="margin-top:8px">'+esc(L('Перенос выполнен: добавлено '+o.imp.added+', уже были в базе '+o.imp.linked+', пропущено '+o.imp.skipped+'.','Oʻtkazildi: qoʻshildi '+o.imp.added+', bazada bor edi '+o.imp.linked+', oʻtkazib yuborildi '+o.imp.skipped+'.'))+'</div>':'')+'</div>';
-  // территории
+  }
+  else if(part==='terr'){
+  h+=o.perr?'<div class="err" role="alert" style="margin-bottom:10px">'+esc(o.perr)+'</div>':'';
   h+='<div class="card"><h3>'+L('Территории','Hududlar')+'</h3><div class="unit">'+L('Районы и города, по которым агенты закрепляют магазины. Например: Навои, Зарафшан, Кармана.','Agentlar doʻkonlarni biriktiradigan tuman va shaharlar. Masalan: Navoiy, Zarafshon, Karmana.')+'</div>';
   h+=p.terr.map(t=>'<div class="trow"><input type="text" id="tn-'+esc(t.id)+'" value="'+esc(t.name)+'" maxlength="40" aria-label="'+esc(L('Название территории','Hudud nomi'))+'"><span class="dtag" title="'+esc(L('Магазинов','Doʻkonlar'))+'">'+num(t.n)+'</span>'
     +'<button type="button" class="btn ghost sm" data-act="terrsave" data-id="'+esc(t.id)+'"'+dis+' aria-label="'+esc(L('Сохранить название','Nomini saqlash'))+'" title="'+esc(L('Сохранить название','Nomini saqlash'))+'">✓</button><button type="button" class="btn ghost sm" data-act="terrdel" data-id="'+esc(t.id)+'"'+dis+' aria-label="'+esc(L('Удалить территорию','Hududni oʻchirish'))+'" title="'+esc(L('Удалить территорию','Hududni oʻchirish'))+'">✕</button></div>').join('');
   h+='<div class="trow"><input type="text" id="o-tname" data-own="tname" maxlength="40" value="'+esc(o.tname)+'" placeholder="'+esc(L('Новая территория','Yangi hudud'))+'" autocomplete="off" aria-label="'+esc(L('Новая территория','Yangi hudud'))+'"><button type="button" class="btn sm" data-act="terradd"'+dis+'>'+L('Добавить','Qoʻshish')+'</button></div>'
     +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="terrpreset"'+dis+'>'+L('Добавить районы и города Навоийской области','Navoiy viloyati tumanlari va shaharlarini qoʻshish')+'</button></div></div>';
-  // агенты
+  }
+  else if(part==='agents'){
+  h+=o.perr?'<div class="err" role="alert" style="margin-bottom:10px">'+esc(o.perr)+'</div>':'';
   h+='<div class="card"><h3>'+L('Агенты','Agentlar')+'</h3><div class="unit">'+L('Каждому агенту вы даёте личный код. Он пишет боту «/agent КОД», в приложении открывается вкладка «База». Агент видит магазины своих территорий и магазины без территории.','Har bir agentga shaxsiy kod berasiz. U botga «/agent KOD» deb yozadi, ilovada «Baza» boʻlimi ochiladi. Agent oʻz hududlaridagi va hududsiz doʻkonlarni koʻradi.')+'</div>';
   if(o.amade){
     const m=o.amade;
@@ -3551,6 +3596,7 @@ function ownPeopleHTML(){
     +'<div><label class="lab" for="o-acode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-acode" data-own="acode" maxlength="64" value="'+esc(o.acode)+'" autocomplete="off" autocapitalize="off" spellcheck="false"></div></div>'
     +(p.terr.length?'<div class="lab" style="margin-top:8px">'+L('Территории нового агента','Yangi agent hududlari')+'</div><div class="tsel">'+p.terr.map(t=>'<label class="chk"><input type="checkbox" data-aterr="'+esc(t.id)+'"'+(o.aterr.includes(t.id)?' checked':'')+'> '+esc(t.name)+'</label>').join('')+'</div>':'')
     +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="agentadd"'+dis+'>'+L('Добавить агента','Agent qoʻshish')+'</button></div></div>';
+  }
   return h;
 }
 async function ownTerrAdd(names){
@@ -3612,7 +3658,7 @@ document.addEventListener('click',e=>{
   }
   else if(a==='menu')menuSet(!menuIsOpen());
   else if(a==='menuclose')menuSet(false);
-  else if(a==='msub'){S.msub=menuSubOpen(S.view)?'':t.dataset.v;renderNav()}
+  else if(a==='msub'){const it=menuGroups().reduce((r,g)=>r.concat(g[1]),[]).find(x=>x[0]===t.dataset.v),cur=S.view==='shops'?'shop':S.view;S.msub=it&&menuSubOpen(it,cur)?'':t.dataset.v;renderNav()}
   else if(a==='shops')go('shops');
   else if(a==='owner')go('owner');
   else if(a==='hubreload'){S.hub.err=false;renderShops();loadHub()}
@@ -3794,6 +3840,7 @@ document.addEventListener('click',e=>{
     else toast(lab);
   }
   else if(a==='stab'){sellerOpen(t.dataset.t);menuSet(false)}
+  else if(a==='otab'){ownOpen(t.dataset.t);menuSet(false)}
   else if(a==='rdays'){const v=Number(t.dataset.v);if(RP_DAYS.includes(v)&&v!==S.rep.days){S.rep.days=v;S.rep.sel=-1;S.rep.hov=-1;S.rep.allP=false;loadReport()}}
   else if(a==='rsel'){if(Date.now()-S.rep.skip<400)return;const i=Number(t.dataset.i);S.rep.sel=S.rep.sel===i?-1:i;S.rep.hov=-1;repShow(S.rep.sel)}
   else if(a==='rtab'){S.rep.tab=!S.rep.tab;paintRep()}
