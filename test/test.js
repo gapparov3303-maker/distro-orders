@@ -32,6 +32,7 @@ class MockStorage {
     for (const k of [...this.m.keys()].filter(x => x.startsWith(prefix)).sort()) { if (limit && out.size >= limit) break; out.set(k, structuredClone(this.m.get(k))); }
     return out;
   }
+  async deleteAll() { this.m.clear(); }
   async delete(k) {
     const list = Array.isArray(k) ? k : [k];
     let n = 0;
@@ -3065,6 +3066,49 @@ await t('площадка: новый код закрывает доступ п�
   assert.equal((await call('GET', '/api/hub/admin/shops', { init: iA() })).status, 200, 'ADMIN_CODE по-прежнему делает владельцем');
 });
 
+await t('площадка: владелец удаляет дистрибьютора совсем: данные стёрты, продавец без доступа, «Мои заказы» целы; первого и чужих это не касается', async () => {
+  const { sid } = await shopWorld('Удаляемый');
+  const keep = (await addShop('Остаётся')).shop.id;
+  await send(adminMsg(SELLER, CODE, 70));
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const A = newUser();
+  const o1 = (await jsonOf(await place(A, CART))).order;                                   // у первого дистрибьютора
+  await new Promise(r => setTimeout(r, 5));
+  const o2 = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) }))).order;   // у удаляемого
+  assert.deepEqual((await jsonOf(await call('GET', '/api/hub/orders', { init: A.init() }))).orders.map(o => o.id), [o2.id, o1.id]);
+  assert.ok(W.getShop(sid).storage.m.size > 0, 'у дистрибьютора есть данные');
+  // удаляет только владелец; первого дистрибьютора удалить нельзя; несуществующего тоже
+  assert.equal((await call('DELETE', '/api/hub/admin' + '/shops/' + sid, { init: iD() })).status, 403);
+  assert.equal((await call('DELETE', '/api/hub/admin' + '/shops/' + sid, { init: iA() })).status, 403);
+  const rm = await call('DELETE', '/api/hub/admin' + '/shops/main', { init: iS() });
+  assert.equal(rm.status, 409);
+  assert.equal((await jsonOf(rm)).error, 'main_shop');
+  assert.equal((await call('DELETE', '/api/hub/admin' + '/shops/nonexist', { init: iS() })).status, 404);
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 200, 'до удаления продавец работает');
+  // удаление
+  const del = await call('DELETE', '/api/hub/admin' + '/shops/' + sid, { init: iS() });
+  assert.equal(del.status, 200);
+  assert.equal((await jsonOf(del)).id, sid);
+  // из реестра и из списка для клиентов он исчез, остальные на месте
+  const reg = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
+  assert.deepEqual(reg.shops.map(x => x.id).sort(), ['main', keep].sort());
+  const pub = (await jsonOf(await call('GET', '/api/shops', { init: A.init() }))).shops.map(x => x.id);   // в списке клиентов только дистрибьюторы с товарами
+  assert.ok(pub.includes('main') && !pub.includes(sid));
+  // хранилище очищено, продавец потерял доступ, каталог не открывается
+  assert.equal(W.getShop(sid).storage.m.size, 0, 'хранилище дистрибьютора пустое');
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops', { init: iD() }))).me.sells, []);
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 404);
+  assert.equal((await callS(sid, 'GET', '/api/config')).status, 404);
+  assert.equal((await call('DELETE', '/api/hub/admin' + '/shops/' + sid, { init: iS() })).status, 404, 'повторно удалять нечего');
+  // «Мои заказы» не ломаются: остался заказ у первого дистрибьютора
+  const left = (await jsonOf(await call('GET', '/api/hub/orders', { init: A.init() }))).orders;
+  assert.deepEqual(left.map(o => o.id), [o1.id]);
+  // первый и второй дистрибьюторы работают как раньше
+  assert.equal((await call('GET', '/api/config')).status, 200);
+  assert.equal((await callS(keep, 'GET', '/api/config')).status, 200);
+  // прежний общий код удалённого дистрибьютора больше не принимается
+});
+
 await t('площадка: чужой номер дистрибьютора не создаёт ничего, неверный номер отклоняется', async () => {
   await hubWorld();
   for (const bad of ['Evil/../x', 'UPPER', 'a', 'x'.repeat(13), 'a b']) {
@@ -3829,91 +3873,6 @@ await t('агенты: владелец удаляет агента: досту�
   // можно завести заново с тем же именем
   const again = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [t1.terr[0].id] }));
   assert.equal(again.agents.length, 1);
-});
-
-await t('продавцы: владелец выдаёт личный код, человек входит, виден в списке, удаляется; общий код и владелец не страдают', async () => {
-  const { sid } = await shopWorld();
-  const NEW = newUser(), THIRD = newUser();
-  const staff = async () => (await jsonOf(await adm('GET', '/staff'))).shops.find(x => x.id === sid);
-  // сейчас у дистрибьютора один продавец: Дилшод, вошёл по общему коду
-  const s0 = await staff();
-  assert.equal(s0.people.length, 1);
-  assert.equal(s0.people[0].name, '');
-  assert.ok(s0.people[0].used && !s0.people[0].owner && s0.people[0].id.startsWith('u'));
-  assert.ok(s0.people[0].who.includes('Dilshod'), 'видно, кто это: ' + s0.people[0].who);
-  // кроме владельца никто список не видит и не меняет
-  assert.equal((await adm('GET', '/staff', undefined, iA())).status, 403);
-  assert.equal((await adm('POST', '/staff', { did: sid, name: 'Рустам' }, iD())).status, 403);
-  // проверки ввода
-  assert.equal((await adm('POST', '/staff', { did: sid, name: 'Р' })).status, 400);
-  assert.equal((await adm('POST', '/staff', { did: 'nope', name: 'Рустам' })).status, 404);
-  assert.equal((await adm('POST', '/staff', { did: sid, name: 'Рустам', code: 'short' })).status, 400);
-  // выдаём личный код
-  const made = await jsonOf(await adm('POST', '/staff', { did: sid, name: 'Менеджер Рустам' }));
-  assert.match(made.code, /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-  assert.ok(!JSON.stringify([...W.hubStorage.m.entries()]).includes(made.code), 'код лежит только в виде хэша');
-  const waiting = made.shops.find(x => x.id === sid).people.find(p => p.name === 'Менеджер Рустам');
-  assert.ok(waiting && !waiting.used && waiting.who === '', 'пока не входил');
-  // такой же код дважды выдать нельзя, и он не должен совпасть с кодом дистрибьютора
-  assert.equal((await adm('POST', '/staff', { did: sid, name: 'Второй', code: made.code })).status, 409);
-  // до входа доступа нет
-  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: NEW.init() })).status, 403);
-  // вход по личному коду
-  tgLog = [];
-  await send(adminMsg(NEW.u, made.code, 61));
-  assert.ok(lastTg('deleteMessage', p => p.message_id === 61), 'сообщение с кодом удалено');
-  assert.ok(lastTg('sendMessage').payload.text.includes('вы продавец «Альфа Трейд»'));
-  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: NEW.init() })).status, 200);
-  // другой человек по тому же коду войти не может
-  tgLog = [];
-  await send(adminMsg(THIRD.u, made.code, 62));
-  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'));
-  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: THIRD.init() })).status, 403);
-  // в списке: имя, вошёл, аккаунт
-  const s1 = await staff();
-  assert.equal(s1.people.length, 2);
-  const row = s1.people.find(p => p.name === 'Менеджер Рустам');
-  assert.ok(row.used && row.who.includes('Гость'), 'вошёл, виден аккаунт: ' + row.who);
-  // у человека теперь есть число продавцов на карточке дистрибьютора
-  assert.equal((await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }))).shops.find(x => x.id === sid).sellers, 2);
-  // удаляем менеджера: доступ закрыт, Дилшод остаётся
-  const del = await adm('DELETE', '/staff/' + sid + '/' + row.id);
-  assert.equal(del.status, 200);
-  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: NEW.init() })).status, 403, 'доступ закрыт сразу');
-  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 200, 'другие продавцы работают');
-  assert.equal((await staff()).people.length, 1);
-  tgLog = [];
-  await send(adminMsg(NEW.u, made.code, 63));
-  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'), 'личный код после удаления не работает');
-  assert.equal((await adm('DELETE', '/staff/' + sid + '/' + row.id)).status, 404, 'повторное удаление — понятная ошибка');
-  // удаляем и «безымянного» Дилшода (вошёл по общему коду)
-  const dil = (await staff()).people[0];
-  assert.equal((await adm('DELETE', '/staff/' + sid + '/' + dil.id)).status, 200);
-  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 403);
-  assert.equal((await staff()).people.length, 0);
-  // общий код дистрибьютора по-прежнему работает: Дилшод может вернуться
-  tgLog = [];
-  const d2 = await jsonOf(await adm('POST', '/shops/' + sid + '/code', {}));
-  await send(adminMsg(DIL, d2.code, 64));
-  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 200);
-  // «Новый код» закрывает и личные коды
-  const m2 = await jsonOf(await adm('POST', '/staff', { did: sid, name: 'Ещё один' }));
-  await adm('POST', '/shops/' + sid + '/code', {});
-  assert.equal((await staff()).people.length, 0, 'после «Нового кода» никого нет, в том числе ожидающих');
-  tgLog = [];
-  await send(adminMsg(NEW.u, m2.code, 65));
-  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'));
-});
-
-await t('продавцы: владельца площадки из списка продавцов убрать нельзя', async () => {
-  await shopWorld();
-  const main = (await jsonOf(await adm('GET', '/staff'))).shops.find(x => x.id === 'main');
-  const own = main.people.find(p => p.owner);
-  assert.ok(own, 'владелец помечен в списке первого дистрибьютора');
-  const r = await adm('DELETE', '/staff/main/' + own.id);
-  assert.equal(r.status, 409);
-  assert.equal((await jsonOf(r)).error, 'is_owner');
-  assert.equal((await callS('main', 'GET', '/api/admin/orders', { init: iS() })).status, 200, 'владелец остался продавцом');
 });
 
 await t('база: поиск, территории, проверка и страницы; дистрибьютор видит всех, но без заметок и отказавшихся', async () => {
