@@ -3089,7 +3089,7 @@ await t('площадка: приветствие бота зависит от �
   assert.equal((await putProd(SAMPLE_PROD())).status, 200);
   // два: от имени площадки
   m = await start(ANNA, '/start');
-  assert.ok(m.text.includes('VIVA Distribution') && m.text.includes('выберите дистрибьютора') && m.text.includes('каталог'));
+  assert.ok(m.text.includes('Sarbon') && m.text.includes('выберите дистрибьютора') && m.text.includes('каталог'));
   assert.equal(m.reply_markup.inline_keyboard[0][0].text, '🛒 Открыть каталог');
   m = await start(BOB, '/start');
   assert.ok(m.text.includes('Katalogni oching') && m.text.includes('distribyutor'));
@@ -3098,7 +3098,7 @@ await t('площадка: приветствие бота зависит от �
   assert.ok(m.text.includes('Альфа Трейд'));
   assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=' + sid);
   m = await start(ANNA, '/start d_zzzzzz');
-  assert.ok(m.text.includes('VIVA Distribution'));
+  assert.ok(m.text.includes('Sarbon'));
   assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
   // название площадки меняет владелец
   assert.equal((await call('PUT', '/api/hub/admin/title', { init: iA(), body: { title: 'X' } })).status, 403);
