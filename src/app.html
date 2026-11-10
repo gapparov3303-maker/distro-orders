@@ -50,18 +50,36 @@ h1,h2,h3,p{margin:0}
 .brand{display:flex;align-items:center;gap:10px;font:700 15px/1 var(--f-display);letter-spacing:.01em;min-width:0}
 .brand svg{flex:none}
 .brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.right{display:flex;align-items:center;gap:8px;min-width:0}
-.nav{display:flex;min-width:0;overflow-x:auto;scrollbar-width:none;gap:2px;background:var(--surface-2);padding:4px;border-radius:12px}
-.nav::-webkit-scrollbar{display:none}
-.nav button{flex:none}
-.langbtn{flex:none}
-.nav button{appearance:none;border:0;background:transparent;border-radius:9px;padding:7px 10px;font-size:13px;font-weight:600;color:var(--ink-2);cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap}
-.nav button[aria-current="page"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(20,35,31,.14)}
-.langbtn{appearance:none;height:38px;min-width:42px;padding:0 8px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);font-weight:700;font-size:12px;letter-spacing:.04em;cursor:pointer}
+.brand{flex:1}
+.langbtn{appearance:none;flex:none;height:38px;min-width:42px;padding:0 8px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);font-weight:700;font-size:12px;letter-spacing:.04em;cursor:pointer}
 .badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
-@media (max-width:430px){.nav button{padding:7px 7px;font-size:12.5px;gap:4px}.nav{gap:1px;padding:3px}.langbtn{min-width:38px;padding:0 6px}.right{gap:6px}}
-@media (max-width:480px){.brand span{display:none}}
-@media (max-width:390px){.brand{display:none}.top .wrap{justify-content:space-between}}
+.top .wrap{justify-content:flex-start;gap:12px}
+.menubtn{position:relative;flex:none;appearance:none;width:42px;height:42px;padding:0;border-radius:11px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.menubtn .badge{position:absolute;top:-8px;right:-8px;box-sizing:content-box;border:2px solid var(--bg);height:16px;min-width:16px;padding:0 3px;font-size:10px}
+
+/* меню: выдвигается слева; на широком экране стоит слева всегда */
+.mscrim{position:fixed;inset:0;z-index:60;background:rgba(10,20,18,.5)}
+.menu{position:fixed;top:0;bottom:0;left:0;z-index:61;width:min(86vw,300px);display:flex;flex-direction:column;background:var(--surface);border-right:1px solid var(--line);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);transform:translateX(-104%);visibility:hidden;box-shadow:0 0 28px rgba(10,20,18,.28)}
+html.mn-open .menu{transform:none;visibility:visible}
+html.mn-open,html.mn-open body{overflow:hidden}
+@media (prefers-reduced-motion:no-preference){.menu{transition:transform .2s ease,visibility 0s linear .2s}html.mn-open .menu{transition:transform .2s ease,visibility 0s}}
+.mhd{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:var(--hdr);padding:6px 10px 6px 16px;border-bottom:1px solid var(--line)}
+.mhd .brand{flex:1}
+.mclose{flex:none;appearance:none;width:40px;height:40px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.mnav{flex:1;min-height:0;overflow-y:auto;padding:4px 10px 14px;overscroll-behavior:contain}
+.mgh{padding:18px 10px 6px;font:700 11px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.mnav>.mgh:first-child{padding-top:12px}
+.mi{appearance:none;width:100%;min-height:44px;padding:10px;border:0;border-radius:10px;background:transparent;color:var(--ink);font-size:15px;font-weight:600;text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px}
+.mi .ml{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi[aria-current="page"]{background:var(--accent-soft)}
+.mi[data-here="1"] .ml{color:var(--accent)}
+.mi .chev{flex:none;color:var(--ink-2)}
+.mgrp[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.msub{margin:2px 0 6px 18px;padding-left:8px;border-left:2px solid var(--line)}
+.msub .mi{min-height:40px;padding:8px 10px;font-size:14px;font-weight:500}
+.msub .mi[aria-current="page"]{font-weight:600}
+.mfoot{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 16px;border-top:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink-2)}
+}
 
 /* sections, chips */
 .sec{padding-top:18px}
@@ -111,13 +129,6 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .stat small{display:block;font-size:12px;color:var(--ink-2)}
 .stat b{font:700 16px/1.3 var(--f-display);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .stat.hot{background:var(--accent-soft);border-color:var(--accent)}
-.tabs{display:flex;flex-wrap:nowrap;gap:0;margin-bottom:14px;overflow-x:auto;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tab{appearance:none;background:transparent;border:0;border-bottom:2.5px solid transparent;box-shadow:inset 0 -1px 0 var(--line);padding:10px 12px;font-weight:600;font-size:14px;color:var(--ink-2);cursor:pointer;white-space:nowrap;flex:none}
-.tab .badge{margin-left:3px}
-/* шесть вкладок на узком экране: две строки по три, чтобы ни одна не пряталась за краем */
-@media (max-width:520px){.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}.tab{padding:10px 4px;font-size:13px;text-align:center;white-space:normal}.tab .badge{margin-left:2px;min-width:16px;height:16px;padding:0 4px;font-size:10px}}
-.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
 .filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
 .ordlist{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
 @media (min-width:980px){.ordlist{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -602,19 +613,36 @@ div.lgd{cursor:default}
 .mapbtns{display:grid;gap:10px;margin:6px 0 12px}
 .mapco{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0 10px;color:var(--ink-2)}
 @media (prefers-reduced-motion:no-preference){.chip,.seg button{transition:border-color .12s,background-color .12s}}
+/* широкий экран: меню стоит слева всегда (правила стоят в конце, чтобы переопределить .bar и .toast) */
+@media (min-width:1000px){
+  body{padding-left:260px}
+  .top{display:none}
+  .menu{width:260px;z-index:15;transform:none;visibility:visible;box-shadow:none}
+  .mscrim,.mclose{display:none}
+  .bar{left:260px}
+  .toast{left:calc(50% + 130px)}
 </style>
 </head><body>
 
 <header class="top"><div class="wrap">
+  <button type="button" class="menubtn" id="menubtn" data-act="menu" aria-haspopup="dialog" aria-controls="menu" aria-expanded="false"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M3 6h16M3 11h16M3 16h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="badge bad" id="menubadge" hidden></span></button>
   <div class="brand">
     <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path d="M4 9.5 15 4l11 5.5v11L15 26 4 20.5z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 9.5 15 15l11-5.5M15 15v11" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/></svg>
     <span id="brandName"></span>
   </div>
-  <div class="right">
-    <nav class="nav" id="nav"></nav>
-    <button type="button" class="langbtn" id="langbtn" data-act="lang"></button>
-  </div>
 </div></header>
+<div class="mscrim" id="mscrim" data-act="menuclose" hidden></div>
+<aside class="menu" id="menu" role="dialog" aria-modal="true">
+  <div class="mhd">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path d="M4 9.5 15 4l11 5.5v11L15 26 4 20.5z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 9.5 15 15l11-5.5M15 15v11" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <span id="mbrand"></span>
+    </div>
+    <button type="button" class="mclose" data-act="menuclose" id="mclose"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4l12 12M16 4 4 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <nav class="mnav" id="nav"></nav>
+  <div class="mfoot"><span id="langlab"></span><button type="button" class="langbtn" id="langbtn" data-act="lang"></button></div>
+</aside>
 <main id="view"></main>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
@@ -625,7 +653,7 @@ div.lgd{cursor:default}
 const $=(s,r)=>(r||document).querySelector(s);
 const MAX_QTY=500,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
-  view:'shops',sellerTab:'orders',filter:'active',
+  view:'shops',sellerTab:'orders',filter:'active',msub:null,
   cfg:clone(DEFAULT),
   form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:'',loc:null},
   region:'',showFar:false,regSent:false,regOnly:null,
@@ -873,29 +901,104 @@ function switchLang(){
   render();
 }
 
-/* nav */
+/* меню: разделы по группам; у «Продавца» внутри раскрываются его пять разделов */
+const sellerSubs=()=>{
+  const w=stockWarn(),rn=modRetN();
+  return [['orders',L('Заказы','Buyurtmalar')],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
+};
+function menuGroups(){
+  const g=[];
+  const shop=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
+  if(S.auth&&S.did)shop.push(['profile',L('Профиль','Profil')]);
+  g.push([L('Магазин','Doʻkon'),shop]);
+  const work=[];
+  if(S.admin&&S.did)work.push(['seller',L('Продавец','Sotuvchi'),newCount(),'',sellerSubs()]);
+  if(canBase())work.push(['base',L('База','Baza')]);
+  if(work.length)g.push([L('Работа','Ish'),work]);
+  if(isOwner())g.push([L('Владелец','Egasi'),[['owner',L('Дистрибьюторы','Distribyutorlar')],['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']]]);
+  return g;
+}
+const badgeHTML=(n,c)=>n?' <span class="badge'+(c?' '+c:'')+'">'+n+'</span>':'';
+const menuWide=()=>!!(window.matchMedia&&matchMedia('(min-width:1000px)').matches);
+const menuIsOpen=()=>document.documentElement.classList.contains('mn-open');
+const menuSubOpen=cur=>S.msub===null?cur==='seller':S.msub==='seller';
 function renderNav(){
-  const items=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
-  if(S.auth&&S.did)items.push(['profile',L('Профиль','Profil')]);
-  if(S.admin&&S.did)items.push(['seller',L('Продавец','Sotuvchi'),newCount()]);
-  if(canBase())items.push(['base',L('База','Baza')]);
-  if(isOwner())items.push(['analytics',L('Аналитика','Tahlil')]);
-  if(isOwner())items.push(['review',L('Проверка','Tekshiruv'),modN(),'bad']);
-  const cur=S.view==='shops'?'shop':S.view;
-  const nav=$('#nav');
+  const cur=S.view==='shops'?'shop':S.view,groups=menuGroups(),multi=groups.length>1,nav=$('#nav');
+  let h='';
+  groups.forEach(gr=>{
+    if(multi)h+='<div class="mgh" role="presentation">'+gr[0]+'</div>';
+    gr[1].forEach(i=>{
+      if(i[4]){
+        const open=menuSubOpen(cur);
+        h+='<button type="button" class="mi mgrp" data-act="msub" data-v="'+i[0]+'" aria-expanded="'+open+'" aria-controls="msub-'+i[0]+'"'+(cur===i[0]?' data-here="1"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])
+          +'<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+          +'<div class="msub" id="msub-'+i[0]+'" role="group" aria-label="'+esc(i[1])+'"'+(open?'':' hidden')+'>'
+          +i[4].map(x=>'<button type="button" class="mi" data-act="stab" data-t="'+x[0]+'"'+(cur==='seller'&&S.sellerTab===x[0]?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join('')+'</div>';
+      }else h+='<button type="button" class="mi" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])+'</button>';
+    });
+  });
+  // перерисовка не должна сбивать прокрутку и фокус открытого меню
+  const ae=document.activeElement,fk=ae&&nav.contains(ae)?[ae.dataset.act,ae.dataset.v||ae.dataset.t||'']:null,st=nav.scrollTop;
   nav.setAttribute('aria-label',L('Разделы','Boʻlimlar'));
-  nav.innerHTML=items.map(i=>'<button type="button" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'>'+i[1]+(i[2]?' <span class="badge'+(i[3]?' '+i[3]:'')+'">'+i[2]+'</span>':'')+'</button>').join('');
+  nav.innerHTML=h;
+  nav.scrollTop=st;
+  if(fk){const f=[...nav.querySelectorAll('[data-act]')].find(x=>x.dataset.act===fk[0]&&(x.dataset.v||x.dataset.t||'')===fk[1]&&!x.closest('[hidden]'));if(f)f.focus({preventScroll:true})}
+  // значок на кнопке ☰: что ждёт решения (новые заказы, товары на проверке или возвращённые)
+  const al=(S.admin&&S.did?newCount()+modRetN():0)+(isOwner()?modN():0),mb=$('#menubadge');
+  mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
+  const mbt=$('#menubtn');
+  mbt.setAttribute('aria-label',L('Меню','Menyu')+(al?': '+al:''));
+  $('#mclose').setAttribute('aria-label',L('Закрыть меню','Menyuni yopish'));
   // внутри дистрибьютора в шапке его название, на общих экранах название площадки
   const inShop=S.did&&(S.view==='shop'||S.view==='seller'||S.view==='profile');
   const name=inShop?(S.cfg.shop.name||DEFAULT.shop.name):hubTitle();
-  try{const c=nav.querySelector('[aria-current]');if(c&&nav.scrollWidth>nav.clientWidth)nav.scrollLeft=Math.max(0,c.offsetLeft-(nav.clientWidth-c.offsetWidth)/2)}catch(e){}
   $('#brandName').textContent=name;
+  $('#mbrand').textContent=name;
   document.title=name;
+  $('#langlab').textContent=L('Язык','Til');
   const lb=$('#langbtn');
   lb.textContent=LANG==='ru'?'UZ':'RU';
   lb.setAttribute('aria-label',L('Oʻzbek tiliga oʻtish','Переключить на русский'));
   lb.title=L('Oʻzbekcha','Русский');
+  menuSync();
 }
+/* на широком экране меню стоит слева всегда и окном не бывает */
+function menuSync(){
+  const m=$('#menu'),wide=menuWide();
+  if(wide&&menuIsOpen())menuSet(false);
+  if(wide){m.removeAttribute('role');m.removeAttribute('aria-modal');m.setAttribute('aria-label',L('Разделы','Boʻlimlar'))}
+  else{m.setAttribute('role','dialog');m.setAttribute('aria-modal','true');m.setAttribute('aria-label',L('Меню','Menyu'))}
+}
+let menuBack=null;
+function menuSet(on){
+  if(on&&menuWide())return;
+  const root=document.documentElement;
+  if(on===menuIsOpen())return;
+  root.classList.toggle('mn-open',on);
+  $('#mscrim').hidden=!on;
+  $('#menubtn').setAttribute('aria-expanded',String(on));
+  if(on){
+    menuBack=document.activeElement;
+    const f=$('#nav [aria-current="page"]')||$('#nav .mi');
+    if(f){f.focus({preventScroll:true});try{f.scrollIntoView({block:'nearest'})}catch(e){}}
+  }else{
+    const inside=document.activeElement&&$('#menu').contains(document.activeElement);
+    if(inside||!document.activeElement||document.activeElement===document.body){const b=menuBack&&document.contains(menuBack)&&!$('#menu').contains(menuBack)?menuBack:$('#menubtn');try{b.focus({preventScroll:true})}catch(e){}}
+    menuBack=null;
+  }
+}
+document.addEventListener('keydown',e=>{
+  if(!menuIsOpen())return;
+  if(e.key==='Escape'){e.preventDefault();menuSet(false);return}
+  if(e.key!=='Tab')return;
+  const list=[...$('#menu').querySelectorAll('button')].filter(x=>!x.closest('[hidden]')&&!x.disabled&&x.offsetParent!==null);
+  if(!list.length)return;
+  const first=list[0],last=list[list.length-1];
+  if(!$('#menu').contains(document.activeElement)){e.preventDefault();first.focus();return}
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+});
+window.addEventListener('resize',()=>{if(menuWide())menuSync()});
 
 /* ---------- каталог (клиент) ---------- */
 const shopCats=()=>S.prod.cats.filter(c=>S.prod.items.some(p=>p.cat===c.id&&apr(p)));
@@ -1385,20 +1488,26 @@ async function saveProfile(){
 /* ---------- seller ---------- */
 function renderSeller(){
   if(!S.admin){view.innerHTML='<div class="wrap page"><div class="empty"><b>'+L('Раздел для продавца','Sotuvchi boʻlimi')+'</b>'+L('Откройте приложение с правами редактора.','Ilovani muharrir huquqi bilan oching.')+'</div></div>';return}
-  view.innerHTML='<div class="wrap page">'+backHTML()+'<div class="hrow"><div><div class="eyebrow">'+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</div><h1>'+L('Панель продавца','Sotuvchi paneli')+'</h1></div>'
-    +(isOwner()?'<button type="button" class="btn ghost sm" data-act="owner">'+L('Дистрибьюторы','Distribyutorlar')+'</button>':'')+'</div>'
+  view.innerHTML='<div class="wrap page">'+backHTML()+'<div class="hrow" style="margin-bottom:14px"><div><div class="eyebrow">'+L('Продавец','Sotuvchi')+' · '+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</div><h1 id="stitle"></h1></div></div>'
     +(S.off?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(L('Владелец площадки скрыл ваш каталог: клиенты его не видят и не могут заказать.','Platforma egasi katalogingizni yashirgan: mijozlar uni koʻrmaydi va buyurtma bera olmaydi.'))+'</div>':'')
-    +'<div class="tabs" role="tablist" id="stabs"></div><div id="sbody"></div></div>';
+    +'<div id="sbody"></div></div>';
   paintTabs();
   paintSeller();
 }
 /* сколько товаров заканчивается или закончилось (число на вкладке «Остатки») */
 const stockWarn=()=>S.prod.items.filter(p=>{const s=stState(p);return s==='low'||s==='out'}).length;
 function paintTabs(){
-  const el=$('#stabs');if(!el)return;
-  const w=stockWarn(),rn=modRetN();
-  const tabs=[['orders',L('Заказы','Buyurtmalar')],['prod',L('Каталог','Katalog')+(rn?' <span class="badge warn">'+rn+'</span>':'')],['stock',L('Остатки','Qoldiq')+(w?' <span class="badge warn">'+w+'</span>':'')],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
-  el.innerHTML=tabs.map(t=>'<button type="button" class="tab" role="tab" data-act="stab" data-t="'+t[0]+'" aria-selected="'+(S.sellerTab===t[0])+'">'+t[1]+'</button>').join('');
+  const t=$('#stitle');
+  if(t){const x=sellerSubs().find(y=>y[0]===S.sellerTab);t.textContent=x?x[1]:''}
+  renderNav();
+}
+/* открыть раздел продавца из меню: из любого места приложения */
+function sellerOpen(tab){
+  S.sellerTab=tab;S.sc=null;
+  if(S.view!=='seller')go('seller');
+  else{paintTabs();paintSeller();window.scrollTo(0,0)}
+  if(tab==='stock'){loadStock();if(S.jrOpen)loadJournal()}
+  if(tab==='reports')loadReport();
 }
 function paintSeller(){
   const b=$('#sbody');if(!b)return;
@@ -2876,7 +2985,7 @@ function go(v){
   if(v==='analytics'&&!isOwner())v='shops';
   const was=S.view;
   if(v==='base'&&was!=='base')baseResetUI();
-  S.view=v;S.cc=null;setScrollLock();
+  S.view=v;S.cc=null;S.msub=null;setScrollLock();
   render();window.scrollTo(0,0);
   if(v==='mine')loadMine();
   if(v==='shop')loadCfg();
@@ -2936,7 +3045,7 @@ function shopsListHTML(){
 function renderShops(){
   const h=S.hub,me=h.me;
   let out='<div class="wrap page"><div class="hrow"><div><div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(hubTitle())+'</h1></div>'
-    +(isOwner()?'<button type="button" class="btn ghost sm" data-act="owner">'+L('Управление дистрибьюторами','Distribyutorlarni boshqarish')+'</button>':'')+'</div>';
+    +'</div>';
   if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
@@ -3492,7 +3601,11 @@ document.addEventListener('click',e=>{
   else if(a==='nav'){
     if(t.dataset.v==='shop'&&S.did&&S.view!=='shop'){S.shopPlaced=null;S.shopStep='list'}
     go(t.dataset.v);
+    menuSet(false);
   }
+  else if(a==='menu')menuSet(!menuIsOpen());
+  else if(a==='menuclose')menuSet(false);
+  else if(a==='msub'){S.msub=menuSubOpen(S.view)?'':t.dataset.v;renderNav()}
   else if(a==='shops')go('shops');
   else if(a==='owner')go('owner');
   else if(a==='hubreload'){S.hub.err=false;renderShops();loadHub()}
@@ -3673,14 +3786,7 @@ document.addEventListener('click',e=>{
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(v).then(()=>toast(ok),()=>toast(lab));
     else toast(lab);
   }
-  else if(a==='stab'){
-    S.sellerTab=t.dataset.t;S.sc=null;
-    document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.t===S.sellerTab)));
-    try{t.scrollIntoView({block:'nearest',inline:'nearest'})}catch(x){}
-    paintSeller();
-    if(S.sellerTab==='stock'){loadStock();if(S.jrOpen)loadJournal()}
-    if(S.sellerTab==='reports')loadReport();
-  }
+  else if(a==='stab'){sellerOpen(t.dataset.t);menuSet(false)}
   else if(a==='rdays'){const v=Number(t.dataset.v);if(RP_DAYS.includes(v)&&v!==S.rep.days){S.rep.days=v;S.rep.sel=-1;S.rep.hov=-1;S.rep.allP=false;loadReport()}}
   else if(a==='rsel'){if(Date.now()-S.rep.skip<400)return;const i=Number(t.dataset.i);S.rep.sel=S.rep.sel===i?-1:i;S.rep.hov=-1;repShow(S.rep.sel)}
   else if(a==='rtab'){S.rep.tab=!S.rep.tab;paintRep()}
