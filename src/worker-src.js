@@ -1590,6 +1590,13 @@ export class Shop {
       if (!admins.includes(uid)) { admins.push(uid); await this.st.put('admins', admins); }
       return json({ ok: true, admins });
     }
+    if (path === '/__/admin-del') {
+      const uid = Number(b.uid);
+      if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
+      const admins = ((await this.st.get('admins')) || []).filter(x => x !== uid);
+      await this.st.put('admins', admins);
+      return json({ ok: true, admins });
+    }
     if (path === '/__/admin-clear') {
       const admins = (await this.st.get('admins')) || [];
       await this.st.put('admins', []);
@@ -2366,7 +2373,8 @@ const pubRec = r => ({ id: r.id, name: r.name, items: r.items, cats: r.cats, del
 const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
-const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50;
+const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50, MAX_STAFF = 20;   // MAX_STAFF: личных кодов продавцов у одного дистрибьютора
+const tgWho = f => f && typeof f === 'object' ? { n: cleanStr([f.first_name, f.last_name].filter(Boolean).join(' '), 60), u: cleanStr(f.username, 40) } : null;
 const BASE_STATUS = ['new', 'talk', 'refuse'];
 /* Ключ для поиска повторов: последние 9 цифр номера (код страны, пробелы и скобки не мешают). */
 const phoneKey = p => { const d = String(p || '').replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
@@ -2444,7 +2452,7 @@ export class Hub {
 
   /* --- вход продавцов по коду --- */
   /* Код продавца ищется среди кода владельца (ADMIN_CODE) и кодов дистрибьюторов. Ошибки считаются по человеку: 8 подряд закрывают ввод на час. */
-  async tryCode(code, uid) {
+  async tryCode(code, uid, who) {
     if (!this.env.ADMIN_CODE) return { r: 'nocode' };
     const f = (await this.st.get('fail:' + uid)) || { n: 0, until: 0 };
     if (f.until > Date.now()) return { r: 'locked' };
@@ -2452,6 +2460,9 @@ export class Hub {
     let did = '', owner = false;
     if (safeEq(h, await sha256hex('code:' + this.env.ADMIN_CODE))) { did = MAIN; owner = true; }
     for (const rec of await this.allRecs()) if (rec.hash && safeEq(h, rec.hash) && !did) did = rec.id;
+    // личный код продавца (его выдал владелец): работает у того, кому выдан; после первого входа привязан к этому аккаунту
+    let staff = null;
+    if (!did) for (const x of await this.allStaff()) if (x.e.hash && safeEq(h, x.e.hash) && (!x.e.uid || x.e.uid === uid) && !did) { did = x.did; staff = x; }
     if (!did) {
       f.n += 1;
       if (f.n >= 8) { f.n = 0; f.until = Date.now() + 3600 * 1000; }
@@ -2462,6 +2473,13 @@ export class Hub {
     const res = await shopCall(this.env, did, '/__/admin-add', { uid });
     if (!res.ok || !res.data) return { r: 'error' };
     await this.setSeller(uid, did, true, res.data.admins);
+    if (staff && staff.e.uid !== uid) {
+      const list = await this.staffOf(staff.did);
+      const e = list.find(y => y.id === staff.e.id);
+      if (e) { e.uid = uid; e.used = new Date().toISOString(); await this.st.put('stf:' + staff.did, list); }
+    }
+    const w = tgWho(who);
+    if (w && (w.n || w.u)) await this.st.put('who:' + uid, w);
     if (owner) {
       const own = await this.owners();
       if (!own.includes(uid)) { own.push(uid); await this.st.put('owners', own); }
@@ -2963,6 +2981,16 @@ export class Hub {
         await this.st.put('a:' + a.id, a);
         return json(Object.assign(await this.peopleState(), { code: c.code, agentId: a.id }));
       }
+      if (!am[2] && method === 'DELETE') {
+        // агент удаляется совсем: доступ закрывается, его магазины остаются в базе без агента
+        if (a.uid) await this.st.delete('agu:' + a.uid);
+        const upd = {}, now = new Date().toISOString();
+        (await this.st.list({ prefix: 'b:' })).forEach(rec => { if (rec.agent === a.id) { rec.agent = ''; rec.ver = (Number(rec.ver) || 0) + 1; rec.upd = now; upd['b:' + rec.id] = rec; } });
+        if (Object.keys(upd).length) await this.st.put(upd);
+        await this.st.put('ax', ((await this.st.get('ax')) || []).filter(x => x !== a.id));
+        await this.st.delete('a:' + a.id);
+        return json(await this.peopleState());
+      }
       if (!am[2] && method === 'PUT') {
         if (typeof b.on === 'boolean') a.on = b.on;
         if (b.name !== undefined) { const n = cleanStr(b.name, 60); if (n.length < 2) return json({ error: 'bad_name' }, 400); a.name = n; }
@@ -3015,7 +3043,7 @@ export class Hub {
     return { added, linked, skipped };
   }
   /* Вход агента по коду. Ошибки считаются в том же счётчике, что и у /admin. */
-  async tryAgentCode(code, uid) {
+  async tryAgentCode(code, uid, who) {
     const f = (await this.st.get('fail:' + uid)) || { n: 0, until: 0 };
     if (f.until > Date.now()) return { r: 'locked' };
     const h = await sha256hex('code:' + String(code || ''));
@@ -3031,6 +3059,8 @@ export class Hub {
     if (ag.uid && ag.uid !== uid) await this.st.delete('agu:' + ag.uid);
     ag.uid = uid;
     await this.st.put({ ['a:' + ag.id]: ag, ['agu:' + uid]: ag.id });
+    const w = tgWho(who);
+    if (w && (w.n || w.u)) await this.st.put('who:' + uid, w);
     return { r: 'ok', ag };
   }
 
@@ -3116,6 +3146,7 @@ export class Hub {
     if (!path.startsWith('/api/hub/admin/')) return json({ error: 'not_found' }, 404);
     if (!(await this.owners()).includes(uid)) return json({ error: 'forbidden' }, 403);
     if (path.startsWith('/api/hub/admin/mod')) return await this.adminMod(request, path, method);
+    if (path.startsWith('/api/hub/admin/staff')) { const res = await this.adminStaff(request, path, method); if (res) return res; }
     if (path.startsWith('/api/hub/admin/people') || path.startsWith('/api/hub/admin/terr') || path.startsWith('/api/hub/admin/agents') || path === '/api/hub/admin/base/import') {
       const res = await this.adminPeople(request, path, method);
       if (res) return res;
@@ -3292,6 +3323,7 @@ export class Hub {
     if (this.env.ADMIN_CODE && safeEq(hash, await sha256hex('code:' + this.env.ADMIN_CODE))) return { err: 'code_taken' };
     for (const x of await this.allRecs()) if (x.hash && x.id !== except && safeEq(hash, x.hash)) return { err: 'code_taken' };
     for (const x of await this.allAgents()) if (x.hash && x.id !== except && safeEq(hash, x.hash)) return { err: 'code_taken' };
+    for (const x of await this.allStaff()) if (x.e.hash && x.e.id !== except && safeEq(hash, x.e.hash)) return { err: 'code_taken' };
     return { code, hash };
   }
   async createShop(b) {
@@ -3310,12 +3342,92 @@ export class Hub {
     return json({ shop: await this.ownerRec(rec), code: c.code });
   }
   /* Новый код дистрибьютора. Прежние продавцы теряют доступ и входят заново по новому коду. */
+  /* --- продавцы дистрибьютора: список людей и личные коды --- */
+  async staffOf(did) { const a = await this.st.get('stf:' + did); return Array.isArray(a) ? a : []; }
+  async allStaff() {
+    const idx = (await this.st.get('dx')) || [];
+    if (!idx.length) return [];
+    const map = await this.st.get(idx.map(x => 'stf:' + x));
+    const out = [];
+    idx.forEach(did => { const a = map.get('stf:' + did); if (Array.isArray(a)) a.forEach(e => out.push({ did, e })); });
+    return out;
+  }
+  async whoLabel(uid) {
+    const w = await this.st.get('who:' + uid);
+    const nm = w && typeof w === 'object' ? [w.n, w.u ? '@' + w.u : ''].filter(Boolean).join(' ') : '';
+    return nm || 'Telegram ID ' + uid;
+  }
+  /* Для владельца: у каждого дистрибьютора — кто имеет доступ продавца. Есть имя (выдан личный код) или только аккаунт (вошли по общему коду). */
+  async staffState() {
+    const owners = await this.owners();
+    const shops = await Promise.all((await this.allRecs()).map(async rec => {
+      const adm = (await shopCall(this.env, rec.id, '/__/admins', {})).data;
+      const admins = adm && Array.isArray(adm.admins) ? adm.admins.filter(Number.isSafeInteger) : [];
+      const list = await this.staffOf(rec.id);
+      const people = [];
+      const named = new Set();
+      for (const e of list) {
+        const live = !!e.uid && admins.includes(e.uid);
+        if (live) named.add(e.uid);
+        people.push({ id: e.id, name: e.name, used: live, who: live ? await this.whoLabel(e.uid) : '', owner: false });
+      }
+      for (const uid of admins) if (!named.has(uid)) people.push({ id: 'u' + uid, name: '', used: true, who: await this.whoLabel(uid), owner: owners.includes(uid) });
+      return { id: rec.id, name: rec.name, on: rec.on, people, can: list.length < MAX_STAFF };
+    }));
+    return { shops, max: MAX_STAFF };
+  }
+  async adminStaff(request, path, method) {
+    if (path === '/api/hub/admin/staff' && method === 'GET') return json(await this.staffState());
+    if (path === '/api/hub/admin/staff' && method === 'POST') {
+      const r = await this.readBody(request, 3000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const rec = typeof r.body.did === 'string' ? await this.getRec(r.body.did) : null;
+      if (!rec) return json({ error: 'not_found' }, 404);
+      const name = cleanStr(r.body.name, 60);
+      if (name.length < 2) return json({ error: 'bad_name' }, 400);
+      const list = await this.staffOf(rec.id);
+      if (list.length >= MAX_STAFF) return json({ error: 'too_many' }, 409);
+      const c = await this.pickCode(r.body.code);
+      if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
+      let id;
+      do { id = 's' + randId(5).toLowerCase(); } while (list.some(x => x.id === id));
+      list.push({ id, name, hash: c.hash, since: new Date().toISOString(), uid: 0 });
+      await this.st.put('stf:' + rec.id, list);
+      return json(Object.assign(await this.staffState(), { code: c.code, did: rec.id, staffId: id, name }));
+    }
+    const m = path.match(/^\/api\/hub\/admin\/staff\/([a-z0-9]{2,12})\/(s[a-z0-9]{4,8}|u[0-9]{1,15})$/);
+    if (m && method === 'DELETE') {
+      const rec = await this.getRec(m[1]);
+      if (!rec) return json({ error: 'not_found' }, 404);
+      let uid = 0;
+      const list = await this.staffOf(rec.id);
+      if (m[2][0] === 's') {
+        const e = list.find(x => x.id === m[2]);
+        if (!e) return json({ error: 'not_found' }, 404);
+        uid = e.uid || 0;
+      } else {
+        uid = Number(m[2].slice(1));
+        const adm = (await shopCall(this.env, rec.id, '/__/admins', {})).data;
+        if (!adm || !Array.isArray(adm.admins) || !adm.admins.includes(uid)) return json({ error: 'not_found' }, 404);
+      }
+      if (uid && (await this.owners()).includes(uid)) return json({ error: 'is_owner' }, 409);   // владельца площадки отсюда не убрать
+      if (m[2][0] === 's') await this.st.put('stf:' + rec.id, list.filter(x => x.id !== m[2]));
+      if (uid) {
+        const res = await shopCall(this.env, rec.id, '/__/admin-del', { uid });
+        if (!res.ok || !res.data) return json({ error: 'server' }, 500);
+        await this.setSeller(uid, rec.id, false, res.data.admins);
+      }
+      return json(await this.staffState());
+    }
+    return null;
+  }
   async resetCode(rec, b) {
     const c = await this.pickCode(b.code, rec.id);
     if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
     const cleared = await shopCall(this.env, rec.id, '/__/admin-clear', {});
     const removed = cleared.data && Array.isArray(cleared.data.removed) ? cleared.data.removed : [];
     for (const uid of removed) await this.setSeller(uid, rec.id, false);
+    await this.st.delete('stf:' + rec.id);   // личные коды продавцов тоже закрываются
     rec.hash = c.hash;
     rec.sellers = 0;
     await this.st.put('d:' + rec.id, rec);
@@ -3372,7 +3484,7 @@ export class Hub {
         await this.tg('sendMessage', { chat_id: chat, text: adm ? bilingual(lang, 'Вы подключены как продавец. Новые заказы приходят в этот чат.', 'Siz sotuvchi sifatida ulangansiz. Yangi buyurtmalar shu chatga keladi.') : await this.welcome(lang, false, ''), reply_markup: openBtn(this.origin, openText) });
         return;
       }
-      const res = await this.tryCode(code, uid);
+      const res = await this.tryCode(code, uid, msg.from);
       // код не должен оставаться в переписке
       await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });
       if (res.r === 'ok') {
@@ -3402,7 +3514,7 @@ export class Hub {
         await this.tg('sendMessage', { chat_id: chat, text: 'Отправьте «/agent КОД». Код агента выдаёт владелец площадки.' });
         return;
       }
-      const res = await this.tryAgentCode(code, uid);
+      const res = await this.tryAgentCode(code, uid, msg.from);
       await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });   // код не должен оставаться в переписке
       if (res.r === 'ok') {
         const names = (await this.terrs()).filter(t => (res.ag.terr || []).includes(t.id)).map(t => t.name);
