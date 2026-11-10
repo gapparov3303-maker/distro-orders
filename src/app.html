@@ -3047,7 +3047,7 @@ function shopsListHTML(){
 }
 function renderShops(){
   const h=S.hub,me=h.me;
-  let out='<div class="wrap page"><div class="hrow"><div><div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Дистрибьюторы и магазины в одном приложении','Distribyutorlar va doʻkonlar bir ilovada')+'</div></div>'
+  let out='<div class="wrap page"><div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Дистрибьюторы и магазины в одном приложении','Distribyutorlar va doʻkonlar bir ilovada')+'</div></div>'
     +'</div>';
   if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
