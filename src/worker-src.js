@@ -26,7 +26,7 @@ const INIT_MAX_AGE = 2 * 24 * 3600; // initData старше двух суток
 const MAIN = 'main';          // первый дистрибьютор: его данные лежали в хранилище ещё до появления площадки
 const MAX_SHOPS = 50;         // дистрибьюторов на площадке
 const MIN_CODE = 12;          // короткий код продавца не принимаем
-const HUB_TITLE = 'VIVA Distribution';
+const HUB_TITLE = 'Sarbon';
 const validDid = d => typeof d === 'string' && /^[a-z0-9]{2,12}$/.test(d);
 const NEXT ={ new: ['accepted', 'cancelled'], accepted: ['ready', 'cancelled'], ready: ['done', 'cancelled'] };
 

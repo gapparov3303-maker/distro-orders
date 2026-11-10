@@ -124,6 +124,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .page{padding-block:18px 56px}
 .page h1{font:700 18px/1.25 var(--f-display);margin-bottom:6px;text-wrap:balance}
 .lead{color:var(--ink-2);margin-bottom:16px;max-width:60ch}
+.tagline{margin-top:4px;color:var(--ink-2);font-size:14px;line-height:1.4}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}
 @media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
@@ -687,7 +688,7 @@ const QS=new URLSearchParams(location.search);
 const validDid=d=>/^[a-z0-9]{2,12}$/.test(String(d||''));
 const okey=(id,d)=>d+'|'+id;
 const plTovar=n=>{const a=n%100,b=n%10;return a>=11&&a<=14?'товаров':b===1?'товар':b>=2&&b<=4?'товара':'товаров'};
-const hubTitle=()=>S.hub.title||'VIVA Distribution';
+const hubTitle=()=>S.hub.title||'Sarbon';
 const isOwner=()=>!!(S.hub.me&&S.hub.me.owner);
 const isAgent=()=>!!(S.hub.me&&S.hub.me.agent);
 /* общая база магазинов: смотрят владелец, агенты и дистрибьюторы */
@@ -3045,7 +3046,7 @@ function shopsListHTML(){
 }
 function renderShops(){
   const h=S.hub,me=h.me;
-  let out='<div class="wrap page"><div class="hrow"><div><div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(hubTitle())+'</h1></div>'
+  let out='<div class="wrap page"><div class="hrow"><div><div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Дистрибьюторы и магазины в одном приложении','Distribyutorlar va doʻkonlar bir ilovada')+'</div></div>'
     +'</div>';
   if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
