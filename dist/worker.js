@@ -773,13 +773,24 @@ function customerText(o, kind, shop) {
   return '';
 }
 
-function welcomeText(lang, isAdmin, shop) {
+/* Приветствие на двух языках: сверху язык человека (по языку его Telegram), ниже второй.
+   Многие в Узбекистане пользуются Telegram на русском или английском, но говорят по-узбекски. */
+const bilingual = (lang, ru, uz) => lang === 'uz' ? uz + '\n\n' + ru : ru + '\n\n' + uz;
+const SELLER_NOTE_RU = 'Вы подключены как продавец: новые заказы приходят сюда, их можно принимать кнопками.';
+const SELLER_NOTE_UZ = 'Siz sotuvchi sifatida ulangansiz: yangi buyurtmalar shu yerga keladi, ularni tugmalar bilan qabul qilish mumkin.';
+function welcomeText(lang, isAdmin, shop, several) {
   setLang(lang);
   const name = (shop && shop.name) || DEFAULT.shop.name;
-  return L(
-    'Здравствуйте! Это ' + name + ' 🛒\nОткройте каталог, выберите товары и оформите заказ: самовывоз или доставка. Оплата только при получении.',
-    'Assalomu alaykum! Bu ' + name + ' 🛒\nKatalogni oching, mahsulotlarni tanlang va buyurtma bering: olib ketish yoki yetkazib berish. Toʻlov faqat olganda.')
-    + (isAdmin ? '\n\nВы подключены как продавец: новые заказы приходят сюда, их можно принимать кнопками.' : '');
+  let ru, uz;
+  if (several) {
+    ru = 'Здравствуйте! Это ' + name + ' 🛒\nОткройте каталог, выберите дистрибьютора и товары, оформите заказ: самовывоз или доставка. Оплата только при получении.';
+    uz = 'Assalomu alaykum! Bu ' + name + ' 🛒\nKatalogni oching, distribyutor va mahsulotlarni tanlang, buyurtma bering: olib ketish yoki yetkazib berish. Toʻlov faqat olganda.';
+  } else {
+    ru = 'Здравствуйте! Это ' + name + ' 🛒\nОткройте каталог, выберите товары и оформите заказ: самовывоз или доставка. Оплата только при получении.';
+    uz = 'Assalomu alaykum! Bu ' + name + ' 🛒\nKatalogni oching, mahsulotlarni tanlang va buyurtma bering: olib ketish yoki yetkazib berish. Toʻlov faqat olganda.';
+  }
+  if (isAdmin) { ru += '\n\n' + SELLER_NOTE_RU; uz += '\n\n' + SELLER_NOTE_UZ; }
+  return bilingual(lang, ru, uz);
 }
 const openBtn = (origin, text, url) => ({ inline_keyboard: [[{ text, web_app: { url: url || origin + '/' } }]] });
 
@@ -3662,14 +3673,14 @@ export class Hub {
     const text = String(msg.text || '').trim();
     const lang = String(msg.from.language_code || '').toLowerCase().startsWith('uz') ? 'uz' : 'ru';
     const cmd = text.split(/\s+/)[0].split('@')[0].toLowerCase();
-    const openText = lang === 'uz' ? '🛒 Katalogni ochish' : '🛒 Открыть каталог';
+    const openText = lang === 'uz' ? '🛒 Katalogni ochish · Открыть каталог' : '🛒 Открыть каталог · Katalogni ochish';
     const isSeller = async () => (await this.sellsOf(uid)).length > 0;
 
     if (cmd === '/admin') {
       const code = text.replace(/^\S+\s*/, '');
       if (!code) {
         const adm = await isSeller();
-        await this.tg('sendMessage', { chat_id: chat, text: adm ? 'Вы подключены как продавец. Новые заказы приходят в этот чат.' : await this.welcome(lang, false, ''), reply_markup: openBtn(this.origin, openText) });
+        await this.tg('sendMessage', { chat_id: chat, text: adm ? bilingual(lang, 'Вы подключены как продавец. Новые заказы приходят в этот чат.', 'Siz sotuvchi sifatida ulangansiz. Yangi buyurtmalar shu chatga keladi.') : await this.welcome(lang, false, ''), reply_markup: openBtn(this.origin, openText) });
         return;
       }
       const res = await this.tryCode(code, uid);
@@ -3740,11 +3751,6 @@ export class Hub {
       if (vis.length === 1) name = vis[0].name;
       else { name = await this.title(); several = vis.length > 1; }
     }
-    if (!several) return welcomeText(lang, isAdmin, { name });
-    setLang(lang);
-    return L(
-      'Здравствуйте! Это ' + name + ' 🛒\nОткройте каталог, выберите дистрибьютора и товары, оформите заказ: самовывоз или доставка. Оплата только при получении.',
-      'Assalomu alaykum! Bu ' + name + ' 🛒\nKatalogni oching, distribyutor va mahsulotlarni tanlang, buyurtma bering: olib ketish yoki yetkazib berish. Toʻlov faqat olganda.')
-      + (isAdmin ? '\n\nВы подключены как продавец: новые заказы приходят сюда, их можно принимать кнопками.' : '');
+    return welcomeText(lang, isAdmin, { name }, several);
   }
 }

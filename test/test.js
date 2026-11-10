@@ -223,18 +223,22 @@ await t('бот: вебхук без секрета отклоняется', asy
   assert.equal(r2.status, 403);
 });
 
-await t('бот: /start зовёт открыть каталог, по-узбекски для uz', async () => {
+await t('бот: /start зовёт открыть каталог сразу на двух языках, язык человека первым', async () => {
   tgLog = [];
   await send({ update_id: 1, message: { message_id: 1, from: ANNA, chat: { id: ANNA.id, type: 'private' }, text: '/start' } });
   let m = lastTg('sendMessage');
   assert.equal(m.payload.chat_id, ANNA.id);
   assert.ok(m.payload.text.includes('каталог') && m.payload.text.includes('самовывоз или доставка'));
-  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Открыть каталог');
+  // русскому интерфейсу: по-русски сверху, по-узбекски ниже
+  assert.ok(m.payload.text.includes('Katalogni oching') && m.payload.text.indexOf('Здравствуйте') < m.payload.text.indexOf('Assalomu alaykum'));
+  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Открыть каталог · Katalogni ochish');
   assert.equal(m.payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
   await send({ update_id: 2, message: { message_id: 2, from: BOB, chat: { id: BOB.id, type: 'private' }, text: 'salom' } });
   m = lastTg('sendMessage');
   assert.ok(m.payload.text.includes('Katalogni oching'));
-  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Katalogni ochish');
+  // узбекскому интерфейсу: по-узбекски сверху, по-русски ниже
+  assert.ok(m.payload.text.includes('Откройте каталог') && m.payload.text.indexOf('Assalomu alaykum') < m.payload.text.indexOf('Здравствуйте'));
+  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Katalogni ochish · Открыть каталог');
 });
 
 await t('продавец: неверный код не даёт прав, сообщение с кодом удаляется', async () => {
@@ -3090,7 +3094,10 @@ await t('площадка: приветствие бота зависит от �
   // два: от имени площадки
   m = await start(ANNA, '/start');
   assert.ok(m.text.includes('Sarbon') && m.text.includes('выберите дистрибьютора') && m.text.includes('каталог'));
-  assert.equal(m.reply_markup.inline_keyboard[0][0].text, '🛒 Открыть каталог');
+  assert.equal(m.reply_markup.inline_keyboard[0][0].text, '🛒 Открыть каталог · Katalogni ochish');
+  // продавец видит пометку на обоих языках
+  m = await start(SELLER, '/start');
+  assert.ok(m.text.includes('Вы подключены как продавец') && m.text.includes('Siz sotuvchi sifatida ulangansiz'));
   m = await start(BOB, '/start');
   assert.ok(m.text.includes('Katalogni oching') && m.text.includes('distribyutor'));
   // ссылка на конкретного
