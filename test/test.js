@@ -234,7 +234,7 @@ await t('бот: /start зовёт открыть каталог сразу на
   assert.ok(m.payload.text.includes('Самовывоз или доставка. Оплата при получении заказа.'));
   assert.ok(m.payload.text.includes('Toʻlovni buyurtmangizni olganda qilasiz.'));
   assert.ok(m.payload.text.indexOf('Assalomu alaykum') < m.payload.text.indexOf('Здравствуйте'));
-  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Katalogni ochish · Открыть каталог');
+  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, 'CATALOG');
   assert.equal(m.payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
   const ruText = m.payload.text;
   await send({ update_id: 2, message: { message_id: 2, from: BOB, chat: { id: BOB.id, type: 'private' }, text: 'salom' } });
@@ -242,7 +242,7 @@ await t('бот: /start зовёт открыть каталог сразу на
   // узбекскому интерфейсу то же самое: тот же текст, тот же порядок и та же кнопка
   assert.equal(m.payload.text, ruText);
   assert.ok(m.payload.text.indexOf('Assalomu alaykum') < m.payload.text.indexOf('Здравствуйте'));
-  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Katalogni ochish · Открыть каталог');
+  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, 'CATALOG');
   assert.ok(m.payload.text.split('\n').length <= 6, 'приветствие короткое');
 });
 
@@ -3142,7 +3142,7 @@ await t('площадка: приветствие бота зависит от �
   // два: от имени площадки
   m = await start(ANNA, '/start');
   assert.ok(m.text.includes('Sarbon') && m.text.includes('Нажмите «Каталог»') && !m.text.includes('Вы продавец'));
-  assert.equal(m.reply_markup.inline_keyboard[0][0].text, '🛒 Katalogni ochish · Открыть каталог');
+  assert.equal(m.reply_markup.inline_keyboard[0][0].text, 'CATALOG');
   // продавец видит пометку на обоих языках, узбекский сверху
   m = await start(SELLER, '/start');
   assert.ok(m.text.includes('Вы продавец: новые заказы придут сюда.') && m.text.includes('Siz sotuvchisiz: yangi buyurtmalar shu yerga keladi.'));
