@@ -163,6 +163,22 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .lt small{font-size:12px;color:var(--ink-2)}
 .lsum{font:700 14px var(--f-display);font-variant-numeric:tabular-nums;white-space:nowrap}
 .lsum.pos{color:var(--ok)}
+button.lrow{appearance:none;width:100%;background:none;border:0;border-top:1px solid var(--line);color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:0}
+button.lrow:first-child{border-top:0}
+button.lrow{flex-wrap:nowrap}
+button.lrow .lt{flex:1 1 0}
+.lchev{flex:none;display:inline-flex;color:var(--ink-2)}
+.lchev svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
+.ordx{display:grid;gap:4px;margin:0 0 10px;padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:12px;font-size:13px}
+.ordx .oxd{color:var(--ink-2);font-size:12px;margin-bottom:2px}
+.ordx .pl{display:flex;justify-content:space-between;gap:10px}
+.ordx .pl span:first-child{min-width:0;overflow-wrap:anywhere}
+.ordx .pl span:last-child{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.ordx .pl.t{margin-top:4px;padding-top:6px;border-top:1px solid var(--line);font-weight:700}
+.ordx .pl.t span:last-child{color:var(--ink)}
+.ordx .pl.left span:last-child{color:var(--bad);font-weight:700}
+.ordx .pl.ok span:last-child{color:var(--ok);font-weight:600}
 .pyrow input[type=tel]{flex:1 1 160px}
 .dvc{display:grid;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 .dvh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
@@ -1659,7 +1675,7 @@ const DB=()=>S.view==='courier'?S.cr.dbt:S.dbt;
 const dPaint=()=>S.view==='courier'?paintCourier():paintSeller();
 const dApi=()=>S.view==='courier'?'/api/courier/debts':'/api/admin/debts';
 const dLoad=()=>S.view==='courier'?loadCrDebts():loadDebts();
-function newDebts(){return {ok:false,list:[],total:0,overdue:0,n:0,late:0,open:null,det:null,amount:'',pm:'cash',note:'',busy:false}}
+function newDebts(){return {ok:false,list:[],total:0,overdue:0,n:0,late:0,open:null,det:null,ex:{},amount:'',pm:'cash',note:'',busy:false}}
 async function loadDebts(){
   if(!S.admin||!S.did)return;
   const r=await api('GET','/api/admin/debts');
@@ -1688,6 +1704,25 @@ function debtsHTML(){
       +'<div class="da"><b>'+(adv?L('Аванс ','Avans ')+money(-x.bal):money(x.bal))+'</b>'+(adv?'':'<small class="'+(x.days?'bad':'')+'">'+esc(lateTxt(x))+'</small>')+'</div></button>';
   }).join('')+'</div>';
 }
+/* Состав заказа, который лежит в основе долга: раскрывается по нажатию на строку. */
+function ordOf(ref){const x=DB().det,o=x&&x.ords&&ref?x.ords[ref]:null;return o&&Array.isArray(o.items)?o:null}
+function ordBodyHTML(o,left){
+  const paid=Math.max(0,o.total-left);
+  return '<div class="ordx">'+(o.at?'<div class="oxd">'+L('Выдан ','Berilgan ')+esc(jrDate(o.at))+'</div>':'')
+    +o.items.map(it=>'<div class="pl">'+itemRow(it)+'</div>').join('')
+    +discRow(o,'pl')
+    +(o.fee>0?'<div class="pl"><span>'+L('Стоимость доставки','Yetkazib berish narxi')+'</span><span>'+money(o.fee)+'</span></div>':'')
+    +'<div class="pl t"><span>'+L('Сумма заказа','Buyurtma summasi')+'</span><span>'+money(o.total)+'</span></div>'
+    +(left>0?(paid>0?'<div class="pl"><span>'+L('Оплачено','Toʻlangan')+'</span><span>'+money(paid)+'</span></div>':'')+'<div class="pl left"><span>'+L('Осталось оплатить','Toʻlash qoldi')+'</span><span>'+money(left)+'</span></div>'
+      :'<div class="pl ok"><span>'+L('Оплачен полностью','Toʻliq toʻlangan')+'</span><span>'+money(o.total)+'</span></div>')
+    +'</div>';
+}
+/* Строка списка: если состав заказа известен, она превращается в кнопку-«гармошку». */
+function lgRowBox(key,o,left,inner,cls){
+  if(!o)return '<div class="lrow'+(cls||'')+'">'+inner+'</div>';
+  const on=!!DB().ex[key];
+  return '<button type="button" class="lrow'+(cls||'')+'" data-act="dord" data-k="'+esc(key)+'" aria-expanded="'+on+'">'+inner+'<span class="lchev">'+ICO.chev+'</span></button>'+(on?ordBodyHTML(o,left):'');
+}
 function lgRowHTML(r){
   let t,sum,btn='';
   if(r.k==='ch'){t=L('Выдан заказ ','Buyurtma berildi ')+esc(r.ref||'')+(r.due?' · '+L('срок ','muddat ')+fDay(r.due):'');sum='+'+money(r.a)}
@@ -1696,7 +1731,10 @@ function lgRowHTML(r){
     if(!r.void&&S.view!=='courier')btn='<button type="button" class="btn ghost sm" data-act="dvoid" data-n="'+r.n+'">'+L('Отменить запись','Yozuvni bekor qilish')+'</button>';
   }
   else{t=L('Оплата отменена','Toʻlov bekor qilindi');sum='+'+money(r.a)}
-  return '<div class="lrow'+(r.void?' void':'')+'"><div class="lt"><b>'+t+'</b><small>'+esc(jrDate(r.t))+(r.void?' · '+L('отменена','bekor qilingan'):'')+'</small></div><div class="lsum'+(r.k==='pay'?' pos':'')+'">'+sum+'</div>'+btn+'</div>';
+  const inner='<div class="lt"><b>'+t+'</b><small>'+esc(jrDate(r.t))+(r.void?' · '+L('отменена','bekor qilingan'):'')+'</small></div><div class="lsum'+(r.k==='pay'?' pos':'')+'">'+sum+'</div>';
+  const o=r.k==='ch'?ordOf(r.ref):null,x=DB().det,q=o&&((x.open||[]).find(z=>z.ref===r.ref)||null);
+  if(o)return lgRowBox('h:'+r.n,o,q?q.r:0,inner,r.void?' void':'')+btn;
+  return '<div class="lrow'+(r.void?' void':'')+'">'+inner+btn+'</div>';
 }
 function debtorHTML(){
   const d=DB(),x=d.det;
@@ -1716,14 +1754,14 @@ function debtorHTML(){
     +'<div class="pyrow"><input type="text" id="dp-note" maxlength="80" value="'+esc(d.note)+'" placeholder="'+esc(L('Заметка (необязательно)','Izoh (ixtiyoriy)'))+'"'+dis+'></div>'
     +'<div class="pyrow"><button type="button" class="btn sm" data-act="dpay"'+dis+'>'+L('Записать оплату','Toʻlovni yozish')+'</button>'
     +(x.bal>0?'<button type="button" class="btn ghost sm" data-act="dremind"'+dis+'>'+L('Напомнить в Telegram','Telegramda eslatish')+'</button>':'')+'</div></div>';
-  if(x.open&&x.open.length)h+='<h3 class="dsub">'+L('Не оплачено','Toʻlanmagan')+'</h3><div class="lbox">'+x.open.map(q=>'<div class="lrow"><div class="lt"><b>'+(q.ref?esc(q.ref):L('Прежний долг','Oldingi qarz'))+'</b><small>'+(q.due?(q.due<ymd(shopNow())?L('срок вышел ','muddat oʻtdi ')+fDay(q.due):L('срок ','muddat ')+fDay(q.due)):L('без срока','muddatsiz'))+'</small></div><div class="lsum">'+money(q.r)+'</div></div>').join('')+'</div>';
+  if(x.open&&x.open.length)h+='<h3 class="dsub">'+L('Не оплачено','Toʻlanmagan')+'</h3><div class="lbox">'+x.open.map(q=>lgRowBox('o:'+(q.ref||''),ordOf(q.ref),q.r,'<div class="lt"><b>'+(q.ref?esc(q.ref):L('Прежний долг','Oldingi qarz'))+'</b><small>'+(q.due?(q.due<ymd(shopNow())?L('срок вышел ','muddat oʻtdi ')+fDay(q.due):L('срок ','muddat ')+fDay(q.due)):L('без срока','muddatsiz'))+'</small></div><div class="lsum">'+money(q.r)+'</div>')).join('')+'</div>';
   h+='<h3 class="dsub">'+L('История расчётов','Hisob-kitoblar tarixi')+'</h3>';
   h+=x.rows.length?'<div class="lbox">'+x.rows.map(lgRowHTML).join('')+'</div>'+(x.more?'<p class="rnote">'+L('Показаны последние '+x.rows.length+' записей.','Oxirgi '+x.rows.length+' ta yozuv koʻrsatilgan.')+'</p>':''):'<div class="empty">'+L('Записей нет.','Yozuvlar yoʻq.')+'</div>';
   return h;
 }
 async function debtOpen(uid){
   const d=DB();
-  Object.assign(d,{open:uid,det:null,amount:'',pm:'cash',note:'',busy:false});
+  Object.assign(d,{open:uid,det:null,ex:{},amount:'',pm:'cash',note:'',busy:false});
   dPaint();window.scrollTo(0,0);
   const r=await api('GET',dApi()+'/'+uid);
   if(d.open!==uid)return;
@@ -4452,6 +4490,7 @@ document.addEventListener('click',e=>{
   else if(a==='dvgo')dvHand()
   else if(a==='dopen')debtOpen(Number(t.dataset.uid))
   else if(a==='dback')debtClose()
+  else if(a==='dord'){const d=DB();d.ex[t.dataset.k]=!d.ex[t.dataset.k];debtSync();dPaint()}
   else if(a==='dfull'){const el=$('#dp-amount');if(el&&DB().det){el.value=String(DB().det.bal);DB().amount=el.value}}
   else if(a==='dpm'){DB().pm=t.dataset.v;document.querySelectorAll('[data-act="dpm"]').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.v===t.dataset.v)))}
   else if(a==='dpay')debtPay()

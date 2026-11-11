@@ -1721,6 +1721,67 @@ await t('долги: напоминание магазину не чаще ра�
   assert.equal((await debtAct(U.u.id, 'remind', {})).status, 200);
 });
 
+await t('долги: в карточке долга и в напоминании виден состав заказов и остаток по частично оплаченным', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o1 = await readyOrder(A, CART);                                          // 1 394 000
+  await doneWith(o1.id, { m: 'credit', days: 7, paid: 394000, pm: 'cash' });     // в долг 1 000 000
+  const o2 = await readyOrder(A, [{ id: 'p4', qty: 4 }]);                        // 30 000
+  await doneWith(o2.id, { m: 'credit', days: 3 });
+  const db = await debtOf(A.u.id);
+  assert.deepEqual(Object.keys(db.ords).sort(), [o1.id, o2.id].sort());
+  assert.deepEqual([db.ords[o1.id].total, db.ords[o1.id].items.map(i => [i.id, i.qty])], [1394000, [['p1', 2], ['p2', 3]]]);
+  assert.deepEqual(db.open.map(q => [q.ref, q.r]), [[o1.id, 1000000], [o2.id, 30000]]);
+  tgLog = [];
+  assert.equal((await debtAct(A.u.id, 'remind', {})).status, 200);
+  const m = lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text.replace(/ /g, ' ');
+  assert.ok(m.includes(o1.id) && m.includes('• Масло подсолнечное (5 л) × 2') && m.includes('• Рис (25 кг) × 3'), m);
+  assert.ok(m.includes('Сумма 1 394 000 сум, осталось 1 000 000 сум'), m);
+  assert.ok(m.includes('• Макароны (400 г) × 4') && m.includes('Сумма 30 000 сум'), m);
+  assert.ok(!m.includes('осталось 30 000'), 'у полностью неоплаченного заказа остаток не дублируется');
+  assert.ok(m.indexOf(o1.id) < m.indexOf(o2.id), 'старые заказы идут первыми');
+  // заказ, которого уже нет, не ломает ни карточку, ни напоминание
+  await W.storage.delete('o:' + o2.id);
+  const db2 = await debtOf(A.u.id);
+  assert.deepEqual(Object.keys(db2.ords), [o1.id]);
+  assert.equal(db2.open.length, 2);
+  await W.storage.put('lh:' + A.u.id, Object.assign(await W.storage.get('lh:' + A.u.id), { rem: 0 }));
+  tgLog = [];
+  assert.equal((await debtAct(A.u.id, 'remind', {})).status, 200);
+  const m2 = lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text.replace(/ /g, ' ');
+  assert.ok(m2.includes(o2.id + ' · осталось 30 000 сум'), m2);
+  // узбекский клиент получает названия и подписи по-узбекски
+  const U = newUser();
+  const o3 = (await jsonOf(await place(U, ONE, { lang: 'uz' }))).order;
+  for (const to of ['accepted', 'ready']) assert.equal((await setStatus(o3.id, to)).status, 200);
+  await doneWith(o3.id, { m: 'credit', days: 5 });
+  tgLog = [];
+  assert.equal((await debtAct(U.u.id, 'remind', {})).status, 200);
+  const mu = lastTg('sendMessage', p => p.chat_id === U.u.id).payload.text.replace(/ /g, ' ');
+  assert.ok(mu.includes('Makaron') && mu.includes('Summa 7 500') && !mu.includes('Сумма'), mu);
+});
+
+await t('долги: в напоминании не больше 5 заказов, длинный заказ сокращается, текст влезает в одно сообщение', async () => {
+  await stockWorld();
+  const A = newUser();
+  const ids = [];
+  for (let i = 0; i < 7; i++) { const o = await readyOrder(A, ONE); await doneWith(o.id, { m: 'credit', days: 7 }); ids.push(o.id); }
+  const setItems = async (id, items) => { const o = await W.storage.get('o:' + id); o.items = items; await W.storage.put('o:' + id, o); };
+  const unrem = async () => W.storage.put('lh:' + A.u.id, Object.assign(await W.storage.get('lh:' + A.u.id), { rem: 0 }));
+  const remind = async () => { tgLog = []; assert.equal((await debtAct(A.u.id, 'remind', {})).status, 200); return lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text.replace(/ /g, ' '); };
+  await setItems(ids[0], Array.from({ length: 12 }, (_, i) => ({ id: 'x' + i, name: 'Товар ' + i, uz: '', amount: 1, unit: 'kg', price: 1000, qty: 1 })));
+  let m = await remind();
+  assert.ok(m.includes(ids[0]) && m.includes(ids[4]) && !m.includes(ids[5]), 'показаны пять самых старых заказов');
+  assert.ok(m.includes('…и ещё 2 зак. на 15 000 сум'), m);
+  assert.ok(m.includes('• Товар 7 (1 кг) × 1') && !m.includes('Товар 8') && m.includes('…и ещё 4 поз.'), m);
+  // огромный заказ с очень длинными названиями: сообщение всё равно меньше лимита Telegram
+  await unrem();
+  await setItems(ids[1], Array.from({ length: 100 }, (_, i) => ({ id: 'y' + i, name: 'Ы'.repeat(150) + i, uz: '', amount: 1, unit: 'kg', price: 1000, qty: 1 })));
+  await setItems(ids[2], Array.from({ length: 100 }, (_, i) => ({ id: 'z' + i, name: 'Щ'.repeat(150) + i, uz: '', amount: 1, unit: 'kg', price: 1000, qty: 1 })));
+  m = await remind();
+  assert.ok(m.length <= 4096 && m.includes('Долг по заказам: 52 500'), 'длина ' + m.length);
+});
+
 await t('долги: «Выдан клиенту» в боте сначала спрашивает оплату; долг виден на карточках; клиента с долгом удалить нельзя', async () => {
   await stockWorld();
   const A = newUser();
@@ -5013,6 +5074,11 @@ await t('доставка: доставщик видит всех должник
   const dl = await jsonOf(await call('GET', '/api/courier/debts', { init: iR() }));
   assert.deepEqual([dl.n, dl.total, dl.debtors[0].uid], [1, 1394000, A.u.id]);
   assert.equal((await call('GET', '/api/courier/debts', { init: iA() })).status, 403, 'обычному клиенту список закрыт');
+  // карточка должника у доставщика тоже содержит состав заказов
+  const dcard = (await jsonOf(await call('GET', '/api/courier/debts/' + A.u.id, { init: iR() }))).debt;
+  assert.deepEqual(dcard.ords[o.id].items.map(i => [i.id, i.qty]), [['p1', 2], ['p2', 3]]);
+  assert.equal(dcard.ords[o.id].total, 1394000);
+  assert.equal((await call('GET', '/api/courier/debts/' + A.u.id, { init: iA() })).status, 403);
   const pay = (amount, m, init) => call('POST', '/api/courier/debts/' + A.u.id + '/pay', { init: init || iR(), body: { amount, m } });
   assert.equal((await pay(0, 'cash')).status, 400);
   assert.equal((await pay(5, 'gold')).status, 400);
