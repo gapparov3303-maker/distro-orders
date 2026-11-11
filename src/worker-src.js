@@ -1091,6 +1091,17 @@ function debtLine(h, today) {
 /* Напоминание магазину. ords — состав заказов {номер: заказ}; по каждому неоплаченному заказу пишем дату, товары, сумму и остаток.
    Если текст не влезает в одно сообщение Telegram, заказов и позиций показываем меньше. */
 const REMIND_STEPS = [[5, 8], [3, 3], [3, 0], [1, 0]];
+const PAY_NAME2 = { cash: ['наличные', 'naqd'], card: ['карта', 'karta'], bank: ['перечисление', 'oʻtkazma'] };
+/* Сообщение магазину, когда продавец или доставщик записал оплату долга. h — заголовок долга после записи, a — сумма, m — способ. */
+function debtPayText(h, a, m, shop) {
+  setLang(h.lang === 'uz' ? 'uz' : 'ru');
+  const name = shop.name || DEFAULT.shop.name, pn = PAY_NAME2[m] ? ' (' + L(PAY_NAME2[m][0], PAY_NAME2[m][1]) + ')' : '';
+  const head = L('✅ ' + name + ': принята оплата ' + money(a) + pn + '.', '✅ ' + name + ': toʻlov qabul qilindi: ' + money(a) + pn + '.');
+  const bal = Number(h.bal) || 0;
+  const tail = bal > 0 ? L('\nОстаток долга: ', '\nQarz qoldigʻi: ') + money(bal)
+    : L('\nДолг погашен, спасибо!', '\nQarz toʻlandi, rahmat!') + (bal < 0 ? L(' Переплата (аванс): ', ' Ortiqcha toʻlov (avans): ') + money(-bal) : '');
+  return head + tail;
+}
 function debtRemindText(h, shop, today, ords) {
   setLang(h.lang === 'uz' ? 'uz' : 'ru');
   const d = lgDue(h.open, today);
@@ -1804,6 +1815,11 @@ export class Shop {
       return json({ ok: true, courier: { id: c.id, name: c.name } });
     }
     if (path === '/__/off') { if (b.off) await this.st.put('off', 1); else await this.st.delete('off'); return json({ ok: true }); }
+    if (path === '/__/my-debt') {
+      const uid = Number(b.uid);
+      if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
+      return json({ debt: await this.myDebt(uid, !!b.full) });
+    }
     if (path === '/__/my-orders') {
       const uid = Number(b.uid);
       if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
@@ -2808,6 +2824,36 @@ export class Shop {
     const ords = await this.debtOrders((lh.open || []).map(q => q.ref).concat(rows.filter(r => r.k === 'ch').map(r => r.ref)));
     return json({ debt: Object.assign(debtRow(lh, dayOf(new Date().toISOString())), { open: lh.open, rows, ords, more: lg.rows.length > LG_SHOW || !!lg.base, rem: lh.rem || 0 }) });
   }
+  /* То, что видит сам магазин в «Мой долг»: без заметок продавца и служебных полей. Без full только суммы и сроки. Нет долга — null. */
+  async myDebt(uid, full) {
+    const { lg, lh } = await this.lgLoad(uid);
+    if (!lh || !(lh.bal > 0)) return null;
+    const d = debtRow(lh, dayOf(new Date().toISOString()));
+    const out = { bal: d.bal, due: d.due, over: d.over, days: d.days };
+    if (!full) return out;
+    const voided = new Set(lg.rows.filter(r => r.k === 'rv').map(r => r.of));
+    const rows = lg.rows.filter(r => r.k !== 'rv').slice(-LG_SHOW).reverse().map(r => {
+      const x = { n: r.n, t: r.t, k: r.k, a: r.a };
+      if (r.k === 'pay') { x.m = r.m; if (voided.has(r.n)) x.void = true; }
+      else { x.ref = r.ref || ''; x.due = r.due || ''; }
+      return x;
+    });
+    const open = Array.isArray(lh.open) ? lh.open : [];
+    const shop = (await this.getCfg()).shop;
+    return Object.assign(out, {
+      open, rows, more: lg.rows.length > LG_SHOW || !!lg.base,
+      ords: await this.debtOrders(open.map(q => q.ref).concat(rows.filter(r => r.k === 'ch').map(r => r.ref))),
+      contact: { telegram: shop.telegram || '', phone: shop.phone || '' }
+    });
+  }
+  /* Магазину приходит короткое сообщение о принятой оплате. Если Telegram не ответил, запись об оплате всё равно остаётся. */
+  async debtPayNotify(uid, a, hdr) {
+    if (!this.env.BOT_TOKEN) return;
+    try {
+      const text = debtPayText(hdr, a.a, a.m, (await this.getCfg()).shop);
+      await this.tg('sendMessage', { chat_id: uid, text, reply_markup: openBtn(this.origin, hdr.lang === 'uz' ? 'Mening qarzim' : 'Мой долг', this.origin + '/?v=debt') });
+    } catch (e) { console.error('debt pay notify failed', e && e.message || e); }
+  }
   /* Приём оплаты, отмена записи об оплате и напоминание магазину. */
   async debtAct(uid, act, body, by, cour) {
     const { lg, lh } = await this.lgLoad(uid);
@@ -2817,7 +2863,7 @@ export class Shop {
       if (!(lh.bal > 0)) return json({ error: 'no_debt' }, 409);
       if (Date.now() - (Number(lh.rem) || 0) < REMIND_GAP) return json({ error: 'too_soon' }, 429);
       if (!this.env.BOT_TOKEN) return json({ error: 'server' }, 500);
-      const r = await this.tg('sendMessage', { chat_id: uid, text: debtRemindText(lh, (await this.getCfg()).shop, dayOf(new Date().toISOString()), await this.debtOrders((lh.open || []).slice(0, 12).map(q => q.ref))) });
+      const r = await this.tg('sendMessage', { chat_id: uid, text: debtRemindText(lh, (await this.getCfg()).shop, dayOf(new Date().toISOString()), await this.debtOrders((lh.open || []).slice(0, 12).map(q => q.ref))), reply_markup: openBtn(this.origin, lh.lang === 'uz' ? 'Mening qarzim' : 'Мой долг', this.origin + '/?v=debt') });
       if (!r.ok) return json({ error: 'tg_failed' }, 502);
       lh.rem = Date.now();
       await this.st.put('lh:' + uid, lh);
@@ -2845,6 +2891,7 @@ export class Shop {
       if (c) Object.assign(res.put, await this.crAdd(c, [{ k: 'rv', d: -row.a, a: row.a, du: uid, nm: who }]));
     }
     await this.st.put(res.put);
+    if (a0.k === 'pay') await this.debtPayNotify(uid, a0, res.hdr);
     return await this.debtOne(uid);
   }
 
@@ -3707,6 +3754,20 @@ export class Hub {
       }));
       const orders = [].concat(...got).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
       return json({ orders });
+    }
+
+    // долг магазина по всем дистрибьюторам, у которых он заказывал; full=1 добавляет заказы, оплаты и контакты
+    if (path === '/api/hub/debts' && method === 'GET') {
+      const full = new URL(request.url).searchParams.get('full') === '1';
+      const all = await this.allRecs();
+      const list = (await this.userShops(uid)).filter(did => all.some(x => x.id === did));
+      const got = await Promise.all(list.map(async did => {
+        const r = await shopCall(this.env, did, '/__/my-debt', { uid, full });
+        const rec = all.find(x => x.id === did), d = r.data && r.data.debt;
+        return d ? Object.assign({}, d, { did, shopName: rec ? rec.name : did }) : null;
+      }));
+      const debts = got.filter(Boolean).sort((a, b) => (b.over > 0) - (a.over > 0) || b.bal - a.bal);
+      return json({ debts, n: debts.length, total: debts.reduce((t, d) => t + d.bal, 0), over: debts.reduce((t, d) => t + d.over, 0), late: debts.filter(d => d.days > 0).length });
     }
 
     // регион магазина: запоминается, чтобы на другом телефоне список был тем же
