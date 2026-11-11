@@ -465,21 +465,17 @@ function customerText(o, kind, shop) {
 /* Приветствие на двух языках: сверху язык человека (по языку его Telegram), ниже второй.
    Многие в Узбекистане пользуются Telegram на русском или английском, но говорят по-узбекски. */
 const bilingual = (lang, ru, uz) => lang === 'uz' ? uz + '\n\n' + ru : ru + '\n\n' + uz;
-const SELLER_NOTE_RU = 'Вы подключены как продавец: новые заказы приходят сюда, их можно принимать кнопками.';
-const SELLER_NOTE_UZ = 'Siz sotuvchi sifatida ulangansiz: yangi buyurtmalar shu yerga keladi, ularni tugmalar bilan qabul qilish mumkin.';
-function welcomeText(lang, isAdmin, shop, several) {
+const SELLER_NOTE_RU = 'Вы продавец: новые заказы придут сюда.';
+const SELLER_NOTE_UZ = 'Siz sotuvchisiz: yangi buyurtmalar shu yerga keladi.';
+/* Приветствие (/start): сверху всегда узбекский, ниже русский, язык Telegram у человека не важен.
+   Текст один и для одного дистрибьютора, и для нескольких: список дистрибьюторов клиент видит в приложении. */
+function welcomeText(lang, isAdmin, shop) {
   setLang(lang);
   const name = (shop && shop.name) || DEFAULT.shop.name;
-  let ru, uz;
-  if (several) {
-    ru = 'Здравствуйте! Это ' + name + ' 🛒\nОткройте каталог, выберите дистрибьютора и товары, оформите заказ: самовывоз или доставка. Оплата только при получении.';
-    uz = 'Assalomu alaykum! Bu ' + name + ' 🛒\nKatalogni oching, distribyutor va mahsulotlarni tanlang, buyurtma bering: olib ketish yoki yetkazib berish. Toʻlov faqat olganda.';
-  } else {
-    ru = 'Здравствуйте! Это ' + name + ' 🛒\nОткройте каталог, выберите товары и оформите заказ: самовывоз или доставка. Оплата только при получении.';
-    uz = 'Assalomu alaykum! Bu ' + name + ' 🛒\nKatalogni oching, mahsulotlarni tanlang va buyurtma bering: olib ketish yoki yetkazib berish. Toʻlov faqat olganda.';
-  }
-  if (isAdmin) { ru += '\n\n' + SELLER_NOTE_RU; uz += '\n\n' + SELLER_NOTE_UZ; }
-  return bilingual(lang, ru, uz);
+  let uz = 'Assalomu alaykum! Bu ' + name + ' 🛒\n«Katalog» tugmasini bosing, mahsulotlarni tanlang va buyurtma bering. Olib ketish yoki yetkazib berish. Toʻlovni buyurtmangizni olganda qilasiz.';
+  let ru = 'Здравствуйте! Это ' + name + ' 🛒\nНажмите «Каталог», выберите товары и оформите заказ. Самовывоз или доставка. Оплата при получении заказа.';
+  if (isAdmin) { uz += '\n\n' + SELLER_NOTE_UZ; ru += '\n\n' + SELLER_NOTE_RU; }
+  return uz + '\n\n' + ru;
 }
 const openBtn = (origin, text, url) => ({ inline_keyboard: [[{ text, web_app: { url: url || origin + '/' } }]] });
 
@@ -3393,7 +3389,7 @@ export class Hub {
     const text = String(msg.text || '').trim();
     const lang = String(msg.from.language_code || '').toLowerCase().startsWith('uz') ? 'uz' : 'ru';
     const cmd = text.split(/\s+/)[0].split('@')[0].toLowerCase();
-    const openText = lang === 'uz' ? '🛒 Katalogni ochish · Открыть каталог' : '🛒 Открыть каталог · Katalogni ochish';
+    const openText = '🛒 Katalogni ochish · Открыть каталог';
     const isSeller = async () => (await this.sellsOf(uid)).length > 0;
 
     if (cmd === '/admin') {
@@ -3465,12 +3461,10 @@ export class Hub {
   /* Приветствие: если дистрибьютор один (или клиент пришёл по ссылке на него), говорим от его имени, иначе от имени площадки. */
   async welcome(lang, isAdmin, shopName) {
     let name = shopName;
-    let several = false;
     if (!name) {
       const vis = (await this.allRecs()).filter(r => r.on && r.items > 0);
-      if (vis.length === 1) name = vis[0].name;
-      else { name = await this.title(); several = vis.length > 1; }
+      name = vis.length === 1 ? vis[0].name : await this.title();     // один дистрибьютор: от его имени, иначе от имени площадки
     }
-    return welcomeText(lang, isAdmin, { name }, several);
+    return welcomeText(lang, isAdmin, { name });
   }
 }
