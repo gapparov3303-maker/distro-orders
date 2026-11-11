@@ -5235,7 +5235,7 @@ await t('мой долг: магазин видит свой долг по вс�
   assert.equal(f3.bal, 1000000);
   assert.deepEqual(f3.rows.map(r => [r.k, !!r.void]), [['pay', true], ['pay', false], ['ch', false]]);
   // чужой магазин долга не видит, без входа закрыто
-  assert.deepEqual(await dj(B), { debts: [], n: 0, total: 0, over: 0, late: 0 });
+  assert.deepEqual(await dj(B), { debts: [], n: 0, total: 0, over: 0, late: 0, ask: 0 });
   assert.equal((await call('GET', '/api/hub/debts')).status, 401);
   // долг погашен полностью: дистрибьютор пропадает из списка
   assert.equal((await debtAct(A.u.id, 'pay', { amount: 1000000, m: 'bank' })).status, 200);

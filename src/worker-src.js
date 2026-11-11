@@ -1071,16 +1071,16 @@ function lgDue(open, today) {
 /* Записи, которым магазин ещё не ответил (cf «wait»), отметил «не так» («no») или которые до него не дошли («na»), и которые продавец не закрыл
    и не отменил. Записи одного заказа (общий g) считаются за одну. fl — спорные, cwt — время каждой записи, ждущей ответа, first — позиция первой из них. */
 function lgPend(rows) {
-  const gone = new Set(), fl = new Set(), cw = new Map();
+  const gone = new Set(), fl = new Set(), na = new Set(), cw = new Map();
   rows.forEach(r => { if (r.k === 'rv' || r.k === 'rs') gone.add(r.of); });
   let first = -1;
   rows.forEach((r, i) => {
     if ((r.k !== 'ch' && r.k !== 'pay') || !r.cf || r.cf === 'ok' || gone.has(r.n)) return;
     if (first < 0) first = i;
     const g = r.g || r.n;
-    if (r.cf === 'wait') { if (!cw.has(g) || r.t < cw.get(g)) cw.set(g, r.t); } else fl.add(g);
+    if (r.cf === 'wait') { if (!cw.has(g) || r.t < cw.get(g)) cw.set(g, r.t); } else { fl.add(g); if (r.cf === 'na') na.add(g); }
   });
-  return { fl: fl.size, cwt: [...cw.values()].sort().slice(0, 50), first };
+  return { fl: fl.size, na: na.size, cwt: [...cw.values()].sort().slice(0, 50), first };
 }
 /* Сколько записей магазина требуют внимания продавца сейчас: спорные и те, на которые магазин молчит дольше суток. */
 const lgFlags = (h, now) => (h.fl || 0) + (h.cwt || []).filter(t => now - Date.parse(t) > CF_LATE).length;
@@ -2890,7 +2890,7 @@ export class Shop {
     const f = lgFold(lg.rows, lg.base);
     lg.rows = f.rows; lg.base = f.base;
     const st = lgState(lg.rows, lg.base), pd = lgPend(lg.rows);
-    const hdr = Object.assign({ uid, name: '', org: '', phone: '', lang: '', rem: 0 }, lh || {}, snap || {}, { bal: st.bal, open: st.open, fl: pd.fl, cwt: pd.cwt, upd: now || (lh && lh.upd) || new Date().toISOString() });
+    const hdr = Object.assign({ uid, name: '', org: '', phone: '', lang: '', rem: 0 }, lh || {}, snap || {}, { bal: st.bal, open: st.open, fl: pd.fl, na: pd.na, cwt: pd.cwt, upd: now || (lh && lh.upd) || new Date().toISOString() });
     const idx = (await this.st.get('dbi')) || [];
     const has = idx.includes(uid), need = st.bal !== 0 || pd.fl > 0 || pd.cwt.length > 0;
     const put = { ['lg:' + uid]: lg, ['lh:' + uid]: hdr };
@@ -2942,7 +2942,7 @@ export class Shop {
     const ask = lh ? (lh.cwt || []).length + (lh.fl || 0) : 0;
     if (!lh || (!(lh.bal > 0) && !ask)) return null;
     const d = debtRow(lh, dayOf(new Date().toISOString()));
-    const out = { bal: Math.max(0, d.bal), due: d.due, over: d.over, days: d.days, ask: (lh.cwt || []).length };
+    const out = { bal: Math.max(0, d.bal), due: d.due, over: d.over, days: d.days, ask: (lh.cwt || []).length + (lh.na || 0) };
     if (!full) return out;
     const voided = new Map(lg.rows.filter(r => r.k === 'rv').map(r => [r.of, r]));
     const rsl = new Map(lg.rows.filter(r => r.k === 'rs').map(r => [r.of, r]));
@@ -4030,7 +4030,7 @@ export class Hub {
         return d ? Object.assign({}, d, { did, shopName: rec ? rec.name : did }) : null;
       }));
       const debts = got.filter(Boolean).sort((a, b) => (b.over > 0) - (a.over > 0) || b.bal - a.bal);
-      return json({ debts, n: debts.length, total: debts.reduce((t, d) => t + d.bal, 0), over: debts.reduce((t, d) => t + d.over, 0), late: debts.filter(d => d.days > 0).length });
+      return json({ debts, n: debts.length, total: debts.reduce((t, d) => t + d.bal, 0), over: debts.reduce((t, d) => t + d.over, 0), late: debts.filter(d => d.days > 0).length, ask: debts.reduce((t, d) => t + (d.ask || 0), 0) });
     }
 
     // магазин отвечает «Верно» / «Не так» на запись о выдаче в долг или оплате
@@ -4041,7 +4041,7 @@ export class Hub {
       if (!(await this.userShops(uid)).includes(b.did) || !(await this.getRec(b.did))) return json({ error: 'not_found' }, 404);
       const sc = await shopCall(this.env, b.did, '/__/my-confirm', { uid, n: Number(b.n), ok: b.ok });
       if (!sc.ok) return json({ error: (sc.data && sc.data.error) || 'server' }, sc.status || 500);
-      return json({ debt: Object.assign({}, sc.data.debt, { did: b.did, shopName: (await this.getRec(b.did)).name }) });
+      return json({ debt: sc.data.debt ? Object.assign({}, sc.data.debt, { did: b.did, shopName: (await this.getRec(b.did)).name }) : null });
     }
 
     // регион магазина: запоминается, чтобы на другом телефоне список был тем же
