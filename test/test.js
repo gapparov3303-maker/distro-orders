@@ -1278,7 +1278,10 @@ await t('остатки: отмена и выдача — отложенное �
   await cb(SELLER, 's:' + od.id + ':cancelled');
   assert.deepEqual((await getStock()).p2, { q: 16, r: 0, low: 0 });
   const oe = (await jsonOf(await place(d, [{ id: 'p2', qty: 6 }]))).order;
-  for (const to of ['accepted', 'ready', 'done']) await cb(SELLER, 's:' + oe.id + ':' + to);
+  for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + oe.id + ':' + to);
+  await cb(SELLER, 's:' + oe.id + ':done');   // «Выдан клиенту» сначала спрашивает способ оплаты
+  assert.equal((await getStock()).p2.q, 16, 'до выбора оплаты заказ не выдан');
+  await cb(SELLER, 'p:' + oe.id + ':cash');
   assert.deepEqual((await getStock()).p2, { q: 10, r: 0, low: 0 });
   // выдача не уводит остаток в минус, даже если продавец его уже уменьшил вручную
   const ox = (await jsonOf(await place(a, [{ id: 'p2', qty: 8 }]))).order;
@@ -1568,8 +1571,219 @@ await t('клиенты: выдача добавляет сумму клиент
   const o4 = (await jsonOf(await place(A, ONE))).order;
   for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + o4.id + ':' + to);
   await cb(SELLER, 's:' + o4.id + ':done');
+  await cb(SELLER, 'p:' + o4.id + ':cash');
   assert.equal((await clientOf(A.u.id)).ds, 2);
   assert.equal((await clientOf(A.u.id)).sum, 1394000 + 7500);
+});
+
+/* ---------- оплата и долги ---------- */
+const shopDay = () => new Date(Date.now() + 5 * 3600000).toISOString().slice(0, 10);
+const plusDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+const doneWith = (id, pay) => call('POST', '/api/admin/status', { init: iS(), body: { id, to: 'done', pay } });
+const readyOrder = async (c, cart) => {
+  const o = (await jsonOf(await place(c, cart))).order;
+  for (const to of ['accepted', 'ready']) assert.equal((await setStatus(o.id, to)).status, 200);
+  return o;
+};
+const debtsOf = async () => jsonOf(await call('GET', '/api/admin/debts', { init: iS() }));
+const debtOf = async uid => (await jsonOf(await call('GET', '/api/admin/debts/' + uid, { init: iS() }))).debt;
+const debtAct = (uid, act, body, init) => call('POST', '/api/admin/debts/' + uid + '/' + act, { init: init || iS(), body });
+/* Сдвигает срок выдачи в долг в прошлое (журнал и заголовок), чтобы проверить просрочку. */
+async function backdate(uid, ref, due) {
+  const lg = await W.storage.get('lg:' + uid), lh = await W.storage.get('lh:' + uid);
+  lg.rows.forEach(r => { if (r.k === 'ch' && r.ref === ref) r.due = due; });
+  lh.open.forEach(q => { if (q.ref === ref) q.due = due; });
+  await W.storage.put('lg:' + uid, lg); await W.storage.put('lh:' + uid, lh);
+}
+
+await t('оплата: способ при выдаче выбирает продавец, без выбора наличные, неверные данные не принимаются', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, ONE);
+  const bad = [{ m: 'crypto' }, { m: 'credit' }, { m: 'credit', days: 0 }, { m: 'credit', days: 91 }, { m: 'credit', days: 2.5 }, 'cash',
+    { m: 'credit', days: 7, paid: 7500, pm: 'cash' }, { m: 'credit', days: 7, paid: 100, pm: 'gold' }, { m: 'credit', days: 7, paid: -5, pm: 'cash' }];
+  for (const pay of bad) assert.equal((await doneWith(o.id, pay)).status, 400, JSON.stringify(pay));
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'ready', 'заказ остался не выданным');
+  assert.equal((await jsonOf(await doneWith(o.id))).order.pay.m, 'cash', 'без выбора — наличные');
+  for (const m of ['card', 'bank']) {
+    const x = await readyOrder(A, ONE);
+    assert.equal((await jsonOf(await doneWith(x.id, { m }))).order.pay.m, m);
+  }
+  assert.equal((await debtsOf()).debtors.length, 0, 'оплаченные заказы долга не создают');
+  assert.equal((await call('POST', '/api/admin/status', { init: iA(), body: { id: o.id, to: 'done' } })).status, 403);
+});
+
+await t('долги: выдача в долг со сроком и часть сразу; клиент получает срок оплаты', async () => {
+  await stockWorld();
+  const A = newUser(), B = newUser();
+  const o1 = await readyOrder(A, CART);                       // 1 394 000
+  tgLog = [];
+  const r1 = await jsonOf(await doneWith(o1.id, { m: 'credit', days: 7 }));
+  assert.deepEqual(r1.order.pay, { m: 'credit', days: 7, due: plusDays(shopDay(), 7) });
+  assert.ok(tgAll('sendMessage', p => p.chat_id === A.u.id).some(x => x.payload.text.includes('Оплатить до ' + plusDays(shopDay(), 7).split('-').reverse().join('.'))));
+  const o2 = await readyOrder(B, CART);
+  const r2 = await jsonOf(await doneWith(o2.id, { m: 'credit', days: 14, paid: 400000, pm: 'card' }));
+  assert.equal(r2.order.pay.paid, 400000);
+  const d = await debtsOf();
+  assert.equal(d.n, 2);
+  assert.equal(d.total, 1394000 + 994000);
+  assert.equal(d.overdue, 0);
+  assert.equal(d.debtors.find(x => x.uid === B.u.id).bal, 994000);
+  const db = await debtOf(B.u.id);
+  assert.deepEqual(db.rows.map(r => [r.k, r.d, r.m || '']), [['pay', -400000, 'card'], ['ch', 1394000, '']], 'в журнале выдача и сразу оплаченная часть');
+  assert.equal(db.due, plusDays(shopDay(), 14));
+  assert.equal(db.name, 'ООО Ориент', 'имя и телефон магазина берутся из заказа');
+  assert.equal(db.phone, '+998 91 555 44 33');
+});
+
+await t('долги: оплата частями гасит старые выдачи первыми, просрочка считается по остатку', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o1 = await readyOrder(A, CART);                       // 1 394 000
+  const o2 = await readyOrder(A, ONE);                        // 7 500
+  await doneWith(o1.id, { m: 'credit', days: 3 });
+  await doneWith(o2.id, { m: 'credit', days: 10 });
+  await backdate(A.u.id, o1.id, plusDays(shopDay(), -4));     // первый долг просрочен на 4 дня
+  let db = await debtOf(A.u.id);
+  assert.equal(db.bal, 1401500);
+  assert.equal(db.over, 1394000);
+  assert.equal(db.days, 4);
+  let list = await debtsOf();
+  assert.equal(list.late, 1);
+  assert.equal(list.overdue, 1394000);
+  // платёж 1 000 000: первый долг закрывается частично, просрочка уменьшается
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 1000000, m: 'cash', note: 'принёс директор' })).status, 200);
+  db = await debtOf(A.u.id);
+  assert.equal(db.bal, 401500);
+  assert.equal(db.over, 394000);
+  assert.deepEqual(db.open.map(q => [q.ref, q.r]), [[o1.id, 394000], [o2.id, 7500]]);
+  assert.equal(db.rows[0].note, 'принёс директор');
+  // ещё платёж закрывает первый долг полностью: просрочки нет, остаётся второй со своим сроком
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 394000, m: 'bank' })).status, 200);
+  db = await debtOf(A.u.id);
+  assert.equal(db.bal, 7500);
+  assert.equal(db.over, 0);
+  assert.equal(db.due, plusDays(shopDay(), 10));
+  list = await debtsOf();
+  assert.equal(list.late, 0);
+  // последний платёж: магазин уходит из списка должников
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 7500, m: 'card' })).status, 200);
+  list = await debtsOf();
+  assert.equal(list.debtors.length, 0);
+  assert.equal((await debtOf(A.u.id)).bal, 0, 'история сохраняется');
+});
+
+await t('долги: неверная сумма, лишний платёж как аванс, отмена записи об оплате, чужие не могут', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 5 });
+  for (const body of [{ amount: 0, m: 'cash' }, { amount: -5, m: 'cash' }, { amount: 1.5, m: 'cash' }, { amount: 'много', m: 'cash' }, { amount: 100, m: 'credit' }, { amount: 100 }, { amount: 2e11, m: 'cash' }])
+    assert.equal((await debtAct(A.u.id, 'pay', body)).status, 400, JSON.stringify(body));
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 100, m: 'cash' }, iA())).status, 403, 'не продавец');
+  assert.equal((await debtAct(777000, 'pay', { amount: 100, m: 'cash' })).status, 404, 'нет журнала');
+  // оплата больше долга: переплата (аванс) уходит в конец списка
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 1500000, m: 'cash' })).status, 200);
+  let db = await debtOf(A.u.id);
+  assert.equal(db.bal, -106000);
+  assert.equal(db.open.length, 0);
+  assert.equal((await debtsOf()).n, 0, 'аванс не считается долгом');
+  // отмена записи об оплате возвращает долг; второй раз нельзя; выдачу в долг отменить нельзя
+  const pay = db.rows.find(r => r.k === 'pay');
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n })).status, 200);
+  db = await debtOf(A.u.id);
+  assert.equal(db.bal, 1394000);
+  assert.ok(db.rows.find(r => r.n === pay.n).void, 'запись помечена отменённой');
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n })).status, 409);
+  const ch = db.rows.find(r => r.k === 'ch');
+  assert.equal((await debtAct(A.u.id, 'void', { n: ch.n })).status, 404);
+  assert.equal((await debtAct(A.u.id, 'void', { n: 99999 })).status, 404);
+  assert.equal(db.rows.length, 3, 'записи не стираются: выдача, оплата и отмена');
+});
+
+await t('долги: напоминание магазину не чаще раза в час, без долга не отправляется', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, ONE);
+  await doneWith(o.id, { m: 'credit', days: 5 });
+  tgLog = [];
+  assert.equal((await debtAct(A.u.id, 'remind', {})).status, 200);
+  const m = lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text.replace(/\u00a0/g, ' ');
+  assert.ok(m.includes('напоминание') && m.includes('7 500') && m.includes('Срок оплаты'), m);
+  assert.equal((await debtAct(A.u.id, 'remind', {})).status, 429);
+  assert.equal(tgAll('sendMessage', p => p.chat_id === A.u.id).length, 1);
+  await debtAct(A.u.id, 'pay', { amount: 7500, m: 'cash' });
+  assert.equal((await debtAct(A.u.id, 'remind', {})).status, 409, 'долга нет');
+  // узбекский клиент получает напоминание на своём языке; блокировка бота даёт понятную ошибку
+  const U = newUser(); U.u.language_code = 'uz';
+  const o2 = await readyOrder(U, ONE);
+  await doneWith(o2.id, { m: 'credit', days: 5 });
+  assert.equal((await debtAct(U.u.id, 'remind', {})).status, 200);
+});
+
+await t('долги: «Выдан клиенту» в боте сначала спрашивает оплату; долг виден на карточках; клиента с долгом удалить нельзя', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = (await jsonOf(await place(A, CART))).order;
+  for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + o.id + ':' + to, 700);
+  tgLog = [];
+  await cb(SELLER, 's:' + o.id + ':done', 700);
+  let e = lastTg('editMessageText', p => p.message_id === 700).payload;
+  const kb = e.reply_markup.inline_keyboard.flat();
+  assert.ok(e.text.includes('Как клиент оплатил заказ'));
+  for (const m of ['cash', 'card', 'bank', 'credit']) assert.ok(kb.some(b => b.callback_data === 'p:' + o.id + ':' + m), m);
+  assert.ok(kb.some(b => b.web_app && b.text.includes('Часть сразу')), 'частичная оплата — в панели продавца');
+  assert.ok(kb.every(b => !b.callback_data || b.callback_data.length <= 64));
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'ready', 'пока оплата не выбрана, заказ не выдан');
+  // «в долг» спрашивает срок
+  await cb(SELLER, 'p:' + o.id + ':credit', 700);
+  e = lastTg('editMessageText', p => p.message_id === 700).payload;
+  assert.ok(e.text.includes('На сколько дней'));
+  assert.deepEqual(e.reply_markup.inline_keyboard[0].map(b => b.callback_data), [3, 7, 14, 30].map(n => 'p:' + o.id + ':credit:' + n));
+  await cb(SELLER, 'p:' + o.id + ':credit:7', 700);
+  e = lastTg('editMessageText', p => p.message_id === 700).payload;
+  assert.ok(e.text.includes('Оплата: 📒 В долг до ' + plusDays(shopDay(), 7).split('-').reverse().join('.')), e.text);
+  assert.equal((await debtOf(A.u.id)).bal, 1394000);
+  // нажатие чужого: нет доступа; неверный способ не проходит
+  const o2 = (await jsonOf(await place(A, ONE))).order;
+  for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + o2.id + ':' + to, 701);
+  await cb(SELLER, 'p:' + o2.id + ':gold', 701);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o2.id).status, 'ready');
+  // у нового заказа того же магазина на карточке виден его долг
+  tgLog = [];
+  const o3 = (await jsonOf(await place(A, ONE))).order;
+  const card = lastTg('sendMessage', p => p.chat_id === SELLER.id && p.text.includes(o3.id)).payload.text.replace(/\u00a0/g, ' ');
+  assert.ok(card.includes('⚠️ Долг магазина: 1 394 000'), card);
+  // в панели у заказа в работе есть долг магазина
+  const ord = (await adminOrdersOf()).find(x => x.id === o3.id);
+  assert.equal(ord.debt.bal, 1394000);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).debt, undefined, 'у выданного заказа долг не показываем');
+  // клиента с долгом удалить нельзя
+  const del = await call('DELETE', '/api/admin/clients/' + A.u.id, { init: iS() });
+  assert.equal(del.status, 409);
+  assert.equal((await jsonOf(del)).error, 'has_debt');
+  await debtAct(A.u.id, 'pay', { amount: 1394000, m: 'cash' });
+  assert.equal((await call('DELETE', '/api/admin/clients/' + A.u.id, { init: iS() })).status, 200);
+});
+
+await t('долги: журнал не растёт бесконечно — старые записи сворачиваются, долг и срок сохраняются', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 9 });
+  for (let i = 0; i < 510; i++) assert.equal((await debtAct(A.u.id, 'pay', { amount: 1, m: 'cash' })).status, 200);
+  const lg = await W.storage.get('lg:' + A.u.id);
+  assert.ok(lg.rows.length <= 500, 'записей ' + lg.rows.length);
+  assert.ok(lg.base && lg.base.due === plusDays(shopDay(), 9), 'срок свёрнутой выдачи не потерян');
+  const db = await debtOf(A.u.id);
+  assert.equal(db.bal, 1394000 - 510);
+  assert.equal(db.due, plusDays(shopDay(), 9));
+  assert.equal(db.rows.length, 100);
+  assert.equal(db.more, true);
+  // платёж на остаток закрывает долг полностью
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 1394000 - 510, m: 'bank' })).status, 200);
+  assert.equal((await debtOf(A.u.id)).bal, 0);
+  assert.equal((await debtsOf()).debtors.length, 0);
 });
 
 await t('клиенты: база собирается из прежних заказов один раз; удаление клиента не трогает заказы', async () => {
@@ -2981,6 +3195,34 @@ await t('площадка: заказ уходит продавцу своего
   assert.equal(tgLog.length, 0);
 });
 
+
+await t('площадка: оплата при выдаче и долги работают у любого дистрибьютора, кнопки несут его номер', async () => {
+  const { sid } = await shopWorld();
+  const A = newUser();
+  const order = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) }))).order;
+  for (const to of ['accepted', 'ready']) await cb(DIL, 's:' + sid + ':' + order.id + ':' + to, 600);
+  tgLog = [];
+  await cb(DIL, 's:' + sid + ':' + order.id + ':done', 600);
+  const kb = lastTg('editMessageText', p => p.message_id === 600).payload.reply_markup.inline_keyboard.flat();
+  for (const m of ['cash', 'card', 'bank', 'credit']) assert.ok(kb.some(b => b.callback_data === 'p:' + sid + ':' + order.id + ':' + m), m);
+  assert.ok(kb.every(b => !b.callback_data || b.callback_data.length <= 64));
+  assert.ok(kb.some(b => b.web_app && b.web_app.url === HOST + '/?d=' + sid + '&v=seller'), 'частичная оплата открывает панель этого дистрибьютора');
+  await cb(DIL, 'p:' + sid + ':' + order.id + ':credit', 600);
+  const dk = lastTg('editMessageText', p => p.message_id === 600).payload.reply_markup.inline_keyboard.flat();
+  assert.ok(dk.some(b => b.callback_data === 'p:' + sid + ':' + order.id + ':credit:30'));
+  assert.ok(dk.every(b => !b.callback_data || b.callback_data.length <= 64));
+  // продавец другого дистрибьютора нажать не может
+  tgLog = [];
+  await cb(SELLER, 'p:' + sid + ':' + order.id + ':credit:7', 601);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('Нет доступа'));
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/admin/orders', { init: iD() }))).orders[0].status, 'ready');
+  await cb(DIL, 'p:' + sid + ':' + order.id + ':credit:14', 600);
+  const debts = await jsonOf(await callS(sid, 'GET', '/api/admin/debts', { init: iD() }));
+  assert.equal(debts.n, 1);
+  assert.equal(debts.total, 1394000);
+  assert.equal((await jsonOf(await call('GET', '/api/admin/debts', { init: iS() }))).n, 0, 'у первого дистрибьютора долгов нет');
+  assert.ok(W.getShop(sid).storage.m.has('lh:' + A.u.id) && !W.storage.m.has('lh:' + A.u.id), 'журнал лежит у своего дистрибьютора');
+});
 await t('площадка: «Мои заказы» собирает заказы клиента у всех дистрибьюторов; отмена идёт к своему дистрибьютору', async () => {
   const { sid } = await shopWorld('Альфа Трейд');
   await send(adminMsg(SELLER, CODE, 70));
@@ -4569,6 +4811,298 @@ await t('аналитика: площадка без продаж отвечае
   await twoShopWorld();
   const a = await anaGet('?days=30');
   assert.deepEqual([a.tot, a.cats, a.prods, a.stores, a.nprods, a.nstores, a.partial, a.failed], [{ n: 0, sum: 0, shops: 0, stores: 0 }, [], [], [], 0, 0, false, 0]);
+});
+
+/* ---------- доставка: доставщики, «Взял», касса наличных ---------- */
+const DRV = { id: 7001, first_name: 'Рустам', language_code: 'ru' }, DRV2 = { id: 7002, first_name: 'Азиз', language_code: 'uz' };
+const iR = () => initDataFor(DRV), iR2 = () => initDataFor(DRV2);
+const PH = '+998 90 111 22 33';
+/* запрос к хранилищу дистрибьютора: без sid — к первому */
+const crq = (sid, method, p, init, body) => sid ? callS(sid, method, p, { init, body }) : call(method, p, { init, body });
+const startMsg = (from, payload) => send({ update_id: 7000 + Math.floor(Math.random() * 1e6), message: { message_id: 1, from, chat: { id: from.id, type: 'private' }, text: '/start ' + payload } });
+/* продавец заводит доставщика, человек нажимает ссылку; возвращает номер доставщика */
+async function hire(user, name, sid) {
+  const r = await jsonOf(await crq(sid, 'POST', '/api/admin/couriers', sid ? iD() : iS(), { name, phone: PH }));
+  const m = String(r.courier.link).match(/start=c_([a-z0-9]+)_([a-z0-9]+)$/);
+  assert.ok(m, 'ссылка-приглашение: ' + r.courier.link);
+  await startMsg(user, 'c_' + m[1] + '_' + m[2]);
+  return r.courier.id;
+}
+async function readyDelivery(c, cart, sid) {
+  const sInit = sid ? iD() : iS();
+  const r = await crq(sid, 'POST', '/api/order', c.init(), ob(cart, {}, 'delivery'));
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const o = (await jsonOf(r)).order;
+  for (const to of ['accepted', 'ready']) assert.equal((await crq(sid, 'POST', '/api/admin/status', sInit, { id: o.id, to })).status, 200);
+  return o;
+}
+const drvTake = (id, init, sid) => crq(sid, 'POST', '/api/courier/take', init || iR(), { id });
+const drvDone = (id, pay, init, sid) => crq(sid, 'POST', '/api/courier/done', init || iR(), { id, pay });
+const drvCash = async (init, sid) => jsonOf(await crq(sid, 'GET', '/api/courier/cash', init || iR()));
+const crList = async () => (await jsonOf(await call('GET', '/api/admin/couriers', { init: iS() }))).couriers;
+
+await t('доставка: продавец приглашает доставщика ссылкой, она работает один раз и не подходит чужому', async () => {
+  await stockWorld();
+  const add = (body, init) => call('POST', '/api/admin/couriers', { init: init || iS(), body });
+  assert.equal((await add({ name: 'Р', phone: PH })).status, 400, 'короткое имя');
+  assert.equal((await add({ name: 'Рустам', phone: '123' })).status, 400, 'неверный телефон');
+  assert.equal((await add({ name: 'Рустам', phone: PH }, iA())).status, 403, 'доставщиков заводит только продавец');
+  const c = (await jsonOf(await add({ name: 'Рустам', phone: PH }))).courier;
+  assert.equal(c.joined, false);
+  const m = c.link.match(/^https:\/\/t\.me\/distro_test_bot\?start=c_main_([a-z0-9]{8})$/);
+  assert.ok(m, c.link);
+  // чужой ключ не подходит
+  tgLog = [];
+  await startMsg(DRV2, 'c_main_zzzzzzzz');
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV2.id).payload.text.includes('Ссылка не подошла'));
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR2() })).status, 403);
+  // настоящая ссылка
+  tgLog = [];
+  await startMsg(DRV, 'c_main_' + m[1]);
+  const hi = lastTg('sendMessage', p => p.chat_id === DRV.id).payload;
+  assert.ok(hi.text.includes('вы доставщик'), hi.text);
+  assert.ok(hi.reply_markup.inline_keyboard[0][0].web_app.url.endsWith('/?d=main&v=courier'));
+  const list = await crList();
+  assert.deepEqual([list.length, list[0].joined, list[0].link, list[0].cash], [1, true, '', 0]);
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR() })).status, 200);
+  // второй человек по той же ссылке
+  tgLog = [];
+  await startMsg(DRV2, 'c_main_' + m[1]);
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV2.id).payload.text.includes('Ссылка не подошла'));
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR2() })).status, 403);
+  // сам доставщик нажал ссылку ещё раз: ничего не ломается
+  tgLog = [];
+  await startMsg(DRV, 'c_main_' + m[1]);
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV.id).payload.text.includes('вы доставщик'));
+  // площадка знает, где он доставщик; обычный клиент нет
+  const sh = await jsonOf(await call('GET', '/api/shops', { init: iR() }));
+  assert.deepEqual(sh.me.delivers.map(x => x.id), ['main']);
+  assert.equal((await jsonOf(await call('GET', '/api/shops', { init: iA() }))).me.delivers, undefined);
+  // в приложении магазина он тоже виден
+  const bs = await jsonOf(await call('GET', '/api/bootstrap', { init: iR() }));
+  assert.deepEqual([bs.me.courier.name, bs.me.admin], ['Рустам', false]);
+});
+
+await t('доставка: готовый заказ на доставку приходит доставщикам, «Взял» достаётся одному, клиент и продавец узнают имя', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам'); await hire(DRV2, 'Азиз');
+  const A = newUser();
+  tgLog = [];
+  await readyOrder(A, ONE);                                    // самовывоз: доставщикам не пишем
+  assert.equal(tgAll('sendMessage', p => p.chat_id === DRV.id || p.chat_id === DRV2.id).length, 0);
+  const o = await readyDelivery(A, CART);
+  const m1 = lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes(o.id)).payload;
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV2.id && p.text.includes(o.id)), 'второй доставщик тоже получил');
+  assert.ok(m1.text.includes('Готов к доставке') && m1.text.includes('Навои, ул. Галаба 12'), m1.text);
+  const kb = m1.reply_markup.inline_keyboard.flat();
+  assert.ok(kb.some(b => b.callback_data === 'k:' + o.id && b.callback_data.length <= 64));
+  assert.ok(kb.some(b => b.web_app && b.web_app.url.endsWith('&v=courier')));
+  const cm = (await W.storage.get('o:' + o.id)).cm;
+  assert.equal(cm.length, 2);
+  const msgOf = uid => cm.find(m => m.chat_id === uid).message_id;
+  // чужой нажать «Взял» не может
+  tgLog = [];
+  await cb(ANNA, 'k:' + o.id, 900);
+  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Нет доступа');
+  // первый нажимает в чате
+  tgLog = [];
+  await cb(DRV, 'k:' + o.id, msgOf(DRV.id), DRV.id);
+  assert.ok(lastTg('editMessageText', p => p.message_id === msgOf(DRV.id)).payload.text.includes('Вы взяли заказ'));
+  assert.ok(lastTg('editMessageText', p => p.message_id === msgOf(DRV2.id) && p.chat_id === DRV2.id).payload.text.includes('уже взял Рустам'), 'сообщение второго обновилось');
+  assert.ok(lastTg('editMessageText', p => p.chat_id === SELLER.id && p.text.includes('🚚 Доставщик: Рустам')), 'карточка продавца показывает, кто везёт');
+  const toClient = lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text;
+  assert.ok(toClient.includes('Рустам') && toClient.includes(PH), toClient);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).crn, 'Рустам');
+  const mine = (await jsonOf(await call('GET', '/api/my-orders', { init: A.init() }))).orders.find(x => x.id === o.id);
+  assert.deepEqual([mine.crn, mine.cm, mine.cr], ['Рустам', undefined, undefined], 'клиент видит имя, но не служебные поля');
+  // второй доставщик: кнопка и API говорят, что занято
+  tgLog = [];
+  await cb(DRV2, 'k:' + o.id, msgOf(DRV2.id), DRV2.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('уже взял Рустам'));
+  const t2 = await drvTake(o.id, iR2());
+  assert.equal(t2.status, 409); assert.equal((await jsonOf(t2)).error, 'taken');
+  assert.equal((await drvTake(o.id)).status, 200, 'повторное «Взял» тем же доставщиком безвредно');
+  // список доставщика: свой заказ помечен, чужой видно как занятый
+  const l1 = (await jsonOf(await call('GET', '/api/courier/orders', { init: iR() }))).orders.find(x => x.id === o.id);
+  const l2 = (await jsonOf(await call('GET', '/api/courier/orders', { init: iR2() }))).orders.find(x => x.id === o.id);
+  assert.deepEqual([l1.mine, l2.mine, l2.crn], [true, false, 'Рустам']);
+  assert.equal(l1.uid, undefined); assert.equal(l1.cm, undefined);
+  // вернуть заказ может только тот, кто его взял
+  assert.equal((await crq(null, 'POST', '/api/courier/release', iR2(), { id: o.id })).status, 409);
+  tgLog = [];
+  assert.equal((await crq(null, 'POST', '/api/courier/release', iR(), { id: o.id })).status, 200);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).crn, undefined);
+  assert.ok(lastTg('editMessageText', p => p.chat_id === DRV2.id && p.text.includes('Готов к доставке')), 'у второго снова свободный заказ');
+  assert.equal((await drvTake(o.id, iR2())).status, 200);
+  // заказ не готов или не на доставку взять нельзя
+  const pk = (await jsonOf(await place(A, ONE))).order;
+  assert.equal((await drvTake(pk.id)).status, 409);
+  assert.equal((await drvTake('Z-NOPE1')).status, 404);
+});
+
+await t('доставка: наличные оседают в кассе доставщика, карта нет; часть долга наличными тоже; сдача продавцу', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o1 = await readyDelivery(A, CART);                      // 1 394 000
+  assert.equal((await drvDone(o1.id, { m: 'cash' })).status, 403, 'не взял — не может выдать');
+  await drvTake(o1.id);
+  assert.equal((await drvDone(o1.id, { m: 'gold' })).status, 400);
+  assert.equal((await drvDone(o1.id, { m: 'credit', days: 0 })).status, 400);
+  assert.equal((await drvCash()).cash, 0);
+  tgLog = [];
+  const r1 = await jsonOf(await drvDone(o1.id, { m: 'cash' }));
+  assert.deepEqual([r1.order.status, r1.order.pay.m, r1.cash], ['done', 'cash', 1394000]);
+  assert.ok(lastTg('sendMessage', p => p.chat_id === A.u.id && p.text.includes('доставлен')), 'клиент получил «доставлен»');
+  assert.equal((await adminOrdersOf()).find(x => x.id === o1.id).status, 'done');
+  assert.equal((await jsonOf(await drvDone(o1.id, { m: 'cash' }))).cash, 1394000, 'повтор не удваивает кассу');
+  // карта и перечисление в кассу не идут
+  const o2 = await readyDelivery(A, ONE);
+  await drvTake(o2.id);
+  assert.equal((await jsonOf(await drvDone(o2.id, { m: 'card' }))).cash, 1394000);
+  // в долг, часть наличными
+  const o3 = await readyDelivery(A, CART);
+  await drvTake(o3.id);
+  const r3 = await jsonOf(await drvDone(o3.id, { m: 'credit', days: 7, paid: 400000, pm: 'cash' }));
+  assert.equal(r3.cash, 1794000);
+  const db = await debtOf(A.u.id);
+  assert.equal(db.bal, 994000);
+  assert.equal(db.addr, 'Навои, ул. Галаба 12, склад 3', 'адрес магазина сохраняется для сборщика долгов');
+  const rows = (await drvCash()).rows;
+  assert.deepEqual(rows.map(r => [r.k, r.a, r.o]), [['in', 400000, o3.id], ['in', 1394000, o1.id]]);
+  // выдача в долг может быть закрыта для доставщика
+  assert.equal((await call('PUT', '/api/admin/couriers/' + id, { init: iS(), body: { credit: false } })).status, 200);
+  const o4 = await readyDelivery(A, CART);
+  await drvTake(o4.id);
+  const nc = await drvDone(o4.id, { m: 'credit', days: 7 });
+  assert.equal(nc.status, 403); assert.equal((await jsonOf(nc)).error, 'no_credit');
+  assert.equal((await jsonOf(await drvDone(o4.id, { m: 'cash' }))).cash, 3188000);
+  // чужой заказ закрыть нельзя
+  await hire(DRV2, 'Азиз');
+  const o5 = await readyDelivery(A, ONE);
+  await drvTake(o5.id);
+  const bad = await drvDone(o5.id, { m: 'cash' }, iR2());
+  assert.equal(bad.status, 403); assert.equal((await jsonOf(bad)).error, 'not_yours');
+  assert.equal((await drvCash(iR2())).cash, 0);
+  // сдача продавцу
+  const hv = amount => call('POST', '/api/admin/couriers/' + id + '/handover', { init: iS(), body: { amount } });
+  for (const x of [0, -5, 2.5, 3188001, 'много']) assert.equal((await hv(x)).status, 400, String(x));
+  assert.equal((await call('POST', '/api/admin/couriers/' + id + '/handover', { init: iA(), body: { amount: 1000 } })).status, 403);
+  const h1 = await jsonOf(await hv(1000000));
+  assert.equal(h1.courier.cash, 2188000);
+  assert.deepEqual([h1.rows[0].k, h1.rows[0].a, h1.rows[0].by], ['out', 1000000, SELLER.id]);
+  assert.equal((await drvCash()).cash, 2188000);
+  // с деньгами на руках доставщика не удалить
+  const del = await call('DELETE', '/api/admin/couriers/' + id, { init: iS() });
+  assert.equal(del.status, 409); assert.equal((await jsonOf(del)).error, 'has_cash');
+  assert.equal((await hv(2188000)).status, 200);
+  assert.equal((await call('DELETE', '/api/admin/couriers/' + id, { init: iS() })).status, 200);
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR() })).status, 403);
+  assert.deepEqual((await crList()).map(c => c.name), ['Азиз']);
+  // заказ, который он вёз, снова свободен
+  assert.equal((await adminOrdersOf()).find(x => x.id === o5.id).crn, undefined, 'после удаления доставщика заказ свободен');
+  assert.equal((await drvTake(o5.id, iR2())).status, 200);
+});
+
+await t('доставка: доставщик видит всех должников, принимает оплату, наличные идут в кассу; отмена продавцом возвращает', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 7 });               // продавец выдал в долг, самовывоз
+  const dl = await jsonOf(await call('GET', '/api/courier/debts', { init: iR() }));
+  assert.deepEqual([dl.n, dl.total, dl.debtors[0].uid], [1, 1394000, A.u.id]);
+  assert.equal((await call('GET', '/api/courier/debts', { init: iA() })).status, 403, 'обычному клиенту список закрыт');
+  const pay = (amount, m, init) => call('POST', '/api/courier/debts/' + A.u.id + '/pay', { init: init || iR(), body: { amount, m } });
+  assert.equal((await pay(0, 'cash')).status, 400);
+  assert.equal((await pay(5, 'gold')).status, 400);
+  assert.equal((await pay(5, 'cash', iA())).status, 403);
+  assert.equal((await jsonOf(await pay(500000, 'cash'))).debt.bal, 894000);
+  assert.equal((await jsonOf(await pay(100000, 'card'))).debt.bal, 794000);
+  assert.equal((await drvCash()).cash, 500000, 'только наличные идут в кассу');
+  const rows = (await debtOf(A.u.id)).rows.filter(r => r.k === 'pay');
+  assert.deepEqual(rows.map(r => [r.m, r.by]), [['card', DRV.id], ['cash', DRV.id]]);
+  assert.equal((await call('POST', '/api/courier/debts/' + A.u.id + '/void', { init: iR(), body: { n: rows[1].n } })).status, 404, 'отменять оплаты доставщик не может');
+  // продавец отменяет запись о наличных: касса доставщика уменьшается
+  assert.equal((await debtAct(A.u.id, 'void', { n: rows[1].n })).status, 200);
+  const c = await drvCash();
+  assert.equal(c.cash, 0);
+  assert.deepEqual(c.rows.map(r => r.k), ['rv', 'in']);
+  // оплата, принятая самим продавцом, кассу доставщика не трогает
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 1000, m: 'cash' })).status, 200);
+  assert.equal((await drvCash()).cash, 0);
+  // напоминание магазину: можно и доставщику, но не чаще раза в час
+  tgLog = [];
+  assert.equal((await call('POST', '/api/courier/debts/' + A.u.id + '/remind', { init: iR(), body: {} })).status, 200);
+  assert.ok(lastTg('sendMessage', p => p.chat_id === A.u.id));
+  assert.equal((await call('POST', '/api/courier/debts/' + A.u.id + '/remind', { init: iR(), body: {} })).status, 429);
+});
+
+await t('доставка: новая ссылка передаёт место другому, отключённый и удалённый доставщик теряют доступ', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o = await readyDelivery(A, CART);
+  await drvTake(o.id);
+  // отключение: доступа и сообщений нет, касса и заказы остаются
+  assert.equal((await call('PUT', '/api/admin/couriers/' + id, { init: iS(), body: { on: false } })).status, 200);
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR() })).status, 403);
+  assert.equal((await jsonOf(await call('GET', '/api/bootstrap', { init: iR() }))).me.courier, null);
+  tgLog = [];
+  await readyDelivery(A, ONE);
+  assert.equal(tgAll('sendMessage', p => p.chat_id === DRV.id).length, 0, 'отключённому заказы не приходят');
+  assert.equal((await call('PUT', '/api/admin/couriers/' + id, { init: iS(), body: { on: true } })).status, 200);
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR() })).status, 200);
+  // потерял телефон: новая ссылка, вошёл другой аккаунт
+  const nl = (await jsonOf(await call('POST', '/api/admin/couriers/' + id + '/link', { init: iS() }))).courier;
+  assert.ok(nl.link.includes('c_main_'));
+  await startMsg(DRV2, 'c_' + nl.link.split('c_')[1]);
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR2() })).status, 200);
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR() })).status, 403, 'старый аккаунт доступ потерял');
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).crn, 'Рустам', 'заказ остался за этим доставщиком');
+  assert.equal((await jsonOf(await call('GET', '/api/shops', { init: iR() }))).me.delivers, undefined);
+  assert.equal(await W.hubStorage.get('dls:' + DRV.id), undefined, 'площадка забыла старый аккаунт');
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops', { init: iR2() }))).me.delivers.map(x => x.id), ['main']);
+  // удаление освобождает заказ
+  assert.equal((await call('DELETE', '/api/admin/couriers/' + id, { init: iS() })).status, 200);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).crn, undefined);
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR2() })).status, 403);
+  assert.equal((await call('GET', '/api/admin/couriers/' + id, { init: iS() })).status, 404);
+});
+
+await t('доставка: у второго дистрибьютора ссылка и кнопка «Взял» ведут в его хранилище', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  await hire(DRV, 'Рустам', sid);
+  const A = newUser();
+  const o = await readyDelivery(A, CART, sid);
+  const m = lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes(o.id)).payload;
+  const take = m.reply_markup.inline_keyboard.flat().find(b => b.callback_data);
+  assert.equal(take.callback_data, 'k:' + sid + ':' + o.id);
+  assert.ok(take.callback_data.length <= 64);
+  assert.ok(m.reply_markup.inline_keyboard.flat().some(b => b.web_app && b.web_app.url.endsWith('/?d=' + sid + '&v=courier')));
+  const cm = (await W.getShop(sid).storage.get('o:' + o.id)).cm;
+  await cb(DRV, take.callback_data, cm[0].message_id, DRV.id);
+  const ord = (await jsonOf(await callS(sid, 'GET', '/api/admin/orders', { init: iD() }))).orders.find(x => x.id === o.id);
+  assert.equal(ord.crn, 'Рустам');
+  assert.equal((await callS(sid, 'GET', '/api/courier/orders', { init: iR() })).status, 200);
+  assert.equal((await call('GET', '/api/courier/orders', { init: iR() })).status, 403, 'у первого дистрибьютора он не доставщик');
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops', { init: iR() }))).me.delivers.map(x => x.id), [sid]);
+  assert.equal((await jsonOf(await drvDone(o.id, { m: 'cash' }, iR(), sid))).cash, 1394000);
+});
+
+await t('доставка: резервная копия и Excel знают доставщика, ссылка-приглашение в копию не попадает', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам');
+  await call('POST', '/api/admin/couriers', { init: iS(), body: { name: 'Азиз', phone: PH } });
+  const o = await readyDelivery(newUser(), ONE);
+  await drvTake(o.id);
+  const bk = await call('POST', '/api/admin/export', { init: iS(), body: { kind: 'backup' } });
+  assert.equal(bk.status, 200, JSON.stringify(await bk.clone().json()));
+  const f = lastTg('sendDocument').file;
+  const txt = Buffer.from(f.bytes).toString('latin1');
+  assert.ok(txt.includes('"couriers"'), 'в копии есть доставщики');
+  assert.ok(!/"tok":"[a-z0-9]{8}"/.test(txt), 'ключи приглашений в копию не попадают');
+  assert.ok(!txt.includes('"cm"'), 'номера сообщений доставщиков в копию не попадают');
 });
 
 /* ---------- итог ---------- */
