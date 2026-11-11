@@ -330,8 +330,8 @@ function validateOrder(b, cfg, prod, stk) {
   return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt, loc: fm.loc };
 }
 
-const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; return x; };
-const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; delete x.rs; return x; };
+const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; delete x.cm; delete x.cr; delete x.crAt; return x; };
+const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; delete x.rs; delete x.cm; return x; };
 
 /* ---------- клиентская база ---------- */
 const phoneOk = p => { const d = p.replace(/\D/g, '').length; return d >= 9 && d <= 15; };
@@ -408,6 +408,7 @@ function cbParse(data) {
 /* Адреса, которые открывает кнопка в Telegram: каталог дистрибьютора и его панель продавца. */
 const shopUrl = (origin, did) => origin + '/' + (did ? '?d=' + did : '');
 const sellerUrl = (origin, did) => origin + '/?d=' + (did || MAIN) + '&v=seller';
+const courierUrl = (origin, did) => origin + '/?d=' + (did || MAIN) + '&v=courier';
 function adminCard(o, shop, origin, confirm, cl, did, debt) {
   setLang('ru');
   const px = cbPrefix(did);
@@ -415,7 +416,7 @@ function adminCard(o, shop, origin, confirm, cl, did, debt) {
   const cLines = clientLines(cl);
   const dLine = o.status === 'cancelled' ? '' : debtLine(debt, dayOf(new Date().toISOString()));
   const tail = '\n\n' + (cLines ? cLines + '\n' : '') + (dLine ? dLine + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
-    + '\nСтатус: ' + stOf(o.status, o.mode).name + (o.pay ? '\n' + payLine(o.pay) : '');
+    + '\nСтатус: ' + stOf(o.status, o.mode).name + (o.crn ? '\n🚚 Доставщик: ' + o.crn : '') + (o.pay ? '\n' + payLine(o.pay) : '');
   const head = STATUS_ICON[o.status] + ' ';
   // очень длинный заказ: показываем первые позиции, чтобы итог и кнопки не потерялись
   const ask = confirm === 'pay' ? '\n\nКак клиент оплатил заказ? К оплате: ' + money(o.total) : confirm === 'days' ? '\n\nНа сколько дней записать долг?' : '';
@@ -444,6 +445,25 @@ function adminCard(o, shop, origin, confirm, cl, did, debt) {
     if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
     rows.push([{ text: 'Открыть панель продавца', web_app: { url: sellerUrl(origin, did) } }]);
   }
+  return { text, reply_markup: { inline_keyboard: rows } };
+}
+
+/* Сообщение доставщику: заказ готов к доставке. state: null — свободен, 'mine' — взял этот доставщик, строка — имя того, кто уже взял. */
+function courierCard(o, shop, origin, did, state) {
+  setLang('ru');
+  const px = cbPrefix(did);
+  const when = fmtWhen(o.pickupAt);
+  const head = state === 'mine' ? '🚚 Вы взяли заказ ' : state ? '✔ Заказ ' : '🚚 Готов к доставке: заказ ';
+  let text = head + o.id + (state && state !== 'mine' ? ' уже взял ' + state : '')
+    + '\n\n' + (o.org ? o.org + ' · ' : '') + o.name + '\nТелефон: ' + o.phone
+    + '\nАдрес: ' + (o.address || '—') + '\nКогда: ' + when
+    + '\nСумма: ' + money(o.total)
+    + (o.comment ? '\nКомментарий: ' + o.comment : '');
+  if (text.length > TEXT_MAX) text = text.slice(0, TEXT_MAX - 1) + '…';
+  const rows = [];
+  if (!state) rows.push([{ text: '🚚 Взял', callback_data: 'k:' + px + o.id }]);
+  if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
+  rows.push([{ text: 'Открыть доставку', web_app: { url: courierUrl(origin, did) } }]);
   return { text, reply_markup: { inline_keyboard: rows } };
 }
 
@@ -478,6 +498,9 @@ function customerText(o, kind, shop) {
         '🤝 Спасибо, что выбрали ' + name + '!' + dueRu,
         '🤝 ' + name + 'ni tanlaganingiz uchun rahmat!' + dueUz));
     }
+    case 'taken': return L(
+      '🚚 Заказ ' + o.id + ': доставщик ' + o.crn + ' везёт ваш заказ.' + (o.crp ? '\nТелефон: ' + o.crp : '') + '\nОплата при получении: ' + money(o.total),
+      '🚚 Buyurtma ' + o.id + ': yetkazib beruvchi ' + o.crn + ' buyurtmangizni olib ketmoqda.' + (o.crp ? '\nTelefon: ' + o.crp : '') + '\nOlganda toʻlanadi: ' + money(o.total));
     case 'cancelled': return L(
       '❌ Заказ ' + o.id + ' отменён продавцом.' + (contact ? '\nВопросы: ' + contact : ''),
       '❌ Buyurtma ' + o.id + ' sotuvchi tomonidan bekor qilindi.' + (contact ? '\nSavollar: ' + contact : ''));
@@ -610,16 +633,16 @@ function whenRu(s) {
 function ordersSheets(orders) {
   setLang('ru');
   const list = orders.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const rows = [['№ заказа', 'Создан', 'Статус', 'Получение', 'Когда', 'Клиент', 'Телефон', 'Организация', 'Telegram', 'Адрес доставки', 'Комментарий', 'Товары, сум', 'Скидка, сум', 'Доставка, сум', 'Итого, сум', 'Позиций', 'Оплата']];
+  const rows = [['№ заказа', 'Создан', 'Статус', 'Получение', 'Когда', 'Клиент', 'Телефон', 'Организация', 'Telegram', 'Адрес доставки', 'Комментарий', 'Товары, сум', 'Скидка, сум', 'Доставка, сум', 'Итого, сум', 'Позиций', 'Оплата', 'Доставщик']];
   const items = [['№ заказа', 'Статус', 'Когда', 'Клиент', 'Товар', 'Вес / объём', 'Количество', 'В упаковках', 'Цена, сум', 'Сумма, сум']];
   list.forEach(o => {
     const fee = Number(o.fee) || 0, total = Number(o.total) || 0, disc = Number(o.disc) || 0, st = stOf(o.status, o.mode).name, when = String(o.pickupAt || '').replace('T', ' ');
     rows.push([o.id, shopTime(o.createdAt), st, o.mode === 'delivery' ? 'Доставка' : 'Самовывоз', when, o.name || '', o.phone || '', o.org || '',
-      o.tg && o.tg.username ? '@' + o.tg.username : '', o.mode === 'delivery' ? (o.address || '') : '', o.comment || '', total - fee + disc, disc, fee, total, (o.items || []).length, payPlain(o.pay)]);
+      o.tg && o.tg.username ? '@' + o.tg.username : '', o.mode === 'delivery' ? (o.address || '') : '', o.comment || '', total - fee + disc, disc, fee, total, (o.items || []).length, payPlain(o.pay), o.crn || '']);
     (o.items || []).forEach(it => items.push([o.id, st, when, o.name || '', it.name || '', weightLabel(it), Number(it.qty) || 0, packText(it, it.qty), Number(it.price) || 0, (Number(it.price) || 0) * (Number(it.qty) || 0)]));
   });
   return [
-    { name: 'Заказы', w: [11, 17, 16, 12, 17, 22, 17, 22, 16, 34, 30, 14, 12, 14, 14, 9, 30], money: [11, 12, 13, 14], rows },
+    { name: 'Заказы', w: [11, 17, 16, 12, 17, 22, 17, 22, 16, 34, 30, 14, 12, 14, 14, 9, 30, 18], money: [11, 12, 13, 14], rows },
     { name: 'Товары в заказах', w: [11, 16, 17, 22, 32, 13, 12, 20, 14, 14], money: [8, 9], rows: items }
   ];
 }
@@ -991,6 +1014,13 @@ function catalogSheets(prod) {
 const PAY_M = ['cash', 'card', 'bank'];
 const LG_MAX = 500, LG_FOLD = 100, LG_NOTE = 80, LG_SHOW = 100, MAX_PAY = 1e11, CREDIT_MAX_DAYS = 90, REMIND_GAP = 3600000;
 const PAY_RU = { cash: '💵 Наличные', card: '💳 Карта', bank: '🏦 Перечисление', credit: '📒 В долг' };
+
+/* ---------- доставка: доставщики и касса наличных ---------- */
+const MAX_COURIERS = 30, CC_KEEP = 200, CC_SHOW = 60, CINV_MS = 7 * 86400000;
+const validCid = c => typeof c === 'string' && /^k[a-z0-9]{3,9}$/.test(c);
+const validTok = t => typeof t === 'string' && /^[a-z0-9]{6,12}$/.test(t);
+/* Доставщик с телефоном и без секретов: ссылку-приглашение продавец получает отдельно. */
+const crPub = c => ({ id: c.id, name: c.name, phone: c.phone || '', joined: !!c.uid, on: c.on !== false, credit: c.credit !== false, cash: Number(c.cash) || 0, since: c.since });
 const PAY_PLAIN = { cash: 'Наличные', card: 'Карта', bank: 'Перечисление', credit: 'В долг' };
 const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
 /* Как заплатил магазин при выдаче заказа. Не указано — наличные: так было, пока оплата при получении была единственной. null — данные неверны. */
@@ -1041,7 +1071,7 @@ function lgFold(rows, base) {
   const s = lgState(rows.slice(0, cut), base, rows);
   return { rows: rows.slice(cut), base: { d: s.bal, due: s.open.map(q => q.due).filter(Boolean).sort()[0] || '' } };
 }
-const debtRow = (h, today) => Object.assign({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', bal: h.bal }, lgDue(h.open, today));
+const debtRow = (h, today) => Object.assign({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', addr: h.addr || '', bal: h.bal }, lgDue(h.open, today));
 /* Оплата заказа простым текстом для Excel. */
 function payPlain(pay) {
   if (!pay) return '';
@@ -1509,10 +1539,11 @@ export class Shop {
       stats: (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 },
       admins: (await this.st.get('admins')) || [],
       act: (await this.st.get('act')) || [], hist: (await this.st.get('hist')) || [],
-      orders: orders.map(o => { const x = Object.assign({}, o); delete x.msgs; return x; }),
+      orders: orders.map(o => { const x = Object.assign({}, o); delete x.msgs; delete x.cm; return x; }),
       clients: idx.map(x => cmap.get('c:' + x)).filter(Boolean),
       reports: await this.reportsDump(),
       debts: await this.debtsDump(),
+      couriers: await this.couriersDump(),
       photos: { saved: photos.length, of: withPhoto.length }
     };
     const readme = 'Резервная копия магазина «' + ((data.cfg.shop && data.cfg.shop.name) || '') + '»\r\nСоздана: ' + shopTime(at) + ' (время склада)\r\n\r\n'
@@ -1523,6 +1554,12 @@ export class Shop {
       files: [{ name: 'backup.json', data: enc.encode(JSON.stringify(data)) }, { name: 'README.txt', data: enc.encode(readme) }].concat(photos),
       info: { orders: orders.length, clients: data.clients.length, photos: photos.length, photosOf: withPhoto.length }
     };
+  }
+  /* Доставщики и их журналы кассы для резервной копии (без ссылок-приглашений). */
+  async couriersDump() {
+    const list = await this.crList();
+    const map = await this.getMany(list.map(c => 'cc:' + c.id));
+    return list.map(c => ({ courier: Object.assign({}, c, { tok: '' }), log: map.get('cc:' + c.id) || null }));
   }
   /* Журналы расчётов магазинов с непогашенным долгом (или переплатой) для резервной копии. */
   async debtsDump() {
@@ -1716,6 +1753,32 @@ export class Shop {
       await this.st.put('admins', []);
       return json({ ok: true, removed: admins });
     }
+    if (path === '/__/courier-of') {
+      const uid = Number(b.uid);
+      if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
+      const c = await this.courierOf(uid);
+      return json({ courier: c ? { id: c.id, name: c.name } : null });
+    }
+    // вход доставщика по ссылке-приглашению: «/start c_<дистрибьютор>_<ключ>» разбирает площадка
+    if (path === '/__/courier-join') {
+      const uid = Number(b.uid), tok = String(b.token || '');
+      if (!Number.isSafeInteger(uid) || !validTok(tok)) return json({ error: 'bad_request' }, 400);
+      const id = await this.st.get('ct:' + tok), c = id ? await this.crGet(id) : null;
+      if (!c) {
+        const me = await this.courierOf(uid);      // ссылку нажали второй раз: уже вошёл, ничего не меняем
+        return me ? json({ ok: true, courier: { id: me.id, name: me.name }, again: true }) : json({ error: 'bad_token' }, 404);
+      }
+      if (Date.now() - (Number(c.tokAt) || 0) > CINV_MS) return json({ error: 'expired' }, 410);
+      const mine = await this.st.get('cru:' + uid);
+      if (mine && mine !== c.id) return json({ error: 'already' }, 409);
+      const upd = {}, del = ['ct:' + tok];
+      if (c.uid && c.uid !== uid) del.push('cru:' + c.uid);       // новая ссылка передала место другому человеку
+      c.uid = uid; c.tok = ''; c.tokAt = 0; c.on = true;
+      upd['cr:' + c.id] = c; upd['cru:' + uid] = c.id;
+      await this.st.put(upd);
+      await this.st.delete(del);
+      return json({ ok: true, courier: { id: c.id, name: c.name } });
+    }
     if (path === '/__/off') { if (b.off) await this.st.put('off', 1); else await this.st.delete('off'); return json({ ok: true }); }
     if (path === '/__/my-orders') {
       const uid = Number(b.uid);
@@ -1738,10 +1801,15 @@ export class Shop {
     const u = au.user, uid = u.id;
     const admin = await this.isAdmin(uid);
 
+    if (path.startsWith('/api/courier/')) {
+      const cour = await this.courierOf(uid);
+      if (!cour) return json({ error: 'forbidden' }, 403);
+      return await this.courierApi(request, path, method, u, cour);
+    }
     if (path === '/api/bootstrap' && method === 'GET') {
       await this.ensureClients();
       const cl = await this.getClient(uid);
-      return json({ did: this.did, off: await this.isOff(), cfg: await this.getCfg(), prod: await this.pubProd(admin), me: { id: uid, name: u.first_name || '', admin, profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
+      return json({ did: this.did, off: await this.isOff(), cfg: await this.getCfg(), prod: await this.pubProd(admin), me: { id: uid, name: u.first_name || '', admin, courier: await this.courierMe(uid), profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
     }
     if (path === '/api/profile' && method === 'PUT') {
       const r = await this.readBody(request, 6000);
@@ -1846,6 +1914,7 @@ export class Shop {
           return json({ ok: true });
         }
       }
+      if (path === '/api/admin/couriers' || path.startsWith('/api/admin/couriers/')) return await this.adminCouriers(request, path, method, uid);
       if (path === '/api/admin/debts' && method === 'GET') return json(await this.debtList());
       const dm = path.match(/^\/api\/admin\/debts\/(\d{1,15})(?:\/(pay|void|remind))?$/);
       if (dm) {
@@ -2332,13 +2401,15 @@ export class Shop {
   }
 
   /* Меняет статус без обращений к сети между чтением и записью. */
-  async changeStatus(id, to, pay) {
+  async changeStatus(id, to, pay, cour) {
     await this.ensureClients();
     await this.ensureReports();
     const o = await this.st.get('o:' + id);
     if (!o) return { err: 'not_found' };
     if (o.status === to) return { order: o, same: true };
     if (!(NEXT[o.status] || []).includes(to)) return { err: 'bad_transition', order: o };
+    // доставщик закрывает только свой заказ на доставку
+    if (cour && (o.mode !== 'delivery' || o.cr !== cour.id || to !== 'done')) return { err: 'not_yours', order: o };
     const nowIso = new Date().toISOString();
     const payRec = to === 'done' ? cleanPay(pay, Number(o.total) || 0, dayOf(nowIso)) : null;
     if (to === 'done' && !payRec) return { err: 'bad_pay', order: o };
@@ -2380,8 +2451,15 @@ export class Shop {
           if (o.name) snap.name = o.name;
           if (o.org) snap.org = o.org;
           if (o.phone) snap.phone = o.phone;
+          if (o.mode === 'delivery' && o.address) snap.addr = o.address;
           if (o.lang) snap.lang = o.lang;
           Object.assign(upd, (await this.lgAdd(o.uid, adds, snap)).put);
+        }
+        // наличные, которые доставщик принял у клиента, оседают в его кассе до сдачи продавцу
+        if (cour) {
+          const cashIn = payRec.m === 'cash' ? total : payRec.m === 'credit' && payRec.pm === 'cash' ? (payRec.paid || 0) : 0;
+          const c = cashIn > 0 ? await this.crGet(cour.id) : null;
+          if (c) Object.assign(upd, await this.crAdd(c, [{ k: 'in', d: cashIn, a: cashIn, o: o.id, nm: o.name || '' }]));
         }
       }
       // счётчики клиента: выдача добавляет сумму, отмена убирает заказ из счёта
@@ -2410,6 +2488,249 @@ export class Shop {
     }
     await this.st.put(upd);
     return { order: o, changed: true, stats: stats || undefined };
+  }
+
+  /* --- доставка: доставщики, «Взял», касса наличных --- */
+  async crList() {
+    const idx = (await this.st.get('crx')) || [];
+    const map = await this.getMany(idx.map(i => 'cr:' + i));
+    return idx.map(i => map.get('cr:' + i)).filter(Boolean);
+  }
+  async crGet(id) { const c = validCid(id) ? await this.st.get('cr:' + id) : null; return c && typeof c === 'object' ? c : null; }
+  /* Доставщик по номеру в Telegram: только тот, кто вошёл по ссылке и не отключён. */
+  async courierOf(uid) {
+    const id = await this.st.get('cru:' + uid);
+    const c = id ? await this.crGet(id) : null;
+    return c && c.uid === uid && c.on !== false ? c : null;
+  }
+  async botUser() {
+    if (!this.botun) {
+      this.botun = (await this.st.get('botun')) || '';
+      if (!this.botun) {
+        const me = await this.tg('getMe', {});
+        if (me.ok && me.result && me.result.username) { this.botun = String(me.result.username); await this.st.put('botun', this.botun); }
+      }
+    }
+    return this.botun;
+  }
+  async courierMe(uid) { const c = await this.courierOf(uid); return c ? { id: c.id, name: c.name, credit: c.credit !== false } : null; }
+  async crOut(c) {
+    const o = crPub(c);
+    const fresh = c.tok && Date.now() - (Number(c.tokAt) || 0) < CINV_MS;
+    const b = fresh ? await this.botUser() : '';
+    o.link = fresh && b ? 'https://t.me/' + b + '?start=c_' + this.did + '_' + c.tok : '';
+    return o;
+  }
+  async crDetail(c) {
+    const lg = (await this.st.get('cc:' + c.id)) || { rows: [] };
+    return { courier: await this.crOut(c), rows: lg.rows.slice(-CC_SHOW).reverse() };
+  }
+  /* Дописывает строки в кассу доставщика и меняет остаток. Сам ничего не сохраняет: вызывающий кладёт put вместе со своими правками. */
+  async crAdd(c, adds) {
+    const lg = (await this.st.get('cc:' + c.id)) || { rows: [], seq: 0 };
+    const now = new Date().toISOString();
+    adds.forEach(a => { lg.seq += 1; lg.rows.push(Object.assign({ n: lg.seq, t: now }, a)); c.cash = (Number(c.cash) || 0) + a.d; });
+    if (lg.rows.length > CC_KEEP) lg.rows = lg.rows.slice(-CC_KEEP);
+    return { ['cc:' + c.id]: lg, ['cr:' + c.id]: c };
+  }
+  /* Что видит доставщик: заказы на доставку, готовые к выезду (свободные и свои), и свои выданные сегодня. */
+  async courierOrders(cour) {
+    const act = (await this.st.get('act')) || [], hist = ((await this.st.get('hist')) || []).slice(0, 60);
+    const del = (await this.getOrders(act)).filter(o => o.mode === 'delivery');
+    const today = dayOf(new Date().toISOString());
+    const done = (await this.getOrders(hist)).filter(o => o.status === 'done' && o.mode === 'delivery' && o.cr === cour.id && dayOf(o.statusAt) === today);
+    const list = del.filter(o => o.status === 'ready').concat(done);
+    const heads = await this.getMany([...new Set(list.map(o => o.uid).filter(Boolean))].map(u => 'lh:' + u));
+    const orders = list.map(o => {
+      const x = this.cview(o, cour);
+      const h = o.status === 'ready' && o.uid ? heads.get('lh:' + o.uid) : null;
+      if (h && h.bal > 0) { const d = lgDue(h.open, today); x.debt = { bal: h.bal, over: d.over, days: d.days, due: d.due, uid: o.uid }; }
+      return x;
+    });
+    return { orders, soon: del.filter(o => o.status === 'accepted').length, cash: Number(cour.cash) || 0 };
+  }
+  cview(o, cour) { const x = adminOrder(o); x.mine = o.cr === cour.id; return x; }
+  async courierTake(cour, id) {
+    const o = await this.st.get('o:' + id);
+    if (!o) return { err: 'not_found' };
+    if (o.mode !== 'delivery' || o.status !== 'ready') return { err: 'bad_transition', order: o };
+    if (o.cr === cour.id) return { order: o, same: true };
+    if (o.cr) return { err: 'taken', order: o };
+    o.cr = cour.id; o.crn = cour.name; o.crAt = new Date().toISOString();
+    if (cour.phone) o.crp = cour.phone;
+    await this.st.put('o:' + id, o);
+    return { order: o, changed: true };
+  }
+  async courierRelease(cour, id) {
+    const o = await this.st.get('o:' + id);
+    if (!o) return { err: 'not_found' };
+    if (o.cr !== cour.id || o.status !== 'ready') return { err: 'not_yours', order: o };
+    delete o.cr; delete o.crn; delete o.crAt; delete o.crp;
+    await this.st.put('o:' + id, o);
+    return { order: o, changed: true };
+  }
+  /* Заказ взяли: карточки продавцов и сообщения других доставщиков обновляются, клиент узнаёт, кто везёт. */
+  async afterTake(o) {
+    const cfg = await this.getCfg();
+    await this.afterChange(o, null);
+    for (const m of o.cm || []) {
+      const card = courierCard(o, cfg.shop, this.origin, this.did, m.cid === o.cr ? 'mine' : o.crn);
+      await this.editCard(m, card);
+    }
+    await this.tg('sendMessage', { chat_id: o.uid, text: customerText(o, 'taken', cfg.shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
+  }
+  /* Заказ вернули в свободные: сообщения доставщиков снова с кнопкой «Взял», продавцы видят, что доставщика нет. */
+  async afterRelease(o, byId) {
+    const cfg = await this.getCfg();
+    await this.afterChange(o, null);
+    for (const m of o.cm || []) await this.editCard(m, courierCard(o, cfg.shop, this.origin, this.did, null));
+    await this.notifyCouriers(o, cfg, byId, true);
+  }
+  /* Готовый заказ на доставку приходит всем доставщикам с кнопкой «Взял»; номера сообщений запоминаются, чтобы потом обновить. */
+  async notifyCouriers(o, cfg, except, again) {
+    const list = (await this.crList()).filter(c => c.uid && c.on !== false && c.id !== except);
+    if (!list.length) return;
+    const sent = [];
+    for (const c of list) {
+      if (again && (o.cm || []).some(m => m.cid === c.id)) continue;   // у него сообщение уже есть и обновлено
+      const card = courierCard(o, cfg.shop, this.origin, this.did, null);
+      const t = await this.tg('sendMessage', { chat_id: c.uid, text: card.text, reply_markup: card.reply_markup });
+      if (t.ok && t.result) sent.push({ chat_id: c.uid, message_id: t.result.message_id, cid: c.id });
+    }
+    if (sent.length) {
+      const cur = await this.st.get('o:' + o.id);
+      if (cur) { cur.cm = (cur.cm || []).concat(sent); await this.st.put('o:' + o.id, cur); }
+    }
+  }
+  /* Нажатие «Взял» под сообщением в чате доставщика. */
+  async onCourierCb(cq, p, answer) {
+    const cour = cq.from ? await this.courierOf(cq.from.id) : null;
+    if (!cour) return answer('Нет доступа', true);
+    const cfg = await this.getCfg();
+    const here = cq.message && cq.message.chat ? { chat_id: cq.message.chat.id, message_id: cq.message.message_id } : null;
+    const res = await this.courierTake(cour, p.id);
+    if (res.err === 'not_found') return answer('Заказ не найден', true);
+    if (res.err === 'taken') {
+      if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, res.order.crn));
+      return answer('Заказ уже взял ' + res.order.crn, true);
+    }
+    if (res.err) return answer('Этот заказ уже не ждёт доставки', true);
+    if (res.changed) await this.afterTake(res.order);
+    else if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, 'mine'));
+    return answer('Вы взяли заказ ' + p.id);
+  }
+  /* API доставщика: заказы, «Взял», выдача с оплатой, должники, касса. */
+  async courierApi(request, path, method, u, cour) {
+    const uid = u.id;
+    if (path === '/api/courier/orders' && method === 'GET') return json(await this.courierOrders(cour));
+    if (path === '/api/courier/cash' && method === 'GET') {
+      const lg = (await this.st.get('cc:' + cour.id)) || { rows: [] };
+      return json({ cash: Number(cour.cash) || 0, rows: lg.rows.slice(-CC_SHOW).reverse() });
+    }
+    if (path === '/api/courier/debts' && method === 'GET') return json(await this.debtList());
+    const dm = path.match(/^\/api\/courier\/debts\/(\d{1,15})(?:\/(pay|remind))?$/);
+    if (dm) {
+      const duid = Number(dm[1]);
+      if (!dm[2] && method === 'GET') return await this.debtOne(duid);
+      if (dm[2] && method === 'POST') {
+        const r = await this.readBody(request, 2000);
+        if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+        return await this.debtAct(duid, dm[2], r.body, uid, cour);
+      }
+    }
+    const om = path.match(/^\/api\/courier\/(take|release|done)$/);
+    if (om && method === 'POST') {
+      const r = await this.readBody(request, 2000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const id = String(r.body.id || '');
+      if (om[1] === 'take') {
+        const res = await this.courierTake(cour, id);
+        if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined }, res.err === 'not_found' ? 404 : 409);
+        if (res.changed) await this.afterTake(res.order);
+        return json({ order: this.cview(res.order, cour) });
+      }
+      if (om[1] === 'release') {
+        const res = await this.courierRelease(cour, id);
+        if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined }, res.err === 'not_found' ? 404 : 409);
+        await this.afterRelease(res.order, cour.id);
+        return json({ order: this.cview(res.order, cour) });
+      }
+      const pay = r.body.pay;
+      if (pay && typeof pay === 'object' && pay.m === 'credit' && cour.credit === false) return json({ error: 'no_credit' }, 403);
+      const res = await this.changeStatus(id, 'done', pay, cour);
+      if (!res.err && res.same && res.order.cr !== cour.id) res.err = 'not_yours';
+      if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : res.err === 'not_yours' ? 403 : 409);
+      if (res.changed) await this.afterChange(res.order, 'admin');
+      const c = await this.crGet(cour.id);
+      return json({ order: this.cview(res.order, cour), cash: c ? Number(c.cash) || 0 : 0 });
+    }
+    return json({ error: 'not_found' }, 404);
+  }
+  /* Управление доставщиками (продавец): список, приглашение ссылкой, правка, сдача денег, удаление. */
+  async adminCouriers(request, path, method, uid) {
+    if (path === '/api/admin/couriers') {
+      if (method === 'GET') return json({ couriers: await Promise.all((await this.crList()).map(c => this.crOut(c))) });
+      if (method === 'POST') {
+        const r = await this.readBody(request, 2000);
+        if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+        const name = cleanStr(r.body.name, 40), phone = cleanStr(r.body.phone || '', 25);
+        if (name.length < 2) return json({ error: 'bad_name' }, 400);
+        if (phone && !phoneOk(phone)) return json({ error: 'bad_phone' }, 400);
+        const idx = (await this.st.get('crx')) || [];
+        if (idx.length >= MAX_COURIERS) return json({ error: 'too_many' }, 409);
+        let id;
+        do { id = 'k' + randId(5).toLowerCase(); } while (idx.includes(id));
+        const c = { id, name, phone, uid: 0, on: true, credit: true, cash: 0, since: new Date().toISOString(), tok: randId(8).toLowerCase(), tokAt: Date.now() };
+        await this.st.put({ ['cr:' + id]: c, crx: idx.concat([id]), ['ct:' + c.tok]: id });
+        return json({ courier: await this.crOut(c) });
+      }
+      return json({ error: 'not_found' }, 404);
+    }
+    const m = path.match(/^\/api\/admin\/couriers\/(k[a-z0-9]{3,9})(?:\/(link|handover))?$/);
+    if (!m) return json({ error: 'not_found' }, 404);
+    const c = await this.crGet(m[1]), sub = m[2];
+    if (!c) return json({ error: 'not_found' }, 404);
+    if (!sub && method === 'GET') return json(await this.crDetail(c));
+    if (!sub && method === 'PUT') {
+      const r = await this.readBody(request, 2000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const b = r.body;
+      if (b.name !== undefined) { c.name = cleanStr(b.name, 40); if (c.name.length < 2) return json({ error: 'bad_name' }, 400); }
+      if (b.phone !== undefined) { c.phone = cleanStr(b.phone, 25); if (c.phone && !phoneOk(c.phone)) return json({ error: 'bad_phone' }, 400); }
+      if (b.credit !== undefined) c.credit = b.credit !== false;
+      if (b.on !== undefined) c.on = b.on !== false;
+      await this.st.put('cr:' + c.id, c);
+      return json(await this.crDetail(c));
+    }
+    if (!sub && method === 'DELETE') {
+      if ((Number(c.cash) || 0) !== 0) return json({ error: 'has_cash', cash: Number(c.cash) || 0 }, 409);
+      const upd = {}, del = ['cr:' + c.id, 'cc:' + c.id];
+      if (c.uid) del.push('cru:' + c.uid);
+      if (c.tok) del.push('ct:' + c.tok);
+      // заказы, которые он вёз, снова свободны
+      for (const o of await this.getOrders((await this.st.get('act')) || [])) {
+        if (o.cr === c.id) { delete o.cr; delete o.crn; delete o.crAt; delete o.crp; upd['o:' + o.id] = o; }
+      }
+      upd.crx = ((await this.st.get('crx')) || []).filter(x => x !== c.id);
+      await this.st.put(upd);
+      await this.st.delete(del);
+      return json({ ok: true });
+    }
+    if (sub === 'link' && method === 'POST') {
+      if (c.tok) await this.st.delete('ct:' + c.tok);
+      c.tok = randId(8).toLowerCase(); c.tokAt = Date.now();
+      await this.st.put({ ['cr:' + c.id]: c, ['ct:' + c.tok]: c.id });
+      return json({ courier: await this.crOut(c) });
+    }
+    if (sub === 'handover' && method === 'POST') {
+      const r = await this.readBody(request, 2000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const amount = Number(r.body.amount);
+      if (!Number.isInteger(amount) || amount < 1 || amount > (Number(c.cash) || 0)) return json({ error: 'bad_amount', cash: Number(c.cash) || 0 }, 400);
+      await this.st.put(await this.crAdd(c, [{ k: 'out', d: -amount, a: amount, by: uid }]));
+      return json(await this.crDetail(c));
+    }
+    return json({ error: 'not_found' }, 404);
   }
 
   /* --- журнал расчётов с магазинами (долги) --- */
@@ -2451,7 +2772,7 @@ export class Shop {
     return json({ debt: Object.assign(debtRow(lh, dayOf(new Date().toISOString())), { open: lh.open, rows, more: lg.rows.length > LG_SHOW || !!lg.base, rem: lh.rem || 0 }) });
   }
   /* Приём оплаты, отмена записи об оплате и напоминание магазину. */
-  async debtAct(uid, act, body, by) {
+  async debtAct(uid, act, body, by, cour) {
     const { lg, lh } = await this.lgLoad(uid);
     if (!lh) return json({ error: 'not_found' }, 404);
     let adds;
@@ -2468,7 +2789,7 @@ export class Shop {
     if (act === 'pay') {
       const amount = Number(body.amount);
       if (!Number.isInteger(amount) || amount < 1 || amount > MAX_PAY || !PAY_M.includes(body.m)) return json({ error: 'bad_request' }, 400);
-      adds = [{ k: 'pay', d: -amount, a: amount, m: body.m, by, note: cleanStr(body.note || '', LG_NOTE) }];
+      adds = [Object.assign({ k: 'pay', d: -amount, a: amount, m: body.m, by, note: cleanStr(body.note || '', LG_NOTE) }, cour ? { cid: cour.id } : {})];
     } else {
       // отменить можно только запись об оплате, и один раз; ошибочную выдачу в долг гасят оплатой
       const n = Number(body.n), row = lg.rows.find(r => r.n === n);
@@ -2477,6 +2798,15 @@ export class Shop {
       adds = [{ k: 'rv', of: n, d: -row.d, a: row.a, by }];
     }
     const res = await this.lgAdd(uid, adds);
+    // наличные, принятые доставщиком, идут в его кассу; отмена такой записи убирает их оттуда
+    const a0 = adds[0], who = lh.name || lh.org || '';
+    if (a0.k === 'pay' && a0.cid && a0.m === 'cash') {
+      const c = await this.crGet(a0.cid);
+      if (c) Object.assign(res.put, await this.crAdd(c, [{ k: 'in', d: a0.a, a: a0.a, du: uid, nm: who }]));
+    } else if (a0.k === 'rv') {
+      const row = lg.rows.find(r => r.n === a0.of), c = row && row.cid && row.m === 'cash' ? await this.crGet(row.cid) : null;
+      if (c) Object.assign(res.put, await this.crAdd(c, [{ k: 'rv', d: -row.a, a: row.a, du: uid, nm: who }]));
+    }
     await this.st.put(res.put);
     return await this.debtOne(uid);
   }
@@ -2496,6 +2826,7 @@ export class Shop {
     if (by === 'admin') {
       const text = customerText(o, o.status, cfg.shop);
       if (text) await this.tg('sendMessage', { chat_id: o.uid, text, reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
+      if (o.status === 'ready' && o.mode === 'delivery' && !o.cr) await this.notifyCouriers(o, cfg);
     } else if (by === 'customer') {
       for (const aid of (await this.st.get('admins')) || []) {
         await this.tg('sendMessage', { chat_id: aid, text: '❌ Клиент отменил заказ ' + o.id + ' (' + o.name + ').' });
@@ -2521,8 +2852,10 @@ export class Shop {
 
   async onCallback(cq) {
     const answer = (text, alert) => this.tg('answerCallbackQuery', { callback_query_id: cq.id, text: text ? String(text).slice(0, 190) : undefined, show_alert: !!alert });
+    const parsed = cbParse(cq.data);
+    if (parsed.kind === 'k') return await this.onCourierCb(cq, parsed, answer);
     if (!cq.from || !(await this.isAdmin(cq.from.id))) return answer('Нет доступа', true);
-    const { kind, id, to, days } = cbParse(cq.data);
+    const { kind, id, to, days } = parsed;
     const o = id ? await this.st.get('o:' + id) : null;
     if (!o) return answer('Заказ не найден', true);
     const cfg = await this.getCfg();
@@ -3299,6 +3632,21 @@ export class Hub {
       };
       // у владельца на вкладке «Проверка» горит число товаров, которые ждут решения
       if (out.me.owner) out.me.modN = all.reduce((n, r) => n + (Number(r.wait) || 0), 0);
+      // доставщик: у каких дистрибьюторов человек возит заказы (запись сверяется с хранилищем, снятые и удалённые пропадают)
+      const dl = (await this.st.get('dls:' + au.user.id)) || [];
+      if (dl.length) {
+        const alive = [], keep = [];
+        for (const did of dl) {
+          const rec = all.find(r => r.id === did);
+          if (!rec) continue;
+          const r = await shopCall(this.env, did, '/__/courier-of', { uid: au.user.id });
+          if (r.ok && r.data && r.data.courier === null) continue;     // доставщиком больше не является
+          keep.push(did);
+          if (r.ok && r.data && r.data.courier) alive.push({ id: did, name: rec.name });
+        }
+        if (keep.length !== dl.length) { if (keep.length) await this.st.put('dls:' + au.user.id, keep); else await this.st.delete('dls:' + au.user.id); }
+        if (alive.length) out.me.delivers = alive;
+      }
       const ag = await this.agentOf(au.user.id);
       if (ag) out.me.agent = { id: ag.id, name: ag.name, terr: ag.terr || [], link: await this.agentLink(ag.id) };
       // данные магазина из общей базы: форма заказа подставляется сама, на любом телефоне и у любого дистрибьютора
@@ -3674,6 +4022,9 @@ export class Hub {
 
     // «/start d_<номер>» — ссылка на каталог конкретного дистрибьютора; всё остальное — общее приветствие
     const payload = cmd === '/start' ? (text.split(/\s+/)[1] || '') : '';
+    // «/start c_<дистрибьютор>_<ключ>» — приглашение доставщика, которое выдал продавец
+    const cj = payload.match(/^c_([a-z0-9]{2,12})_([a-z0-9]{6,12})$/);
+    if (cj) { await this.courierJoin(uid, chat, lang, cj[1], cj[2]); return; }
     // «/start a_<номер>» — личная ссылка агента: магазин, пришедший по ней, закрепляется за агентом (при первом заказе)
     const am0 = payload.match(/^a_(a[a-z0-9]{3,10})$/);
     if (am0 && !(await this.st.get('ref:' + uid))) { const ag = await this.st.get('a:' + am0[1]); if (ag && ag.on) await this.st.put('ref:' + uid, ag.id); }
@@ -3685,6 +4036,22 @@ export class Hub {
       text: await this.welcome(lang, await isSeller(), target ? target.name : ''),
       reply_markup: openBtn(this.origin, openText, target ? shopUrl(this.origin, target.id) : this.origin + '/')
     });
+  }
+  /* Доставщик нажал ссылку-приглашение: хранилище дистрибьютора проверяет ключ и записывает его, площадка запоминает, где он доставщик. */
+  async courierJoin(uid, chat, lang, did, tok) {
+    const say = (ru, uz, markup) => this.tg('sendMessage', { chat_id: chat, text: bilingual(lang, ru, uz), reply_markup: markup });
+    const rec = await this.getRec(did);
+    const r = rec ? await shopCall(this.env, did, '/__/courier-join', { uid, token: tok }) : null;
+    if (!r || !r.ok || !r.data || !r.data.ok) {
+      if (r && r.status === 409) await say('Вы уже доставщик у другого продавца площадки или у этого. Один человек — одна запись.', 'Siz allaqachon yetkazib beruvchisiz. Bir kishi — bitta yozuv.');
+      else await say('Ссылка не подошла: она устарела или уже использована. Попросите продавца прислать новую.', 'Havola yaroqsiz: eskirgan yoki allaqachon ishlatilgan. Sotuvchidan yangisini soʻrang.');
+      return;
+    }
+    const dl = (await this.st.get('dls:' + uid)) || [];
+    if (!dl.includes(did)) await this.st.put('dls:' + uid, dl.concat([did]));
+    await say('Готово, вы доставщик «' + rec.name + '». Когда продавец отметит заказ готовым к доставке, он придёт сюда с кнопкой «Взял». Заказы, должников и кассу смотрите в приложении.',
+      'Tayyor, siz «' + rec.name + '» yetkazib beruvchisisiz. Sotuvchi buyurtmani yetkazishga tayyor deb belgilasa, u shu yerga «Взял» tugmasi bilan keladi. Buyurtmalar, qarzdorlar va kassa ilovada.',
+      openBtn(this.origin, lang === 'uz' ? 'Yetkazib berishni ochish' : 'Открыть доставку', courierUrl(this.origin, did)));
   }
   /* Приветствие: если дистрибьютор один (или клиент пришёл по ссылке на него), говорим от его имени, иначе от имени площадки. */
   async welcome(lang, isAdmin, shopName) {
