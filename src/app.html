@@ -70,6 +70,8 @@ html.mn-open,html.mn-open body{overflow:hidden}
 @media (prefers-reduced-motion:no-preference){.menu{transition:transform .2s ease,visibility 0s linear .2s}html.mn-open .menu{transition:transform .2s ease,visibility 0s}}
 .mhd{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:var(--hdr);padding:6px 10px 6px 16px;border-bottom:1px solid var(--line)}
 .mhd .brand{flex:1}
+.mrole{flex:none;padding:8px 16px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
+.mrole b{color:var(--ink);font-weight:600}
 .mclose{flex:none;appearance:none;width:40px;height:40px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .mnav{flex:1;min-height:0;overflow-y:auto;padding:4px 10px 14px;overscroll-behavior:contain}
 .mgh{padding:18px 10px 5px;font:600 10.5px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--grp)}
@@ -170,6 +172,8 @@ button.lrow .lt{flex:1 1 0}
 .lchev{flex:none;display:inline-flex;color:var(--ink-2)}
 .lchev svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
 button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
+.rolebox{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin-bottom:12px;font-size:14px;display:grid;gap:4px;overflow-wrap:anywhere}
+.rolebox small{color:var(--ink-2);font-size:12px}
 .dbn{appearance:none;width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:12px;padding:10px 12px;margin-bottom:12px;cursor:pointer;font:inherit}
 .dbn.late{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}
 .dbn b{display:block;font-size:14px;overflow-wrap:anywhere}
@@ -715,6 +719,7 @@ div.lgd{cursor:default}
     <div class="langsw" role="group"><button type="button" data-act="setlang" data-lg="ru" title="Русский">RU</button><button type="button" data-act="setlang" data-lg="uz" title="Oʻzbekcha">UZ</button></div>
     <button type="button" class="mclose" data-act="menuclose" id="mclose"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4l12 12M16 4 4 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
+  <div class="mrole" id="mrole" hidden></div>
   <nav class="mnav" id="nav"></nav>
 </aside>
 <main id="view"></main>
@@ -980,6 +985,30 @@ const sellerSubs=()=>{
   const w=stockWarn(),rn=modRetN();
   return [['orders',L('Заказы','Buyurtmalar')],['debts',L('Долги','Qarzlar'),S.dbt.late,'warn'],['dlv',L('Доставщики','Yetkazuvchilar')],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
 };
+/* Роли человека берутся с площадки (S.hub.me): владелец, агент, продавец и доставщик у каких-то дистрибьюторов. Кроме этого он всегда магазин-клиент. */
+function myRoles(){
+  const me=S.auth&&S.hub&&S.hub.me;
+  if(!me)return [];
+  const r=[];
+  if(me.owner)r.push({k:'owner',n:L('Владелец площадки','Platforma egasi'),d:[]});
+  if(me.agent)r.push({k:'agent',n:L('Агент','Agent'),d:me.agent.name?[me.agent.name]:[]});
+  if((me.sells||[]).length)r.push({k:'seller',n:L('Продавец','Sotuvchi'),d:me.sells.map(x=>x.name)});
+  if((me.delivers||[]).length)r.push({k:'courier',n:L('Доставщик','Yetkazuvchi'),d:me.delivers.map(x=>x.name)});
+  return r;
+}
+/* Строка в меню: роли, с которыми человек работает сейчас; у продавца и доставщика ещё название открытого дистрибьютора. */
+function roleLine(){
+  const me=S.auth&&S.hub&&S.hub.me;
+  if(!me)return '';
+  const here=S.did,sells=me.sells||[],dels=me.delivers||[],parts=[];
+  const sl=here?sells.find(x=>x.id===here):sells[0],dl=here?dels.find(x=>x.id===here):dels[0];
+  if(me.owner)parts.push(L('Владелец','Egasi'));
+  if(me.agent)parts.push(L('Агент','Agent'));
+  if(sl)parts.push(L('Продавец','Sotuvchi'));
+  if(dl)parts.push(L('Доставщик','Yetkazuvchi'));
+  if(here&&(sl||dl))parts.push((sl||dl).name);
+  return parts.length?parts.join(' · '):L('Магазин','Doʻkon');
+}
 function menuGroups(){
   const g=[];
   const shop=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
@@ -1025,6 +1054,8 @@ function renderNav(){
   // значок на кнопке ☰: что ждёт решения (новые заказы, товары на проверке или возвращённые)
   const al=(S.admin&&S.did?newCount()+modRetN():0)+(isOwner()?modN():0)+(S.courier&&S.did?crFree():0),mb=$('#menubadge');
   mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
+  const mr=$('#mrole'),rl=roleLine();
+  if(mr){mr.hidden=!rl;mr.innerHTML=rl?esc(L('Вы: ','Siz: '))+'<b>'+esc(rl)+'</b>':''}
   const mbt=$('#menubtn');
   mbt.setAttribute('aria-label',L('Меню','Menyu')+(al?': '+al:''));
   $('#mclose').setAttribute('aria-label',L('Закрыть меню','Menyuni yopish'));
@@ -1513,6 +1544,11 @@ function renderMine(){
 }
 
 /* ---------- профиль клиента ---------- */
+function rolesBoxHTML(){
+  const rs=myRoles();
+  return '<div class="rolebox"><small>'+L('Ваши роли','Rollaringiz')+'</small>'
+    +(rs.length?rs.map(x=>'<div><b>'+esc(x.n)+'</b>'+(x.d.length?' · '+esc(x.d.join(', ')):'')+'</div>').join(''):'<div><b>'+L('Магазин','Doʻkon')+'</b></div>')+'</div>';
+}
 function renderProfile(){
   let h='<div class="wrap page"><h1>'+L('Мой профиль','Mening profilim')+'</h1>';
   if(!S.ready)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
@@ -1522,6 +1558,7 @@ function renderProfile(){
     const p=S.profile||{name:'',phone:'',org:'',addrs:[]};
     h+='<p class="lead">'+L('Эти данные подставляются в заказ, на любом вашем устройстве. При оформлении заказа их можно изменить.','Bu maʼlumotlar istalgan qurilmangizda buyurtmaga avtomatik qoʻyiladi. Buyurtma berayotganda oʻzgartirish mumkin.')+'</p>'
       +(S.blocked?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(blockedTxt())+'</div>':'')
+      +rolesBoxHTML()
       +'<div class="card"><div class="form">'
       +'<div><label class="lab" for="p-name">'+L('Ваше имя','Ismingiz')+'</label><input type="text" id="p-name" data-pf="name" maxlength="60" value="'+esc(p.name)+'" autocomplete="name"><div class="err" id="pe-name"></div></div>'
       +'<div><label class="lab" for="p-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="p-phone" data-pf="phone" maxlength="25" value="'+esc(p.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel"><div class="err" id="pe-phone"></div></div>'
