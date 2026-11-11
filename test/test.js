@@ -1587,6 +1587,11 @@ const readyOrder = async (c, cart) => {
 };
 const debtsOf = async () => jsonOf(await call('GET', '/api/admin/debts', { init: iS() }));
 const debtOf = async uid => (await jsonOf(await call('GET', '/api/admin/debts/' + uid, { init: iS() }))).debt;
+/* Магазин нажимает «Верно» под всеми сообщениями с вопросом (записи, которые ждут ответа или не дошли). */
+async function confirmAll(uid) {
+  const lg = await W.storage.get('lg:' + uid);
+  for (const g of [...new Set((lg ? lg.rows : []).filter(r => r.cf && r.cf !== 'ok').map(r => r.g || r.n))]) await cb({ id: uid, first_name: 'Магазин' }, 'q:' + g + ':y');
+}
 const debtAct = (uid, act, body, init) => call('POST', '/api/admin/debts/' + uid + '/' + act, { init: init || iS(), body });
 /* Сдвигает срок выдачи в долг в прошлое (журнал и заголовок), чтобы проверить просрочку. */
 async function backdate(uid, ref, due) {
@@ -1669,6 +1674,11 @@ await t('долги: оплата частями гасит старые выд�
   // последний платёж: магазин уходит из списка должников
   assert.equal((await debtAct(A.u.id, 'pay', { amount: 7500, m: 'card' })).status, 200);
   list = await debtsOf();
+  assert.equal(list.debtors.length, 1, 'пока магазин не подтвердил записи, он остаётся в списке');
+  assert.equal(list.debtors[0].bal, 0);
+  assert.equal(list.debtors[0].wt > 0, true);
+  await confirmAll(A.u.id);
+  list = await debtsOf();
   assert.equal(list.debtors.length, 0);
   assert.equal((await debtOf(A.u.id)).bal, 0, 'история сохраняется');
 });
@@ -1690,14 +1700,17 @@ await t('долги: неверная сумма, лишний платёж ка
   assert.equal((await debtsOf()).n, 0, 'аванс не считается долгом');
   // отмена записи об оплате возвращает долг; второй раз нельзя; выдачу в долг отменить нельзя
   const pay = db.rows.find(r => r.k === 'pay');
-  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n })).status, 200);
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n })).status, 400, 'без причины отменить нельзя');
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n, reason: 'ab' })).status, 400, 'причина слишком короткая');
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n, reason: 'ошиблись суммой' }, iA())).status, 403);
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n, reason: 'ошиблись суммой' })).status, 200);
   db = await debtOf(A.u.id);
   assert.equal(db.bal, 1394000);
   assert.ok(db.rows.find(r => r.n === pay.n).void, 'запись помечена отменённой');
-  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n })).status, 409);
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n, reason: 'ещё раз' })).status, 409);
   const ch = db.rows.find(r => r.k === 'ch');
-  assert.equal((await debtAct(A.u.id, 'void', { n: ch.n })).status, 404);
-  assert.equal((await debtAct(A.u.id, 'void', { n: 99999 })).status, 404);
+  assert.equal((await debtAct(A.u.id, 'void', { n: ch.n, reason: 'выдача' })).status, 404);
+  assert.equal((await debtAct(A.u.id, 'void', { n: 99999, reason: 'нет такой' })).status, 404);
   assert.equal(db.rows.length, 3, 'записи не стираются: выдача, оплата и отмена');
 });
 
@@ -1824,6 +1837,8 @@ await t('долги: «Выдан клиенту» в боте сначала с
   assert.equal(del.status, 409);
   assert.equal((await jsonOf(del)).error, 'has_debt');
   await debtAct(A.u.id, 'pay', { amount: 1394000, m: 'cash' });
+  assert.equal((await call('DELETE', '/api/admin/clients/' + A.u.id, { init: iS() })).status, 409, 'ответа магазина на оплату ещё нет');
+  await confirmAll(A.u.id);
   assert.equal((await call('DELETE', '/api/admin/clients/' + A.u.id, { init: iS() })).status, 200);
 });
 
@@ -1834,8 +1849,11 @@ await t('долги: журнал не растёт бесконечно — с�
   await doneWith(o.id, { m: 'credit', days: 9 });
   for (let i = 0; i < 510; i++) assert.equal((await debtAct(A.u.id, 'pay', { amount: 1, m: 'cash' })).status, 200);
   const lg = await W.storage.get('lg:' + A.u.id);
-  assert.ok(lg.rows.length <= 500, 'записей ' + lg.rows.length);
-  assert.ok(lg.base && lg.base.due === plusDays(shopDay(), 9), 'срок свёрнутой выдачи не потерян');
+  assert.ok(lg.rows.length > 500 && lg.rows.length <= 800, 'ждущие ответа записи не сворачиваются, пока журнал не вырос в полтора раза: ' + lg.rows.length);
+  await confirmAll(A.u.id);
+  const lg2 = await W.storage.get('lg:' + A.u.id);
+  assert.ok(lg2.rows.length <= 500, 'после ответа магазина журнал сворачивается: ' + lg2.rows.length);
+  assert.ok(lg2.base && lg2.base.due === plusDays(shopDay(), 9), 'срок свёрнутой выдачи не потерян');
   const db = await debtOf(A.u.id);
   assert.equal(db.bal, 1394000 - 510);
   assert.equal(db.due, plusDays(shopDay(), 9));
@@ -1844,6 +1862,7 @@ await t('долги: журнал не растёт бесконечно — с�
   // платёж на остаток закрывает долг полностью
   assert.equal((await debtAct(A.u.id, 'pay', { amount: 1394000 - 510, m: 'bank' })).status, 200);
   assert.equal((await debtOf(A.u.id)).bal, 0);
+  await confirmAll(A.u.id);
   assert.equal((await debtsOf()).debtors.length, 0);
 });
 
@@ -5030,7 +5049,11 @@ await t('доставка: наличные оседают в кассе дос�
   assert.equal(db.bal, 994000);
   assert.equal(db.addr, 'Навои, ул. Галаба 12, склад 3', 'адрес магазина сохраняется для сборщика долгов');
   const rows = (await drvCash()).rows;
-  assert.deepEqual(rows.map(r => [r.k, r.a, r.o]), [['in', 400000, o3.id], ['in', 1394000, o1.id]]);
+  // оплата картой в кассу не идёт, а ждёт сверки продавцом с банком
+  assert.deepEqual(rows.map(r => [r.k, r.o]), [['in', o3.id], ['nv', o2.id], ['in', o1.id]]);
+  const cw = await jsonOf(await call('GET', '/api/courier/cash', { init: iR() }));
+  assert.deepEqual(cw.nv.map(x => [x.k, x.m, x.o]), [['o', 'card', o2.id]], 'доставщик видит, что не сверено');
+  assert.equal(cw.cash, 1794000);
   // выдача в долг может быть закрыта для доставщика
   assert.equal((await call('PUT', '/api/admin/couriers/' + id, { init: iS(), body: { credit: false } })).status, 200);
   const o4 = await readyDelivery(A, CART);
@@ -5057,6 +5080,15 @@ await t('доставка: наличные оседают в кассе дос�
   const del = await call('DELETE', '/api/admin/couriers/' + id, { init: iS() });
   assert.equal(del.status, 409); assert.equal((await jsonOf(del)).error, 'has_cash');
   assert.equal((await hv(2188000)).status, 200);
+  // безнал без сверки тоже мешает удалить доставщика
+  const del2 = await call('DELETE', '/api/admin/couriers/' + id, { init: iS() });
+  assert.equal(del2.status, 409); assert.equal((await jsonOf(del2)).error, 'has_nv');
+  const nvid = (await jsonOf(await call('GET', '/api/admin/couriers/' + id, { init: iS() }))).nv[0].id;
+  assert.equal((await call('POST', '/api/admin/couriers/' + id + '/verify', { init: iR(), body: { id: nvid } })).status, 403, 'сверять может только продавец');
+  assert.equal((await call('POST', '/api/admin/couriers/' + id + '/verify', { init: iS(), body: { id: 9999 } })).status, 404);
+  const vr = await jsonOf(await call('POST', '/api/admin/couriers/' + id + '/verify', { init: iS(), body: { id: nvid } }));
+  assert.deepEqual([vr.nv.length, vr.rows[0].k, vr.rows[0].by], [0, 'vr', SELLER.id]);
+  assert.equal((await call('POST', '/api/admin/couriers/' + id + '/verify', { init: iS(), body: { id: nvid } })).status, 404, 'второй раз нельзя');
   assert.equal((await call('DELETE', '/api/admin/couriers/' + id, { init: iS() })).status, 200);
   assert.equal((await call('GET', '/api/courier/orders', { init: iR() })).status, 403);
   assert.deepEqual((await crList()).map(c => c.name), ['Азиз']);
@@ -5090,10 +5122,11 @@ await t('доставка: доставщик видит всех должник
   assert.deepEqual(rows.map(r => [r.m, r.by]), [['card', DRV.id], ['cash', DRV.id]]);
   assert.equal((await call('POST', '/api/courier/debts/' + A.u.id + '/void', { init: iR(), body: { n: rows[1].n } })).status, 404, 'отменять оплаты доставщик не может');
   // продавец отменяет запись о наличных: касса доставщика уменьшается
-  assert.equal((await debtAct(A.u.id, 'void', { n: rows[1].n })).status, 200);
+  assert.equal((await debtAct(A.u.id, 'void', { n: rows[1].n, reason: 'принёс меньше' })).status, 200);
   const c = await drvCash();
   assert.equal(c.cash, 0);
-  assert.deepEqual(c.rows.map(r => r.k), ['rv', 'in']);
+  assert.deepEqual(c.rows.map(r => r.k), ['rv', 'nv', 'in']);
+  assert.equal(c.nv.length, 1, 'оплата картой ещё ждёт сверки');
   // оплата, принятая самим продавцом, кассу доставщика не трогает
   assert.equal((await debtAct(A.u.id, 'pay', { amount: 1000, m: 'cash' })).status, 200);
   assert.equal((await drvCash()).cash, 0);
@@ -5197,7 +5230,7 @@ await t('мой долг: магазин видит свой долг по вс�
   assert.deepEqual(f2.open.map(q => [q.ref, q.r]), [[o1.id, 900000]]);
   // отменённая оплата остаётся в истории зачёркнутой, служебной записи об отмене клиент не видит
   const n = f2.rows.find(r => r.k === 'pay' && r.a === 100000).n;
-  assert.equal((await debtAct(A.u.id, 'void', { n })).status, 200);
+  assert.equal((await debtAct(A.u.id, 'void', { n, reason: 'записали дважды' })).status, 200);
   const f3 = (await dj(A, '?full=1')).debts.find(d => d.did === 'main');
   assert.equal(f3.bal, 1000000);
   assert.deepEqual(f3.rows.map(r => [r.k, !!r.void]), [['pay', true], ['pay', false], ['ch', false]]);
@@ -5206,6 +5239,10 @@ await t('мой долг: магазин видит свой долг по вс�
   assert.equal((await call('GET', '/api/hub/debts')).status, 401);
   // долг погашен полностью: дистрибьютор пропадает из списка
   assert.equal((await debtAct(A.u.id, 'pay', { amount: 1000000, m: 'bank' })).status, 200);
+  const left = (await dj(A)).debts.find(d => d.did === 'main');
+  assert.deepEqual([left.bal, left.ask > 0], [0, true], 'долга нет, но есть записи, которые магазин ещё не подтвердил');
+  for (const g of new Set((await dj(A, '?full=1')).debts.find(d => d.did === 'main').rows.filter(r => r.cf === 'wait' && !r.void).map(r => r.g)))
+    assert.equal((await call('POST', '/api/hub/debts/confirm', { init: A.init(), body: { did: 'main', n: g, ok: true } })).status, 200);
   assert.deepEqual((await dj(A)).debts.map(d => d.did), [sid]);
 });
 
@@ -5226,8 +5263,9 @@ await t('мой долг: просрочка попадает в сводку, �
   // отмена записи сообщений не шлёт
   const pn = (await debtOf(A.u.id)).rows.find(r => r.k === 'pay').n;
   tgLog = [];
-  assert.equal((await debtAct(A.u.id, 'void', { n: pn })).status, 200);
-  assert.equal(tgAll('sendMessage', p => p.chat_id === A.u.id).length, 0, 'при отмене записи магазину ничего не пишут');
+  assert.equal((await debtAct(A.u.id, 'void', { n: pn, reason: 'не те деньги' })).status, 200);
+  const vm = lastTg('sendMessage', p => p.chat_id === A.u.id).payload;
+  assert.ok(norm(vm.text).includes('отменена') && vm.text.includes('Причина: не те деньги') && norm(vm.text).includes('500 000'), 'магазин узнаёт об отмене и причине: ' + vm.text);
   // Telegram не отвечает: оплата всё равно записана
   tgFail = true;
   const r = await debtAct(A.u.id, 'pay', { amount: 94000, m: 'card' });
@@ -5238,6 +5276,7 @@ await t('мой долг: просрочка попадает в сводку, �
   tgLog = [];
   assert.equal((await debtAct(A.u.id, 'pay', { amount: 1300000, m: 'bank' })).status, 200);
   assert.ok(norm(lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text).includes('Долг погашен, спасибо!'));
+  assert.ok(lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text.includes('Всё верно?'), 'под оплатой — вопрос магазину');
   tgLog = [];
   assert.equal((await debtAct(A.u.id, 'pay', { amount: 1000, m: 'cash' })).status, 200);
   assert.ok(norm(lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text).includes('Переплата (аванс): 1 000 сум'));
@@ -5250,7 +5289,9 @@ await t('мой долг: просрочка попадает в сводку, �
   assert.equal((await debtAct(U.u.id, 'pay', { amount: 2500, m: 'card' })).status, 200);
   const um = lastTg('sendMessage', p => p.chat_id === U.u.id).payload;
   assert.ok(norm(um.text).includes('toʻlov qabul qilindi: 2 500') && norm(um.text).includes('(karta)') && norm(um.text).includes('Qarz qoldigʻi: 5 000') && !/[А-Яа-я]/.test(um.text.replace(DEFAULT_NAME, '')), um.text);
-  assert.equal(um.reply_markup.inline_keyboard[0][0].text, 'Mening qarzim');
+  assert.ok(um.text.includes('Hammasi toʻgʻrimi?'));
+  assert.deepEqual(um.reply_markup.inline_keyboard[0].map(b => b.text), ['✅ Toʻgʻri', '❌ Notoʻgʻri']);
+  assert.equal(um.reply_markup.inline_keyboard[1][0].text, 'Mening qarzim');
   // напоминание тоже открывает «Мой долг»
   const A2 = newUser();
   const o4 = await readyOrder(A2, ONE);
@@ -5270,6 +5311,301 @@ await t('мой долг: оплату, принятую доставщиком,
   assert.equal((await call('POST', '/api/courier/debts/' + A.u.id + '/pay', { init: iR(), body: { amount: 400000, m: 'cash' } })).status, 200);
   const t3 = norm(lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text);
   assert.ok(t3.includes('принята оплата 400 000 сум (наличные)') && t3.includes('Остаток долга: 994 000 сум'), t3);
+});
+
+/* ---------- контроль денег: магазин подтверждает, безнал сверяется, спорное видно ---------- */
+/* Первое сообщение магазину с вопросом «Всё верно?» и его кнопки. */
+const askOf = uid => { const m = lastTg('sendMessage', p => p.chat_id === uid && p.text.includes('Всё верно?')); return m ? m.payload : null; };
+const tap = (uid, data, from) => cb(from || { id: uid, first_name: 'Магазин' }, data);
+const dispOf = async () => (await jsonOf(await call('GET', '/api/admin/disputes', { init: iS() }))).items;
+
+await t('контроль денег: выдача в долг и оплата ждут ответа магазина «Верно»; «Верно» окончательно, чужой нажать не может', async () => {
+  await stockWorld();
+  const A = newUser(), Z = newUser();
+  const o = await readyOrder(A, CART);
+  tgLog = [];
+  assert.equal((await doneWith(o.id, { m: 'credit', days: 7, paid: 394000, pm: 'cash' })).status, 200);
+  const q = askOf(A.u.id);
+  assert.ok(q, 'магазину пришёл вопрос');
+  const tx = norm(q.text);
+  assert.ok(tx.includes('выдан вам в долг на 1 394 000 сум') && tx.includes('Сразу оплачено: 394 000 сум (наличные)') && tx.includes('Принял: Jasur'), tx);
+  const [yes, no] = q.reply_markup.inline_keyboard[0];
+  assert.deepEqual([yes.text, no.text], ['✅ Верно', '❌ Не так']);
+  assert.ok(/^q:\d+:y$/.test(yes.callback_data) && /^q:\d+:n$/.test(no.callback_data) && yes.callback_data.length <= 64);
+  assert.equal(q.reply_markup.inline_keyboard[1][0].text, 'Мой долг');
+  // записи выдачи и оплаты у продавца пока «ждут ответа»; магазин в списке
+  let db = await debtOf(A.u.id);
+  assert.deepEqual(db.rows.map(r => [r.k, r.cf]), [['pay', 'wait'], ['ch', 'wait']]);
+  assert.equal(db.rows[0].bn, 'Jasur');
+  assert.equal((await debtsOf()).debtors[0].wt, 1);
+  // чужой человек нажать за магазин не может: у него нет такой записи
+  tgLog = [];
+  await tap(Z.u.id, yes.callback_data);
+  assert.equal(lastTg('answerCallbackQuery').payload.show_alert, true);
+  assert.equal((await debtOf(A.u.id)).rows[0].cf, 'wait');
+  // магазин нажал «Верно»: обе записи заказа подтверждены сразу, сообщение обновилось
+  tgLog = [];
+  await tap(A.u.id, yes.callback_data);
+  db = await debtOf(A.u.id);
+  assert.deepEqual(db.rows.map(r => r.cf), ['ok', 'ok']);
+  const ed = lastTg('editMessageText').payload;
+  assert.ok(ed.text.includes('✅ Вы подтвердили') && ed.reply_markup.inline_keyboard.flat().every(b => !b.callback_data), 'после «Верно» кнопок ответа нет');
+  assert.equal((await debtsOf()).debtors[0].wt, 0);
+  // «Верно» окончательно: «Не так» после него не принимается
+  tgLog = [];
+  await tap(A.u.id, no.callback_data);
+  assert.equal(lastTg('answerCallbackQuery').payload.show_alert, true);
+  assert.deepEqual((await debtOf(A.u.id)).rows.map(r => r.cf), ['ok', 'ok']);
+  assert.equal(tgAll('sendMessage', p => p.text.includes('Не так')).length, 0, 'продавцам ничего не пришло');
+  assert.equal((await debtsOf()).fl, 0);
+});
+
+await t('контроль денег: «Не так» — продавцы и доставщик узнают сразу, запись спорная; магазин может передумать, продавец закрывает с комментарием', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 7 });
+  tgLog = [];
+  assert.equal((await call('POST', '/api/courier/debts/' + A.u.id + '/pay', { init: iR(), body: { amount: 400000, m: 'cash' } })).status, 200);
+  const adm = lastTg('sendMessage', p => p.chat_id === SELLER.id && p.text.includes('Рустам'));
+  assert.ok(adm && norm(adm.payload.text).includes('принял оплату долга') && norm(adm.payload.text).includes('400 000'), 'продавец узнал, что доставщик принял оплату');
+  const q = askOf(A.u.id), no = q.reply_markup.inline_keyboard[0][1].callback_data, yes = q.reply_markup.inline_keyboard[0][0].callback_data;
+  assert.ok(norm(q.text).includes('Принял: Рустам'));
+  tgLog = [];
+  await tap(A.u.id, no);
+  const warn = lastTg('sendMessage', p => p.chat_id === SELLER.id).payload;
+  assert.ok(warn.text.includes('отметил запись «Не так»') && norm(warn.text).includes('оплата долга 400 000') && warn.text.includes('Рустам'), warn.text);
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes('Не так')), 'доставщик, принявший оплату, тоже узнал');
+  const ed = lastTg('editMessageText').payload;
+  assert.ok(ed.text.includes('❌ Вы отметили «Не так»') && ed.reply_markup.inline_keyboard[0][0].callback_data === yes, 'можно передумать');
+  // повторное «Не так» не шлёт повторных сообщений
+  tgLog = [];
+  await tap(A.u.id, no);
+  assert.equal(tgAll('sendMessage', p => p.chat_id === SELLER.id).length, 0);
+  // в списке должников и в спорных
+  const list = await debtsOf();
+  assert.equal(list.fl, 1); assert.equal(list.debtors[0].fl, 1);
+  let ds = await dispOf();
+  assert.deepEqual(ds.map(x => [x.uid, x.k, x.a, x.cf, x.bn]), [[A.u.id, 'pay', 400000, 'no', 'Рустам']]);
+  // закрыть можно только с комментарием; свежую «ждёт ответа» без причины закрывать нельзя
+  const n = ds[0].n;
+  assert.equal((await debtAct(A.u.id, 'resolve', { n })).status, 400);
+  assert.equal((await debtAct(A.u.id, 'resolve', { n, note: 'ab' })).status, 400);
+  assert.equal((await debtAct(A.u.id, 'resolve', { n, note: 'сверились по телефону' }, iA())).status, 403);
+  assert.equal((await debtAct(A.u.id, 'resolve', { n: 99999, note: 'сверились по телефону' })).status, 404);
+  tgLog = [];
+  const rs = await jsonOf(await debtAct(A.u.id, 'resolve', { n, note: 'сверились по телефону' }));
+  assert.deepEqual(rs.debt.rows.find(r => r.n === n).rsl, { bn: 'Jasur', why: 'сверились по телефону', t: rs.debt.rows.find(r => r.n === n).rsl.t });
+  assert.ok(lastTg('sendMessage', p => p.chat_id === A.u.id && p.text.includes('сверились по телефону')), 'магазин видит комментарий');
+  assert.deepEqual(await dispOf(), []);
+  assert.equal((await debtsOf()).fl, 0);
+  assert.equal((await debtAct(A.u.id, 'resolve', { n, note: 'ещё раз' })).status, 409);
+  // после закрытия магазин «Не так» уже не нажимает, «Верно» можно
+  tgLog = [];
+  await tap(A.u.id, no);
+  assert.equal(lastTg('answerCallbackQuery').payload.show_alert, true);
+  await tap(A.u.id, yes);
+  assert.equal((await debtOf(A.u.id)).rows.find(r => r.n === n).cf, 'ok');
+  // магазин передумал ДО закрытия: «Не так» → «Верно» снимает спор
+  const o2 = await readyOrder(A, ONE);
+  tgLog = [];
+  await doneWith(o2.id, { m: 'credit', days: 3 });
+  const q2 = askOf(A.u.id);
+  await tap(A.u.id, q2.reply_markup.inline_keyboard[0][1].callback_data);
+  assert.equal((await debtsOf()).fl, 1);
+  await tap(A.u.id, q2.reply_markup.inline_keyboard[0][0].callback_data);
+  assert.equal((await debtsOf()).fl, 0);
+  assert.deepEqual(await dispOf(), []);
+});
+
+await t('контроль денег: сообщение не дошло — запись сразу спорная; молчание больше суток — тоже; магазин отвечает и в приложении', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  tgFail = true;
+  assert.equal((await doneWith(o.id, { m: 'credit', days: 7 })).status, 200);
+  tgFail = false;
+  let ds = await dispOf();
+  assert.deepEqual(ds.map(x => [x.k, x.cf, x.ref]), [['ch', 'na', o.id]], 'не получил — спорная сразу');
+  // магазин открывает приложение и подтверждает там
+  const my = await jsonOf(await call('GET', '/api/hub/debts?full=1', { init: A.init() }));
+  assert.equal(my.debts[0].rows[0].cf, 'na');
+  const conf = (n, ok) => call('POST', '/api/hub/debts/confirm', { init: A.init(), body: { did: 'main', n, ok } });
+  assert.equal((await conf(my.debts[0].rows[0].g, true)).status, 200);
+  assert.deepEqual(await dispOf(), []);
+  assert.equal((await conf(my.debts[0].rows[0].g, false)).status, 409, 'после «Верно» менять нельзя');
+  assert.equal((await call('POST', '/api/hub/debts/confirm', { init: iB(), body: { did: 'main', n: 1, ok: true } })).status, 404, 'чужой журнал недоступен');
+  assert.equal((await call('POST', '/api/hub/debts/confirm', { init: A.init(), body: { did: 'main', n: 1, ok: 'да' } })).status, 400);
+  // молчание: Telegram дошёл, но ответа нет; через сутки запись попадает в спорные
+  const o2 = await readyOrder(A, ONE);
+  await doneWith(o2.id, { m: 'credit', days: 7 });
+  assert.deepEqual(await dispOf(), [], 'пока не прошли сутки — просто ждёт');
+  const n2 = (await debtOf(A.u.id)).rows.find(r => r.ref === o2.id).n;
+  assert.equal((await debtAct(A.u.id, 'resolve', { n: n2, note: 'рано закрывать' })).status, 409, 'свежую запись закрывать нечего');
+  const lg = await W.storage.get('lg:' + A.u.id), lh = await W.storage.get('lh:' + A.u.id);
+  const old = new Date(Date.now() - 25 * 3600000).toISOString();
+  lg.rows.forEach(r => { if (r.cf === 'wait') r.t = old; });
+  lh.cwt = lh.cwt.map(() => old);
+  await W.storage.put('lg:' + A.u.id, lg); await W.storage.put('lh:' + A.u.id, lh);
+  ds = await dispOf();
+  assert.deepEqual(ds.map(x => [x.ref, x.cf]), [[o2.id, 'late']]);
+  assert.equal((await debtsOf()).fl, 1);
+  assert.equal((await debtOf(A.u.id)).rows.find(r => r.n === n2).late, true);
+  assert.equal((await debtAct(A.u.id, 'resolve', { n: n2, note: 'магазин не отвечает, звонил' })).status, 200);
+  assert.deepEqual(await dispOf(), []);
+  assert.equal((await debtsOf()).fl, 0);
+});
+
+await t('контроль денег: отмена оплаты только продавцом и с причиной; магазин и доставщик получают причину; запись остаётся в журнале', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 7 });
+  assert.equal((await call('POST', '/api/courier/debts/' + A.u.id + '/pay', { init: iR(), body: { amount: 300000, m: 'cash' } })).status, 200);
+  const pn = (await debtOf(A.u.id)).rows.find(r => r.k === 'pay').n;
+  assert.equal((await call('POST', '/api/courier/debts/' + A.u.id + '/void', { init: iR(), body: { n: pn, reason: 'хочу отменить' } })).status, 404);
+  assert.equal((await debtAct(A.u.id, 'void', { n: pn, reason: '   ' })).status, 400);
+  tgLog = [];
+  const r = await jsonOf(await debtAct(A.u.id, 'void', { n: pn, reason: 'деньги не получены' }));
+  const rv = r.debt.rows.find(x => x.k === 'rv');
+  assert.deepEqual([rv.of, rv.bn, rv.why], [pn, 'Jasur', 'деньги не получены']);
+  assert.equal(r.debt.bal, 1394000);
+  assert.ok(lastTg('sendMessage', p => p.chat_id === A.u.id && p.text.includes('Причина: деньги не получены')));
+  const dm = lastTg('sendMessage', p => p.chat_id === DRV.id);
+  assert.ok(dm && dm.payload.text.includes('Причина: деньги не получены'), 'доставщик, принявший оплату, получил причину');
+  assert.equal((await drvCash()).cash, 0, 'наличные из кассы доставщика вернулись');
+  // отменённая запись не требует ответа магазина и не считается спорной
+  assert.equal((await debtsOf()).debtors[0].wt, 1, 'ждёт ответа только сама выдача в долг');
+  tgLog = [];
+  await tap(A.u.id, 'q:' + pn + ':n');
+  assert.equal(lastTg('answerCallbackQuery').payload.show_alert, true);
+  assert.equal(tgAll('sendMessage', p => p.chat_id === SELLER.id).length, 0);
+  // в «Мой долг» у магазина видно, что запись отменена и почему
+  const my = (await jsonOf(await call('GET', '/api/hub/debts?full=1', { init: A.init() }))).debts[0];
+  const mine = my.rows.find(x => x.n === pn);
+  assert.deepEqual([mine.void, mine.vwhy], [true, 'деньги не получены']);
+  assert.ok(my.rows.every(x => !('why' in x)));
+});
+
+await t('контроль денег: доставщик принимает любые способы; карта и перечисление не идут в его наличные, а ждут сверки продавцом', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 7 });
+  const pay = (amount, m) => call('POST', '/api/courier/debts/' + A.u.id + '/pay', { init: iR(), body: { amount, m } });
+  assert.equal((await pay(200000, 'cash')).status, 200);
+  assert.equal((await pay(300000, 'card')).status, 200);
+  assert.equal((await pay(100000, 'bank')).status, 200);
+  let c = await drvCash();
+  assert.equal(c.cash, 200000, 'только наличные в кассе');
+  assert.deepEqual(c.nv.map(x => [x.k, x.m, x.a]), [['d', 'bank', 100000], ['d', 'card', 300000]]);
+  assert.deepEqual((await debtOf(A.u.id)).rows.filter(r => r.k === 'pay').map(r => [r.m, r.vr || '']), [['bank', 'wait'], ['card', 'wait'], ['cash', '']]);
+  assert.equal((await debtOf(A.u.id)).bal, 794000, 'долг уменьшился сразу');
+  const cd = (await jsonOf(await call('GET', '/api/admin/couriers/' + id, { init: iS() })));
+  assert.equal(cd.nv.length, 2); assert.equal(cd.courier.nvn, 2); assert.equal(cd.courier.nva, 400000);
+  assert.equal((await crList())[0].nvn, 2);
+  // продавец проверил банк: «Деньги пришли»; запись у должника тоже сверена
+  const vr = await jsonOf(await call('POST', '/api/admin/couriers/' + id + '/verify', { init: iS(), body: { id: cd.nv.find(x => x.m === 'card').id } }));
+  assert.equal(vr.nv.length, 1);
+  const rows = (await debtOf(A.u.id)).rows.filter(r => r.k === 'pay');
+  assert.deepEqual(rows.map(r => [r.m, r.vr || '']), [['bank', 'wait'], ['card', 'ok'], ['cash', '']]);
+  assert.equal(rows.find(r => r.m === 'card').vb, 'Jasur');
+  // продавец отменил неподтверждённый перевод: из списка сверки он уходит
+  tgLog = [];
+  assert.equal((await debtAct(A.u.id, 'void', { n: rows.find(r => r.m === 'bank').n, reason: 'на счёт не пришло' })).status, 200);
+  c = await drvCash();
+  assert.deepEqual([c.nv.length, c.cash], [0, 200000]);
+  assert.deepEqual(c.rows.slice(0, 2).map(r => r.k), ['nx', 'vr']);
+  // выдача заказа картой на доставке: тоже в «не сверено», в кассу не идёт
+  const o2 = await readyDelivery(A, ONE);
+  await drvTake(o2.id);
+  assert.equal((await jsonOf(await drvDone(o2.id, { m: 'bank' }))).cash, 200000);
+  c = await drvCash();
+  assert.deepEqual(c.nv.map(x => [x.k, x.m, x.o]), [['o', 'bank', o2.id]]);
+  // часть долга картой при выдаче в долг: запись оплаты ждёт сверки и ответа магазина
+  const o3 = await readyDelivery(A, CART);
+  await drvTake(o3.id);
+  await drvDone(o3.id, { m: 'credit', days: 5, paid: 100000, pm: 'card' });
+  c = await drvCash();
+  assert.deepEqual(c.nv.map(x => [x.k, x.m]), [['o', 'card'], ['o', 'bank']]);
+  assert.equal(c.nv[0].a, 100000);
+  const pr = (await debtOf(A.u.id)).rows.find(r => r.ref === o3.id && r.k === 'pay');
+  assert.deepEqual([pr.cf, pr.vr, pr.bn, pr.cid], ['wait', 'wait', 'Рустам', id]);
+});
+
+await t('контроль денег: лимит наличных у доставщика — с деньгами выше лимита новые заказы и наличные оплаты долга не берёт, безнал берёт', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 7 });
+  const put = body => call('PUT', '/api/admin/couriers/' + id, { init: iS(), body });
+  for (const lim of [-1, 1.5, 'много', 2e11]) assert.equal((await put({ lim })).status, 400, String(lim));
+  assert.equal((await call('PUT', '/api/admin/couriers/' + id, { init: iA(), body: { lim: 5 } })).status, 403);
+  assert.equal((await put({ lim: 500000 })).status, 200);
+  assert.equal((await crList())[0].lim, 500000);
+  const pay = (amount, m) => call('POST', '/api/courier/debts/' + A.u.id + '/pay', { init: iR(), body: { amount, m } });
+  assert.equal((await pay(500000, 'cash')).status, 200, 'пока на руках меньше лимита, принимает');
+  const stop = await pay(1000, 'cash');
+  assert.equal(stop.status, 409); assert.equal((await jsonOf(stop)).error, 'cash_limit');
+  assert.equal((await pay(1000, 'card')).status, 200, 'безнал в кассу не идёт, поэтому лимит его не останавливает');
+  const o2 = await readyDelivery(A, ONE);
+  const tk = await drvTake(o2.id);
+  assert.equal(tk.status, 409); assert.equal((await jsonOf(tk)).error, 'cash_limit');
+  assert.equal((await adminOrdersOf()).find(x => x.id === o2.id).crn, undefined, 'заказ остался свободным');
+  const cq = await call('GET', '/api/courier/orders', { init: iR() });
+  const cqj = await jsonOf(cq);
+  assert.deepEqual([cqj.cash, cqj.lim], [500000, 500000]);
+  // нажатие «Взял» в Telegram тоже останавливается и объясняет
+  tgLog = [];
+  await cb(DRV, 'k:' + o2.id, 555, DRV.id);
+  const al = lastTg('answerCallbackQuery').payload;
+  assert.ok(al.show_alert && norm(al.text).includes('Сначала сдайте деньги') && norm(al.text).includes('500 000'), al.text);
+  // сдал деньги — снова может
+  assert.equal((await call('POST', '/api/admin/couriers/' + id + '/handover', { init: iS(), body: { amount: 300000 } })).status, 200);
+  assert.equal((await drvTake(o2.id)).status, 200);
+  // лимит снимается нулём
+  assert.equal((await put({ lim: 0 })).status, 200);
+  assert.equal((await pay(1000, 'cash')).status, 200);
+});
+
+await t('контроль денег: владелец видит спорные записи всех дистрибьюторов и может закрыть с комментарием; чужим закрыто', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const A = newUser();
+  const o1 = await readyOrder(A, CART);
+  await doneWith(o1.id, { m: 'credit', days: 7 });
+  const o2 = await readyDelivery(A, CART, sid);
+  tgLog = [];
+  assert.equal((await crq(sid, 'POST', '/api/admin/status', iD(), { id: o2.id, to: 'done', pay: { m: 'credit', days: 3 } })).status, 200);
+  for (const m of tgAll('sendMessage', p => p.chat_id === A.u.id && p.text.includes('Всё верно?'))) {
+    assert.ok(/^q:alfa|^q:[a-z0-9]+:\d+:[yn]$/.test(m.payload.reply_markup.inline_keyboard[0][0].callback_data), m.payload.reply_markup.inline_keyboard[0][0].callback_data);
+  }
+  const q2 = askOf(A.u.id);
+  const dataNo = q2.reply_markup.inline_keyboard[0][1].callback_data;
+  assert.ok(dataNo.startsWith('q:' + sid + ':'), 'кнопка второго дистрибьютора несёт его номер: ' + dataNo);
+  await cb({ id: A.u.id, first_name: 'Магазин' }, dataNo);
+  assert.equal((await jsonOf(await crq(sid, 'GET', '/api/admin/debts', iD()))).fl, 1, 'спор виден продавцу второго дистрибьютора');
+  assert.equal((await debtsOf()).fl, 0, 'продавец первого чужого спора не видит');
+  // владелец видит спорные по всем
+  const hd = async init => call('GET', '/api/hub/admin/disputes', { init });
+  assert.equal((await hd(iA())).status, 403);
+  assert.equal((await hd(iD())).status, 403, 'продавец дистрибьютора — не владелец');
+  const own = (await jsonOf(await hd(iS()))).items;
+  assert.deepEqual(own.map(x => [x.did, x.shopName, x.uid, x.cf, x.ref]), [[sid, 'Альфа Трейд', A.u.id, 'no', o2.id]]);
+  const rs = body => call('POST', '/api/hub/admin/disputes/resolve', { init: iS(), body });
+  assert.equal((await rs({ did: sid, uid: A.u.id, n: own[0].n })).status, 400, 'без комментария нельзя');
+  assert.equal((await call('POST', '/api/hub/admin/disputes/resolve', { init: iD(), body: { did: sid, uid: A.u.id, n: own[0].n, note: 'проверил' } })).status, 403);
+  assert.equal((await rs({ did: 'nope', uid: A.u.id, n: own[0].n, note: 'проверил' })).status, 404);
+  tgLog = [];
+  assert.equal((await rs({ did: sid, uid: A.u.id, n: own[0].n, note: 'владелец сверил с накладной' })).status, 200);
+  assert.deepEqual((await jsonOf(await hd(iS()))).items, []);
+  const row = (await jsonOf(await crq(sid, 'GET', '/api/admin/debts/' + A.u.id, iD()))).debt.rows.find(r => r.n === own[0].n);
+  assert.equal(row.rsl.why, 'владелец сверил с накладной');
+  assert.equal(row.rsl.bn, 'Jasur', 'видно, кто закрыл');
 });
 
 /* ---------- итог ---------- */
