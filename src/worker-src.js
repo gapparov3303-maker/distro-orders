@@ -3389,7 +3389,7 @@ export class Hub {
     const text = String(msg.text || '').trim();
     const lang = String(msg.from.language_code || '').toLowerCase().startsWith('uz') ? 'uz' : 'ru';
     const cmd = text.split(/\s+/)[0].split('@')[0].toLowerCase();
-    const openText = '🛒 Katalogni ochish · Открыть каталог';
+    const openText = 'CATALOG';
     const isSeller = async () => (await this.sellsOf(uid)).length > 0;
 
     if (cmd === '/admin') {
