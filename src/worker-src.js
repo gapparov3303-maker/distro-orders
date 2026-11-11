@@ -1012,7 +1012,7 @@ function catalogSheets(prod) {
    Оплаты гасят самые старые выдачи первыми, просрочка считается по непогашенной части. Заголовок lh:<uid> хранит долг и непогашенные выдачи,
    список магазинов с долгом — dbi. Записей хранится не больше LG_MAX: самые старые сворачиваются в base, журнал не растёт бесконечно. */
 const PAY_M = ['cash', 'card', 'bank'];
-const LG_MAX = 500, LG_FOLD = 100, LG_NOTE = 80, LG_SHOW = 100, MAX_PAY = 1e11, CREDIT_MAX_DAYS = 90, REMIND_GAP = 3600000;
+const DEBT_ORD_MAX = 100, LG_MAX = 500, LG_FOLD = 100, LG_NOTE = 80, LG_SHOW = 100, MAX_PAY = 1e11, CREDIT_MAX_DAYS = 90, REMIND_GAP = 3600000;
 const PAY_RU = { cash: '💵 Наличные', card: '💳 Карта', bank: '🏦 Перечисление', credit: '📒 В долг' };
 
 /* ---------- доставка: доставщики и касса наличных ---------- */
@@ -1088,14 +1088,38 @@ function debtLine(h, today) {
   const d = lgDue(h.open, today);
   return '⚠️ Долг магазина: ' + money(h.bal) + (d.days ? ', просрочка ' + d.days + ' дн.' : d.due ? ', срок ' + dmy(d.due) : '');
 }
-function debtRemindText(h, shop, today) {
+/* Напоминание магазину. ords — состав заказов {номер: заказ}; по каждому неоплаченному заказу пишем дату, товары, сумму и остаток.
+   Если текст не влезает в одно сообщение Telegram, заказов и позиций показываем меньше. */
+const REMIND_STEPS = [[5, 8], [3, 3], [3, 0], [1, 0]];
+function debtRemindText(h, shop, today, ords) {
   setLang(h.lang === 'uz' ? 'uz' : 'ru');
   const d = lgDue(h.open, today);
   const name = shop.name || DEFAULT.shop.name;
   const contact = (shop.telegram ? '@' + shop.telegram : '') + (shop.phone ? (shop.telegram ? ', ' : '') + shop.phone : '');
   const late = d.days ? L(' (просрочка ' + d.days + ' дн.)', ' (' + d.days + ' kun kechikdi)') : '';
-  return L('🔔 ' + name + ': напоминание об оплате.\nДолг по заказам: ' + money(h.bal) + (d.due ? '\nСрок оплаты: ' + dmy(d.due) + late : '') + (contact ? '\nВопросы: ' + contact : ''),
-    '🔔 ' + name + ': toʻlov eslatmasi.\nBuyurtmalar boʻyicha qarz: ' + money(h.bal) + (d.due ? '\nToʻlov muddati: ' + dmy(d.due) + late : '') + (contact ? '\nSavollar: ' + contact : ''));
+  const head = L('🔔 ' + name + ': напоминание об оплате.\nДолг по заказам: ' + money(h.bal) + (d.due ? '\nСрок оплаты: ' + dmy(d.due) + late : ''),
+    '🔔 ' + name + ': toʻlov eslatmasi.\nBuyurtmalar boʻyicha qarz: ' + money(h.bal) + (d.due ? '\nToʻlov muddati: ' + dmy(d.due) + late : ''));
+  const tail = contact ? L('\nВопросы: ', '\nSavollar: ') + contact : '';
+  const open = (Array.isArray(h.open) ? h.open : []).filter(q => q && q.r > 0), by = ords || {};
+  const block = (q, maxItems) => {
+    const o = q.ref ? by[q.ref] : null;
+    if (!q.ref) return L('Прежние долги: ', 'Oldingi qarzlar: ') + money(q.r);
+    if (!o) return q.ref + ' · ' + L('осталось ', 'qoldi ') + money(q.r) + (q.due ? ' · ' + L('срок ', 'muddat ') + dmy(q.due) : '');
+    const items = Array.isArray(o.items) ? o.items : [];
+    const lines = items.slice(0, maxItems).map(it => '• ' + (L(it.name, it.uz || it.name)) + (weightLabel(it) ? ' (' + weightLabel(it) + ')' : '') + ' × ' + it.qty);
+    if (items.length > maxItems) lines.push(L('…и ещё ' + (items.length - maxItems) + ' поз.', '…yana ' + (items.length - maxItems) + ' ta'));
+    const paidPart = o.total > q.r ? ', ' + L('осталось ', 'qoldi ') + money(q.r) : '';
+    return o.id + ' · ' + dmy(dayOf(o.at)) + '\n' + (lines.length ? lines.join('\n') + '\n' : '')
+      + L('Сумма ', 'Summa ') + money(o.total) + paidPart + (q.due ? ' · ' + L('срок ', 'muddat ') + dmy(q.due) : '');
+  };
+  let text = head + tail;
+  if (open.length) for (const [maxOrders, maxItems] of REMIND_STEPS) {
+    const show = open.slice(0, maxOrders), rest = open.slice(maxOrders);
+    const more = rest.length ? '\n\n' + L('…и ещё ' + rest.length + ' зак. на ' + money(rest.reduce((t, q) => t + q.r, 0)), '…yana ' + rest.length + ' ta buyurtma, ' + money(rest.reduce((t, q) => t + q.r, 0))) : '';
+    text = head + '\n\n' + show.map(q => block(q, maxItems)).join('\n\n') + more + tail;
+    if (text.length <= 3800) break;
+  }
+  return text;
 }
 
 /* ---------- отчёты ---------- */
@@ -2764,12 +2788,25 @@ export class Shop {
     const owing = list.filter(x => x.bal > 0);
     return { debtors: list, total: owing.reduce((t, x) => t + x.bal, 0), overdue: owing.reduce((t, x) => t + x.over, 0), n: owing.length, late: owing.filter(x => x.days > 0).length };
   }
+  /* Состав заказов, по которым числится долг. Берётся из самих заказов; если заказа уже нет, номер остаётся без состава. */
+  async debtOrders(refs) {
+    const ids = [...new Set(refs.filter(r => typeof r === 'string' && /^Z-[A-Z0-9]{3,12}$/.test(r)))].slice(0, DEBT_ORD_MAX);
+    const map = await this.getMany(ids.map(r => 'o:' + r));
+    const out = {};
+    ids.forEach(r => {
+      const o = map.get('o:' + r);
+      if (!o || typeof o !== 'object') return;
+      out[r] = { id: r, at: o.createdAt, total: Number(o.total) || 0, fee: Number(o.fee) || 0, disc: Number(o.disc) || 0, sub: Number(o.sub) || 0, items: Array.isArray(o.items) ? o.items : [] };
+    });
+    return out;
+  }
   async debtOne(uid) {
     const { lg, lh } = await this.lgLoad(uid);
     if (!lh) return json({ error: 'not_found' }, 404);
     const voided = new Set(lg.rows.filter(r => r.k === 'rv').map(r => r.of));
     const rows = lg.rows.slice(-LG_SHOW).reverse().map(r => voided.has(r.n) ? Object.assign({}, r, { void: true }) : r);
-    return json({ debt: Object.assign(debtRow(lh, dayOf(new Date().toISOString())), { open: lh.open, rows, more: lg.rows.length > LG_SHOW || !!lg.base, rem: lh.rem || 0 }) });
+    const ords = await this.debtOrders((lh.open || []).map(q => q.ref).concat(rows.filter(r => r.k === 'ch').map(r => r.ref)));
+    return json({ debt: Object.assign(debtRow(lh, dayOf(new Date().toISOString())), { open: lh.open, rows, ords, more: lg.rows.length > LG_SHOW || !!lg.base, rem: lh.rem || 0 }) });
   }
   /* Приём оплаты, отмена записи об оплате и напоминание магазину. */
   async debtAct(uid, act, body, by, cour) {
@@ -2780,7 +2817,7 @@ export class Shop {
       if (!(lh.bal > 0)) return json({ error: 'no_debt' }, 409);
       if (Date.now() - (Number(lh.rem) || 0) < REMIND_GAP) return json({ error: 'too_soon' }, 429);
       if (!this.env.BOT_TOKEN) return json({ error: 'server' }, 500);
-      const r = await this.tg('sendMessage', { chat_id: uid, text: debtRemindText(lh, (await this.getCfg()).shop, dayOf(new Date().toISOString())) });
+      const r = await this.tg('sendMessage', { chat_id: uid, text: debtRemindText(lh, (await this.getCfg()).shop, dayOf(new Date().toISOString()), await this.debtOrders((lh.open || []).slice(0, 12).map(q => q.ref))) });
       if (!r.ok) return json({ error: 'tg_failed' }, 502);
       lh.rem = Date.now();
       await this.st.put('lh:' + uid, lh);
