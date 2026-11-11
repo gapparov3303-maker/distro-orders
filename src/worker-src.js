@@ -396,25 +396,44 @@ const STATUS_ICON = { new: '🆕', accepted: '🛠', ready: '✅', done: '📦',
 
 /* Кнопки под заказом несут номер дистрибьютора, чтобы нажатие дошло до его хранилища. У первого дистрибьютора формат прежний: так работают и старые сообщения в чате. */
 const cbPrefix = did => (did && did !== MAIN ? did + ':' : '');
+/* Разбор данных кнопки под заказом: «s:<заказ>:<статус>», «c:<заказ>», «b:<заказ>», «p:<заказ>:<оплата>[:<дней>]».
+   У дистрибьюторов кроме первого после буквы идёт ещё его номер. Номера заказов начинаются с «Z-», а у номера дистрибьютора дефиса нет. */
+function cbParse(data) {
+  const parts = String(data || '').split(':');
+  const kind = parts[0];
+  const withDid = kind === 's' ? parts.length >= 4 : kind === 'p' ? !/^Z-/.test(parts[1] || '') : parts.length >= 3;
+  const i = withDid ? 2 : 1;
+  return { kind, did: withDid ? parts[1] : MAIN, id: parts[i], to: parts[i + 1], days: parts[i + 2] };
+}
 /* Адреса, которые открывает кнопка в Telegram: каталог дистрибьютора и его панель продавца. */
 const shopUrl = (origin, did) => origin + '/' + (did ? '?d=' + did : '');
 const sellerUrl = (origin, did) => origin + '/?d=' + (did || MAIN) + '&v=seller';
-function adminCard(o, shop, origin, confirm, cl, did) {
+function adminCard(o, shop, origin, confirm, cl, did, debt) {
   setLang('ru');
   const px = cbPrefix(did);
   const who = o.tg && o.tg.username ? '@' + o.tg.username : 'без username';
   const cLines = clientLines(cl);
-  const tail = '\n\n' + (cLines ? cLines + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
-    + '\nСтатус: ' + stOf(o.status, o.mode).name;
+  const dLine = o.status === 'cancelled' ? '' : debtLine(debt, dayOf(new Date().toISOString()));
+  const tail = '\n\n' + (cLines ? cLines + '\n' : '') + (dLine ? dLine + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
+    + '\nСтатус: ' + stOf(o.status, o.mode).name + (o.pay ? '\n' + payLine(o.pay) : '');
   const head = STATUS_ICON[o.status] + ' ';
   // очень длинный заказ: показываем первые позиции, чтобы итог и кнопки не потерялись
-  let text = head + orderText(o, shop) + tail;
-  for (let k = (o.items || []).length - 1; text.length > TEXT_MAX && k >= 1; k--) text = head + orderText(o, shop, k) + tail;
+  const ask = confirm === 'pay' ? '\n\nКак клиент оплатил заказ? К оплате: ' + money(o.total) : confirm === 'days' ? '\n\nНа сколько дней записать долг?' : '';
+  let text = head + orderText(o, shop) + tail + ask;
+  for (let k = (o.items || []).length - 1; text.length > TEXT_MAX && k >= 1; k--) text = head + orderText(o, shop, k) + tail + ask;
   if (text.length > TEXT_MAX) text = text.slice(0, TEXT_MAX - 10) + '…';
   const rows = [];
   const btn = (t, d) => ({ text: t, callback_data: d });
   const del = o.mode === 'delivery';
-  if (confirm) {
+  if (confirm === 'pay') {
+    rows.push([btn(PAY_RU.cash, 'p:' + px + o.id + ':cash'), btn(PAY_RU.card, 'p:' + px + o.id + ':card')]);
+    rows.push([btn(PAY_RU.bank, 'p:' + px + o.id + ':bank'), btn(PAY_RU.credit, 'p:' + px + o.id + ':credit')]);
+    rows.push([{ text: '✂️ Часть сразу, остальное в долг', web_app: { url: sellerUrl(origin, did) } }]);
+    rows.push([btn('Назад', 'b:' + px + o.id)]);
+  } else if (confirm === 'days') {
+    rows.push([3, 7, 14, 30].map(n => btn(n + ' дн.', 'p:' + px + o.id + ':credit:' + n)));
+    rows.push([btn('Назад', 's:' + px + o.id + ':done')]);
+  } else if (confirm) {
     rows.push([btn('Да, отменить заказ', 's:' + px + o.id + ':cancelled')]);
     rows.push([btn('Назад', 'b:' + px + o.id)]);
   } else {
@@ -450,11 +469,15 @@ function customerText(o, kind, shop) {
       '📦 Buyurtma ' + o.id + ' yigʻildi va tez orada yetkaziladi.\nOlganda toʻlanadi: ' + money(o.total) + place) : L(
       '📦 Заказ ' + o.id + ' готов, можно забирать.\nОплата при получении: ' + money(o.total) + place,
       '📦 Buyurtma ' + o.id + ' tayyor, olib ketishingiz mumkin.\nOlganda toʻlanadi: ' + money(o.total) + place);
-    case 'done': return del ? L(
-      '🤝 Заказ ' + o.id + ' доставлен. Спасибо, что выбрали ' + name + '!',
-      '🤝 Buyurtma ' + o.id + ' yetkazildi. ' + name + 'ni tanlaganingiz uchun rahmat!') : L(
-      '🤝 Спасибо, что выбрали ' + name + '!',
-      '🤝 ' + name + 'ni tanlaganingiz uchun rahmat!');
+    case 'done': {
+      const owe = o.pay && o.pay.m === 'credit' ? Math.max(0, (Number(o.total) || 0) - (Number(o.pay.paid) || 0)) : 0;
+      const dueRu = owe ? '\nОплатить до ' + dmy(o.pay.due) + ': ' + money(owe) : '', dueUz = owe ? '\nToʻlov muddati ' + dmy(o.pay.due) + ': ' + money(owe) : '';
+      return (del ? L(
+        '🤝 Заказ ' + o.id + ' доставлен. Спасибо, что выбрали ' + name + '!' + dueRu,
+        '🤝 Buyurtma ' + o.id + ' yetkazildi. ' + name + 'ni tanlaganingiz uchun rahmat!' + dueUz) : L(
+        '🤝 Спасибо, что выбрали ' + name + '!' + dueRu,
+        '🤝 ' + name + 'ni tanlaganingiz uchun rahmat!' + dueUz));
+    }
     case 'cancelled': return L(
       '❌ Заказ ' + o.id + ' отменён продавцом.' + (contact ? '\nВопросы: ' + contact : ''),
       '❌ Buyurtma ' + o.id + ' sotuvchi tomonidan bekor qilindi.' + (contact ? '\nSavollar: ' + contact : ''));
@@ -587,16 +610,16 @@ function whenRu(s) {
 function ordersSheets(orders) {
   setLang('ru');
   const list = orders.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const rows = [['№ заказа', 'Создан', 'Статус', 'Получение', 'Когда', 'Клиент', 'Телефон', 'Организация', 'Telegram', 'Адрес доставки', 'Комментарий', 'Товары, сум', 'Скидка, сум', 'Доставка, сум', 'Итого, сум', 'Позиций']];
+  const rows = [['№ заказа', 'Создан', 'Статус', 'Получение', 'Когда', 'Клиент', 'Телефон', 'Организация', 'Telegram', 'Адрес доставки', 'Комментарий', 'Товары, сум', 'Скидка, сум', 'Доставка, сум', 'Итого, сум', 'Позиций', 'Оплата']];
   const items = [['№ заказа', 'Статус', 'Когда', 'Клиент', 'Товар', 'Вес / объём', 'Количество', 'В упаковках', 'Цена, сум', 'Сумма, сум']];
   list.forEach(o => {
     const fee = Number(o.fee) || 0, total = Number(o.total) || 0, disc = Number(o.disc) || 0, st = stOf(o.status, o.mode).name, when = String(o.pickupAt || '').replace('T', ' ');
     rows.push([o.id, shopTime(o.createdAt), st, o.mode === 'delivery' ? 'Доставка' : 'Самовывоз', when, o.name || '', o.phone || '', o.org || '',
-      o.tg && o.tg.username ? '@' + o.tg.username : '', o.mode === 'delivery' ? (o.address || '') : '', o.comment || '', total - fee + disc, disc, fee, total, (o.items || []).length]);
+      o.tg && o.tg.username ? '@' + o.tg.username : '', o.mode === 'delivery' ? (o.address || '') : '', o.comment || '', total - fee + disc, disc, fee, total, (o.items || []).length, payPlain(o.pay)]);
     (o.items || []).forEach(it => items.push([o.id, st, when, o.name || '', it.name || '', weightLabel(it), Number(it.qty) || 0, packText(it, it.qty), Number(it.price) || 0, (Number(it.price) || 0) * (Number(it.qty) || 0)]));
   });
   return [
-    { name: 'Заказы', w: [11, 17, 16, 12, 17, 22, 17, 22, 16, 34, 30, 14, 12, 14, 14, 9], money: [11, 12, 13, 14], rows },
+    { name: 'Заказы', w: [11, 17, 16, 12, 17, 22, 17, 22, 16, 34, 30, 14, 12, 14, 14, 9, 30], money: [11, 12, 13, 14], rows },
     { name: 'Товары в заказах', w: [11, 16, 17, 22, 32, 13, 12, 20, 14, 14], money: [8, 9], rows: items }
   ];
 }
@@ -959,6 +982,92 @@ function catalogSheets(prod) {
     { name: 'Как заполнять', w: [150], plain: true, rows: help.map(x => [x]) }];
 }
 
+/* ---------- расчёты с магазинами: способы оплаты и долги ---------- */
+/* При выдаче продавец отмечает, как заплатил магазин: наличные, карта, перечисление или в долг (можно часть сразу, остаток в долг).
+   По каждому магазину ведётся журнал расчётов lg:<uid>. Он только дополняется: выдача в долг (ch), оплата (pay), отмена оплаты (rv).
+   d — как запись меняет долг: выдано в долг +сумма, получена оплата −сумма. Долг — сумма всех d.
+   Оплаты гасят самые старые выдачи первыми, просрочка считается по непогашенной части. Заголовок lh:<uid> хранит долг и непогашенные выдачи,
+   список магазинов с долгом — dbi. Записей хранится не больше LG_MAX: самые старые сворачиваются в base, журнал не растёт бесконечно. */
+const PAY_M = ['cash', 'card', 'bank'];
+const LG_MAX = 500, LG_FOLD = 100, LG_NOTE = 80, LG_SHOW = 100, MAX_PAY = 1e11, CREDIT_MAX_DAYS = 90, REMIND_GAP = 3600000;
+const PAY_RU = { cash: '💵 Наличные', card: '💳 Карта', bank: '🏦 Перечисление', credit: '📒 В долг' };
+const PAY_PLAIN = { cash: 'Наличные', card: 'Карта', bank: 'Перечисление', credit: 'В долг' };
+const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
+/* Как заплатил магазин при выдаче заказа. Не указано — наличные: так было, пока оплата при получении была единственной. null — данные неверны. */
+function cleanPay(p, total, today) {
+  if (p === undefined || p === null) return { m: 'cash' };
+  if (typeof p !== 'object') return null;
+  const m = p.m === undefined ? 'cash' : p.m;
+  if (PAY_M.includes(m)) return { m };
+  if (m !== 'credit') return null;
+  const days = Number(p.days);
+  if (!Number.isInteger(days) || days < 1 || days > CREDIT_MAX_DAYS) return null;
+  const r = { m: 'credit', days, due: addDays(today, days) };
+  if (p.paid !== undefined && p.paid !== null && p.paid !== '' && Number(p.paid) !== 0) {
+    const paid = Number(p.paid);
+    // если оплачена вся сумма, это обычная оплата, а не долг
+    if (!Number.isInteger(paid) || paid < 0 || paid >= total || !PAY_M.includes(p.pm)) return null;
+    r.paid = paid; r.pm = p.pm;
+  }
+  return r;
+}
+/* Долг и непогашенные выдачи по журналу. all — все записи журнала (нужны, чтобы увидеть отмены, которые лежат в хвосте). */
+function lgState(rows, base, all) {
+  const voided = new Set((all || rows).filter(r => r.k === 'rv').map(r => r.of));
+  const net = rows.filter(r => r.k !== 'rv' && !voided.has(r.n));
+  let bal = base ? base.d : 0, paid = base && base.d < 0 ? -base.d : 0;
+  const queue = [];
+  if (base && base.d > 0) queue.push({ ref: '', due: base.due || '', r: base.d });
+  for (const r of net) {
+    bal += r.d;
+    if (r.k === 'ch') queue.push({ ref: r.ref || '', due: r.due || '', r: r.d });
+    else paid -= r.d;
+  }
+  for (const q of queue) { const t = Math.min(q.r, paid); q.r -= t; paid -= t; }
+  return { bal, open: queue.filter(q => q.r > 0) };
+}
+/* Когда срок и сколько просрочено на день today. */
+function lgDue(open, today) {
+  let over = 0, days = 0;
+  const day = d => Date.parse(d + 'T00:00:00Z');
+  for (const q of open || []) if (q.due && q.due < today) { over += q.r; days = Math.max(days, Math.round((day(today) - day(q.due)) / 86400000)); }
+  const dues = (open || []).map(q => q.due).filter(Boolean).sort();
+  return { due: dues[0] || '', over, days };
+}
+/* Когда записей больше LG_MAX, старые уходят в base: остаток долга по ним и самый ранний срок. */
+function lgFold(rows, base) {
+  if (rows.length <= LG_MAX) return { rows, base };
+  const cut = rows.length - LG_MAX + LG_FOLD;
+  const s = lgState(rows.slice(0, cut), base, rows);
+  return { rows: rows.slice(cut), base: { d: s.bal, due: s.open.map(q => q.due).filter(Boolean).sort()[0] || '' } };
+}
+const debtRow = (h, today) => Object.assign({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', bal: h.bal }, lgDue(h.open, today));
+/* Оплата заказа простым текстом для Excel. */
+function payPlain(pay) {
+  if (!pay) return '';
+  if (pay.m !== 'credit') return PAY_PLAIN[pay.m] || '';
+  return (pay.paid ? PAY_PLAIN[pay.pm] + ' ' + pay.paid + ' + ' : '') + 'В долг до ' + dmy(pay.due);
+}
+function payLine(pay) {
+  if (!pay) return '';
+  if (pay.m !== 'credit') return 'Оплата: ' + PAY_RU[pay.m];
+  return 'Оплата: ' + (pay.paid ? PAY_RU[pay.pm] + ' ' + money(pay.paid) + ' + ' : '') + PAY_RU.credit + ' до ' + dmy(pay.due);
+}
+function debtLine(h, today) {
+  if (!h || !(h.bal > 0)) return '';
+  const d = lgDue(h.open, today);
+  return '⚠️ Долг магазина: ' + money(h.bal) + (d.days ? ', просрочка ' + d.days + ' дн.' : d.due ? ', срок ' + dmy(d.due) : '');
+}
+function debtRemindText(h, shop, today) {
+  setLang(h.lang === 'uz' ? 'uz' : 'ru');
+  const d = lgDue(h.open, today);
+  const name = shop.name || DEFAULT.shop.name;
+  const contact = (shop.telegram ? '@' + shop.telegram : '') + (shop.phone ? (shop.telegram ? ', ' : '') + shop.phone : '');
+  const late = d.days ? L(' (просрочка ' + d.days + ' дн.)', ' (' + d.days + ' kun kechikdi)') : '';
+  return L('🔔 ' + name + ': напоминание об оплате.\nДолг по заказам: ' + money(h.bal) + (d.due ? '\nСрок оплаты: ' + dmy(d.due) + late : '') + (contact ? '\nВопросы: ' + contact : ''),
+    '🔔 ' + name + ': toʻlov eslatmasi.\nBuyurtmalar boʻyicha qarz: ' + money(h.bal) + (d.due ? '\nToʻlov muddati: ' + dmy(d.due) + late : '') + (contact ? '\nSavollar: ' + contact : ''));
+}
+
 /* ---------- отчёты ---------- */
 /* Продажи копятся по дням: когда заказ становится «выдан», его сумма, товары и клиент добавляются в запись rp:<день> (день по часам склада).
    Самих заказов в панели хранится не больше 150 завершённых, поэтому отчёты берут данные не из них. Старше 400 дней записи удаляются. */
@@ -1212,7 +1321,7 @@ export class Shop {
   async getClient(uid) { const c = await this.st.get('c:' + uid); return c && typeof c === 'object' ? c : null; }
   async clientsIdx() { const x = await this.st.get('cx'); return Array.isArray(x) ? x : []; }
   /* Карточка заказа для продавца вместе с группой и заметкой клиента. */
-  async card(o, shop, confirm) { return adminCard(o, shop, this.origin, confirm, o.uid ? await this.getClient(o.uid) : null, this.did); }
+  async card(o, shop, confirm) { return adminCard(o, shop, this.origin, confirm, o.uid ? await this.getClient(o.uid) : null, this.did, o.uid ? await this.st.get('lh:' + o.uid) : null); }
   /* Один раз собирает базу клиентов из уже оформленных заказов (активных и в истории). Дальше база живёт сама. */
   async ensureClients() {
     if (await this.st.get('cxb')) return;
@@ -1403,6 +1512,7 @@ export class Shop {
       orders: orders.map(o => { const x = Object.assign({}, o); delete x.msgs; return x; }),
       clients: idx.map(x => cmap.get('c:' + x)).filter(Boolean),
       reports: await this.reportsDump(),
+      debts: await this.debtsDump(),
       photos: { saved: photos.length, of: withPhoto.length }
     };
     const readme = 'Резервная копия магазина «' + ((data.cfg.shop && data.cfg.shop.name) || '') + '»\r\nСоздана: ' + shopTime(at) + ' (время склада)\r\n\r\n'
@@ -1413,6 +1523,14 @@ export class Shop {
       files: [{ name: 'backup.json', data: enc.encode(JSON.stringify(data)) }, { name: 'README.txt', data: enc.encode(readme) }].concat(photos),
       info: { orders: orders.length, clients: data.clients.length, photos: photos.length, photosOf: withPhoto.length }
     };
+  }
+  /* Журналы расчётов магазинов с непогашенным долгом (или переплатой) для резервной копии. */
+  async debtsDump() {
+    const idx = (await this.st.get('dbi')) || [];
+    const keys = [];
+    idx.forEach(u => { keys.push('lh:' + u, 'lg:' + u); });
+    const map = await this.getMany(keys);
+    return idx.map(u => ({ uid: u, head: map.get('lh:' + u) || null, log: map.get('lg:' + u) || null }));
   }
   /* Записи продаж по дням для резервной копии. */
   async reportsDump() {
@@ -1652,15 +1770,26 @@ export class Shop {
       if (!admin) return json({ error: 'forbidden' }, 403);
       if (path === '/api/admin/orders' && method === 'GET') {
         const act = (await this.st.get('act')) || [], hist = (await this.st.get('hist')) || [];
-        const orders = (await this.getOrders(act.concat(hist))).map(adminOrder);
+        const raw = await this.getOrders(act.concat(hist));
+        const orders = raw.map(adminOrder);
+        // у заказов в работе показываем долг магазина: продавец видит его до выдачи
+        const live = raw.map((o, i) => [o, i]).filter(([o]) => o.uid && NEXT[o.status]);
+        if (live.length) {
+          const heads = await this.getMany([...new Set(live.map(([o]) => o.uid))].map(u => 'lh:' + u));
+          const today = dayOf(new Date().toISOString());
+          live.forEach(([o, i]) => {
+            const h = heads.get('lh:' + o.uid);
+            if (h && h.bal > 0) { const d = lgDue(h.open, today); orders[i].debt = { bal: h.bal, over: d.over, days: d.days, due: d.due }; }
+          });
+        }
         const stats = (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 };
         return json({ orders, stats });
       }
       if (path === '/api/admin/status' && method === 'POST') {
         const r = await this.readBody(request, 2000);
         if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
-        const res = await this.changeStatus(String(r.body.id || ''), String(r.body.to || ''));
-        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(res.order) : undefined }, res.err === 'not_found' ? 404 : 409);
+        const res = await this.changeStatus(String(r.body.id || ''), String(r.body.to || ''), r.body.pay);
+        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(res.order) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : 409);
         if (res.changed) await this.afterChange(res.order, 'admin');
         return json({ order: adminOrder(res.order), stats: res.stats || (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 } });
       }
@@ -1709,10 +1838,23 @@ export class Shop {
           return json({ client: c });
         }
         if (method === 'DELETE') {
+          const dh = await this.st.get('lh:' + cuid);
+          if (dh && dh.bal !== 0) return json({ error: 'has_debt' }, 409);
           const idx = await this.clientsIdx();
           await this.st.put('cx', idx.filter(x => x !== cuid));
           await this.st.delete('c:' + cuid);
           return json({ ok: true });
+        }
+      }
+      if (path === '/api/admin/debts' && method === 'GET') return json(await this.debtList());
+      const dm = path.match(/^\/api\/admin\/debts\/(\d{1,15})(?:\/(pay|void|remind))?$/);
+      if (dm) {
+        const duid = Number(dm[1]);
+        if (!dm[2] && method === 'GET') return await this.debtOne(duid);
+        if (dm[2] && method === 'POST') {
+          const r = await this.readBody(request, 2000);
+          if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+          return await this.debtAct(duid, dm[2], r.body, uid);
         }
       }
       if (path === '/api/admin/report' && method === 'GET') {
@@ -1935,7 +2077,7 @@ export class Shop {
 
     // уведомления: ошибки Telegram не должны ломать приём заказа
     const sent = [];
-    const card = adminCard(order, cfg.shop, this.origin, false, cl, this.did);
+    const card = adminCard(order, cfg.shop, this.origin, false, cl, this.did, await this.st.get('lh:' + uid));
     for (const aid of (await this.st.get('admins')) || []) {
       const t = await this.tg('sendMessage', { chat_id: aid, text: card.text, reply_markup: card.reply_markup });
       if (t.ok && t.result) sent.push({ chat_id: aid, message_id: t.result.message_id });
@@ -2190,15 +2332,18 @@ export class Shop {
   }
 
   /* Меняет статус без обращений к сети между чтением и записью. */
-  async changeStatus(id, to) {
+  async changeStatus(id, to, pay) {
     await this.ensureClients();
     await this.ensureReports();
     const o = await this.st.get('o:' + id);
     if (!o) return { err: 'not_found' };
     if (o.status === to) return { order: o, same: true };
     if (!(NEXT[o.status] || []).includes(to)) return { err: 'bad_transition', order: o };
+    const nowIso = new Date().toISOString();
+    const payRec = to === 'done' ? cleanPay(pay, Number(o.total) || 0, dayOf(nowIso)) : null;
+    if (to === 'done' && !payRec) return { err: 'bad_pay', order: o };
     o.status = to;
-    o.statusAt = new Date().toISOString();
+    o.statusAt = nowIso;
     const upd = { ['o:' + id]: o };
     let stats = null;
     if (!NEXT[to]) {
@@ -2222,6 +2367,21 @@ export class Shop {
           const drop = idx.splice(0, Math.max(0, idx.length - RP_KEEP));
           if (drop.length) await this.st.delete(drop.map(d => 'rp:' + d));
           upd.rpx = idx;
+        }
+      }
+      // оплата: как заплатил магазин; выдача в долг (и часть, оплаченная сразу) попадает в журнал расчётов
+      if (to === 'done') {
+        o.pay = payRec;
+        const total = Number(o.total) || 0;
+        if (payRec.m === 'credit' && o.uid && total > 0) {
+          const adds = [{ k: 'ch', d: total, a: total, ref: o.id, due: payRec.due }];
+          if (payRec.paid) adds.push({ k: 'pay', d: -payRec.paid, a: payRec.paid, m: payRec.pm, ref: o.id });
+          const snap = {};
+          if (o.name) snap.name = o.name;
+          if (o.org) snap.org = o.org;
+          if (o.phone) snap.phone = o.phone;
+          if (o.lang) snap.lang = o.lang;
+          Object.assign(upd, (await this.lgAdd(o.uid, adds, snap)).put);
         }
       }
       // счётчики клиента: выдача добавляет сумму, отмена убирает заказ из счёта
@@ -2250,6 +2410,75 @@ export class Shop {
     }
     await this.st.put(upd);
     return { order: o, changed: true, stats: stats || undefined };
+  }
+
+  /* --- журнал расчётов с магазинами (долги) --- */
+  async lgLoad(uid) {
+    const lg = await this.st.get('lg:' + uid), lh = await this.st.get('lh:' + uid);
+    return { lg: lg && Array.isArray(lg.rows) ? lg : { rows: [], base: null, seq: 0 }, lh: lh && typeof lh === 'object' ? lh : null };
+  }
+  /* Дописывает записи в журнал магазина и считает новый заголовок. Сам ничего не сохраняет: вызывающий кладёт put одной операцией вместе со своими правками. */
+  async lgAdd(uid, adds, snap) {
+    const { lg, lh } = await this.lgLoad(uid);
+    const now = new Date().toISOString();
+    adds.forEach(a => { lg.seq += 1; lg.rows.push(Object.assign({ n: lg.seq, t: now }, a)); });
+    const f = lgFold(lg.rows, lg.base);
+    lg.rows = f.rows; lg.base = f.base;
+    const st = lgState(lg.rows, lg.base);
+    const hdr = Object.assign({ uid, name: '', org: '', phone: '', lang: '', rem: 0 }, lh || {}, snap || {}, { bal: st.bal, open: st.open, upd: now });
+    const idx = (await this.st.get('dbi')) || [];
+    const has = idx.includes(uid), need = st.bal !== 0;
+    const put = { ['lg:' + uid]: lg, ['lh:' + uid]: hdr };
+    if (need && !has) put.dbi = idx.concat([uid]);
+    else if (!need && has) put.dbi = idx.filter(x => x !== uid);
+    return { put, hdr };
+  }
+  /* Список магазинов с долгом: просроченные сверху, потом по ближайшему сроку. Переплата (аванс) уходит в конец. */
+  async debtList() {
+    const idx = (await this.st.get('dbi')) || [];
+    const map = await this.getMany(idx.map(u => 'lh:' + u));
+    const today = dayOf(new Date().toISOString());
+    const list = idx.map(u => map.get('lh:' + u)).filter(h => h && h.bal !== 0).map(h => debtRow(h, today));
+    list.sort((a, b) => ((a.bal < 0) - (b.bal < 0)) || (b.days - a.days) || (a.due || '9').localeCompare(b.due || '9') || b.bal - a.bal);
+    const owing = list.filter(x => x.bal > 0);
+    return { debtors: list, total: owing.reduce((t, x) => t + x.bal, 0), overdue: owing.reduce((t, x) => t + x.over, 0), n: owing.length, late: owing.filter(x => x.days > 0).length };
+  }
+  async debtOne(uid) {
+    const { lg, lh } = await this.lgLoad(uid);
+    if (!lh) return json({ error: 'not_found' }, 404);
+    const voided = new Set(lg.rows.filter(r => r.k === 'rv').map(r => r.of));
+    const rows = lg.rows.slice(-LG_SHOW).reverse().map(r => voided.has(r.n) ? Object.assign({}, r, { void: true }) : r);
+    return json({ debt: Object.assign(debtRow(lh, dayOf(new Date().toISOString())), { open: lh.open, rows, more: lg.rows.length > LG_SHOW || !!lg.base, rem: lh.rem || 0 }) });
+  }
+  /* Приём оплаты, отмена записи об оплате и напоминание магазину. */
+  async debtAct(uid, act, body, by) {
+    const { lg, lh } = await this.lgLoad(uid);
+    if (!lh) return json({ error: 'not_found' }, 404);
+    let adds;
+    if (act === 'remind') {
+      if (!(lh.bal > 0)) return json({ error: 'no_debt' }, 409);
+      if (Date.now() - (Number(lh.rem) || 0) < REMIND_GAP) return json({ error: 'too_soon' }, 429);
+      if (!this.env.BOT_TOKEN) return json({ error: 'server' }, 500);
+      const r = await this.tg('sendMessage', { chat_id: uid, text: debtRemindText(lh, (await this.getCfg()).shop, dayOf(new Date().toISOString())) });
+      if (!r.ok) return json({ error: 'tg_failed' }, 502);
+      lh.rem = Date.now();
+      await this.st.put('lh:' + uid, lh);
+      return json({ ok: true, rem: lh.rem });
+    }
+    if (act === 'pay') {
+      const amount = Number(body.amount);
+      if (!Number.isInteger(amount) || amount < 1 || amount > MAX_PAY || !PAY_M.includes(body.m)) return json({ error: 'bad_request' }, 400);
+      adds = [{ k: 'pay', d: -amount, a: amount, m: body.m, by, note: cleanStr(body.note || '', LG_NOTE) }];
+    } else {
+      // отменить можно только запись об оплате, и один раз; ошибочную выдачу в долг гасят оплатой
+      const n = Number(body.n), row = lg.rows.find(r => r.n === n);
+      if (!row || row.k !== 'pay') return json({ error: 'not_found' }, 404);
+      if (lg.rows.some(r => r.k === 'rv' && r.of === n)) return json({ error: 'already' }, 409);
+      adds = [{ k: 'rv', of: n, d: -row.d, a: row.a, by }];
+    }
+    const res = await this.lgAdd(uid, adds);
+    await this.st.put(res.put);
+    return await this.debtOne(uid);
   }
 
   /* Обновляет карточки продавца и пишет клиенту. */
@@ -2293,11 +2522,7 @@ export class Shop {
   async onCallback(cq) {
     const answer = (text, alert) => this.tg('answerCallbackQuery', { callback_query_id: cq.id, text: text ? String(text).slice(0, 190) : undefined, show_alert: !!alert });
     if (!cq.from || !(await this.isAdmin(cq.from.id))) return answer('Нет доступа', true);
-    // «s:<заказ>:<статус>», «c:<заказ>», «b:<заказ>»; у дистрибьюторов кроме первого после буквы идёт ещё его номер
-    const parts = String(cq.data || '').split(':');
-    const kind = parts[0];
-    const withDid = kind === 's' ? parts.length >= 4 : parts.length >= 3;
-    const id = withDid ? parts[2] : parts[1], to = withDid ? parts[3] : parts[2];
+    const { kind, id, to, days } = cbParse(cq.data);
     const o = id ? await this.st.get('o:' + id) : null;
     if (!o) return answer('Заказ не найден', true);
     const cfg = await this.getCfg();
@@ -2306,8 +2531,13 @@ export class Shop {
 
     if (kind === 'c') { await edit(await this.card(o, cfg.shop, true)); return answer('Отменить заказ ' + id + '?'); }
     if (kind === 'b') { await edit(await this.card(o, cfg.shop, false)); return answer(''); }
-    if (kind === 's') {
-      const res = await this.changeStatus(id, to);
+    // «Выдан клиенту» сначала спрашивает, как оплатил клиент (нажатия в старых сообщениях тоже придут сюда)
+    if (kind === 's' && to === 'done' && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'pay')); return answer('Как оплатил клиент?'); }
+    if (kind === 'p' && to === 'credit' && !days && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'days')); return answer('На сколько дней в долг?'); }
+    if (kind === 's' || kind === 'p') {
+      const pay = kind === 'p' ? (to === 'credit' ? { m: 'credit', days: Number(days) } : { m: to }) : undefined;
+      const res = await this.changeStatus(id, kind === 'p' ? 'done' : to, pay);
+      if (res.err === 'bad_pay') return answer('Не получилось: проверьте способ оплаты', true);
       if (res.err === 'bad_transition') {
         await edit(await this.card(res.order, cfg.shop, false));
         return answer('Статус уже другой: ' + stOf(res.order.status, res.order.mode).name, true);
@@ -3373,9 +3603,7 @@ export class Hub {
   }
   /* Нажатие кнопки под заказом уходит в хранилище того дистрибьютора, чей это заказ. */
   async onCallback(request, up, secret) {
-    const parts = String(up.callback_query.data || '').split(':');
-    const withDid = parts[0] === 's' ? parts.length >= 4 : parts.length >= 3;
-    const did = withDid ? parts[1] : MAIN;
+    const did = cbParse(up.callback_query.data).did;
     if (!validDid(did) || !(await this.getRec(did))) return;
     await stubOf(this.env.SHOP, did).fetch(new Request(request.url, {
       method: 'POST',

@@ -1278,7 +1278,10 @@ await t('остатки: отмена и выдача — отложенное �
   await cb(SELLER, 's:' + od.id + ':cancelled');
   assert.deepEqual((await getStock()).p2, { q: 16, r: 0, low: 0 });
   const oe = (await jsonOf(await place(d, [{ id: 'p2', qty: 6 }]))).order;
-  for (const to of ['accepted', 'ready', 'done']) await cb(SELLER, 's:' + oe.id + ':' + to);
+  for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + oe.id + ':' + to);
+  await cb(SELLER, 's:' + oe.id + ':done');   // «Выдан клиенту» сначала спрашивает способ оплаты
+  assert.equal((await getStock()).p2.q, 16, 'до выбора оплаты заказ не выдан');
+  await cb(SELLER, 'p:' + oe.id + ':cash');
   assert.deepEqual((await getStock()).p2, { q: 10, r: 0, low: 0 });
   // выдача не уводит остаток в минус, даже если продавец его уже уменьшил вручную
   const ox = (await jsonOf(await place(a, [{ id: 'p2', qty: 8 }]))).order;
@@ -1568,8 +1571,219 @@ await t('клиенты: выдача добавляет сумму клиент
   const o4 = (await jsonOf(await place(A, ONE))).order;
   for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + o4.id + ':' + to);
   await cb(SELLER, 's:' + o4.id + ':done');
+  await cb(SELLER, 'p:' + o4.id + ':cash');
   assert.equal((await clientOf(A.u.id)).ds, 2);
   assert.equal((await clientOf(A.u.id)).sum, 1394000 + 7500);
+});
+
+/* ---------- оплата и долги ---------- */
+const shopDay = () => new Date(Date.now() + 5 * 3600000).toISOString().slice(0, 10);
+const plusDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+const doneWith = (id, pay) => call('POST', '/api/admin/status', { init: iS(), body: { id, to: 'done', pay } });
+const readyOrder = async (c, cart) => {
+  const o = (await jsonOf(await place(c, cart))).order;
+  for (const to of ['accepted', 'ready']) assert.equal((await setStatus(o.id, to)).status, 200);
+  return o;
+};
+const debtsOf = async () => jsonOf(await call('GET', '/api/admin/debts', { init: iS() }));
+const debtOf = async uid => (await jsonOf(await call('GET', '/api/admin/debts/' + uid, { init: iS() }))).debt;
+const debtAct = (uid, act, body, init) => call('POST', '/api/admin/debts/' + uid + '/' + act, { init: init || iS(), body });
+/* Сдвигает срок выдачи в долг в прошлое (журнал и заголовок), чтобы проверить просрочку. */
+async function backdate(uid, ref, due) {
+  const lg = await W.storage.get('lg:' + uid), lh = await W.storage.get('lh:' + uid);
+  lg.rows.forEach(r => { if (r.k === 'ch' && r.ref === ref) r.due = due; });
+  lh.open.forEach(q => { if (q.ref === ref) q.due = due; });
+  await W.storage.put('lg:' + uid, lg); await W.storage.put('lh:' + uid, lh);
+}
+
+await t('оплата: способ при выдаче выбирает продавец, без выбора наличные, неверные данные не принимаются', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, ONE);
+  const bad = [{ m: 'crypto' }, { m: 'credit' }, { m: 'credit', days: 0 }, { m: 'credit', days: 91 }, { m: 'credit', days: 2.5 }, 'cash',
+    { m: 'credit', days: 7, paid: 7500, pm: 'cash' }, { m: 'credit', days: 7, paid: 100, pm: 'gold' }, { m: 'credit', days: 7, paid: -5, pm: 'cash' }];
+  for (const pay of bad) assert.equal((await doneWith(o.id, pay)).status, 400, JSON.stringify(pay));
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'ready', 'заказ остался не выданным');
+  assert.equal((await jsonOf(await doneWith(o.id))).order.pay.m, 'cash', 'без выбора — наличные');
+  for (const m of ['card', 'bank']) {
+    const x = await readyOrder(A, ONE);
+    assert.equal((await jsonOf(await doneWith(x.id, { m }))).order.pay.m, m);
+  }
+  assert.equal((await debtsOf()).debtors.length, 0, 'оплаченные заказы долга не создают');
+  assert.equal((await call('POST', '/api/admin/status', { init: iA(), body: { id: o.id, to: 'done' } })).status, 403);
+});
+
+await t('долги: выдача в долг со сроком и часть сразу; клиент получает срок оплаты', async () => {
+  await stockWorld();
+  const A = newUser(), B = newUser();
+  const o1 = await readyOrder(A, CART);                       // 1 394 000
+  tgLog = [];
+  const r1 = await jsonOf(await doneWith(o1.id, { m: 'credit', days: 7 }));
+  assert.deepEqual(r1.order.pay, { m: 'credit', days: 7, due: plusDays(shopDay(), 7) });
+  assert.ok(tgAll('sendMessage', p => p.chat_id === A.u.id).some(x => x.payload.text.includes('Оплатить до ' + plusDays(shopDay(), 7).split('-').reverse().join('.'))));
+  const o2 = await readyOrder(B, CART);
+  const r2 = await jsonOf(await doneWith(o2.id, { m: 'credit', days: 14, paid: 400000, pm: 'card' }));
+  assert.equal(r2.order.pay.paid, 400000);
+  const d = await debtsOf();
+  assert.equal(d.n, 2);
+  assert.equal(d.total, 1394000 + 994000);
+  assert.equal(d.overdue, 0);
+  assert.equal(d.debtors.find(x => x.uid === B.u.id).bal, 994000);
+  const db = await debtOf(B.u.id);
+  assert.deepEqual(db.rows.map(r => [r.k, r.d, r.m || '']), [['pay', -400000, 'card'], ['ch', 1394000, '']], 'в журнале выдача и сразу оплаченная часть');
+  assert.equal(db.due, plusDays(shopDay(), 14));
+  assert.equal(db.name, 'ООО Ориент', 'имя и телефон магазина берутся из заказа');
+  assert.equal(db.phone, '+998 91 555 44 33');
+});
+
+await t('долги: оплата частями гасит старые выдачи первыми, просрочка считается по остатку', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o1 = await readyOrder(A, CART);                       // 1 394 000
+  const o2 = await readyOrder(A, ONE);                        // 7 500
+  await doneWith(o1.id, { m: 'credit', days: 3 });
+  await doneWith(o2.id, { m: 'credit', days: 10 });
+  await backdate(A.u.id, o1.id, plusDays(shopDay(), -4));     // первый долг просрочен на 4 дня
+  let db = await debtOf(A.u.id);
+  assert.equal(db.bal, 1401500);
+  assert.equal(db.over, 1394000);
+  assert.equal(db.days, 4);
+  let list = await debtsOf();
+  assert.equal(list.late, 1);
+  assert.equal(list.overdue, 1394000);
+  // платёж 1 000 000: первый долг закрывается частично, просрочка уменьшается
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 1000000, m: 'cash', note: 'принёс директор' })).status, 200);
+  db = await debtOf(A.u.id);
+  assert.equal(db.bal, 401500);
+  assert.equal(db.over, 394000);
+  assert.deepEqual(db.open.map(q => [q.ref, q.r]), [[o1.id, 394000], [o2.id, 7500]]);
+  assert.equal(db.rows[0].note, 'принёс директор');
+  // ещё платёж закрывает первый долг полностью: просрочки нет, остаётся второй со своим сроком
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 394000, m: 'bank' })).status, 200);
+  db = await debtOf(A.u.id);
+  assert.equal(db.bal, 7500);
+  assert.equal(db.over, 0);
+  assert.equal(db.due, plusDays(shopDay(), 10));
+  list = await debtsOf();
+  assert.equal(list.late, 0);
+  // последний платёж: магазин уходит из списка должников
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 7500, m: 'card' })).status, 200);
+  list = await debtsOf();
+  assert.equal(list.debtors.length, 0);
+  assert.equal((await debtOf(A.u.id)).bal, 0, 'история сохраняется');
+});
+
+await t('долги: неверная сумма, лишний платёж как аванс, отмена записи об оплате, чужие не могут', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 5 });
+  for (const body of [{ amount: 0, m: 'cash' }, { amount: -5, m: 'cash' }, { amount: 1.5, m: 'cash' }, { amount: 'много', m: 'cash' }, { amount: 100, m: 'credit' }, { amount: 100 }, { amount: 2e11, m: 'cash' }])
+    assert.equal((await debtAct(A.u.id, 'pay', body)).status, 400, JSON.stringify(body));
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 100, m: 'cash' }, iA())).status, 403, 'не продавец');
+  assert.equal((await debtAct(777000, 'pay', { amount: 100, m: 'cash' })).status, 404, 'нет журнала');
+  // оплата больше долга: переплата (аванс) уходит в конец списка
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 1500000, m: 'cash' })).status, 200);
+  let db = await debtOf(A.u.id);
+  assert.equal(db.bal, -106000);
+  assert.equal(db.open.length, 0);
+  assert.equal((await debtsOf()).n, 0, 'аванс не считается долгом');
+  // отмена записи об оплате возвращает долг; второй раз нельзя; выдачу в долг отменить нельзя
+  const pay = db.rows.find(r => r.k === 'pay');
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n })).status, 200);
+  db = await debtOf(A.u.id);
+  assert.equal(db.bal, 1394000);
+  assert.ok(db.rows.find(r => r.n === pay.n).void, 'запись помечена отменённой');
+  assert.equal((await debtAct(A.u.id, 'void', { n: pay.n })).status, 409);
+  const ch = db.rows.find(r => r.k === 'ch');
+  assert.equal((await debtAct(A.u.id, 'void', { n: ch.n })).status, 404);
+  assert.equal((await debtAct(A.u.id, 'void', { n: 99999 })).status, 404);
+  assert.equal(db.rows.length, 3, 'записи не стираются: выдача, оплата и отмена');
+});
+
+await t('долги: напоминание магазину не чаще раза в час, без долга не отправляется', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, ONE);
+  await doneWith(o.id, { m: 'credit', days: 5 });
+  tgLog = [];
+  assert.equal((await debtAct(A.u.id, 'remind', {})).status, 200);
+  const m = lastTg('sendMessage', p => p.chat_id === A.u.id).payload.text.replace(/\u00a0/g, ' ');
+  assert.ok(m.includes('напоминание') && m.includes('7 500') && m.includes('Срок оплаты'), m);
+  assert.equal((await debtAct(A.u.id, 'remind', {})).status, 429);
+  assert.equal(tgAll('sendMessage', p => p.chat_id === A.u.id).length, 1);
+  await debtAct(A.u.id, 'pay', { amount: 7500, m: 'cash' });
+  assert.equal((await debtAct(A.u.id, 'remind', {})).status, 409, 'долга нет');
+  // узбекский клиент получает напоминание на своём языке; блокировка бота даёт понятную ошибку
+  const U = newUser(); U.u.language_code = 'uz';
+  const o2 = await readyOrder(U, ONE);
+  await doneWith(o2.id, { m: 'credit', days: 5 });
+  assert.equal((await debtAct(U.u.id, 'remind', {})).status, 200);
+});
+
+await t('долги: «Выдан клиенту» в боте сначала спрашивает оплату; долг виден на карточках; клиента с долгом удалить нельзя', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = (await jsonOf(await place(A, CART))).order;
+  for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + o.id + ':' + to, 700);
+  tgLog = [];
+  await cb(SELLER, 's:' + o.id + ':done', 700);
+  let e = lastTg('editMessageText', p => p.message_id === 700).payload;
+  const kb = e.reply_markup.inline_keyboard.flat();
+  assert.ok(e.text.includes('Как клиент оплатил заказ'));
+  for (const m of ['cash', 'card', 'bank', 'credit']) assert.ok(kb.some(b => b.callback_data === 'p:' + o.id + ':' + m), m);
+  assert.ok(kb.some(b => b.web_app && b.text.includes('Часть сразу')), 'частичная оплата — в панели продавца');
+  assert.ok(kb.every(b => !b.callback_data || b.callback_data.length <= 64));
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'ready', 'пока оплата не выбрана, заказ не выдан');
+  // «в долг» спрашивает срок
+  await cb(SELLER, 'p:' + o.id + ':credit', 700);
+  e = lastTg('editMessageText', p => p.message_id === 700).payload;
+  assert.ok(e.text.includes('На сколько дней'));
+  assert.deepEqual(e.reply_markup.inline_keyboard[0].map(b => b.callback_data), [3, 7, 14, 30].map(n => 'p:' + o.id + ':credit:' + n));
+  await cb(SELLER, 'p:' + o.id + ':credit:7', 700);
+  e = lastTg('editMessageText', p => p.message_id === 700).payload;
+  assert.ok(e.text.includes('Оплата: 📒 В долг до ' + plusDays(shopDay(), 7).split('-').reverse().join('.')), e.text);
+  assert.equal((await debtOf(A.u.id)).bal, 1394000);
+  // нажатие чужого: нет доступа; неверный способ не проходит
+  const o2 = (await jsonOf(await place(A, ONE))).order;
+  for (const to of ['accepted', 'ready']) await cb(SELLER, 's:' + o2.id + ':' + to, 701);
+  await cb(SELLER, 'p:' + o2.id + ':gold', 701);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o2.id).status, 'ready');
+  // у нового заказа того же магазина на карточке виден его долг
+  tgLog = [];
+  const o3 = (await jsonOf(await place(A, ONE))).order;
+  const card = lastTg('sendMessage', p => p.chat_id === SELLER.id && p.text.includes(o3.id)).payload.text.replace(/\u00a0/g, ' ');
+  assert.ok(card.includes('⚠️ Долг магазина: 1 394 000'), card);
+  // в панели у заказа в работе есть долг магазина
+  const ord = (await adminOrdersOf()).find(x => x.id === o3.id);
+  assert.equal(ord.debt.bal, 1394000);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).debt, undefined, 'у выданного заказа долг не показываем');
+  // клиента с долгом удалить нельзя
+  const del = await call('DELETE', '/api/admin/clients/' + A.u.id, { init: iS() });
+  assert.equal(del.status, 409);
+  assert.equal((await jsonOf(del)).error, 'has_debt');
+  await debtAct(A.u.id, 'pay', { amount: 1394000, m: 'cash' });
+  assert.equal((await call('DELETE', '/api/admin/clients/' + A.u.id, { init: iS() })).status, 200);
+});
+
+await t('долги: журнал не растёт бесконечно — старые записи сворачиваются, долг и срок сохраняются', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 9 });
+  for (let i = 0; i < 510; i++) assert.equal((await debtAct(A.u.id, 'pay', { amount: 1, m: 'cash' })).status, 200);
+  const lg = await W.storage.get('lg:' + A.u.id);
+  assert.ok(lg.rows.length <= 500, 'записей ' + lg.rows.length);
+  assert.ok(lg.base && lg.base.due === plusDays(shopDay(), 9), 'срок свёрнутой выдачи не потерян');
+  const db = await debtOf(A.u.id);
+  assert.equal(db.bal, 1394000 - 510);
+  assert.equal(db.due, plusDays(shopDay(), 9));
+  assert.equal(db.rows.length, 100);
+  assert.equal(db.more, true);
+  // платёж на остаток закрывает долг полностью
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 1394000 - 510, m: 'bank' })).status, 200);
+  assert.equal((await debtOf(A.u.id)).bal, 0);
+  assert.equal((await debtsOf()).debtors.length, 0);
 });
 
 await t('клиенты: база собирается из прежних заказов один раз; удаление клиента не трогает заказы', async () => {
@@ -2981,6 +3195,34 @@ await t('площадка: заказ уходит продавцу своего
   assert.equal(tgLog.length, 0);
 });
 
+
+await t('площадка: оплата при выдаче и долги работают у любого дистрибьютора, кнопки несут его номер', async () => {
+  const { sid } = await shopWorld();
+  const A = newUser();
+  const order = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) }))).order;
+  for (const to of ['accepted', 'ready']) await cb(DIL, 's:' + sid + ':' + order.id + ':' + to, 600);
+  tgLog = [];
+  await cb(DIL, 's:' + sid + ':' + order.id + ':done', 600);
+  const kb = lastTg('editMessageText', p => p.message_id === 600).payload.reply_markup.inline_keyboard.flat();
+  for (const m of ['cash', 'card', 'bank', 'credit']) assert.ok(kb.some(b => b.callback_data === 'p:' + sid + ':' + order.id + ':' + m), m);
+  assert.ok(kb.every(b => !b.callback_data || b.callback_data.length <= 64));
+  assert.ok(kb.some(b => b.web_app && b.web_app.url === HOST + '/?d=' + sid + '&v=seller'), 'частичная оплата открывает панель этого дистрибьютора');
+  await cb(DIL, 'p:' + sid + ':' + order.id + ':credit', 600);
+  const dk = lastTg('editMessageText', p => p.message_id === 600).payload.reply_markup.inline_keyboard.flat();
+  assert.ok(dk.some(b => b.callback_data === 'p:' + sid + ':' + order.id + ':credit:30'));
+  assert.ok(dk.every(b => !b.callback_data || b.callback_data.length <= 64));
+  // продавец другого дистрибьютора нажать не может
+  tgLog = [];
+  await cb(SELLER, 'p:' + sid + ':' + order.id + ':credit:7', 601);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('Нет доступа'));
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/admin/orders', { init: iD() }))).orders[0].status, 'ready');
+  await cb(DIL, 'p:' + sid + ':' + order.id + ':credit:14', 600);
+  const debts = await jsonOf(await callS(sid, 'GET', '/api/admin/debts', { init: iD() }));
+  assert.equal(debts.n, 1);
+  assert.equal(debts.total, 1394000);
+  assert.equal((await jsonOf(await call('GET', '/api/admin/debts', { init: iS() }))).n, 0, 'у первого дистрибьютора долгов нет');
+  assert.ok(W.getShop(sid).storage.m.has('lh:' + A.u.id) && !W.storage.m.has('lh:' + A.u.id), 'журнал лежит у своего дистрибьютора');
+});
 await t('площадка: «Мои заказы» собирает заказы клиента у всех дистрибьюторов; отмена идёт к своему дистрибьютору', async () => {
   const { sid } = await shopWorld('Альфа Трейд');
   await send(adminMsg(SELLER, CODE, 70));
