@@ -6600,6 +6600,38 @@ await t('форма товара и категорий: поля подписа�
   assert.ok(/data-cp="name"/.test(crow) && /data-cp="uz"/.test(crow) && (crow.match(/class="ltag/g) || []).length === 2, 'в строке категории две подписанные колонки RU и UZ');
 });
 
+/* ---------- подсказки под полями во всех формах ---------- */
+await t('подсказки под полями: в каждой форме приложения у полей есть мелкая серая подсказка на двух языках', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
+  // сколько подсказок минимум должно быть в каждой форме (по числу полей)
+  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 7, ownAddHTML: 2, ownShopStatsHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
+  for (const [name, n] of Object.entries(need)) {
+    const body = fn(name);
+    const k = (body.match(/hintD\(/g) || []).length;
+    assert.ok(k >= n, name + ': подсказок ' + k + ', нужно не меньше ' + n);
+  }
+  // настройки: каждое числовое поле получает подсказку через пятый параметр
+  const st = fn('settingsHTML');
+  const nums = st.match(/\+num\('[a-z]+',L\(/g) || [];
+  assert.equal(nums.length, 7);
+  assert.equal((st.match(/,\[\s*'[^']+','[^']+'\]\)/g) || []).length, 7, 'у всех семи числовых полей настроек есть подсказка');
+  assert.ok(/num=\(id,lab,k,min,max,hint\)=>/.test(st) && /hintD\(hint\[0\],hint\[1\]\)/.test(st));
+  // тексты: обе версии заданы, русская по-русски, узбекская без кириллицы (кроме примеров в «кавычках» и после «Masalan»/«Misol»)
+  const all = [...html.matchAll(/hintD\('([^']*)','([^']*)'\)/g)].map(m => [m[1], m[2]]);
+  for (const m of st.matchAll(/,\[\s*'([^']+)','([^']+)'\]\)/g)) all.push([m[1], m[2]]);
+  assert.ok(all.length >= 50, 'всего подсказок: ' + all.length);
+  const cy = x => /[А-Яа-яЁё]/.test(x);
+  for (const [ru, uz] of all) {
+    assert.ok(ru.length > 10 && uz.length > 10, 'пустая подсказка: ' + ru);
+    assert.ok(cy(ru), 'русская подсказка без русского текста: ' + ru);
+    assert.ok(!cy(uz.replace(/(Misol|Masalan):.*$/, '').replace(/«[^»]*»/g, '')), 'в узбекской подсказке русский текст: ' + uz);
+    assert.ok(ru.length <= 140 && uz.length <= 170, 'подсказка слишком длинная для мелкого текста: ' + ru);
+  }
+  assert.ok(/const hintD=\(ru,uz\)=>'<div class="hint">'\+esc\(L\(ru,uz\)\)\+'<\/div>'/.test(html), 'общий помощник hintD: текст экранируется и берётся на языке интерфейса');
+  assert.ok(/\.payb>\.hint\{/.test(html), 'в блоках оплаты подсказка стоит вплотную к полю');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
