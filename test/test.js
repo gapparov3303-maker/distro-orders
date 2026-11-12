@@ -5089,6 +5089,10 @@ await t('доставка: наличные оседают в кассе дос�
   const vr = await jsonOf(await call('POST', '/api/admin/couriers/' + id + '/verify', { init: iS(), body: { id: nvid } }));
   assert.deepEqual([vr.nv.length, vr.rows[0].k, vr.rows[0].by], [0, 'vr', SELLER.id]);
   assert.equal((await call('POST', '/api/admin/couriers/' + id + '/verify', { init: iS(), body: { id: nvid } })).status, 404, 'второй раз нельзя');
+  // пока доставщик не ответил на записанную сдачу, удалить его нельзя
+  const hqd = await call('DELETE', '/api/admin/couriers/' + id, { init: iS() });
+  assert.equal(hqd.status, 409); assert.equal((await jsonOf(hqd)).error, 'has_hq');
+  for (const r of (await drvCash()).rows.filter(x => x.k === 'out')) await cb(DRV, 'h:' + r.n + ':y', 800, DRV.id);
   assert.equal((await call('DELETE', '/api/admin/couriers/' + id, { init: iS() })).status, 200);
   assert.equal((await call('GET', '/api/courier/orders', { init: iR() })).status, 403);
   assert.deepEqual((await crList()).map(c => c.name), ['Азиз']);
@@ -5606,6 +5610,292 @@ await t('контроль денег: владелец видит спорные
   const row = (await jsonOf(await crq(sid, 'GET', '/api/admin/debts/' + A.u.id, iD()))).debt.rows.find(r => r.n === own[0].n);
   assert.equal(row.rsl.why, 'владелец сверил с накладной');
   assert.equal(row.rsl.bn, 'Jasur', 'видно, кто закрыл');
+});
+
+/* ---------- сдача денег доставщиком: подтверждение и срок ---------- */
+const hand = (id, amount) => call('POST', '/api/admin/couriers/' + id + '/handover', { init: iS(), body: { amount } });
+const handSay = (id, sub, body, init) => call('POST', '/api/admin/couriers/' + id + '/' + sub, { init: init || iS(), body });
+const drvAsk = () => { const m = lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes('Всё верно?')); return m ? m.payload : null; };
+const drvPay = (uid, amount, m) => call('POST', '/api/courier/debts/' + uid + '/pay', { init: iR(), body: { amount, m: m || 'cash' } });
+const crOf = async id => (await crList()).find(c => c.id === id);
+
+await t('сдача денег: доставщик подтверждает «Верно» в Telegram; чужой нажать не может; «Верно» окончательно', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  await doneWith((await readyOrder(A, CART)).id, { m: 'credit', days: 7 });
+  assert.equal((await drvPay(A.u.id, 500000)).status, 200);
+  tgLog = [];
+  const h = await jsonOf(await hand(id, 200000));
+  assert.equal(h.courier.cash, 300000);
+  assert.deepEqual([h.rows[0].k, h.rows[0].a, h.rows[0].cf, h.rows[0].left, h.rows[0].bn], ['out', 200000, 'wait', 300000, 'Jasur']);
+  const q = drvAsk();
+  assert.ok(q, 'доставщику пришёл вопрос');
+  const tx = norm(q.text);
+  assert.ok(tx.includes('вы сдали 200 000 сум') && tx.includes('Записал: Jasur') && tx.includes('Остаток на руках: 300 000'), tx);
+  assert.deepEqual(q.reply_markup.inline_keyboard[0].map(b => b.callback_data), ['h:' + h.rows[0].n + ':y', 'h:' + h.rows[0].n + ':n']);
+  assert.equal((await drvCash()).rows[0].cf, 'wait', 'в кассе у доставщика запись ждёт его ответа');
+  // чужой человек нажать не может
+  tgLog = [];
+  await cb(ANNA, 'h:' + h.rows[0].n + ':y', 900);
+  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Нет доступа');
+  assert.equal((await drvCash()).rows[0].cf, 'wait');
+  // доставщик отвечает «Верно»
+  tgLog = [];
+  await cb(DRV, 'h:' + h.rows[0].n + ':y', 901, DRV.id);
+  assert.ok(lastTg('editMessageText', p => p.message_id === 901).payload.text.includes('Вы подтвердили'));
+  assert.equal((await drvCash()).rows[0].cf, 'ok');
+  assert.equal((await crOf(id)).hf, 0);
+  // после «Верно» менять нельзя
+  tgLog = [];
+  await cb(DRV, 'h:' + h.rows[0].n + ':n', 901, DRV.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('уже подтвердили'));
+  assert.equal((await drvCash()).rows[0].cf, 'ok');
+  assert.deepEqual(await dispOf(), []);
+  // записи, которой нет, нажать нельзя
+  tgLog = [];
+  await cb(DRV, 'h:999:y', 902, DRV.id);
+  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Запись не найдена');
+});
+
+await t('сдача денег: «Не так» — продавцы узнают сразу, запись спорная; доставщик может передумать; продавец закрывает с комментарием', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  await doneWith((await readyOrder(A, CART)).id, { m: 'credit', days: 7 });
+  assert.equal((await drvPay(A.u.id, 600000)).status, 200);
+  tgLog = [];
+  const h1 = await jsonOf(await hand(id, 100000));
+  const n1 = h1.rows[0].n;
+  await cb(DRV, 'h:' + n1 + ':n', 910, DRV.id);
+  const al = lastTg('sendMessage', p => p.chat_id === SELLER.id && p.text.includes('отметил «Не так»'));
+  assert.ok(al && norm(al.payload.text).includes('Рустам') && norm(al.payload.text).includes('сдача 100 000') && al.payload.text.includes('Записал: Jasur'), al && al.payload.text);
+  assert.ok(lastTg('editMessageText', p => p.message_id === 910).payload.reply_markup.inline_keyboard[0][0].text.includes('Всё-таки верно'));
+  let ds = await dispOf();
+  assert.deepEqual(ds.map(x => [x.h, x.cid, x.cn, x.n, x.a, x.cf]), [[1, id, 'Рустам', n1, 100000, 'no']]);
+  assert.equal((await crOf(id)).hf, 1);
+  // спорную запись доставщик может изменить на «Верно»
+  await cb(DRV, 'h:' + n1 + ':y', 910, DRV.id);
+  assert.deepEqual(await dispOf(), []);
+  assert.equal((await crOf(id)).hf, 0);
+  // второй вопрос: «Не так», продавец закрывает с комментарием
+  const h2 = await jsonOf(await hand(id, 50000));
+  const n2 = h2.rows[0].n;
+  await cb(DRV, 'h:' + n2 + ':n', 911, DRV.id);
+  assert.equal((await dispOf()).length, 1);
+  assert.equal((await handSay(id, 'hresolve', { n: n2 })).status, 400, 'без комментария нельзя');
+  assert.equal((await handSay(id, 'hresolve', { n: n2, note: 'ок' })).status, 400, 'слишком короткий');
+  assert.equal((await handSay(id, 'hresolve', { n: n2, note: 'пересчитали вместе' }, iA())).status, 403);
+  assert.equal((await handSay(id, 'hresolve', { n: n1, note: 'пересчитали вместе' })).status, 404, 'подтверждённую закрывать нечего');
+  tgLog = [];
+  const rs = await jsonOf(await handSay(id, 'hresolve', { n: n2, note: 'пересчитали вместе' }));
+  assert.equal(rs.rows.find(r => r.n === n2).rsl.why, 'пересчитали вместе');
+  assert.equal(rs.rows.find(r => r.n === n2).rsl.bn, 'Jasur');
+  assert.ok(!rs.rows.some(r => r.k === 'hr'), 'служебная строка закрытия не показывается отдельно');
+  const note = lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes('закрыл вопрос'));
+  assert.ok(note && norm(note.payload.text).includes('сдача 50 000') && note.payload.text.includes('пересчитали вместе'), note && note.payload.text);
+  assert.deepEqual(await dispOf(), []);
+  assert.equal((await handSay(id, 'hresolve', { n: n2, note: 'ещё раз' })).status, 409);
+  // после закрытия «Не так» уже не принимается
+  tgLog = [];
+  await cb(DRV, 'h:' + n2 + ':n', 911, DRV.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('уже закрыл'));
+});
+
+await t('сдача денег: не дошло в Telegram — сразу спорная; молчание больше суток — тоже; доставщик отвечает и в приложении; пока вопрос открыт, доставщика не удалить', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  await doneWith((await readyOrder(A, CART)).id, { m: 'credit', days: 7 });
+  assert.equal((await drvPay(A.u.id, 500000)).status, 200);
+  tgFail = true;
+  let h1;
+  try { h1 = await jsonOf(await hand(id, 100000)); } finally { tgFail = false; }
+  const n1 = h1.rows[0].n;
+  assert.equal((await crOf(id)).hf, 1);
+  assert.deepEqual((await dispOf()).map(x => [x.cn, x.cf]), [['Рустам', 'na']]);
+  // отвечает в приложении
+  const cf = (n, ok) => call('POST', '/api/courier/confirm', { init: iR(), body: { n, ok } });
+  assert.equal((await cf('x', true)).status, 404);
+  assert.equal((await call('POST', '/api/courier/confirm', { init: iA(), body: { n: n1, ok: true } })).status, 403);
+  tgLog = [];
+  const no = await jsonOf(await cf(n1, false));
+  assert.equal(no.rows.find(r => r.n === n1).cf, 'no');
+  assert.ok(lastTg('sendMessage', p => p.chat_id === SELLER.id && p.text.includes('отметил «Не так»')), 'продавец узнал');
+  const yes = await jsonOf(await cf(n1, true));
+  assert.equal(yes.rows.find(r => r.n === n1).cf, 'ok');
+  assert.equal((await cf(n1, false)).status, 409, 'после «Верно» менять нельзя');
+  assert.deepEqual(await dispOf(), []);
+  // молчание: дошло, но ответа нет
+  const h2 = await jsonOf(await hand(id, 100000));
+  const n2 = h2.rows[0].n;
+  assert.deepEqual(await dispOf(), [], 'пока не прошли сутки — просто ждёт');
+  assert.equal((await handSay(id, 'hresolve', { n: n2, note: 'рано закрывать' })).status, 409);
+  const c = await W.storage.get('cr:' + id), lg = await W.storage.get('cc:' + id);
+  const old = new Date(Date.now() - 25 * 3600000).toISOString();
+  lg.rows.forEach(r => { if (r.cf === 'wait') r.t = old; });
+  c.hwt = c.hwt.map(() => old);
+  await W.storage.put('cc:' + id, lg); await W.storage.put('cr:' + id, c);
+  assert.deepEqual((await dispOf()).map(x => [x.cn, x.n, x.cf]), [['Рустам', n2, 'late']]);
+  assert.equal((await crOf(id)).hf, 1);
+  assert.equal((await drvCash()).rows.find(r => r.n === n2).late, true);
+  // пока вопрос открыт, доставщика не удалить; деньги сданы целиком
+  assert.equal((await hand(id, 300000)).status, 200);
+  await cb(DRV, 'h:' + (await drvCash()).rows[0].n + ':y', 920, DRV.id);
+  const del = await call('DELETE', '/api/admin/couriers/' + id, { init: iS() });
+  assert.equal(del.status, 409); assert.equal((await jsonOf(del)).error, 'has_hq');
+  assert.equal((await handSay(id, 'hresolve', { n: n2, note: 'доставщик не отвечает, звонил' })).status, 200);
+  assert.equal((await call('DELETE', '/api/admin/couriers/' + id, { init: iS() })).status, 200);
+});
+
+await t('сдача денег: продавец отменяет ошибочную сдачу с причиной; деньги снова на руках; доставщик подтверждает отмену; повторно нельзя', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  await doneWith((await readyOrder(A, CART)).id, { m: 'credit', days: 7 });
+  assert.equal((await drvPay(A.u.id, 400000)).status, 200);
+  const h = await jsonOf(await hand(id, 400000));
+  const n = h.rows[0].n;
+  assert.equal(h.courier.cash, 0);
+  assert.equal((await handSay(id, 'hvoid', { n })).status, 400, 'причина обязательна');
+  assert.equal((await handSay(id, 'hvoid', { n, reason: 'ой' })).status, 400);
+  assert.equal((await handSay(id, 'hvoid', { n, reason: 'ввёл лишний ноль' }, iA())).status, 403);
+  assert.equal((await handSay(id, 'hvoid', { n: 999, reason: 'ввёл лишний ноль' })).status, 404);
+  tgLog = [];
+  const v = await jsonOf(await handSay(id, 'hvoid', { n, reason: 'ввёл лишний ноль' }));
+  assert.equal(v.courier.cash, 400000, 'деньги снова числятся на руках');
+  const ox = v.rows.find(r => r.k === 'ox');
+  assert.deepEqual([ox.a, ox.cf, ox.left, ox.why, ox.bn], [400000, 'wait', 400000, 'ввёл лишний ноль', 'Jasur']);
+  const orig = v.rows.find(r => r.n === n);
+  assert.deepEqual([orig.vwhy, orig.vbn], ['ввёл лишний ноль', 'Jasur'], 'запись о сдаче осталась в журнале, помечена отменой');
+  const q = drvAsk();
+  assert.ok(q && norm(q.text).includes('отменил вашу сдачу 400 000') && q.text.includes('ввёл лишний ноль') && norm(q.text).includes('На руках теперь 400 000'), q && q.text);
+  assert.equal((await handSay(id, 'hvoid', { n, reason: 'ещё раз' })).status, 409);
+  assert.equal((await handSay(id, 'hvoid', { n: ox.n, reason: 'отменить отмену' })).status, 404, 'отмену отменить нельзя');
+  // доставщик подтверждает отмену
+  await cb(DRV, 'h:' + ox.n + ':y', 930, DRV.id);
+  assert.equal((await drvCash()).rows.find(r => r.k === 'ox').cf, 'ok');
+  // отменённую сдачу доставщик уже не оспаривает
+  tgLog = [];
+  await cb(DRV, 'h:' + n + ':n', 931, DRV.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('отменена'));
+  // отмена, которую доставщик оспорил, попадает в спорные; закрыть можно с комментарием
+  const h2 = await jsonOf(await hand(id, 100000));
+  const v2 = await jsonOf(await handSay(id, 'hvoid', { n: h2.rows[0].n, reason: 'деньги не пришли' }));
+  const ox2 = v2.rows.find(r => r.k === 'ox' && r.why === 'деньги не пришли');
+  await cb(DRV, 'h:' + ox2.n + ':n', 932, DRV.id);
+  const ds = await dispOf();
+  assert.deepEqual(ds.map(x => [x.k, x.a, x.why]), [['ox', 100000, 'деньги не пришли']]);
+  assert.equal((await handSay(id, 'hresolve', { n: ox2.n, note: 'пересчитали, деньги были' })).status, 200);
+  assert.deepEqual(await dispOf(), []);
+});
+
+await t('сдача денег: владелец видит спорные сдачи и просрочку доставщиков по всем дистрибьюторам и закрывает спор с комментарием', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  await doneWith((await readyOrder(A, CART)).id, { m: 'credit', days: 7 });
+  assert.equal((await drvPay(A.u.id, 300000)).status, 200);
+  const h = await jsonOf(await hand(id, 100000));
+  await cb(DRV, 'h:' + h.rows[0].n + ':n', 940, DRV.id);
+  const hd = init => call('GET', '/api/hub/admin/disputes', { init });
+  const own = (await jsonOf(await hd(iS()))).items;
+  assert.deepEqual(own.map(x => [x.h, x.did, x.cid, x.cn, x.a, x.cf]), [[1, 'main', id, 'Рустам', 100000, 'no']]);
+  const rs = body => call('POST', '/api/hub/admin/disputes/resolve', { init: iS(), body });
+  assert.equal((await rs({ did: 'main', cid: id, n: own[0].n })).status, 400, 'без комментария нельзя');
+  assert.equal((await rs({ did: 'main', cid: 'kzzzzz', n: own[0].n, note: 'проверил' })).status, 404);
+  assert.equal((await call('POST', '/api/hub/admin/disputes/resolve', { init: iD(), body: { did: 'main', cid: id, n: own[0].n, note: 'проверил' } })).status, 403);
+  assert.equal((await rs({ did: 'main', cid: id, n: own[0].n, note: 'владелец пересчитал кассу' })).status, 200);
+  assert.deepEqual((await jsonOf(await hd(iS()))).items, []);
+  const row = (await drvCash()).rows.find(r => r.n === h.rows[0].n);
+  assert.deepEqual([row.rsl.why, row.rsl.bn], ['владелец пересчитал кассу', 'Jasur']);
+});
+
+await t('срок сдачи: по умолчанию в тот же день; просрочка блокирует новые заказы и наличные оплаты долга, безнал берёт; сдача закрывает самые старые деньги', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  await doneWith((await readyOrder(A, CART)).id, { m: 'credit', days: 7 });
+  const c0 = await crOf(id);
+  assert.deepEqual([c0.dl, c0.late, c0.cs], [0, 0, ''], 'срок по умолчанию — в тот же день');
+  const put = body => call('PUT', '/api/admin/couriers/' + id, { init: iS(), body });
+  for (const dl of [-2, 31, 1.5, 'неделя', null, '3']) assert.equal((await put({ dl })).status, 400, String(dl));
+  assert.equal((await call('PUT', '/api/admin/couriers/' + id, { init: iA(), body: { dl: 1 } })).status, 403);
+  // старые деньги: приняты два дня назад
+  assert.equal((await drvPay(A.u.id, 100000)).status, 200);
+  const c1 = await crOf(id);
+  assert.equal(c1.late, 0, 'принял сегодня — ещё вовремя');
+  assert.ok(c1.cs, 'видно, с какого времени деньги на руках');
+  const two = new Date(Date.now() - 48 * 3600000).toISOString();
+  let c = await W.storage.get('cr:' + id), lg = await W.storage.get('cc:' + id);
+  lg.rows.forEach(r => { if (r.k === 'in') r.t = two; }); c.cs = two;
+  await W.storage.put('cc:' + id, lg); await W.storage.put('cr:' + id, c);
+  assert.equal((await put({ dl: -1 })).status, 200);
+  assert.equal((await crOf(id)).late, 0, 'без срока просрочки нет');
+  // свежие деньги принимает, пока срока нет
+  assert.equal((await drvPay(A.u.id, 50000)).status, 200);
+  assert.equal((await put({ dl: 0 })).status, 200);
+  const c2 = await crOf(id);
+  assert.equal(c2.late, 2);
+  assert.equal(c2.cash, 150000);
+  const cq = await jsonOf(await call('GET', '/api/courier/orders', { init: iR() }));
+  assert.deepEqual([cq.late, cq.dl, cq.cash], [2, 0, 150000]);
+  assert.equal((await drvCash()).late, 2);
+  // блокировки
+  const o2 = await readyDelivery(A, ONE);
+  const tk = await drvTake(o2.id);
+  assert.equal(tk.status, 409);
+  const tkj = await jsonOf(tk);
+  assert.deepEqual([tkj.error, tkj.late], ['cash_late', 2]);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o2.id).crn, undefined, 'заказ остался свободным');
+  tgLog = [];
+  await cb(DRV, 'k:' + o2.id, 555, DRV.id);
+  const al = lastTg('answerCallbackQuery').payload;
+  assert.ok(al.show_alert && norm(al.text).includes('Сначала сдайте деньги') && al.text.includes('просрочка 2'), al.text);
+  const pc = await drvPay(A.u.id, 1000, 'cash');
+  assert.equal(pc.status, 409); assert.equal((await jsonOf(pc)).error, 'cash_late');
+  assert.equal((await drvPay(A.u.id, 1000, 'card')).status, 200, 'безнал в кассу не идёт, его просрочка не останавливает');
+  // владелец видит просрочку
+  const own = (await jsonOf(await call('GET', '/api/hub/admin/disputes', { init: iS() }))).items;
+  assert.deepEqual(own.map(x => [x.h, x.cid, x.cn, x.late, x.a]), [[2, id, 'Рустам', 2, 150000]]);
+  // срок 3 дня: просрочки нет; 1 день: просрочка на 1
+  assert.equal((await put({ dl: 3 })).status, 200);
+  assert.equal((await crOf(id)).late, 0);
+  assert.equal((await drvTake(o2.id)).status, 200);
+  assert.equal((await put({ dl: 1 })).status, 200);
+  assert.equal((await crOf(id)).late, 1);
+  // сдача закрывает самые старые деньги: 100 000 сдано, остались свежие 50 000 — просрочка снимается
+  assert.equal((await put({ dl: 0 })).status, 200);
+  assert.equal((await crOf(id)).late, 2);
+  assert.equal((await hand(id, 100000)).status, 200);
+  const c3 = await crOf(id);
+  assert.deepEqual([c3.cash, c3.late], [50000, 0]);
+  assert.ok(Date.now() - Date.parse(c3.cs) < 3600000, 'теперь самые старые деньги — свежие');
+  const o3 = await readyDelivery(A, ONE);
+  assert.equal((await drvTake(o3.id)).status, 200, 'после сдачи снова берёт заказы');
+  // сдал всё — «с какого времени» пусто
+  assert.equal((await hand(id, 50000)).status, 200);
+  assert.deepEqual([(await crOf(id)).cs, (await crOf(id)).late], ['', 0]);
+});
+
+await t('срок сдачи: отменённая оплата долга не считается старыми деньгами', async () => {
+  await stockWorld();
+  const id = await hire(DRV, 'Рустам');
+  const A = newUser();
+  await doneWith((await readyOrder(A, CART)).id, { m: 'credit', days: 7 });
+  assert.equal((await drvPay(A.u.id, 70000)).status, 200);
+  const two = new Date(Date.now() - 48 * 3600000).toISOString();
+  let c = await W.storage.get('cr:' + id), lg = await W.storage.get('cc:' + id);
+  lg.rows.forEach(r => { if (r.k === 'in') r.t = two; });
+  await W.storage.put('cc:' + id, lg);
+  assert.equal((await drvPay(A.u.id, 30000)).status, 200);
+  const d = await jsonOf(await call('GET', '/api/admin/debts/' + A.u.id, { init: iS() }));
+  const old = d.debt.rows.find(r => r.k === 'pay' && r.a === 70000);
+  assert.equal((await call('POST', '/api/admin/debts/' + A.u.id + '/void', { init: iS(), body: { n: old.n, reason: 'ошибся суммой' } })).status, 200);
+  const c1 = await crOf(id);
+  assert.equal(c1.cash, 30000);
+  assert.ok(Date.now() - Date.parse(c1.cs) < 3600000, 'старая оплата отменена, остались свежие деньги');
+  assert.equal(c1.late, 0);
 });
 
 /* ---------- итог ---------- */

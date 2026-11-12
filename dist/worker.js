@@ -712,7 +712,7 @@ const cbPrefix = did => (did && did !== MAIN ? did + ':' : '');
 function cbParse(data) {
   const parts = String(data || '').split(':');
   const kind = parts[0];
-  const withDid = kind === 's' || kind === 'q' ? parts.length >= 4 : kind === 'p' ? !/^Z-/.test(parts[1] || '') : parts.length >= 3;
+  const withDid = kind === 's' || kind === 'q' || kind === 'h' ? parts.length >= 4 : kind === 'p' ? !/^Z-/.test(parts[1] || '') : parts.length >= 3;
   const i = withDid ? 2 : 1;
   return { kind, did: withDid ? parts[1] : MAIN, id: parts[i], to: parts[i + 1], days: parts[i + 2] };
 }
@@ -1334,7 +1334,54 @@ const MAX_COURIERS = 30, CC_KEEP = 200, CC_SHOW = 60, CINV_MS = 7 * 86400000;
 const validCid = c => typeof c === 'string' && /^k[a-z0-9]{3,9}$/.test(c);
 const validTok = t => typeof t === 'string' && /^[a-z0-9]{6,12}$/.test(t);
 /* Доставщик с телефоном и без секретов: ссылку-приглашение продавец получает отдельно. */
-const crPub = c => ({ id: c.id, name: c.name, phone: c.phone || '', joined: !!c.uid, on: c.on !== false, credit: c.credit !== false, cash: Number(c.cash) || 0, lim: Number(c.lim) || 0, nvn: (c.nv || []).length, nva: (c.nv || []).reduce((t, x) => t + (Number(x.a) || 0), 0), since: c.since });
+/* Срок сдачи наличных, дней: 0 — до конца дня приёма, −1 — без срока. Не задан — по умолчанию в тот же день. */
+const DL_DEF = 0, DL_MAX = 30;
+const crDl = c => { const v = c && c.dl; return Number.isInteger(v) && v >= -1 && v <= DL_MAX ? v : DL_DEF; };
+/* На сколько дней просрочена сдача наличных (0 — вовремя или срока нет). cs — когда принят самый старый несданный рубль. */
+function crLate(c, now) {
+  const dl = crDl(c);
+  if (dl < 0 || !((Number(c && c.cash) || 0) > 0) || !c.cs) return 0;
+  const a = Date.parse(dayOf(c.cs) + 'T00:00:00Z'), b = Date.parse(dayOf(new Date(now).toISOString()) + 'T00:00:00Z');
+  return Math.max(0, Math.round((b - a) / 86400000) - dl);
+}
+/* Открытый вопрос по сдаче: продавец записал сдачу (или её отмену), доставщик ещё не сказал «Верно» и вопрос не закрыт. */
+const hOpen = r => (r.k === 'out' || r.k === 'ox') && (r.cf === 'wait' || r.cf === 'no' || r.cf === 'na') && !r.hr && !r.ox;
+/* Сколько записей о сдаче требуют внимания: «Не так», не дошло, или нет ответа больше суток. */
+const crHf = (c, now) => (Number(c && c.hfl) || 0) + ((c && c.hwt) || []).filter(t => now - Date.parse(t) > CF_LATE).length;
+/* С какого времени деньги на руках: сданные деньги закрывают самые старые поступления, поэтому остаток набирается из самых новых.
+   Отменённая оплата долга убирает своё поступление. Строки кассы обрезаются: если остаток не набрался, берём самое старое известное поступление. */
+function cashSince(rows, cash) {
+  if (!(cash > 0)) return '';
+  const vs = [];
+  let need = cash, last = '';
+  for (let i = rows.length - 1; i >= 0 && need > 0; i--) {
+    const r = rows[i];
+    if (r.k === 'rv' && r.du) { vs.push(r); continue; }
+    if (r.k !== 'in') continue;
+    const vi = r.du ? vs.findIndex(v => v.du === r.du && v.a === r.a) : -1;
+    if (vi >= 0) { vs.splice(vi, 1); continue; }
+    need -= Number(r.a) || 0; last = r.t;
+  }
+  if (need > 0) { const f = rows.find(r => r.k === 'in'); return f ? f.t : ''; }
+  return last;
+}
+/* Сохраняет кассу доставщика: старые строки обрезаются (открытые вопросы по сдаче остаются), пересчитывается «с какого времени деньги на руках» и счётчики вопросов по сдаче. */
+function crSave(c, lg) {
+  if (lg.rows.length > CC_KEEP) { const cut = lg.rows.length - CC_KEEP; lg.rows = lg.rows.slice(0, cut).filter(hOpen).slice(-100).concat(lg.rows.slice(cut)); }
+  c.cs = cashSince(lg.rows, Number(c.cash) || 0);
+  c.hfl = lg.rows.filter(r => hOpen(r) && r.cf !== 'wait').length;
+  c.hwt = lg.rows.filter(r => hOpen(r) && r.cf === 'wait').map(r => r.t);
+  return { ['cc:' + c.id]: lg, ['cr:' + c.id]: c };
+}
+const crPub = c => ({ id: c.id, name: c.name, phone: c.phone || '', joined: !!c.uid, on: c.on !== false, credit: c.credit !== false, cash: Number(c.cash) || 0, lim: Number(c.lim) || 0, nvn: (c.nv || []).length, nva: (c.nv || []).reduce((t, x) => t + (Number(x.a) || 0), 0), dl: crDl(c), cs: c.cs || '', late: crLate(c, Date.now()), hf: crHf(c, Date.now()), hw: (c.hwt || []).length, since: c.since });
+/* Текст сообщения доставщику: продавец записал сдачу денег или отменил её. */
+function handText(r) {
+  const by = r.bn ? ' Записал: ' + r.bn + '.' : '';
+  return r.k === 'ox'
+    ? '↩️ Продавец отменил вашу сдачу ' + money(r.a) + '. Причина: ' + (r.why || '') + '.' + by + '\nНа руках теперь ' + money(r.left) + '.\n\nВсё верно?'
+    : '📥 Продавец записал: вы сдали ' + money(r.a) + '.' + by + '\nОстаток на руках: ' + money(r.left) + '.\n\nВсё верно?';
+}
+const handDesc = r => (r.k === 'ox' ? 'отмена сдачи ' : 'сдача ') + money(r.a);
 const PAY_PLAIN = { cash: 'Наличные', card: 'Карта', bank: 'Перечисление', credit: 'В долг' };
 const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
 /* Как заплатил магазин при выдаче заказа. Не указано — наличные: так было, пока оплата при получении была единственной. null — данные неверны. */
@@ -2183,6 +2230,11 @@ export class Shop {
       return json({ ok: true, debt: await this.myDebt(uid, true) });
     }
     if (path === '/__/disputes') return json({ items: await this.disputes() });
+    if (path === '/__/resolve' && b.cid) {
+      const c = validCid(b.cid) ? await this.crGet(b.cid) : null;
+      if (!c || !b.by || !Number.isSafeInteger(Number(b.by.id))) return json({ error: c ? 'bad_request' : 'not_found' }, c ? 400 : 404);
+      return await this.handAct(c, 'resolve', { n: b.n, note: b.note }, { id: Number(b.by.id), first_name: String(b.by.first_name || ''), last_name: String(b.by.last_name || ''), username: String(b.by.username || '') });
+    }
     if (path === '/__/resolve') {
       const uid = Number(b.uid);
       if (!Number.isSafeInteger(uid) || !b.by || !Number.isSafeInteger(Number(b.by.id))) return json({ error: 'bad_request' }, 400);
@@ -2944,15 +2996,34 @@ export class Shop {
   }
   async crDetail(c) {
     const lg = (await this.st.get('cc:' + c.id)) || { rows: [] };
-    return { courier: await this.crOut(c), rows: lg.rows.slice(-CC_SHOW).reverse(), nv: (c.nv || []).slice().reverse() };
+    return { courier: await this.crOut(c), rows: this.crRows(lg), nv: (c.nv || []).slice().reverse() };
+  }
+  /* Строки кассы для показа, новые сверху: последние CC_SHOW и все открытые вопросы по сдаче. Закрытие вопроса и отмена сдачи приклеены к своей строке. */
+  crRows(lg) {
+    const now = Date.now(), all = lg.rows;
+    const hr = new Map(all.filter(r => r.k === 'hr').map(r => [r.of, r])), ox = new Map(all.filter(r => r.k === 'ox').map(r => [r.of, r]));
+    return all.slice(0, -CC_SHOW).filter(hOpen).concat(all.slice(-CC_SHOW)).filter(r => r.k !== 'hr').map(r => {
+      const x = Object.assign({}, r);
+      if (r.k === 'out' || r.k === 'ox') {
+        if (hOpen(r) && r.cf === 'wait' && now - Date.parse(r.t) > CF_LATE) x.late = true;
+        const h = hr.get(r.n), v = ox.get(r.n);
+        if (h) x.rsl = { bn: h.bn || '', why: h.why || '', t: h.t };
+        if (v) { x.vwhy = v.why || ''; x.vbn = v.bn || ''; }
+      }
+      return x;
+    }).reverse();
+  }
+  /* Касса доставщика целиком: то, что видит он сам. */
+  async courierCash(c) {
+    const lg = (await this.st.get('cc:' + c.id)) || { rows: [] };
+    return { cash: Number(c.cash) || 0, lim: Number(c.lim) || 0, dl: crDl(c), cs: c.cs || '', late: crLate(c, Date.now()), hf: crHf(c, Date.now()), rows: this.crRows(lg), nv: (c.nv || []).slice().reverse() };
   }
   /* Дописывает строки в кассу доставщика и меняет остаток. Сам ничего не сохраняет: вызывающий кладёт put вместе со своими правками. */
   async crAdd(c, adds) {
     const lg = (await this.st.get('cc:' + c.id)) || { rows: [], seq: 0 };
     const now = new Date().toISOString();
     adds.forEach(a => { lg.seq += 1; lg.rows.push(Object.assign({ n: lg.seq, t: now }, a)); c.cash = (Number(c.cash) || 0) + a.d; });
-    if (lg.rows.length > CC_KEEP) lg.rows = lg.rows.slice(-CC_KEEP);
-    return { ['cc:' + c.id]: lg, ['cr:' + c.id]: c };
+    return crSave(c, lg);
   }
   /* Что видит доставщик: заказы на доставку, готовые к выезду (свободные и свои), и свои выданные сегодня. */
   async courierOrders(cour) {
@@ -2968,7 +3039,7 @@ export class Shop {
       if (h && h.bal > 0) { const d = lgDue(h.open, today); x.debt = { bal: h.bal, over: d.over, days: d.days, due: d.due, uid: o.uid }; }
       return x;
     });
-    return { orders, soon: del.filter(o => o.status === 'accepted').length, cash: Number(cour.cash) || 0, lim: Number(cour.lim) || 0, nvn: (cour.nv || []).length };
+    return { orders, soon: del.filter(o => o.status === 'accepted').length, cash: Number(cour.cash) || 0, lim: Number(cour.lim) || 0, nvn: (cour.nv || []).length, dl: crDl(cour), late: crLate(cour, Date.now()), hf: crHf(cour, Date.now()) };
   }
   cview(o, cour) { const x = adminOrder(o); x.mine = o.cr === cour.id; return x; }
   async courierTake(cour, id) {
@@ -2980,6 +3051,9 @@ export class Shop {
     // наличных на руках больше лимита или не сверено слишком много безнала: сначала сдать деньги
     if (cour.lim > 0 && (Number(cour.cash) || 0) >= cour.lim) return { err: 'cash_limit', order: o, cash: Number(cour.cash) || 0, lim: cour.lim };
     if ((cour.nv || []).length >= NV_MAX) return { err: 'nv_full', order: o };
+    // деньги не сданы в срок: сначала сдать
+    const late = crLate(cour, Date.now());
+    if (late > 0) return { err: 'cash_late', order: o, cash: Number(cour.cash) || 0, late };
     o.cr = cour.id; o.crn = cour.name; o.crAt = new Date().toISOString();
     if (cour.phone) o.crp = cour.phone;
     await this.st.put('o:' + id, o);
@@ -3040,6 +3114,7 @@ export class Shop {
     }
     if (res.err === 'cash_limit') return answer('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', лимит ' + money(res.lim), true);
     if (res.err === 'nv_full') return answer('Сначала покажите продавцу оплаты картой и переводом на сверку', true);
+    if (res.err === 'cash_late') return answer('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', просрочка ' + res.late + ' дн.', true);
     if (res.err) return answer('Этот заказ уже не ждёт доставки', true);
     if (res.changed) await this.afterTake(res.order);
     else if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, 'mine'));
@@ -3049,9 +3124,15 @@ export class Shop {
   async courierApi(request, path, method, u, cour) {
     const uid = u.id;
     if (path === '/api/courier/orders' && method === 'GET') return json(await this.courierOrders(cour));
-    if (path === '/api/courier/cash' && method === 'GET') {
-      const lg = (await this.st.get('cc:' + cour.id)) || { rows: [] };
-      return json({ cash: Number(cour.cash) || 0, lim: Number(cour.lim) || 0, rows: lg.rows.slice(-CC_SHOW).reverse(), nv: (cour.nv || []).slice().reverse() });
+    if (path === '/api/courier/cash' && method === 'GET') return json(await this.courierCash(cour));
+    // ответ доставщика в приложении на «Продавец записал сдачу»: то же, что кнопки в Telegram
+    if (path === '/api/courier/confirm' && method === 'POST') {
+      const r = await this.readBody(request, 500);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const n = Number(r.body.n), res = Number.isInteger(n) ? await this.handConfirm(cour, n, !!r.body.ok) : { err: 'not_found' };
+      if (res.err) return json({ error: res.err }, res.err === 'not_found' ? 404 : 409);
+      if (res.changed && !r.body.ok) await this.handDisputeNotify(cour, res.row);
+      return json(await this.courierCash(cour));
     }
     if (path === '/api/courier/debts' && method === 'GET') return json(await this.debtList());
     const dm = path.match(/^\/api\/courier\/debts\/(\d{1,15})(?:\/(pay|remind))?$/);
@@ -3071,7 +3152,7 @@ export class Shop {
       const id = String(r.body.id || '');
       if (om[1] === 'take') {
         const res = await this.courierTake(cour, id);
-        if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined, cash: res.cash, lim: res.lim }, res.err === 'not_found' ? 404 : 409);
+        if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined, cash: res.cash, lim: res.lim, late: res.late }, res.err === 'not_found' ? 404 : 409);
         if (res.changed) await this.afterTake(res.order);
         return json({ order: this.cview(res.order, cour) });
       }
@@ -3112,7 +3193,7 @@ export class Shop {
       }
       return json({ error: 'not_found' }, 404);
     }
-    const m = path.match(/^\/api\/admin\/couriers\/(k[a-z0-9]{3,9})(?:\/(link|handover|verify))?$/);
+    const m = path.match(/^\/api\/admin\/couriers\/(k[a-z0-9]{3,9})(?:\/(link|handover|verify|hresolve|hvoid))?$/);
     if (!m) return json({ error: 'not_found' }, 404);
     const c = await this.crGet(m[1]), sub = m[2];
     if (!c) return json({ error: 'not_found' }, 404);
@@ -3130,12 +3211,17 @@ export class Shop {
         if (!Number.isInteger(lim) || lim < 0 || lim > MAX_PAY) return json({ error: 'bad_lim' }, 400);
         c.lim = lim;
       }
+      if (b.dl !== undefined) {
+        if (typeof b.dl !== 'number' || !Number.isInteger(b.dl) || b.dl < -1 || b.dl > DL_MAX) return json({ error: 'bad_dl' }, 400);
+        c.dl = b.dl;
+      }
       await this.st.put('cr:' + c.id, c);
       return json(await this.crDetail(c));
     }
     if (!sub && method === 'DELETE') {
       if ((Number(c.cash) || 0) !== 0) return json({ error: 'has_cash', cash: Number(c.cash) || 0 }, 409);
       if ((c.nv || []).length) return json({ error: 'has_nv', n: c.nv.length }, 409);
+      if (crHf(c, Date.now()) > 0 || (c.hwt || []).length) return json({ error: 'has_hq' }, 409);
       const upd = {}, del = ['cr:' + c.id, 'cc:' + c.id];
       if (c.uid) del.push('cru:' + c.uid);
       if (c.tok) del.push('ct:' + c.tok);
@@ -3174,8 +3260,18 @@ export class Shop {
       if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
       const amount = Number(r.body.amount);
       if (!Number.isInteger(amount) || amount < 1 || amount > (Number(c.cash) || 0)) return json({ error: 'bad_amount', cash: Number(c.cash) || 0 }, 400);
-      await this.st.put(await this.crAdd(c, [{ k: 'out', d: -amount, a: amount, by: uid }]));
-      return json(await this.crDetail(c));
+      // доставщик подтверждает сдачу в Telegram; без привязки к Telegram подтверждать некому
+      const row = { k: 'out', d: -amount, a: amount, by: uid, bn: whoName(u), left: (Number(c.cash) || 0) - amount };
+      if (c.uid) row.cf = 'wait';
+      const put = await this.crAdd(c, [row]);
+      await this.st.put(put);
+      if (c.uid) await this.askHandover(c.id, put['cc:' + c.id].seq);
+      return json(await this.crDetail(await this.crGet(c.id)));
+    }
+    if ((sub === 'hresolve' || sub === 'hvoid') && method === 'POST') {
+      const r = await this.readBody(request, 2000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      return await this.handAct(c, sub === 'hvoid' ? 'void' : 'resolve', r.body, u);
     }
     return json({ error: 'not_found' }, 404);
   }
@@ -3275,10 +3371,10 @@ export class Shop {
     });
   }
   /* Все продавцы дистрибьютора получают короткое сообщение с кнопкой в приложение. */
-  async notifyAdmins(text) {
+  async notifyAdmins(text, label) {
     if (!this.env.BOT_TOKEN) return;
     for (const aid of (await this.st.get('admins')) || []) {
-      try { await this.tg('sendMessage', { chat_id: aid, text, reply_markup: openBtn(this.origin, 'Долги', sellerUrl(this.origin, this.did)) }); }
+      try { await this.tg('sendMessage', { chat_id: aid, text, reply_markup: openBtn(this.origin, label || 'Долги', sellerUrl(this.origin, this.did)) }); }
       catch (e) { console.error('admin notify failed', e && e.message || e); }
     }
   }
@@ -3383,8 +3479,111 @@ export class Shop {
         out.push({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', n: r.n, k: r.k, a: r.a, m: r.m || '', ref: r.ref || '', t: r.t, bn: r.bn || '', cf: r.cf === 'wait' ? 'late' : r.cf, cft: r.cft || '' });
       }
     }
+    // сдача денег доставщиками: вопросы без ответа и доставщики с просроченной сдачей
+    for (const c of await this.crList()) {
+      const late = crLate(c, now);
+      if (late > 0) out.push({ h: 2, cid: c.id, cn: c.name, late, a: Number(c.cash) || 0, t: c.cs });
+      if (crHf(c, now) < 1) continue;
+      const lg = (await this.st.get('cc:' + c.id)) || { rows: [] };
+      for (const r of lg.rows) {
+        if (!hOpen(r) || (r.cf === 'wait' && now - Date.parse(r.t) <= CF_LATE)) continue;
+        out.push({ h: 1, cid: c.id, cn: c.name, n: r.n, k: r.k, a: r.a, t: r.t, bn: r.bn || '', why: r.why || '', cf: r.cf === 'wait' ? 'late' : r.cf, cft: r.cft || '' });
+      }
+    }
     out.sort((a, b) => String(b.t).localeCompare(String(a.t)));
     return out.slice(0, 100);
+  }
+  /* Доставщика просят подтвердить запись продавца о сдаче денег (или об отмене сдачи). Не дошло в Telegram — запись сразу «доставщик не получил». */
+  async askHandover(cid, n) {
+    if (!this.env.BOT_TOKEN) return;
+    try {
+      const c = await this.crGet(cid), lg = c ? await this.st.get('cc:' + cid) : null;
+      const row = lg && lg.rows.find(r => r.n === n && (r.k === 'out' || r.k === 'ox'));
+      if (!c || !c.uid || !row || row.cf !== 'wait') return;
+      const px = cbPrefix(this.did);
+      const r = await this.tg('sendMessage', { chat_id: c.uid, text: handText(row), reply_markup: { inline_keyboard: [[
+        { text: '✅ Верно', callback_data: 'h:' + px + n + ':y' }, { text: '❌ Не так', callback_data: 'h:' + px + n + ':n' }
+      ]].concat(openBtn(this.origin, 'Моя касса', courierUrl(this.origin, this.did)).inline_keyboard) } });
+      if (r && r.ok) return;
+      row.cf = 'na'; row.cft = new Date().toISOString();
+      await this.st.put(crSave(c, lg));
+    } catch (e) { console.error('handover ask failed', e && e.message || e); }
+  }
+  /* Доставщик ответил «Верно» / «Не так». «Верно» окончательно; «Не так» он ещё может изменить на «Верно». */
+  async handConfirm(c, n, ok) {
+    const lg = await this.st.get('cc:' + c.id), row = lg && lg.rows.find(r => r.n === n && (r.k === 'out' || r.k === 'ox') && r.cf);
+    if (!row) return { err: 'not_found' };
+    if (row.ox) return { err: 'void' };
+    if (row.cf === 'ok') return { err: 'final', row };
+    if (!ok && row.hr) return { err: 'resolved', row };
+    const to = ok ? 'ok' : 'no', changed = row.cf !== to;
+    if (changed) { row.cf = to; row.cft = new Date().toISOString(); await this.st.put(crSave(c, lg)); }
+    return { row, changed };
+  }
+  /* Что видит сам доставщик после ответа: текст сообщения и кнопки. */
+  handEdit(text, to, px, n) {
+    const base = String(text || '').replace(/\n\n(✅|❌) [^\n]*$/, '');
+    const kb = openBtn(this.origin, 'Моя касса', courierUrl(this.origin, this.did)).inline_keyboard;
+    if (to === 'ok') return { text: base + '\n\n✅ Вы подтвердили. Спасибо!', reply_markup: { inline_keyboard: kb } };
+    return { text: base + '\n\n❌ Вы отметили «Не так». Продавец увидит это.', reply_markup: { inline_keyboard: [[{ text: '✅ Всё-таки верно', callback_data: 'h:' + px + n + ':y' }]].concat(kb) } };
+  }
+  /* Доставщик отметил сдачу «Не так»: продавцы узнают сразу. */
+  async handDisputeNotify(c, row) {
+    await this.notifyAdmins('⚠️ Доставщик ' + c.name + ' отметил «Не так»: ' + handDesc(row) + (row.bn ? '. Записал: ' + row.bn : '') + '.\nОткройте «Доставка» и разберитесь с доставщиком.', 'Доставка');
+  }
+  /* Нажатие «Верно» / «Не так» под сообщением доставщику. Отвечать может только сам доставщик. */
+  async onHandCb(cq, p, answer) {
+    const uid = cq.from && cq.from.id, n = Number(p.id);
+    if (!uid || !Number.isInteger(n) || (p.to !== 'y' && p.to !== 'n')) return answer('');
+    const id = await this.st.get('cru:' + uid), c = id ? await this.crGet(id) : null;
+    if (!c || c.uid !== uid) return answer('Нет доступа', true);
+    const ok = p.to === 'y', res = await this.handConfirm(c, n, ok);
+    if (res.err === 'not_found') return answer('Запись не найдена', true);
+    if (res.err === 'void') return answer('Эта запись уже отменена продавцом', true);
+    if (res.err === 'resolved') return answer('Продавец уже закрыл этот вопрос. Если не согласны, напишите ему.', true);
+    const here = cq.message && cq.message.chat ? { chat_id: cq.message.chat.id, message_id: cq.message.message_id } : null;
+    const px = cbPrefix(this.did);
+    if (res.err === 'final') {
+      if (here) await this.editCard(here, this.handEdit(cq.message.text, 'ok', px, n));
+      return answer('Вы уже подтвердили эту запись', true);
+    }
+    if (here) await this.editCard(here, this.handEdit(cq.message.text, ok ? 'ok' : 'no', px, n));
+    if (res.changed && !ok) await this.handDisputeNotify(c, res.row);
+    return answer(ok ? 'Спасибо, подтверждено' : 'Отмечено «Не так». Продавец увидит.');
+  }
+  /* Сдача денег доставщиком: закрыть спорную запись с комментарием или отменить запись о сдаче с причиной. u — Telegram-пользователь продавца или владельца. */
+  async handAct(c, act, body, u) {
+    const by = u.id, bn = whoName(u), n = Number(body.n), now = new Date().toISOString();
+    const lg = (await this.st.get('cc:' + c.id)) || { rows: [], seq: 0 };
+    const row = lg.rows.find(r => r.n === n && (r.k === 'out' || r.k === 'ox'));
+    if (!row) return json({ error: 'not_found' }, 404);
+    if (act === 'resolve') {
+      const note = cleanStr(body.note || '', RES_MAX);
+      if (note.length < WHY_MIN) return json({ error: 'bad_note' }, 400);
+      if (!row.cf || row.cf === 'ok') return json({ error: 'not_found' }, 404);
+      if (row.hr || row.ox) return json({ error: 'already' }, 409);
+      if (row.cf === 'wait' && Date.now() - Date.parse(row.t) <= CF_LATE) return json({ error: 'not_flagged' }, 409);
+      lg.seq += 1; row.hr = lg.seq;
+      lg.rows.push({ n: lg.seq, t: now, k: 'hr', d: 0, a: 0, of: n, by, bn, why: note });
+      await this.st.put(crSave(c, lg));
+      if (c.uid && this.env.BOT_TOKEN) {
+        try { await this.tg('sendMessage', { chat_id: c.uid, text: 'ℹ️ Продавец закрыл вопрос по записи: ' + handDesc(row) + '.\nКомментарий: ' + note, reply_markup: openBtn(this.origin, 'Моя касса', courierUrl(this.origin, this.did)) }); }
+        catch (e) { console.error('hand resolve notify failed', e && e.message || e); }
+      }
+      return json(await this.crDetail(await this.crGet(c.id)));
+    }
+    // отмена записи о сдаче: только сама сдача, один раз, с причиной; деньги снова числятся на руках у доставщика
+    if (row.k !== 'out') return json({ error: 'not_found' }, 404);
+    if (row.ox) return json({ error: 'already' }, 409);
+    const why = cleanStr(body.reason || '', WHY_MAX);
+    if (why.length < WHY_MIN) return json({ error: 'bad_reason' }, 400);
+    const left = (Number(c.cash) || 0) + row.a;
+    lg.seq += 1; row.ox = lg.seq;
+    lg.rows.push(Object.assign({ n: lg.seq, t: now, k: 'ox', d: row.a, a: row.a, of: n, by, bn, why, left }, c.uid ? { cf: 'wait' } : {}));
+    c.cash = left;
+    await this.st.put(crSave(c, lg));
+    if (c.uid) await this.askHandover(c.id, lg.seq);
+    return json(await this.crDetail(await this.crGet(c.id)));
   }
   nvAdd(c, e) { c.nvs = (Number(c.nvs) || 0) + 1; c.nv = (c.nv || []).concat([Object.assign({ id: c.nvs, t: new Date().toISOString() }, e)]); }
   /* Приём оплаты, отмена записи об оплате, закрытие спорной записи и напоминание магазину. u — пользователь Telegram, который это делает. */
@@ -3409,6 +3608,7 @@ export class Shop {
       if (cour) {
         // доставщик с лимитом наличных не берёт новые наличные, пока не сдаст деньги; безналичные оплаты ждут сверки продавцом
         if (body.m === 'cash' && cour.lim > 0 && (Number(cour.cash) || 0) >= cour.lim) return json({ error: 'cash_limit', cash: Number(cour.cash) || 0, lim: cour.lim }, 409);
+        if (body.m === 'cash' && crLate(cour, Date.now()) > 0) return json({ error: 'cash_late', cash: Number(cour.cash) || 0, late: crLate(cour, Date.now()) }, 409);
         if (body.m !== 'cash' && (cour.nv || []).length >= NV_MAX) return json({ error: 'nv_full' }, 409);
       }
       const row = { k: 'pay', d: -amount, a: amount, m: body.m, by, bn, note: cleanStr(body.note || '', LG_NOTE), cf: 'wait' };
@@ -3511,6 +3711,7 @@ export class Shop {
     const parsed = cbParse(cq.data);
     if (parsed.kind === 'k') return await this.onCourierCb(cq, parsed, answer);
     if (parsed.kind === 'q') return await this.onConfirmCb(cq, parsed, answer);
+    if (parsed.kind === 'h') return await this.onHandCb(cq, parsed, answer);
     if (!cq.from || !(await this.isAdmin(cq.from.id))) return answer('Нет доступа', true);
     const { kind, id, to, days } = parsed;
     const o = id ? await this.st.get('o:' + id) : null;
@@ -4422,9 +4623,10 @@ export class Hub {
     if (path === '/api/hub/admin/disputes/resolve' && method === 'POST') {
       const r = await this.readBody(request, 1000);
       const b = r.body && typeof r.body === 'object' ? r.body : null;
-      if (r.err || !b || !validDid(b.did) || !Number.isSafeInteger(Number(b.uid)) || !Number.isInteger(Number(b.n))) return json({ error: 'bad_request' }, 400);
+      const isH = !!b && validCid(b.cid);
+      if (r.err || !b || !validDid(b.did) || (!isH && !Number.isSafeInteger(Number(b.uid))) || !Number.isInteger(Number(b.n))) return json({ error: 'bad_request' }, 400);
       if (!(await this.getRec(b.did))) return json({ error: 'not_found' }, 404);
-      const sc = await shopCall(this.env, b.did, '/__/resolve', { uid: Number(b.uid), n: Number(b.n), note: b.note, by: au.user });
+      const sc = await shopCall(this.env, b.did, '/__/resolve', isH ? { cid: b.cid, n: Number(b.n), note: b.note, by: au.user } : { uid: Number(b.uid), n: Number(b.n), note: b.note, by: au.user });
       return json(sc.data || { error: 'server' }, sc.status || 500);
     }
     if (path === '/api/hub/admin/analytics' && method === 'GET') return await this.adminAnalytics(new URL(request.url));
