@@ -5980,6 +5980,127 @@ await t('срок сдачи: отменённая оплата долга не 
   assert.equal(c1.late, 0);
 });
 
+/* ---------- люди: список для владельца и сообщения о входе по коду ---------- */
+const peopleOf = async init => call('GET', '/api/hub/admin/people/list', { init: init || iS() });
+const loginMsgs = () => tgAll('sendMessage', p => p.chat_id === SELLER.id && String(p.text).startsWith('🔑'));
+
+await t('люди: список только у владельца; заходившие видны с ролями, имя и логин берутся из Telegram', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  assert.equal((await peopleOf(iD())).status, 403, 'продавец дистрибьютора не владелец');
+  assert.equal((await peopleOf(iA())).status, 403, 'клиент тем более');
+  assert.equal((await call('GET', '/api/hub/admin/people/list')).status, 401);
+  // клиент открывает приложение, дистрибьютор пишет боту
+  await call('GET', '/api/shops', { init: iA() });
+  await send({ update_id: 9101, message: { message_id: 9101, from: BOB, chat: { id: BOB.id, type: 'private' }, text: '/start' } });
+  const d = await jsonOf(await peopleOf());
+  const by = id => d.people.find(x => x.id === id);
+  assert.deepEqual(by(ANNA.id).roles, [], 'у клиента ролей нет');
+  assert.equal(by(ANNA.id).nm, 'Анна');
+  assert.equal(by(ANNA.id).un, 'anna_k');
+  assert.ok(by(BOB.id), 'написавший боту тоже в списке');
+  assert.deepEqual(by(SELLER.id).roles.map(r => r.r).sort(), ['owner', 'seller']);
+  assert.deepEqual(by(DIL.id).roles, [{ r: 'seller', n: 'Альфа Трейд' }]);
+  assert.ok(by(SELLER.id).last && by(SELLER.id).first, 'у владельца есть даты');
+  assert.equal(d.total, d.people.length);
+  // держатель роли, которого после появления списка ещё не видели: в списке есть, но ниже заходивших
+  await W.hubStorage.put('adm:7777', ['main']);
+  const d2 = await jsonOf(await peopleOf());
+  const ghost = d2.people.find(x => x.id === 7777);
+  assert.ok(ghost && ghost.last === '' && ghost.nm === '' && ghost.roles[0].r === 'seller', JSON.stringify(ghost));
+  assert.equal(d2.people[d2.people.length - 1].id, 7777, 'невидимка в конце');
+});
+
+await t('люди: повторные заходы не плодят записей, имя и логин обновляются', async () => {
+  await shopWorld('Альфа Трейд');
+  await call('GET', '/api/shops', { init: iA() });
+  const first = (await jsonOf(await peopleOf())).people.find(x => x.id === ANNA.id);
+  const ANNA2 = Object.assign({}, ANNA, { first_name: 'Анна-Мария', username: 'anna_m' });
+  await call('GET', '/api/shops', { init: initDataFor(ANNA2) });
+  const d = await jsonOf(await peopleOf());
+  assert.equal(d.people.filter(x => x.id === ANNA.id).length, 1);
+  const a = d.people.find(x => x.id === ANNA.id);
+  assert.equal(a.first, first.first, 'первый заход не меняется');
+});
+
+await t('люди: агент и доставщик с ролями и именами, магазин из базы с названием', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  const made = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [] }));
+  await send(agentMsg(AGT, made.code, 3));
+  await hire(DRV, 'Рустам', sid);
+  const A = newUser();
+  await ordBase(sid, A, { name: 'Магазин Мадина', phone: '+998 90 111 22 33' }, 'delivery');
+  const d = await jsonOf(await peopleOf());
+  const by = id => d.people.find(x => x.id === id);
+  assert.deepEqual(by(AGT.id).roles, [{ r: 'agent', n: 'Азиз' }]);
+  assert.deepEqual(by(DRV.id).roles, [{ r: 'courier', n: 'Альфа Трейд' }]);
+  const shop = by(A.u.id);
+  assert.ok(shop && shop.shop && shop.shop.name === 'Магазин Мадина', 'название магазина из базы: ' + JSON.stringify(shop));
+  assert.equal(JSON.stringify(d).includes('hash'), false, 'хэши кодов не уходят');
+});
+
+await t('вход по коду: владелец получает сообщение при первом входе продавца, агента и доставщика; повтор молчит', async () => {
+  await hubWorld();
+  const d = await addShop('Альфа Трейд');
+  tgLog = [];
+  await send(adminMsg(DIL, d.code, 2));
+  let m = loginMsgs();
+  assert.equal(m.length, 1, 'одно сообщение владельцу');
+  assert.ok(m[0].payload.text.includes('Dilshod (@dil_alfa), ID ' + DIL.id) && m[0].payload.text.includes('продавец «Альфа Трейд»'), m[0].payload.text);
+  tgLog = [];
+  await send(adminMsg(DIL, d.code, 3));
+  assert.equal(loginMsgs().length, 0, 'повторная команда не шумит');
+  // второй человек с тем же кодом — новое сообщение
+  tgLog = [];
+  await send(adminMsg(JAS2, d.code, 4));
+  assert.equal(loginMsgs().length, 1);
+  assert.ok(loginMsgs()[0].payload.text.includes('Sardor (@sardor_b)'));
+  // неверный код ничего не присылает
+  tgLog = [];
+  await send(adminMsg(ANNA, 'wrong-wrong-wrong', 5));
+  assert.equal(loginMsgs().length, 0);
+  // агент
+  const made = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [] }));
+  tgLog = [];
+  await send(agentMsg(AGT, made.code, 6));
+  m = loginMsgs();
+  assert.equal(m.length, 1);
+  assert.ok(m[0].payload.text.includes('вошёл как агент «Азиз»') && !m[0].payload.text.includes('раньше был'), m[0].payload.text);
+  tgLog = [];
+  await send(agentMsg(AGT, made.code, 7));
+  assert.equal(loginMsgs().length, 0, 'тот же аккаунт повторно: тихо');
+  // тот же код с другого Telegram: сообщение с пометкой про прежний аккаунт
+  tgLog = [];
+  await send(agentMsg(AGT2, made.code, 8));
+  m = loginMsgs();
+  assert.equal(m.length, 1);
+  assert.ok(m[0].payload.text.includes('Botir (@botir_ag)') && m[0].payload.text.includes('ID ' + AGT.id) && m[0].payload.text.includes('отключён'), m[0].payload.text);
+  assert.equal((await meHub(AGT)).agent, undefined, 'прежний аккаунт потерял роль');
+  // доставщик по приглашению
+  tgLog = [];
+  await hire(DRV, 'Рустам', d.shop.id);
+  m = loginMsgs();
+  assert.equal(m.length, 1);
+  assert.ok(m[0].payload.text.includes('стал доставщиком «Альфа Трейд»') && m[0].payload.text.includes('ID ' + DRV.id), m[0].payload.text);
+});
+
+await t('вход по коду: код владельца с нового аккаунта извещает прежних владельцев, а сам вошедший сообщения не получает', async () => {
+  await hubWorld();
+  const OWN2 = { id: 9301, first_name: 'Бахром', username: 'bahrom_2', language_code: 'ru' };
+  tgLog = [];
+  await send(adminMsg(OWN2, CODE, 2));
+  const m = loginMsgs();
+  assert.equal(m.length, 1);
+  assert.ok(m[0].payload.text.includes('вошёл как владелец площадки') && m[0].payload.text.includes('Бахром (@bahrom_2)'), m[0].payload.text);
+  assert.equal(tgAll('sendMessage', p => p.chat_id === OWN2.id && String(p.text).startsWith('🔑')).length, 0, 'себе не пишем');
+  tgLog = [];
+  await send(adminMsg(OWN2, CODE, 3));
+  assert.equal(loginMsgs().length, 0, 'повторный вход молчит');
+  // самый первый вход владельца: получателей нет, ошибок нет
+  W = makeWorld(); tgLog = [];
+  await send(adminMsg(SELLER, CODE, 1));
+  assert.equal(tgAll('sendMessage', p => String(p.text).startsWith('🔑')).length, 0);
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
