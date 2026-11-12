@@ -670,10 +670,10 @@ function debtsSheets(list, logs) {
     head.push([nm, x.org || '', x.phone || '', x.addr || '', x.bal, dmy(x.due), x.over || 0, x.days || 0, x.fl || 0, x.wt || 0, last ? shopTime(last).slice(0, 10) : '', st + (x.fl > 0 ? ' · спорные записи' : '')]);
     if (lg.base) hist.push([nm, x.phone || '', '', 'Ранние записи свёрнуты', '', '', lg.base.d, '', dmy(lg.base.due), '', '', 'Остаток по старым записям, подробностей нет', '']);
     rows.forEach(r => {
-      const kind = r.k === 'ch' ? 'Выдача в долг' : r.k === 'pay' ? 'Оплата' : r.k === 'rv' ? 'Отмена записи №' + r.of : r.k === 'rs' ? 'Спор по записи №' + r.of + ' закрыт' : '';
+      const kind = r.k === 'ch' ? 'Выдача в долг' : r.k === 'pay' ? 'Оплата' : r.k === 'rv' ? 'Отмена записи №' + r.of : r.k === 'rs' ? 'Спор по записи №' + r.of + ' закрыт' : r.k === 'ac' ? 'Акт сверки ' + (r.f ? dmy(r.f) : 'с начала') + ' – ' + dmy(r.e) : '';
       if (!kind) return;
-      hist.push([nm, x.phone || '', shopTime(r.t), kind, r.n, r.ref || '', r.k === 'rs' ? '' : Number(r.a) || 0, r.k === 'pay' ? (PAY_PLAIN[r.m] || '') : '', r.k === 'ch' ? dmy(r.due) : '',
-        r.k === 'ch' || r.k === 'pay' ? (CF_PLAIN[r.cf] || '') : '', r.bn || '', r.k === 'pay' ? (r.note || '') : (r.why || ''), voided.has(r.n) ? 'да' : '']);
+      hist.push([nm, x.phone || '', shopTime(r.t), kind, r.n, r.ref || '', r.k === 'rs' ? '' : r.k === 'ac' ? Number(r.cb) || 0 : Number(r.a) || 0, r.k === 'pay' ? (PAY_PLAIN[r.m] || '') : '', r.k === 'ch' ? dmy(r.due) : '',
+        isCf(r) ? (CF_PLAIN[r.cf] || '') : '', r.bn || '', r.k === 'pay' ? (r.note || '') : (r.why || ''), voided.has(r.n) ? 'да' : '']);
     });
   });
   return [
@@ -1127,7 +1127,7 @@ function cleanPay(p, total, today) {
 /* Долг и непогашенные выдачи по журналу. all — все записи журнала (нужны, чтобы увидеть отмены, которые лежат в хвосте). */
 function lgState(rows, base, all) {
   const voided = new Set((all || rows).filter(r => r.k === 'rv').map(r => r.of));
-  const net = rows.filter(r => r.k !== 'rv' && r.k !== 'rs' && !voided.has(r.n));
+  const net = rows.filter(r => r.k !== 'rv' && r.k !== 'rs' && r.k !== 'ac' && !voided.has(r.n));
   let bal = base ? base.d : 0, paid = base && base.d < 0 ? -base.d : 0;
   const queue = [];
   if (base && base.d > 0) queue.push({ ref: '', due: base.due || '', r: base.d });
@@ -1155,7 +1155,7 @@ function lgPend(rows) {
   rows.forEach(r => { if (r.k === 'rv' || r.k === 'rs') gone.add(r.of); });
   let first = -1;
   rows.forEach((r, i) => {
-    if ((r.k !== 'ch' && r.k !== 'pay') || !r.cf || r.cf === 'ok' || gone.has(r.n)) return;
+    if (!isCf(r) || !r.cf || r.cf === 'ok' || gone.has(r.n)) return;
     if (first < 0) first = i;
     const g = r.g || r.n;
     if (r.cf === 'wait') { if (!cw.has(g) || r.t < cw.get(g)) cw.set(g, r.t); } else { fl.add(g); if (r.cf === 'na') na.add(g); }
@@ -1216,6 +1216,8 @@ function debtPayText(h, a, m, shop) {
 }
 /* Что записано, одной строкой для продавца и доставщика. */
 function rowDesc(rows) {
+  const ac = rows.find(r => r.k === 'ac');
+  if (ac) return 'акт сверки ' + (ac.f ? 'с ' + dmy(ac.f) + ' ' : '') + 'по ' + dmy(ac.e) + ', ' + ((Number(ac.cb) || 0) > 0 ? 'долг ' + money(ac.cb) : (Number(ac.cb) || 0) < 0 ? 'переплата ' + money(-ac.cb) : 'долга нет');
   const ch = rows.find(r => r.k === 'ch'), p = rows.find(r => r.k === 'pay');
   if (ch) return 'заказ ' + ch.ref + ' в долг на ' + money(ch.a) + (ch.due ? ' до ' + dmy(ch.due) : '') + (p ? ', сразу оплачено ' + money(p.a) : '');
   return p ? 'оплата долга ' + money(p.a) + (PAY_NAME2[p.m] ? ' (' + PAY_NAME2[p.m][0] + ')' : '') : '';
@@ -1233,6 +1235,82 @@ function confirmText(h, rows, shop) {
   } else text = debtPayText(h, p.a, p.m, shop);
   setLang(h.lang === 'uz' ? 'uz' : 'ru');
   return text + (who ? '\n' + L('Принял: ', 'Qabul qildi: ') + who : '') + '\n\n' + L('Всё верно?', 'Hammasi toʻgʻrimi?');
+}
+/* Акт сверки: выписка по расчётам магазина за период. Магазин получает её в Telegram и отвечает «Верно» или «Не так».
+   Запись об акте лежит в журнале долга (k «ac», сумма 0, долг не меняет), чтобы «Не так» попадало в спорные так же, как по обычным записям. */
+const ACT_PER = ['this', 'prev', 'all'], ACT_PART = 3800, ACT_MAX_MSG = 6, ACT_ITEMS = 25;
+/* Записи, на которые магазин отвечает «Верно» или «Не так»: выдача в долг, оплата и акт сверки. */
+const isCf = r => r.k === 'ch' || r.k === 'pay' || r.k === 'ac';
+/* Границы периода по дню today (YYYY-MM-DD): f — первый день (пусто — с начала записей), e — последний. */
+function actPeriod(per, today) {
+  if (per === 'all') return { f: '', e: today };
+  const y = Number(today.slice(0, 4)), m = Number(today.slice(5, 7));
+  if (per === 'this') return { f: today.slice(0, 7) + '-01', e: today };
+  const py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1, p2 = n => (n < 10 ? '0' : '') + n;
+  return { f: py + '-' + p2(pm) + '-01', e: py + '-' + p2(pm) + '-' + p2(new Date(Date.UTC(py, pm, 0)).getUTCDate()) };
+}
+/* Текст акта сверки по журналу lg. Возвращает { parts, f, e, ob, cb, n } или { empty }, или { long }.
+   ords — состав заказов {номер: заказ}. Если текст не влезает в ACT_MAX_MSG сообщений, состав заказов убирается; если и так много — long. */
+function actBuild(h, lg, per, today, ords, shop) {
+  const { f, e } = actPeriod(per, today);
+  const voided = new Set(lg.rows.filter(r => r.k === 'rv').map(r => r.of));
+  const net = lg.rows.filter(r => (r.k === 'ch' || r.k === 'pay') && !voided.has(r.n));
+  const day = r => dayOf(r.t);
+  const before = f ? net.filter(r => day(r) < f) : [];
+  const inside = net.filter(r => (!f || day(r) >= f) && day(r) <= e);
+  const ob = (lg.base ? lg.base.d : 0) + before.reduce((t, r) => t + (Number(r.d) || 0), 0);
+  const cb = ob + inside.reduce((t, r) => t + (Number(r.d) || 0), 0);
+  if (!inside.length && ob === 0) return { empty: true };
+  // период начинается раньше, чем помнит журнал: прежние записи свёрнуты в один остаток
+  const early = !!lg.base && (!f || !lg.rows.length || f <= day(lg.rows[0]));
+  const uz = h.lang === 'uz';
+  setLang(uz ? 'uz' : 'ru');
+  const bal = v => v < 0 ? '−' + money(-v) + L(' (переплата)', ' (ortiqcha toʻlov)') : money(v);
+  const who = [h.org, h.name].filter(Boolean).map(s => cleanStr(s, 60)).join(' · ');
+  const build = compact => {
+    const blocks = [];
+    blocks.push(L('📄 Акт сверки', '📄 Hisob-kitoblarni solishtirish dalolatnomasi') + ' — ' + cleanStr(shop.name || DEFAULT.shop.name, 60)
+      + (who ? '\n' + L('Магазин: ', 'Doʻkon: ') + who : '')
+      + '\n' + L('Период: ', 'Davr: ') + (f ? dmy(f) : L('с начала записей', 'yozuvlar boshidan')) + ' – ' + dmy(e));
+    blocks.push((early ? L('Остаток на начало записей: ', 'Yozuvlar boshidagi qoldiq: ') : L('Остаток на ', 'Qoldiq ') + (f ? dmy(f) : L('начало', 'boshida')) + ': ') + bal(ob)
+      + (early ? '\n' + L('Более ранние записи объединены в этот остаток.', 'Oldingi yozuvlar shu qoldiqqa birlashtirilgan.') : ''));
+    let add = 0, paid = 0;
+    for (const r of inside) {
+      const a = Math.abs(Number(r.d) || 0);
+      if (r.k === 'ch') {
+        add += a;
+        const o = r.ref ? (ords || {})[r.ref] : null;
+        const items = !compact && o && Array.isArray(o.items) ? o.items : [];
+        const lines = items.slice(0, ACT_ITEMS).map(it => '• ' + cleanStr(uz ? (it.uz || it.name) : it.name, 60) + (weightLabel(it) ? ' (' + weightLabel(it) + ')' : '') + ' × ' + (Number(it.qty) || 0));
+        if (items.length > ACT_ITEMS) lines.push(L('…и ещё ' + (items.length - ACT_ITEMS) + ' поз.', '…yana ' + (items.length - ACT_ITEMS) + ' ta'));
+        blocks.push(dmy(day(r)) + ' · ' + L('Заказ ', 'Buyurtma ') + (r.ref || '—') + (lines.length ? '\n' + lines.join('\n') : '')
+          + '\n' + L('В долг: +', 'Qarzga: +') + money(a) + (r.due ? ' (' + L('срок ', 'muddat ') + dmy(r.due) + ')' : ''));
+      } else {
+        paid += a;
+        const pn = PAY_NAME2[r.m] ? ' (' + L(PAY_NAME2[r.m][0], PAY_NAME2[r.m][1]) + ')' : '';
+        blocks.push(dmy(day(r)) + ' · ' + L('Оплата', 'Toʻlov') + pn + '\n−' + money(a));
+      }
+    }
+    if (!inside.length) blocks.push(L('За период записей нет.', 'Davr uchun yozuvlar yoʻq.'));
+    else blocks.push(L('Итого за период: в долг +', 'Davr boʻyicha jami: qarzga +') + money(add) + L(', оплачено −', ', toʻlangan −') + money(paid));
+    blocks.push((cb > 0 ? L('Долг на ', 'Qarz ') + dmy(e) + ': ' + money(cb) : cb < 0 ? L('Переплата (аванс) на ', 'Ortiqcha toʻlov (avans) ') + dmy(e) + ': ' + money(-cb) : L('На ', '') + dmy(e) + L(' долга нет', ' sanasida qarz yoʻq'))
+      + '\n\n' + L('Всё верно?', 'Hammasi toʻgʻrimi?'));
+    // сообщения: блоки подряд, пока влезает; слишком длинный блок режется
+    const parts = [];
+    let cur = '';
+    for (let b of blocks) {
+      if (b.length > ACT_PART) b = b.slice(0, ACT_PART - 1) + '…';
+      if (cur && cur.length + 2 + b.length > ACT_PART) { parts.push(cur); cur = b; } else cur = cur ? cur + '\n\n' + b : b;
+    }
+    if (cur) parts.push(cur);
+    return parts;
+  };
+  let parts = build(false), compact = false;
+  if (parts.length > ACT_MAX_MSG) { parts = build(true); compact = true; }
+  if (parts.length > ACT_MAX_MSG) return { long: true };
+  const head = L('📄 Акт сверки', '📄 Dalolatnoma');
+  if (parts.length > 1) parts = parts.map((p, i) => i ? head + ' · ' + (i + 1) + '/' + parts.length + '\n\n' + p : p.replace('\n', ' (1/' + parts.length + ')\n'));
+  return { parts, f, e, ob, cb, n: inside.length, compact };
 }
 function debtRemindText(h, shop, today, ords) {
   setLang(h.lang === 'uz' ? 'uz' : 'ru');
@@ -2136,7 +2214,7 @@ export class Shop {
         return json({ ok: true, morning: r.body.on });
       }
       if (path === '/api/admin/disputes' && method === 'GET') return json({ items: await this.disputes() });
-      const dm = path.match(/^\/api\/admin\/debts\/(\d{1,15})(?:\/(pay|void|remind|resolve))?$/);
+      const dm = path.match(/^\/api\/admin\/debts\/(\d{1,15})(?:\/(pay|void|remind|resolve|act))?$/);
       if (dm) {
         const duid = Number(dm[1]);
         if (!dm[2] && method === 'GET') return await this.debtOne(duid);
@@ -3135,6 +3213,7 @@ export class Shop {
     const rows = lg.rows.filter(r => r.k !== 'rv' && r.k !== 'rs').slice(-LG_SHOW).reverse().map(r => {
       const x = { n: r.n, g: r.g || r.n, t: r.t, k: r.k, a: r.a };
       if (r.k === 'pay') { x.m = r.m; if (voided.has(r.n)) { x.void = true; x.vwhy = voided.get(r.n).why || ''; } }
+      else if (r.k === 'ac') { x.f = r.f || ''; x.e = r.e || ''; x.cb = Number(r.cb) || 0; }
       else { x.ref = r.ref || ''; x.due = r.due || ''; }
       if (r.cf) { x.cf = r.cf; x.bn = r.bn || ''; }
       const z = rsl.get(r.n);
@@ -3180,7 +3259,7 @@ export class Shop {
   /* Магазин ответил на вопрос «Всё верно?». ok — «Верно», иначе «Не так». «Верно» окончательно; «Не так» магазин ещё может изменить на «Верно». */
   async confirmRow(uid, n, ok) {
     const { lg, lh } = await this.lgLoad(uid);
-    const grp = lh ? lg.rows.filter(r => (r.g || r.n) === n && (r.k === 'ch' || r.k === 'pay') && r.cf) : [];
+    const grp = lh ? lg.rows.filter(r => (r.g || r.n) === n && isCf(r) && r.cf) : [];
     if (!grp.length) return { err: 'not_found' };
     const has = (k, r) => lg.rows.some(z => z.k === k && z.of === r.n);
     const live = grp.filter(r => !has('rv', r));
@@ -3250,12 +3329,12 @@ export class Shop {
       const { lg } = await this.lgLoad(h.uid);
       const gone = new Set(lg.rows.filter(r => r.k === 'rv' || r.k === 'rs').map(r => r.of)), seen = new Set();
       for (const r of lg.rows) {
-        if ((r.k !== 'ch' && r.k !== 'pay') || !r.cf || r.cf === 'ok' || gone.has(r.n)) continue;
+        if (!isCf(r) || !r.cf || r.cf === 'ok' || gone.has(r.n)) continue;
         if (r.cf === 'wait' && now - Date.parse(r.t) <= CF_LATE) continue;
         const g = r.g || r.n;
         if (seen.has(g)) continue;
         seen.add(g);
-        out.push({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', n: r.n, k: r.k, a: r.a, m: r.m || '', ref: r.ref || '', t: r.t, bn: r.bn || '', cf: r.cf === 'wait' ? 'late' : r.cf, cft: r.cft || '' });
+        out.push(Object.assign({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', n: r.n, k: r.k, a: r.a, m: r.m || '', ref: r.ref || '', t: r.t, bn: r.bn || '', cf: r.cf === 'wait' ? 'late' : r.cf, cft: r.cft || '' }, r.k === 'ac' ? { f: r.f || '', e: r.e || '', cb: Number(r.cb) || 0 } : {}));
       }
     }
     // сдача денег доставщиками: вопросы без ответа и доставщики с просроченной сдачей
@@ -3381,6 +3460,43 @@ export class Shop {
       await this.st.put('lh:' + uid, lh);
       return json({ ok: true, rem: lh.rem });
     }
+    if (act === 'act') {
+      if (cour) return json({ error: 'forbidden' }, 403);
+      if (!ACT_PER.includes(body.period)) return json({ error: 'bad_request' }, 400);
+      if (!this.env.BOT_TOKEN) return json({ error: 'server' }, 500);
+      const lastAct = lg.rows.filter(r => r.k === 'ac').pop();
+      if (lastAct && Date.now() - Date.parse(lastAct.t) < REMIND_GAP) return json({ error: 'too_soon' }, 429);
+      const ords = await this.debtOrders(lg.rows.filter(r => r.k === 'ch').map(r => r.ref)), shop = (await this.getCfg()).shop;
+      // дальше без пауз: журнал читается заново, акт собирается и записывается одной операцией
+      const cur = await this.lgLoad(uid);
+      const built = actBuild(cur.lh, cur.lg, body.period, dayOf(new Date().toISOString()), ords, shop);
+      if (built.empty) return json({ error: 'empty' }, 404);
+      if (built.long) return json({ error: 'too_long' }, 413);
+      // прежний акт, на который магазин не ответил, заменяется новым; ответивший остаётся в истории
+      cur.lg.rows = cur.lg.rows.filter(r => !(r.k === 'ac' && (r.cf === 'wait' || r.cf === 'na')));
+      const now = new Date().toISOString();
+      cur.lg.seq += 1;
+      const n = cur.lg.seq;
+      cur.lg.rows.push({ n, t: now, k: 'ac', d: 0, a: 0, by, bn, cf: 'wait', pr: body.period, f: built.f, e: built.e, ob: built.ob, cb: built.cb });
+      await this.st.put((await this.lgSave(uid, cur.lg, cur.lh, null, now)).put);
+      const px = cbPrefix(this.did), uz = cur.lh.lang === 'uz';
+      let sent = true;
+      for (let i = 0; i < built.parts.length && sent; i++) {
+        const msg = { chat_id: uid, text: built.parts[i] };
+        if (i === built.parts.length - 1) msg.reply_markup = { inline_keyboard: [[
+          { text: uz ? '✅ Toʻgʻri' : '✅ Верно', callback_data: 'q:' + px + n + ':y' }, { text: uz ? '❌ Notoʻgʻri' : '❌ Не так', callback_data: 'q:' + px + n + ':n' }
+        ]].concat(openBtn(this.origin, uz ? 'Mening qarzim' : 'Мой долг', this.origin + '/?v=debt').inline_keyboard) };
+        try { const r = await this.tg('sendMessage', msg); sent = !!(r && r.ok); } catch (e) { console.error('act send failed', e && e.message || e); sent = false; }
+      }
+      if (!sent) {
+        // магазин акт не получил: запись в журнале не нужна, продавцу ответ об ошибке
+        const fresh = await this.lgLoad(uid);
+        fresh.lg.rows = fresh.lg.rows.filter(r => r.n !== n);
+        await this.st.put((await this.lgSave(uid, fresh.lg, fresh.lh)).put);
+        return json({ error: 'tg_failed' }, 502);
+      }
+      return await this.debtOne(uid);
+    }
     if (act === 'pay') {
       const amount = Number(body.amount);
       if (!Number.isInteger(amount) || amount < 1 || amount > MAX_PAY || !PAY_M.includes(body.m)) return json({ error: 'bad_request' }, 400);
@@ -3407,11 +3523,11 @@ export class Shop {
     if (act === 'resolve') {
       const note = cleanStr(body.note || '', RES_MAX);
       if (note.length < WHY_MIN) return json({ error: 'bad_note' }, 400);
-      if (!row || (row.k !== 'ch' && row.k !== 'pay') || !row.cf || row.cf === 'ok') return json({ error: 'not_found' }, 404);
+      if (!row || !isCf(row) || !row.cf || row.cf === 'ok') return json({ error: 'not_found' }, 404);
       const closed = r => lg.rows.some(z => (z.k === 'rv' || z.k === 'rs') && z.of === r.n);
       if (closed(row)) return json({ error: 'already' }, 409);
       if (row.cf === 'wait' && Date.now() - Date.parse(row.t) <= CF_LATE) return json({ error: 'not_flagged' }, 409);
-      const grp = lg.rows.filter(r => (r.g || r.n) === (row.g || row.n) && (r.k === 'ch' || r.k === 'pay') && r.cf && r.cf !== 'ok' && !closed(r));
+      const grp = lg.rows.filter(r => (r.g || r.n) === (row.g || row.n) && isCf(r) && r.cf && r.cf !== 'ok' && !closed(r));
       const res = await this.lgAdd(uid, grp.map(r => ({ k: 'rs', of: r.n, d: 0, a: 0, by, bn, why: note })));
       await this.st.put(res.put);
       if (this.env.BOT_TOKEN) {
