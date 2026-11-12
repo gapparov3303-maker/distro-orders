@@ -860,22 +860,22 @@ async function xlReadSheet(u) {
 /* Названия колонок прайса: сравниваем без регистра, пробелов и знаков. */
 const nk = s => String(s == null ? '' : s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]/g, '');
 const XL_COLS = {
-  id: ['Код', 'ID', 'Артикул'],
-  cat: ['Категория'],
-  name: ['Название', 'Наименование', 'Товар', 'Название товара'],
-  uz: ['Название (узб.)', 'Название по-узбекски', 'Nomi'],
-  desc: ['Описание'],
-  descUz: ['Описание (узб.)', 'Описание по-узбекски', 'Tavsif'],
-  amount: ['Вес / объём', 'Вес', 'Объём', 'Фасовка'],
-  unit: ['Единица', 'Ед.', 'Ед. изм.', 'Единица измерения'],
-  price: ['Цена', 'Цена, сум', 'Цена за единицу', 'Цена за единицу, сум'],
-  on: ['В наличии', 'Наличие'],
-  tag: ['Метка'],
-  old: ['Старая цена', 'Старая цена, сум']
+  id: ['Код', 'ID', 'Артикул', 'Kod'],
+  cat: ['Категория', 'Kategoriya'],
+  name: ['Название', 'Наименование', 'Товар', 'Название товара', 'Nomi (rus.)', 'Ruscha nomi', 'Mahsulot', 'Mahsulot nomi'],
+  uz: ['Название (узб.)', 'Название по-узбекски', 'Nomi', 'Nomi (uzb.)', 'Nomi (uz)', 'Oʻzbekcha nomi'],
+  desc: ['Описание', 'Tavsif (rus.)', 'Ruscha tavsif'],
+  descUz: ['Описание (узб.)', 'Описание по-узбекски', 'Tavsif', 'Tavsif (uzb.)', 'Tavsif (uz)', 'Oʻzbekcha tavsif'],
+  amount: ['Вес / объём', 'Вес', 'Объём', 'Фасовка', 'Ogʻirlik / hajm', 'Ogʻirlik', 'Hajm'],
+  unit: ['Единица', 'Ед.', 'Ед. изм.', 'Единица измерения', 'Birlik', 'Oʻlchov birligi'],
+  price: ['Цена', 'Цена, сум', 'Цена за единицу', 'Цена за единицу, сум', 'Narx', 'Narx, soʻm', 'Birlik narxi', 'Birlik narxi, soʻm'],
+  on: ['В наличии', 'Наличие', 'Mavjud', 'Mavjudligi'],
+  tag: ['Метка', 'Belgi'],
+  old: ['Старая цена', 'Старая цена, сум', 'Eski narx', 'Eski narx, soʻm']
 };
 const XL_KEY = (() => { const m = new Map(); Object.keys(XL_COLS).forEach(k => XL_COLS[k].forEach(a => m.set(nk(a), k))); return m; })();
-const XL_UNITS = { 'г': 'g', 'гр': 'g', 'g': 'g', 'кг': 'kg', 'kg': 'kg', 'шт': 'pc', 'dona': 'pc', 'pc': 'pc', 'мл': 'ml', 'ml': 'ml', 'л': 'l', 'l': 'l' };
-const XL_YES = ['да', 'yes', '1', 'true', '+', 'есть', 'ha', 'в наличии'], XL_NO = ['нет', 'no', '0', 'false', '-', 'yoq', 'yoʻq', 'нет в наличии'];
+const XL_UNITS = { 'г': 'g', 'гр': 'g', 'g': 'g', 'кг': 'kg', 'kg': 'kg', 'шт': 'pc', 'dona': 'pc', 'pc': 'pc', 'мл': 'ml', 'ml': 'ml', 'л': 'l', 'l': 'l', 'gr': 'g', 'litr': 'l', 'ta': 'pc' };
+const XL_YES = ['да', 'yes', '1', 'true', '+', 'есть', 'ha', 'в наличии', 'mavjud', 'bor'], XL_NO = ['нет', 'no', '0', 'false', '-', 'yoq', 'yoʻq', "yo'q", 'yo‘q', 'yo’q', 'yoʼq', 'нет в наличии', 'mavjud emas', 'yoq emas'];
 const XL_TAGS = { 'акция': 'sale', 'aksiya': 'sale', 'sale': 'sale', 'новинка': 'new', 'yangilik': 'new', 'new': 'new' };
 const xlNum = v => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -890,7 +890,7 @@ function xlParse(rows) {
   for (let i = 0; i < Math.min(rows.length, 8); i++) {
     const m = {};
     (rows[i] || []).forEach((c, ci) => { const k = XL_KEY.get(nk(c)); if (k && m[k] === undefined) m[k] = ci; });
-    if (m.name !== undefined && m.price !== undefined) { hi = i; map = m; break; }
+    if ((m.name !== undefined || m.uz !== undefined) && m.price !== undefined) { hi = i; map = m; break; }   // «Nomi» + «Narx» достаточно: узбекское название заменяет русское
   }
   if (!map) throw new XlErr('no_header');
   const out = [], errors = [];
@@ -899,46 +899,48 @@ function xlParse(rows) {
     const cell = k => { const v = map[k] === undefined ? '' : r[map[k]]; return v === undefined || v === null ? '' : v; };
     const txt = k => { const v = cell(k); return typeof v === 'number' ? String(v) : cleanStr(v === '' ? '' : String(v), 400, true); };
     if (!r.some(c => String(c).trim() !== '')) continue;
-    if (out.length + errors.length >= XL_MAX_ROWS) { errors.push({ row: i + 1, msg: 'слишком много строк, остальные пропущены' }); break; }
+    if (out.length + errors.length >= XL_MAX_ROWS) { errors.push({ row: i + 1, msg: 'слишком много строк, остальные пропущены', uz: 'qatorlar juda koʻp, qolganlari oʻtkazib yuborildi' }); break; }
     const row = i + 1, x = { row };
-    const bad = msg => { errors.push({ row, msg }); return null; };
-    const name = txt('name');
-    if (!name) { bad('нет названия'); continue; }
-    if (name.length > 60) { bad('название длиннее 60 знаков'); continue; }
+    const bad = (msg, uz) => { errors.push({ row, msg, uz }); return null; };
+    const nameOnly = map.name === undefined;   // русской колонки нет: единственное название идёт и в русское, и в узбекское поле
+    const name = nameOnly ? txt('uz') : txt('name');
+    if (!name) { bad('нет названия', 'nomi yoʻq'); continue; }
+    if (name.length > 60) { bad('название длиннее 60 знаков', 'nomi 60 belgidan uzun'); continue; }
     x.name = name;
+    if (nameOnly) { x.uz = name; x.nameOnly = true; }
     const pv = cell('price');
     const price = String(pv).trim() === '' ? null : xlNum(pv);
-    if (price === null || price < 0 || price > 1e8) { bad('цена должна быть числом от 0 до 100 000 000'); continue; }
+    if (price === null || price < 0 || price > 1e8) { bad('цена должна быть числом от 0 до 100 000 000', 'narx 0 dan 100 000 000 gacha son boʻlishi kerak'); continue; }
     x.price = Math.round(price);
     x.id = cleanStr(txt('id'), 24);
     x.cat = cleanStr(txt('cat'), 40);
-    if (x.cat.length > 40) { bad('категория длиннее 40 знаков'); continue; }
-    if (map.uz !== undefined) { const v = txt('uz'); if (v) { if (v.length > 60) { bad('узбекское название длиннее 60 знаков'); continue; } x.uz = v; } }
+    if (x.cat.length > 40) { bad('категория длиннее 40 знаков', 'kategoriya 40 belgidan uzun'); continue; }
+    if (map.uz !== undefined && !nameOnly) { const v = txt('uz'); if (v) { if (v.length > 60) { bad('узбекское название длиннее 60 знаков', 'oʻzbekcha nomi 60 belgidan uzun'); continue; } x.uz = v; } }
     if (map.desc !== undefined) { const v = txt('desc'); if (v) x.desc = v.slice(0, 300); }
     if (map.descUz !== undefined) { const v = txt('descUz'); if (v) x.descUz = v.slice(0, 300); }
     if (map.amount !== undefined && String(cell('amount')).trim() !== '') {
       const a = xlNum(cell('amount'));
-      if (a === null || a < 0 || a > 100000) { bad('вес или объём должен быть числом'); continue; }
+      if (a === null || a < 0 || a > 100000) { bad('вес или объём должен быть числом', 'ogʻirlik yoki hajm son boʻlishi kerak'); continue; }
       x.amount = Math.round(a * 1000) / 1000;
     }
     if (map.unit !== undefined && String(cell('unit')).trim() !== '') {
       const un = XL_UNITS[String(cell('unit')).trim().toLowerCase().replace(/\.$/, '')];
-      if (!un) { bad('неизвестная единица (нужны г, кг, шт, мл или л)'); continue; }
+      if (!un) { bad('неизвестная единица (нужны г, кг, шт, мл или л)', 'nomaʼlum birlik (g, kg, dona, ml yoki l kerak)'); continue; }
       x.unit = un;
     }
     if (map.on !== undefined && String(cell('on')).trim() !== '') {
       const v = String(cell('on')).trim().toLowerCase();
       if (XL_YES.includes(v)) x.on = true; else if (XL_NO.includes(v)) x.on = false;
-      else { bad('«В наличии»: нужно «да» или «нет»'); continue; }
+      else { bad('«В наличии»: нужно «да» или «нет»', '«Mavjud»: «ha» yoki «yoʻq» yozing'); continue; }
     }
     if (map.tag !== undefined) {
       const v = String(cell('tag')).trim().toLowerCase();
-      if (!v) x.tag = ''; else if (XL_TAGS[v]) x.tag = XL_TAGS[v]; else { bad('метка: нужно «Акция» или «Новинка»'); continue; }
+      if (!v) x.tag = ''; else if (XL_TAGS[v]) x.tag = XL_TAGS[v]; else { bad('метка: нужно «Акция» или «Новинка»', 'belgi: «Aksiya» yoki «Yangilik» yozing'); continue; }
     }
     if (map.old !== undefined) {
       const ov = cell('old');
       if (String(ov).trim() === '') x.old = 0;
-      else { const o = xlNum(ov); if (o === null || o < 0 || o > 1e8) { bad('старая цена должна быть числом'); continue; } x.old = Math.round(o); }
+      else { const o = xlNum(ov); if (o === null || o < 0 || o > 1e8) { bad('старая цена должна быть числом', 'eski narx son boʻlishi kerak'); continue; } x.old = Math.round(o); }
     }
     out.push(x);
   }
@@ -955,10 +957,10 @@ function xlPlan(parsed, prod) {
   const catFor = nameRaw => {
     const nmx = nameRaw || (cats[0] ? null : 'Прочее');
     if (!nmx) return cats[0].id;
-    let c = cats.find(x => key(x.name) === key(nmx));
+    let c = cats.find(x => key(x.name) === key(nmx) || (x.uz && key(x.uz) === key(nmx)));
     if (!c) {
       if (cats.length >= MAX_CATS) return null;
-      c = { id: 'c' + randId(5), name: nmx, uz: '' };
+      c = { id: 'c' + randId(5), name: nmx, uz: /[а-яё]/i.test(nmx) ? '' : nmx };   // название латиницей — это узбекское
       while (cats.some(x => x.id === c.id)) c.id = 'c' + randId(5);
       cats.push(c); newCats.push(c.name);
     }
@@ -970,20 +972,22 @@ function xlPlan(parsed, prod) {
     let byCode = !!it;
     if (!it) {
       let cand = items.filter(x => key(x.name) === key(r.name));
+      if (!cand.length) cand = items.filter(x => x.uz && key(x.uz) === key(r.name));   // файл по-узбекски: ищем и по узбекскому названию
       if (cand.length > 1) {
         cand = cand.filter(x => (r.amount === undefined || Number(x.amount) === r.amount) && (r.unit === undefined || x.unit === r.unit));
-        if (cand.length !== 1) { errors.push({ row: r.row, msg: 'несколько товаров с названием «' + r.name + '»: укажите код или вес' }); continue; }
+        if (cand.length !== 1) { errors.push({ row: r.row, msg: 'несколько товаров с названием «' + r.name + '»: укажите код или вес', uz: 'bir nechta mahsulot «' + r.name + '» nomli: kodni yoki ogʻirlikni koʻrsating' }); continue; }
       }
       it = cand[0] || null;
     }
     if (it) {
-      if (used.has(it.id)) { errors.push({ row: r.row, msg: 'товар «' + it.name + '» уже был выше в файле' }); continue; }
+      if (used.has(it.id)) { errors.push({ row: r.row, msg: 'товар «' + it.name + '» уже был выше в файле', uz: 'mahsulot «' + it.name + '» faylda yuqorida allaqachon bor' }); continue; }
       used.add(it.id);
       const f = [];
       const set = (k, to, show) => { if (it[k] !== to) { f.push({ k, from: show ? show(it[k]) : it[k], to: show ? show(to) : to }); it[k] = to; } };
-      if (byCode && r.name !== it.name) set('name', r.name);
+      if (r.nameOnly) { if (key(r.name) !== key(it.name)) set('uz', r.uz); }   // в файле одно название: русское в карточке не трогаем, узбекское обновляем
+      else if (byCode && r.name !== it.name) set('name', r.name);
       set('price', r.price);
-      if (r.uz !== undefined) set('uz', r.uz);
+      if (r.uz !== undefined && !r.nameOnly) set('uz', r.uz);
       if (r.desc !== undefined) set('desc', r.desc);
       if (r.descUz !== undefined) set('descUz', r.descUz);
       if (r.amount !== undefined) set('amount', r.amount);
@@ -991,7 +995,7 @@ function xlPlan(parsed, prod) {
       if (r.on !== undefined) set('on', r.on);
       if (r.cat) {
         const cid = catFor(r.cat);
-        if (cid === null) { errors.push({ row: r.row, msg: 'в каталоге уже ' + MAX_CATS + ' категорий' }); continue; }
+        if (cid === null) { errors.push({ row: r.row, msg: 'в каталоге уже ' + MAX_CATS + ' категорий', uz: 'katalogda allaqachon ' + MAX_CATS + ' ta kategoriya bor' }); continue; }
         if (it.cat !== cid) { f.push({ k: 'cat', from: catName(it.cat), to: catName(cid) }); it.cat = cid; }
       }
       if (r.tag !== undefined) {
@@ -1001,9 +1005,9 @@ function xlPlan(parsed, prod) {
       }
       if (f.length) changes.push({ kind: 'upd', id: it.id, name: it.name, fields: f }); else same++;
     } else {
-      if (items.length >= MAX_ITEMS) { errors.push({ row: r.row, msg: 'в каталоге уже ' + MAX_ITEMS + ' товаров' }); continue; }
+      if (items.length >= MAX_ITEMS) { errors.push({ row: r.row, msg: 'в каталоге уже ' + MAX_ITEMS + ' товаров', uz: 'katalogda allaqachon ' + MAX_ITEMS + ' ta mahsulot bor' }); continue; }
       const cid = catFor(r.cat);
-      if (cid === null) { errors.push({ row: r.row, msg: 'в каталоге уже ' + MAX_CATS + ' категорий' }); continue; }
+      if (cid === null) { errors.push({ row: r.row, msg: 'в каталоге уже ' + MAX_CATS + ' категорий', uz: 'katalogda allaqachon ' + MAX_CATS + ' ta kategoriya bor' }); continue; }
       let id = 'p' + randId(6);
       while (byId.has(id)) id = 'p' + randId(6);
       const n = { id, cat: cid, name: r.name, uz: r.uz || '', desc: r.desc || '', descUz: r.descUz || '', amount: r.amount || 0, unit: r.unit || 'g', price: r.price, on: r.on !== false, tag: r.tag || '', old: r.tag === 'sale' ? (r.old || 0) : 0, pv: '' };
@@ -1015,22 +1019,33 @@ function xlPlan(parsed, prod) {
   return { prod: { cats, items }, changes, errors, same, added, updated: changes.length - added, newCats };
 }
 
-/* Каталог для выгрузки в Excel (он же образец прайса). */
-function catalogSheets(prod) {
-  setLang('ru');
-  const catName = new Map(prod.cats.map(c => [c.id, c.name]));
-  const rows = [['Код', 'Категория', 'Название', 'Название (узб.)', 'Описание', 'Описание (узб.)', 'Вес / объём', 'Единица', 'Цена, сум', 'В наличии', 'Метка', 'Старая цена, сум']];
-  prod.items.forEach(p => rows.push([p.id, catName.get(p.cat) || '', p.name, p.uz || '', p.desc || '', p.descUz || '', Number(p.amount) || 0, unitName(p.unit), Number(p.price) || 0, p.on === false ? 'нет' : 'да', p.tag === 'sale' ? 'Акция' : p.tag === 'new' ? 'Новинка' : '', p.tag === 'sale' && Number(p.old) > 0 ? Number(p.old) : '']));
-  const help = ['Как заполнять прайс',
+/* Каталог для выгрузки в Excel (он же образец прайса). Заголовки, «да/нет», метки и подсказки идут на языке интерфейса (lang), загрузка понимает оба языка. */
+function catalogSheets(prod, lang) {
+  const uz = lang === 'uz';
+  setLang(uz ? 'uz' : 'ru');
+  const catName = new Map(prod.cats.map(c => [c.id, uz && c.uz ? c.uz : c.name]));
+  const rows = [uz
+    ? ['Kod', 'Kategoriya', 'Nomi (rus.)', 'Nomi (uzb.)', 'Tavsif (rus.)', 'Tavsif (uzb.)', 'Ogʻirlik / hajm', 'Birlik', 'Narx, soʻm', 'Mavjud', 'Belgi', 'Eski narx, soʻm']
+    : ['Код', 'Категория', 'Название', 'Название (узб.)', 'Описание', 'Описание (узб.)', 'Вес / объём', 'Единица', 'Цена, сум', 'В наличии', 'Метка', 'Старая цена, сум']];
+  prod.items.forEach(p => rows.push([p.id, catName.get(p.cat) || '', p.name, p.uz || '', p.desc || '', p.descUz || '', Number(p.amount) || 0, unitName(p.unit), Number(p.price) || 0, p.on === false ? (uz ? 'yoʻq' : 'нет') : (uz ? 'ha' : 'да'), tagName(p.tag), p.tag === 'sale' && Number(p.old) > 0 ? Number(p.old) : '']));
+  const help = uz ? ['Prays-listni qanday toʻldirish',
+    'Faylni ilovada yuklang: «Katalog» boʻlimi → «Prays yuklash». Qoʻllashdan oldin bot nima oʻzgarishini koʻrsatadi, siz tasdiqlaysiz.',
+    'Mahsulot kod boʻyicha topiladi. Kod boʻsh yoki topilmasa, nomi boʻyicha (bir xil nomlar bir nechta boʻlsa, ogʻirligi boʻyicha). Katalogda yoʻq mahsulot qoʻshiladi.',
+    'Hech narsa oʻchirilmaydi. Fayldagi yoʻq mahsulot katalogda avvalgidek qoladi. Rasmlar va ombor qoldiqlari oʻzgarmaydi.',
+    'Boʻsh katak «oʻzgartirma» degani. Istisno: boʻsh «Belgi» belgini olib tashlaydi, boʻsh «Eski narx» eski narxni olib tashlaydi.',
+    'Faqat «Nomi» va «Narx» ustunlari majburiy. Qolganlarini fayldan butunlay olib tashlash mumkin, shunda ular oʻzgarmaydi. Ustun sarlavhalari ruscha ham, oʻzbekcha ham boʻlishi mumkin.',
+    'Birlik: g, kg, dona, ml yoki l. Mavjud: ha yoki yoʻq. Belgi: Aksiya yoki Yangilik. Eski narx faqat aksiyada va narxdan baland boʻlsa koʻrinadi.',
+    'Yangi mahsulotlarning kategoriyasi «Kategoriya» ustunidan olinadi; shunday kategoriya yoʻq boʻlsa, yaratiladi.']
+    : ['Как заполнять прайс',
     'Загрузите файл в приложении: вкладка «Каталог» → «Загрузить прайс». Перед применением бот покажет, что изменится, и вы подтвердите.',
     'Товар находится по коду. Если код пустой или не найден, по названию (и по весу, если одинаковых названий несколько). Нового товара нет в каталоге: он будет добавлен.',
     'Ничего не удаляется. Товар, которого нет в файле, остаётся в каталоге как был. Фото и остатки на складе не меняются.',
     'Пустая ячейка означает «не менять». Исключения: пустая «Метка» убирает метку, пустая «Старая цена» убирает старую цену.',
-    'Обязательны только колонки «Название» и «Цена». Остальные можно удалить из файла целиком, тогда они не затрагиваются.',
+    'Обязательны только колонки «Название» и «Цена». Остальные можно удалить из файла целиком, тогда они не затрагиваются. Заголовки колонок могут быть и по-русски, и по-узбекски.',
     'Единица: г, кг, шт, мл или л. В наличии: да или нет. Метка: Акция или Новинка. Старая цена показывается только у акции и только если она выше цены.',
     'У новых товаров категория берётся из колонки «Категория»; если такой категории нет, она создаётся.'];
-  return [{ name: 'Каталог', w: [12, 18, 34, 28, 30, 30, 12, 9, 14, 11, 11, 16], money: [8, 11], rows },
-    { name: 'Как заполнять', w: [150], plain: true, rows: help.map(x => [x]) }];
+  return [{ name: uz ? 'Katalog' : 'Каталог', w: [12, 18, 34, 28, 30, 30, 12, 9, 14, 11, 11, 16], money: [8, 11], rows },
+    { name: uz ? 'Qanday toʻldirish' : 'Как заполнять', w: [150], plain: true, rows: help.map(x => [x]) }];
 }
 
 /* ---------- расчёты с магазинами: способы оплаты и долги ---------- */
@@ -1854,9 +1869,10 @@ export class Shop {
         caption: 'Резервная копия: заказов ' + bk.info.orders + ', клиентов ' + bk.info.clients + ', фото ' + bk.info.photos + (bk.info.photos < bk.info.photosOf ? ' из ' + bk.info.photosOf : '') + '. Сохраните файл в надёжном месте.' };
     }
     if (kind === 'catalog') {
-      const prod = await this.getProd();
-      return { name: 'catalog-' + day + '.xlsx', bytes: xlsxBuild(catalogSheets(prod)), mime: XLSX_MIME, n: prod.items.length,
-        caption: 'Каталог: товаров ' + prod.items.length + '. Измените цены, сохраните файл и загрузите его в приложении: Каталог → Загрузить прайс.' };
+      const prod = await this.getProd(), uz = b && b.lang === 'uz';
+      return { name: 'catalog-' + day + '.xlsx', bytes: xlsxBuild(catalogSheets(prod, uz ? 'uz' : 'ru')), mime: XLSX_MIME, n: prod.items.length,
+        caption: uz ? 'Katalog: mahsulotlar ' + prod.items.length + '. Narxlarni tuzating, faylni saqlang va ilovada yuklang: Katalog → Prays yuklash.'
+          : 'Каталог: товаров ' + prod.items.length + '. Измените цены, сохраните файл и загрузите его в приложении: Каталог → Загрузить прайс.' };
     }
     if (kind === 'report') {
       const r = await this.report(Number(b && b.days));

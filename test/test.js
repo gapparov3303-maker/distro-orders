@@ -6475,6 +6475,131 @@ await t('каталог: класс блока формы товара не пе
   assert.equal((html.match(/class="pbody"/g) || []).length, 2, '.pbody есть только в двух клиентских карточках (обычной и «на проверке»)');
 });
 
+/* ---------- два языка: форма товара, категории, прайс ---------- */
+// маленькая книга Excel из строк: нужна, чтобы подать в загрузку файл с нужными заголовками
+const miniXlsx = rows => {
+  const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const col = i => String.fromCharCode(65 + i);
+  const sheet = '<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+    + rows.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((v, ci) => typeof v === 'number'
+      ? '<c r="' + col(ci) + (ri + 1) + '"><v>' + v + '</v></c>'
+      : '<c r="' + col(ci) + (ri + 1) + '" t="inlineStr"><is><t>' + esc(v) + '</t></is></c>').join('') + '</row>').join('') + '</sheetData></worksheet>';
+  const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const files = [
+    ['[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>'],
+    ['xl/workbook.xml', '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="' + R + '"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+    ['xl/_rels/workbook.xml.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="' + R + '/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'],
+    ['xl/worksheets/sheet1.xml', sheet]
+  ].map(([n, t]) => ({ nm: Buffer.from(n), d: Buffer.from(t) }));
+  let body = Buffer.alloc(0), cd = Buffer.alloc(0);
+  for (const f of files) {
+    const crc = zlib.crc32(f.d), lh = Buffer.alloc(30), ch = Buffer.alloc(46);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(f.d.length, 18); lh.writeUInt32LE(f.d.length, 22); lh.writeUInt16LE(f.nm.length, 26);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(f.d.length, 20); ch.writeUInt32LE(f.d.length, 24); ch.writeUInt16LE(f.nm.length, 28); ch.writeUInt32LE(body.length, 42);
+    body = Buffer.concat([body, lh, f.nm, f.d]); cd = Buffer.concat([cd, ch, f.nm]);
+  }
+  const eo = Buffer.alloc(22); eo.writeUInt32LE(0x06054b50, 0); eo.writeUInt16LE(files.length, 8); eo.writeUInt16LE(files.length, 10); eo.writeUInt32LE(cd.length, 12); eo.writeUInt32LE(body.length, 16);
+  return new Uint8Array(Buffer.concat([body, cd, eo]));
+};
+
+await t('прайс из Excel по-узбекски: заголовки, «ha/yoʻq», категории и единицы на узбекском; выгрузка читается обратно без изменений', async () => {
+  await stockWorld();
+  tgLog = [];
+  assert.equal((await exportReq('catalog', { lang: 'uz' })).status, 200);
+  const doc = lastDoc();
+  assert.ok(/Katalog: mahsulotlar 4/.test(doc.payload.caption || ''), doc.payload.caption);
+  const x = readXlsx(doc.file.bytes);
+  assert.deepEqual(Object.keys(x), ['Katalog', 'Qanday toʻldirish']);
+  assert.deepEqual(x['Katalog'][0], ['Kod', 'Kategoriya', 'Nomi (rus.)', 'Nomi (uzb.)', 'Tavsif (rus.)', 'Tavsif (uzb.)', 'Ogʻirlik / hajm', 'Birlik', 'Narx, soʻm', 'Mavjud', 'Belgi', 'Eski narx, soʻm']);
+  const row = x['Katalog'].find(r => r[0] === 'p1');
+  assert.deepEqual([row[1], row[2], row[3], row[8], row[9]], ['Yogʻlar', 'Масло подсолнечное', 'Kungaboqar yogʻi', 82000, 'ha']);
+  assert.equal(x['Katalog'].find(r => r[0] === 'p3')[9], 'yoʻq');
+  assert.ok(x['Qanday toʻldirish'][0][0].startsWith('Prays'), 'памятка тоже по-узбекски');
+  assert.ok(!x['Qanday toʻldirish'].some(r => /[а-яё]/i.test(r[0].replace(/«Название»|«Цена»/g, ''))), 'в узбекской памятке нет русского текста, кроме названий колонок-синонимов');
+  // русский остаётся как был
+  tgLog = [];
+  assert.equal((await exportReq('catalog')).status, 200);
+  assert.deepEqual(Object.keys(readXlsx(lastDoc().file.bytes)), ['Каталог', 'Как заполнять']);
+  assert.deepEqual(readXlsx(lastDoc().file.bytes)['Каталог'][0].slice(0, 3), ['Код', 'Категория', 'Название']);
+  // узбекская выгрузка читается обратно: 4 товара без изменений, новых категорий нет
+  const d = await jsonOf(await importReq(doc.file.bytes, true));
+  assert.equal(d.applied, false);
+  assert.deepEqual(d.summary, { added: 0, updated: 0, same: 4, errors: 0, newCats: [] });
+});
+
+await t('прайс из Excel: достаточно колонок «Nomi» и «Narx»; русское название не затирается, новый товар получает название на обоих языках', async () => {
+  await stockWorld();
+  const file = miniXlsx([
+    ['Kod', 'Kategoriya', 'Nomi', 'Narx'],
+    ['p1', 'Yogʻlar', 'Kungaboqar yogʻi (yangi)', 90000],   // по коду: цена и узбекское название меняются, русское остаётся
+    ['', 'Yorma va makaron', 'Guruch', 415000],             // по узбекскому названию находится «Рис», категория узбекская — совпадает с «Крупы и макароны»
+    ['', 'Shirinliklar', 'Pechenye', 12000]                 // нового нет: создаётся, категория латиницей = узбекская
+  ]);
+  const d = await jsonOf(await importReq(file, true));
+  assert.equal(d.applied, true, JSON.stringify(d));
+  assert.deepEqual([d.summary.added, d.summary.updated, d.summary.errors], [1, 2, 0]);
+  const prod = await catalogNow(), by = id => prod.items.find(i => i.id === id);
+  assert.deepEqual([by('p1').name, by('p1').uz, by('p1').price], ['Масло подсолнечное', 'Kungaboqar yogʻi (yangi)', 90000]);
+  assert.deepEqual([by('p2').name, by('p2').uz, by('p2').price], ['Рис', 'Guruch', 415000]);
+  assert.equal(by('p2').cat, 'groats', 'категория в файле по-узбекски находит существующую, дубль не создаётся');
+  assert.deepEqual(prod.cats.map(c => c.id).filter(c => c === 'oil' || c === 'groats'), ['oil', 'groats']);
+  const nw = prod.items.find(i => i.name === 'Pechenye');
+  assert.ok(nw && nw.uz === 'Pechenye', 'новый товар: одно название и в русском, и в узбекском поле');
+  const cat = prod.cats.find(c => c.id === nw.cat);
+  assert.deepEqual([cat.name, cat.uz], ['Shirinliklar', 'Shirinliklar']);
+});
+
+await t('прайс из Excel: ошибки приходят по-русски и по-узбекски, строки с ошибками пропускаются', async () => {
+  await stockWorld();
+  const before = JSON.stringify(await catalogNow());
+  const file = miniXlsx([
+    ['Kod', 'Nomi', 'Narx', 'Birlik', 'Mavjud', 'Belgi'],
+    ['p1', '', 1000, '', '', ''],
+    ['p2', 'Guruch', 'qimmat', '', '', ''],
+    ['p4', 'Makaron', 7600, 'tonna', '', ''],
+    ['p4', 'Makaron', 7600, 'g', 'balki', ''],
+    ['p4', 'Makaron', 7600, 'g', 'ha', 'super']
+  ]);
+  const r = await importReq(file, false);
+  const d = await jsonOf(r);
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.equal(d.errors.length, 5);
+  assert.ok(d.errors.every(e => e.msg && e.uz && !/[а-яё]/i.test(e.uz)), 'у каждой ошибки есть узбекский текст без кириллицы: ' + JSON.stringify(d.errors));
+  assert.ok(d.errors.every(e => /[а-яё]/i.test(e.msg)), 'и русский');
+  assert.deepEqual(d.errors.map(e => e.row), [2, 3, 4, 5, 6]);
+  assert.equal(JSON.stringify(await catalogNow()), before);
+  // нет нужных колонок: понятная причина, а узбекский текст в приложении называет «Nomi» и «Narx»
+  const nh = await importReq(miniXlsx([['A', 'B'], ['x', 1]]), false);
+  assert.equal((await jsonOf(nh)).why, 'no_header');
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  assert.ok(/«Название» и «Цена» \(или «Nomi» и «Narx»\)/.test(html) && /«Nomi» va «Narx» \(yoki «Название» va «Цена»\)/.test(html), 'подсказка при ошибке называет колонки на обоих языках');
+  assert.ok(/esc\(L\(e\.msg,e\.uz\|\|e\.msg\)\)/.test(html), 'приложение показывает ошибку строки на языке интерфейса');
+  assert.ok(/Object\.assign\(\{kind,lang:LANG\},extra\|\|\{\}\)/.test(html), 'выгрузка просит язык интерфейса');
+});
+
+await t('форма товара и категорий: поля подписаны на двух языках, под полями мелкие подсказки, названия не зависят от языка при создании', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
+  const cst = name => { const i = html.indexOf('const ' + name + '=()=>({'); assert.ok(i > 0, name); return html.slice(i, html.indexOf('\n});', i) + 4); };
+  const body = fn('prodBody'), rv = fn('rvEditHTML'), labs = cst('PF_LAB'), hints = cst('PF_HINT');
+  assert.ok(/\.hint\{[^}]*font-size:12px[^}]*color:var\(--ink-2\)/.test(html), 'подсказка: 12 px, серый цвет темы');
+  assert.ok(/\.ltag\{/.test(html) && /\.ltag\.uz\{/.test(html), 'метки RU / UZ у подписей');
+  for (const k of ['name', 'uz', 'desc', 'descUz']) assert.ok(new RegExp('\\b' + k + ':').test(labs), 'подпись ' + k);
+  assert.ok(/Название по-русски/.test(labs) && /Ruscha nomi/.test(labs) && /Название по-узбекски/.test(labs) && /Oʻzbekcha nomi/.test(labs), 'подписи: по-русски / по-узбекски на двух языках');
+  for (const k of ['name', 'uz', 'desc', 'descUz', 'cat', 'amount', 'price', 'old']) assert.ok(new RegExp('\\b' + k + ':L\\(').test(hints), 'подсказка к полю ' + k + ' на двух языках');
+  assert.ok(/pfLab\(k,lab\)/.test(body) && /pfHint\(k\)/.test(body) && /pfHintRow\('amount'\)/.test(body) && /pfHintRow\('price'\)/.test(body) && /pfHintRow\('old'\)/.test(body), 'форма продавца: подписи и подсказки');
+  assert.ok(/pfLab\(k,lab\)/.test(rv) && /pfHint\(k\)/.test(rv) && /pfHintRow\('amount'\)/.test(rv) && /pfHintRow\('price'\)/.test(rv) && /pfHintRow\('oldS'\)/.test(rv), 'форма владельца при проверке: то же');
+  // категории показываются на языке интерфейса: и в выпадающих списках, и в фильтре
+  assert.equal((html.match(/esc\(nm\(c\)\)/g) || []).length >= 2, true, 'списки категорий в формах товара');
+  assert.ok(/P\.cats\.map\(c=>\[c\.id,nm\(c\)\]\)/.test(html), 'фильтр категорий в редакторе');
+  // новые товар и категория создаются с обоими названиями, независимо от языка интерфейса
+  assert.ok(/name:'Новый товар',uz:'Yangi mahsulot'/.test(html) && /name:'Новая категория',uz:'Yangi kategoriya'/.test(html), 'названия по умолчанию на обоих языках');
+  assert.ok(!/name:L\('Новый товар'/.test(html) && !/name:L\('Новая категория'/.test(html), 'русское название не зависит от языка интерфейса');
+  // строка категории: у каждого поля подпись с меткой языка
+  const crow = html.slice(html.indexOf('class="crow"><div><label'), html.indexOf('class="crow"><div><label') + 900);
+  assert.ok(/data-cp="name"/.test(crow) && /data-cp="uz"/.test(crow) && (crow.match(/class="ltag/g) || []).length === 2, 'в строке категории две подписанные колонки RU и UZ');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {

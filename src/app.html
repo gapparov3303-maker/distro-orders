@@ -101,6 +101,10 @@ html.mn-open,html.mn-open body{overflow:hidden}
 
 /* forms */
 .lab{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
+.ltag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.5;vertical-align:1px;background:var(--mute-soft);color:var(--ink-2);border:1px solid var(--line)}
+.ltag.uz{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.hint{display:block;font-size:12px;line-height:1.35;font-weight:400;color:var(--ink-2);margin:5px 0 0}
+.pf>.hint,.rvform>.hint{margin:-4px 0 0}
 input[type=text],input[type=tel],input[type=number],input[type=date],input[type=search],select,textarea{width:100%;background:var(--bg);border:1.5px solid var(--edge);border-radius:10px;padding:11px 12px;min-width:0}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
 input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--bad)}
@@ -476,12 +480,13 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .pf .avail{display:flex;align-items:flex-end;padding-bottom:10px}
 .chk{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
 .pact{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.crow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0}
-.crow .x{appearance:none;border:0;background:transparent;font-size:22px;line-height:1;color:var(--ink-2);cursor:pointer;width:36px;height:36px;border-radius:10px}
+.crow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;padding:10px 0 6px}
+.crow+.crow{border-top:1px solid var(--line)}
+.crow .x{appearance:none;border:0;background:transparent;font-size:22px;line-height:1;color:var(--ink-2);cursor:pointer;width:36px;height:36px;border-radius:10px;margin-bottom:7px}
 @media (max-width:480px){
   .crow{grid-template-columns:minmax(0,1fr) auto}
-  .crow .x{grid-column:2;grid-row:1/3}
-  .crow input{grid-column:1}
+  .crow .x{grid-column:2;grid-row:1/3;align-self:center;margin-bottom:0}
+  .crow>div{grid-column:1}
 }
 @media (max-width:560px){
   .pfbody{grid-template-columns:minmax(0,1fr)}
@@ -2661,7 +2666,7 @@ const xErrText=(er,kind)=>er==='empty'&&kind==='debts'?L('Под этот фил
 async function doExport(kind,extra,did){
   if(S.xbusy||(!did&&!S.admin))return;
   S.xbusy=kind;paintX();
-  const r=await api('POST','/api/admin/export',Object.assign({kind},extra||{}),did);
+  const r=await api('POST','/api/admin/export',Object.assign({kind,lang:LANG},extra||{}),did);
   S.xbusy='';paintX();
   if(r.ok&&r.data&&r.data.ok){toast(L('Файл отправлен вам в чат с ботом. Закройте приложение, чтобы его увидеть.','Fayl botdagi chatingizga yuborildi. Koʻrish uchun ilovani yoping.'));return}
   toast(xErrText(r.data&&r.data.error,kind));
@@ -2820,6 +2825,26 @@ async function modSubmit(ids){
   const n=r.data.sent||0;
   toast(L('Отправлено на проверку: '+n+(bad.length?'. Не хватает данных у '+bad.length+'.':''),'Tekshiruvga yuborildi: '+n+(bad.length?'. '+bad.length+' tasida maʼlumot yetishmaydi.':'')));
 }
+/* Подписи и мелкие подсказки полей товара: общие для формы продавца и правки владельца. Каждое поле на двух языках подписано явно: RU или UZ. */
+const PF_LAB=()=>({
+  name:[L('Название по-русски','Ruscha nomi'),'ru'],
+  uz:[L('Название по-узбекски','Oʻzbekcha nomi'),'uz'],
+  desc:[L('Описание по-русски','Ruscha tavsif'),'ru'],
+  descUz:[L('Описание по-узбекски','Oʻzbekcha tavsif'),'uz']});
+const pfLab=(k,lab)=>{const x=PF_LAB()[k];return x?x[0]+'<span class="ltag'+(x[1]==='uz'?' uz':'')+'">'+x[1].toUpperCase()+'</span>':lab};
+const PF_HINT=()=>({
+  name:L('Так название увидят клиенты в русском режиме. Пример: Тушёнка говяжья «Экстра»','Mijozlar bu nomni ruscha rejimda koʻradi. Misol: Тушёнка говяжья «Экстра»'),
+  uz:L('Так название увидят клиенты в узбекском режиме. Пример: Mol goʻshti dimlama «Ekstra». Если оставить пустым, клиенты увидят русское название.','Mijozlar bu nomni oʻzbekcha rejimda koʻradi. Misol: Mol goʻshti dimlama «Ekstra». Boʻsh qoldirsangiz, mijozlar ruscha nomni koʻradi.'),
+  desc:L('Коротко: состав, вкус, чем товар хорош. Можно оставить пустым. Пример: Кусковая говядина без добавок','Qisqacha: tarkibi, mazasi, nimasi bilan yaxshi. Boʻsh qoldirish mumkin. Misol: Кусковая говядина без добавок'),
+  descUz:L('То же по-узбекски. Если оставить пустым, клиенты увидят русское описание.','Xuddi shu oʻzbekcha. Boʻsh qoldirsangiz, mijozlar ruscha tavsifni koʻradi.'),
+  cat:L('Раздел каталога, в котором клиенты найдут товар.','Mijozlar mahsulotni katalogning shu boʻlimidan topadi.'),
+  amount:L('Сколько в одной единице: для банки 325 г впишите 325 и выберите «'+unitName('g')+'».','Bitta birlikda qancha: 325 g li banka uchun 325 yozing va «'+unitName('g')+'» ni tanlang.'),
+  price:L('Цена одной единицы (банки, пачки). Метка «'+tagName('sale')+'» или «'+tagName('new')+'» появится на карточке товара.','Bitta birlik (banka, pachka) narxi. «'+tagName('sale')+'» yoki «'+tagName('new')+'» belgisi mahsulot kartasida koʻrinadi.'),
+  old:L('Старая цена показывается зачёркнутой рядом с новой, нужна для акции. Снимите «В наличии», если товара нет: клиенты увидят его серым.','Eski narx yangisi yonida chizilgan holda koʻrinadi, aksiya uchun kerak. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: mijozlar uni kulrang koʻradi.'),
+  oldS:L('Старая цена показывается зачёркнутой рядом с новой, нужна только для акции.','Eski narx yangisi yonida chizilgan holda koʻrinadi, faqat aksiya uchun kerak.')});
+const pfHint=k=>'<span class="hint">'+esc(PF_HINT()[k])+'</span>';
+const pfHintRow=k=>'<div class="full hint">'+esc(PF_HINT()[k])+'</div>';
+const PF_FULL=['name','uz','desc','descUz','cat'];
 /* свёрнутая строка товара в редакторе: фото, название, цена и пометки; по нажатию открывается полная форма.
    Какие товары раскрыты, помнит S.pxo (только на время работы, на сервер не уходит) */
 function pxPills(p){
@@ -2865,7 +2890,7 @@ function pxAll(open){
 }
 function prodBody(p){
   const id=esc(p.id);
-  const fld=(k,lab,inner,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><label class="lab" for="p'+k+'-'+id+'">'+lab+'</label>'+inner+'</div>';
+  const fld=(k,lab,inner,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><label class="lab" for="p'+k+'-'+id+'">'+pfLab(k,lab)+'</label>'+inner+(PF_FULL.includes(k)?pfHint(k):'')+'</div>';
   const inp=(k,type,val,extra)=>'<input type="'+type+'" id="p'+k+'-'+id+'" data-pid="'+id+'" data-pp="'+k+'" value="'+esc(val)+'"'+(extra||'')+'>';
   const ta=(k,val)=>'<textarea id="p'+k+'-'+id+'" data-pid="'+id+'" data-pp="'+k+'" maxlength="300" rows="2">'+esc(val)+'</textarea>';
   return '<div class="pph" id="pph-'+id+'">'+photoBlock(p)+'</div><div class="pf"><div class="full mh" id="mh-'+id+'">'+modHeadInner(p)+'</div>'
@@ -2873,13 +2898,16 @@ function prodBody(p){
     +fld('uz',L('Название по-узбекски','Oʻzbekcha nomi'),inp('uz','text',p.uz||'',' maxlength="60"'),'full')
     +fld('desc',L('Описание','Tavsif'),ta('desc',p.desc||''),'full')
     +fld('descUz',L('Описание по-узбекски','Oʻzbekcha tavsif'),ta('descUz',p.descUz||''),'full')
-    +fld('cat',L('Категория','Kategoriya'),'<select id="pcat-'+id+'" data-pid="'+id+'" data-pp="cat">'+S.prod.cats.map(c=>'<option value="'+esc(c.id)+'"'+(p.cat===c.id?' selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select>','full')
+    +fld('cat',L('Категория','Kategoriya'),'<select id="pcat-'+id+'" data-pid="'+id+'" data-pp="cat">'+S.prod.cats.map(c=>'<option value="'+esc(c.id)+'"'+(p.cat===c.id?' selected':'')+'>'+esc(nm(c))+'</option>').join('')+'</select>','full')
     +fld('amount',L('Вес или объём единицы','Birlik ogʻirligi yoki hajmi'),inp('amount','number',p.amount||0,' inputmode="decimal" step="any" min="0"'))
     +fld('unit',L('Единица','Birlik'),'<select id="punit-'+id+'" data-pid="'+id+'" data-pp="unit">'+UNIT_IDS.map(u=>'<option value="'+u+'"'+(p.unit===u?' selected':'')+'>'+esc(unitName(u))+'</option>').join('')+'</select>')
+    +pfHintRow('amount')
     +fld('price',L('Цена за единицу, сум','Birlik narxi, soʻm'),inp('price','number',p.price||0,' inputmode="numeric" step="500" min="0"'))
     +fld('tag',L('Метка','Belgi'),'<select id="ptag-'+id+'" data-pid="'+id+'" data-pp="tag"><option value=""'+(!p.tag?' selected':'')+'>'+L('Без метки','Belgisiz')+'</option><option value="sale"'+(p.tag==='sale'?' selected':'')+'>'+tagName('sale')+'</option><option value="new"'+(p.tag==='new'?' selected':'')+'>'+tagName('new')+'</option></select>')
+    +pfHintRow('price')
     +fld('old',L('Старая цена для акции, сум','Aksiya uchun eski narx, soʻm'),inp('old','number',p.old||0,' inputmode="numeric" step="500" min="0"'))
     +'<div class="avail"><label class="chk"><input type="checkbox" data-pid="'+id+'" data-pp="on"'+(p.on!==false?' checked':'')+'> '+L('В наличии','Mavjud')+'</label></div>'
+    +pfHintRow('old')
     +tiersEditHTML(p)
     +fld('blk',L('Штук в блоке (0 — нет блока)','Blokda necha dona (0 — blok yoʻq)'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
     +fld('box',L('Штук в коробке (0 — нет коробки)','Qutida necha dona (0 — quti yoʻq)'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
@@ -2902,7 +2930,7 @@ function impVal(k,v){
 }
 function impWhy(w){return {
   not_xlsx:L('Это не файл Excel (.xlsx). Откройте прайс в Excel и сохраните как «Книга Excel (*.xlsx)».','Bu Excel (.xlsx) fayli emas. Prays-listni Excelda ochib, «Excel Workbook (*.xlsx)» sifatida saqlang.'),
-  no_header:L('Не нашёл колонки «Название» и «Цена» в первых строках. Проверьте заголовки.','Birinchi qatorlarda «Название» va «Цена» ustunlari topilmadi. Sarlavhalarni tekshiring.'),
+  no_header:L('Не нашёл колонки «Название» и «Цена» (или «Nomi» и «Narx») в первых строках. Проверьте заголовки.','Birinchi qatorlarda «Nomi» va «Narx» (yoki «Название» va «Цена») ustunlari topilmadi. Sarlavhalarni tekshiring.'),
   too_big:L('Файл слишком большой (до 1 МБ).','Fayl juda katta (1 MB gacha).')
 }[w]||L('Не удалось прочитать файл.','Faylni oʻqib boʻlmadi.')}
 function impCardHTML(){
@@ -2919,7 +2947,7 @@ function impCardHTML(){
       return '<div class="chg"><b>'+(c.kind==='add'?'+ ':'')+esc(c.name)+'</b><small>'+(c.kind==='add'?esc(L('новый товар, ','yangi mahsulot, ')+(c.cat?c.cat+', ':''))+f:f)+'</small></div>';
     }).join('');
     if(r.moreChanges)h+='<div class="unit">'+L('…и ещё изменений: ','…va yana oʻzgarishlar: ')+r.moreChanges+'</div>';
-    if(r.errors.length)h+='<div class="unit" style="margin-top:8px"><b>'+L('Эти строки не будут загружены:','Bu qatorlar yuklanmaydi:')+'</b></div>'+r.errors.map(e=>'<div class="chg bad"><small>'+L('строка ','qator ')+e.row+': '+esc(e.msg)+'</small></div>').join('')+(r.moreErrors?'<div class="unit">'+L('…и ещё ошибок: ','…va yana xatolar: ')+r.moreErrors+'</div>':'');
+    if(r.errors.length)h+='<div class="unit" style="margin-top:8px"><b>'+L('Эти строки не будут загружены:','Bu qatorlar yuklanmaydi:')+'</b></div>'+r.errors.map(e=>'<div class="chg bad"><small>'+L('строка ','qator ')+e.row+': '+esc(L(e.msg,e.uz||e.msg))+'</small></div>').join('')+(r.moreErrors?'<div class="unit">'+L('…и ещё ошибок: ','…va yana xatolar: ')+r.moreErrors+'</div>':'');
     const can=sm.added+sm.updated>0;
     h+=(can?'':'<div class="note" style="margin-top:8px">'+L('В файле нет изменений для каталога.','Faylda katalog uchun oʻzgarishlar yoʻq.')+'</div>')
       +'<div class="row-btns" style="margin-top:10px">'+(can?'<button type="button" class="btn sm" id="impapply" data-act="impapply"'+(S.impBusy?' disabled':'')+'>'+L('Применить изменения','Oʻzgarishlarni qoʻllash')+'</button>':'')+'<button type="button" class="btn ghost sm" data-act="impcancel"'+(S.impBusy?' disabled':'')+'>'+(can?L('Отмена','Bekor qilish'):L('Закрыть','Yopish'))+'</button></div>';
@@ -2959,16 +2987,16 @@ function prodHTML(){
   let h='<div class="note" style="margin-bottom:14px">'+L('Каталог товаров. Сначала создайте категории, затем добавляйте товары: название, описание, вес, цену и фото. Клиенты видят изменения сразу. Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым.','Mahsulotlar katalogi. Avval kategoriyalar yarating, keyin mahsulotlar qoʻshing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Mijozlar oʻzgarishlarni darhol koʻradi. Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi.')+'</div>'
     +'<div class="savebar" id="savebar"></div>';
   h+=impCardHTML();
-  h+='<div class="card"><h3>'+L('Категории','Kategoriyalar')+'</h3><div class="unit">'+L('Название по-русски и по-узбекски. Удалить можно пустую категорию.','Ruscha va oʻzbekcha nomi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
+  h+='<div class="card"><h3>'+L('Категории','Kategoriyalar')+'</h3><div class="unit">'+L('Каждая категория называется на двух языках: клиент видит название на языке своего приложения. Если узбекское пустое, покажется русское. Удалить можно только пустую категорию.','Har bir kategoriya ikki tilda nomlanadi: mijoz oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
   P.cats.forEach(c=>{
     const id=esc(c.id);
-    h+='<div class="crow"><input type="text" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" aria-label="'+esc(L('Название категории','Kategoriya nomi'))+'"><input type="text" data-cid="'+id+'" data-cp="uz" value="'+esc(c.uz||'')+'" maxlength="40" placeholder="Oʻzbekcha nomi" aria-label="Oʻzbekcha nomi"><button type="button" class="x" data-act="cdel" data-id="'+id+'" aria-label="'+esc(L('Удалить категорию','Kategoriyani oʻchirish'))+'">×</button></div>';
+    h+='<div class="crow"><div><label class="lab" for="cn-'+id+'">'+L('Название по-русски','Ruscha nomi')+'<span class="ltag">RU</span></label><input type="text" id="cn-'+id+'" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" placeholder="'+esc(L('Например: Консервы','Masalan: Консервы'))+'"></div><div><label class="lab" for="cu-'+id+'">'+L('Название по-узбекски','Oʻzbekcha nomi')+'<span class="ltag uz">UZ</span></label><input type="text" id="cu-'+id+'" data-cid="'+id+'" data-cp="uz" value="'+esc(c.uz||'')+'" maxlength="40" placeholder="'+esc(L('Например: Konservalar','Masalan: Konservalar'))+'"></div><button type="button" class="x" data-act="cdel" data-id="'+id+'" aria-label="'+esc(L('Удалить категорию','Kategoriyani oʻchirish'))+'">×</button></div>';
   });
   h+='<div style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="cadd">'+L('+ Добавить категорию','+ Kategoriya qoʻshish')+'</button></div></div>';
   h+='<div class="card"><h3>'+L('Товары','Mahsulotlar')+' · '+P.items.length+'</h3>';
   h+='<div id="mban">'+modBanInner()+'</div>';
   if(pend.length)h+='<div class="mgroup"><h4>'+L('На проверке','Tekshiruvda')+' · '+pend.length+'</h4>'+pend.map(modCard).join('')+'</div>';
-  if(P.cats.length>1)h+='<div class="filters" style="margin:8px 0 4px">'+[['all',L('Все','Barchasi')]].concat(P.cats.map(c=>[c.id,c.name])).map(c=>'<button type="button" class="chip" data-act="pfilter" data-id="'+esc(c[0])+'" aria-pressed="'+(S.pfilter===c[0])+'">'+esc(c[1])+'</button>').join('')+'</div>';
+  if(P.cats.length>1)h+='<div class="filters" style="margin:8px 0 4px">'+[['all',L('Все','Barchasi')]].concat(P.cats.map(c=>[c.id,nm(c)])).map(c=>'<button type="button" class="chip" data-act="pfilter" data-id="'+esc(c[0])+'" aria-pressed="'+(S.pfilter===c[0])+'">'+esc(c[1])+'</button>').join('')+'</div>';
   if(!list.length)h+='<div class="unit" style="padding:10px 0">'+(P.items.length-pend.length?L('В этой категории пока ничего нет.','Bu kategoriyada hozircha hech narsa yoʻq.'):L('Товаров пока нет. Нажмите «Добавить товар».','Mahsulotlar hozircha yoʻq. «Mahsulot qoʻshish» tugmasini bosing.'))+'</div>';
   if(list.length>1)h+='<div class="row-btns pfoldbar" id="pfoldbar"><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="0">'+L('Свернуть все','Hammasini yigʻish')+'</button><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="1">'+L('Развернуть все','Hammasini yoyish')+'</button></div>';
   list.forEach(p=>{h+=prodRow(p)});
@@ -4003,7 +4031,7 @@ function rvOpenEdit(did,id){
   paintRvSheet();
 }
 function rvEditHTML(e){
-  const p=e.p,fld=(k,lab,inner,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><label class="lab" for="rf-'+k+'">'+lab+'</label>'+inner+'</div>';
+  const p=e.p,fld=(k,lab,inner,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><label class="lab" for="rf-'+k+'">'+pfLab(k,lab)+'</label>'+inner+(PF_FULL.includes(k)?pfHint(k):'')+'</div>';
   const inp=(k,type,val,extra)=>'<input type="'+type+'" id="rf-'+k+'" data-rf="'+k+'" value="'+esc(val)+'"'+(extra||'')+'>';
   const ta=(k,val)=>'<textarea id="rf-'+k+'" data-rf="'+k+'" maxlength="300" rows="2">'+esc(val)+'</textarea>';
   const t=tiersOf(p);
@@ -4017,12 +4045,15 @@ function rvEditHTML(e){
     +fld('uz',L('Название по-узбекски','Oʻzbekcha nomi'),inp('uz','text',p.uz||'',' maxlength="60"'),'full')
     +fld('desc',L('Описание','Tavsif'),ta('desc',p.desc||''),'full')
     +fld('descUz',L('Описание по-узбекски','Oʻzbekcha tavsif'),ta('descUz',p.descUz||''),'full')
-    +fld('cat',L('Категория','Kategoriya'),'<select id="rf-cat" data-rf="cat">'+e.cats.map(c=>'<option value="'+esc(c.id)+'"'+(p.cat===c.id?' selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select>','full')
+    +fld('cat',L('Категория','Kategoriya'),'<select id="rf-cat" data-rf="cat">'+e.cats.map(c=>'<option value="'+esc(c.id)+'"'+(p.cat===c.id?' selected':'')+'>'+esc(nm(c))+'</option>').join('')+'</select>','full')
     +fld('amount',L('Вес или объём единицы','Birlik ogʻirligi yoki hajmi'),inp('amount','number',p.amount||0,' inputmode="decimal" step="any" min="0"'))
     +fld('unit',L('Единица','Birlik'),'<select id="rf-unit" data-rf="unit">'+UNIT_IDS.map(u=>'<option value="'+u+'"'+(p.unit===u?' selected':'')+'>'+esc(unitName(u))+'</option>').join('')+'</select>')
+    +pfHintRow('amount')
     +fld('price',L('Цена за единицу, сум','Birlik narxi, soʻm'),inp('price','number',p.price||0,' inputmode="numeric" step="500" min="0"'))
     +fld('tag',L('Метка','Belgi'),'<select id="rf-tag" data-rf="tag"><option value=""'+(!p.tag?' selected':'')+'>'+L('Без метки','Belgisiz')+'</option><option value="sale"'+(p.tag==='sale'?' selected':'')+'>'+tagName('sale')+'</option><option value="new"'+(p.tag==='new'?' selected':'')+'>'+tagName('new')+'</option></select>')
+    +pfHintRow('price')
     +fld('old',L('Старая цена для акции, сум','Aksiya uchun eski narx, soʻm'),inp('old','number',p.old||0,' inputmode="numeric" step="500" min="0"'))
+    +pfHintRow('oldS')
     +'<div class="full"><span class="lab">'+L('Цена от количества (оптовые ступени)','Miqdorga qarab narx (ulgurji pogʻonalar)')+'</span><div class="tiers">'+tiers+'</div><div class="err" id="rtw" role="status"></div></div>'
     +fld('blk',L('Штук в блоке (0 — нет блока)','Blokda necha dona (0 — blok yoʻq)'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
     +fld('box',L('Штук в коробке (0 — нет коробки)','Qutida necha dona (0 — quti yoʻq)'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
@@ -5054,7 +5085,7 @@ document.addEventListener('click',e=>{
   else if(a==='shopagain'){S.shopPlaced=null;S.shopStep='list';renderShop();window.scrollTo(0,0)}
   else if(a==='cadd'){
     if(S.prod.cats.length>=MAX_CATS){toast(L('Больше '+MAX_CATS+' категорий нельзя',MAX_CATS+' tadan ortiq kategoriya boʻlmaydi'));return}
-    const c={id:'c'+Math.random().toString(36).slice(2,8),name:L('Новая категория','Yangi kategoriya'),uz:'Yangi kategoriya'};
+    const c={id:'c'+Math.random().toString(36).slice(2,8),name:'Новая категория',uz:'Yangi kategoriya'};
     S.prod.cats.push(c);queueSave('prod');paintSeller();
     const inp=document.querySelector('[data-cid="'+c.id+'"][data-cp="name"]');if(inp){inp.focus();inp.select()}
   }
@@ -5092,7 +5123,7 @@ document.addEventListener('click',e=>{
     if(!S.prod.cats.length){toast(L('Сначала создайте категорию','Avval kategoriya yarating'));return}
     if(S.prod.items.length>=MAX_ITEMS){toast(L('Больше '+MAX_ITEMS+' товаров нельзя',MAX_ITEMS+' tadan ortiq mahsulot boʻlmaydi'));return}
     const cat=S.pfilter!=='all'?S.pfilter:S.prod.cats[0].id;
-    const p={id:'p'+Math.random().toString(36).slice(2,9),cat,name:L('Новый товар','Yangi mahsulot'),uz:'Yangi mahsulot',desc:'',descUz:'',amount:0,unit:'g',price:0,on:true,tag:'',old:0,pv:'',tiers:[],blk:0,box:0};
+    const p={id:'p'+Math.random().toString(36).slice(2,9),cat,name:'Новый товар',uz:'Yangi mahsulot',desc:'',descUz:'',amount:0,unit:'g',price:0,on:true,tag:'',old:0,pv:'',tiers:[],blk:0,box:0};
     S.prod.items.push(p);S.pxo[p.id]=true;queueSave('prod');paintSeller();
     const inp=document.getElementById('pname-'+p.id);
     if(inp){inp.focus();inp.select();try{inp.scrollIntoView({block:'center'})}catch(x){}}
