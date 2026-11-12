@@ -654,6 +654,34 @@ function clientsSheets(clients) {
   return [{ name: 'Клиенты', w: [22, 17, 22, 14, 40, 34, 9, 10, 18, 17, 17, 16, 11, 13], money: [8], rows }];
 }
 
+/* Долги в Excel. list — строки debtRow, logs — их журналы (в том же порядке). Лист «Долги» по магазинам, лист «История» по всем записям журнала. */
+const CF_PLAIN = { ok: 'подтвердил', wait: 'ждём ответа', no: 'ответил «Не так»', na: 'не получил сообщение' };
+function debtsSheets(list, logs) {
+  setLang('ru');
+  const head = [['Магазин', 'Организация', 'Телефон', 'Адрес', 'Долг, сум', 'Ближайший срок', 'Просрочено, сум', 'Дней просрочки', 'Спорных записей', 'Ждут ответа магазина', 'Последняя оплата', 'Статус']];
+  const hist = [['Магазин', 'Телефон', 'Дата', 'Запись', '№ записи', '№ заказа', 'Сумма, сум', 'Способ', 'Срок оплаты', 'Ответ магазина', 'Записал', 'Комментарий', 'Отменена']];
+  list.forEach((x, i) => {
+    const lg = logs[i] || { rows: [] }, rows = Array.isArray(lg.rows) ? lg.rows : [];
+    const voided = new Set(rows.filter(r => r.k === 'rv').map(r => r.of));
+    const nm = x.name || ('ID ' + x.uid);
+    const pays = rows.filter(r => r.k === 'pay' && !voided.has(r.n));
+    const last = pays.length ? pays[pays.length - 1].t : '';
+    const st = x.bal < 0 ? 'Аванс (магазин переплатил)' : x.days > 0 ? 'Просрочен' : x.bal > 0 ? 'Должен в срок' : 'Долга нет, есть записи без ответа';
+    head.push([nm, x.org || '', x.phone || '', x.addr || '', x.bal, dmy(x.due), x.over || 0, x.days || 0, x.fl || 0, x.wt || 0, last ? shopTime(last).slice(0, 10) : '', st + (x.fl > 0 ? ' · спорные записи' : '')]);
+    if (lg.base) hist.push([nm, x.phone || '', '', 'Ранние записи свёрнуты', '', '', lg.base.d, '', dmy(lg.base.due), '', '', 'Остаток по старым записям, подробностей нет', '']);
+    rows.forEach(r => {
+      const kind = r.k === 'ch' ? 'Выдача в долг' : r.k === 'pay' ? 'Оплата' : r.k === 'rv' ? 'Отмена записи №' + r.of : r.k === 'rs' ? 'Спор по записи №' + r.of + ' закрыт' : '';
+      if (!kind) return;
+      hist.push([nm, x.phone || '', shopTime(r.t), kind, r.n, r.ref || '', r.k === 'rs' ? '' : Number(r.a) || 0, r.k === 'pay' ? (PAY_PLAIN[r.m] || '') : '', r.k === 'ch' ? dmy(r.due) : '',
+        r.k === 'ch' || r.k === 'pay' ? (CF_PLAIN[r.cf] || '') : '', r.bn || '', r.k === 'pay' ? (r.note || '') : (r.why || ''), voided.has(r.n) ? 'да' : '']);
+    });
+  });
+  return [
+    { name: 'Долги', w: [26, 22, 17, 34, 15, 15, 16, 13, 13, 16, 16, 34], money: [4, 6], rows: head },
+    { name: 'История', w: [26, 17, 17, 28, 10, 12, 15, 15, 13, 22, 20, 36, 11], money: [6], rows: hist }
+  ];
+}
+
 /* Сборочный лист: сверху общий список «что достать со склада» по выбранным заказам, дальше каждый заказ на отдельной странице.
    Бумага всегда белая и по-русски: это рабочий документ продавца, его печатают или открывают на телефоне. */
 function pickHtml(orders, shop, prod, cut) {
@@ -1706,7 +1734,7 @@ export class Shop {
     idx.forEach(d => { const v = map.get('rp:' + d); if (v) days[d] = v; });
     return { since: (await this.st.get('rp0')) || '', days };
   }
-  /* Собирает файл выгрузки. kind: orders | clients | backup | pick. Возвращает {name, bytes, mime, caption, n} или {err}. */
+  /* Собирает файл выгрузки. kind: orders | clients | backup | catalog | report | debts | pick. Возвращает {name, bytes, mime, caption, n} или {err}. */
   async makeExport(kind, b) {
     setLang('ru');
     const day = ymd(shopNow());
@@ -1735,6 +1763,17 @@ export class Shop {
       const r = await this.report(Number(b && b.days));
       return { name: 'report-' + day + '.xlsx', bytes: xlsxBuild(reportSheets(r)), mime: XLSX_MIME, n: r.tot.n,
         caption: 'Отчёт за ' + r.days + ' дн.: заказов ' + r.tot.n + ', сумма ' + num(r.tot.sum) + ' сум. Откройте в Excel.' };
+    }
+    if (kind === 'debts') {
+      // f: all — все записи, over — просроченные, fl — спорные
+      const f = b && ['all', 'over', 'fl'].includes(b.f) ? b.f : 'all';
+      const dl = await this.debtList();
+      const list = dl.debtors.filter(x => f === 'all' || (f === 'over' ? x.bal > 0 && x.days > 0 : x.fl > 0));
+      if (!list.length) return { err: 'empty' };
+      const map = await this.getMany(list.map(x => 'lg:' + x.uid));
+      const owe = list.filter(x => x.bal > 0);
+      return { name: 'debts-' + day + '.xlsx', bytes: xlsxBuild(debtsSheets(list, list.map(x => map.get('lg:' + x.uid) || null))), mime: XLSX_MIME, n: list.length,
+        caption: 'Долги (' + (f === 'over' ? 'просроченные' : f === 'fl' ? 'спорные' : 'все') + '): магазинов ' + list.length + ', должны ' + num(owe.reduce((t, x) => t + x.bal, 0)) + ' сум, просрочено ' + num(owe.reduce((t, x) => t + x.over, 0)) + ' сум. Откройте в Excel.' };
     }
     if (kind === 'pick') {
       const p = await this.pickOrders(b || {});

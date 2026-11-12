@@ -2097,7 +2097,7 @@ await t('выгрузки и сборочный лист доступны тол
   const A = newUser();
   await place(A, [{ id: 'p1', qty: 1 }]);
   tgLog = [];
-  for (const kind of ['orders', 'clients', 'backup', 'pick']) {
+  for (const kind of ['orders', 'clients', 'backup', 'pick', 'debts']) {
     assert.equal((await exportReq(kind, {}, A.init())).status, 403, kind);
     assert.equal((await call('POST', '/api/admin/export', { body: { kind } })).status, 401, kind);
   }
@@ -2417,6 +2417,88 @@ await t('выгрузка: неизвестный вид и две выгруз�
   assert.deepEqual(codes, [200, 429]);
   assert.equal(tgAll('sendDocument').length, 1);
   assert.equal((await exportReq('orders')).status, 200);
+});
+
+await t('Excel «Долги»: три фильтра, листы «Долги» и «История», только продавцу', async () => {
+  await stockWorld();
+  const A = newUser(), B = newUser(), C = newUser();
+  assert.equal((await exportReq('debts', { f: 'all' }, A.init())).status, 403, 'клиент не может');
+  assert.equal((await call('POST', '/api/admin/export', { body: { kind: 'debts' } })).status, 401);
+  tgLog = [];
+  assert.equal((await exportReq('debts', { f: 'all' })).status, 404, 'без долгов файла нет');
+  assert.equal(tgAll('sendDocument').length, 0);
+  const o1 = await readyOrder(A, CART), o2 = await readyOrder(B, CART), o3 = await readyOrder(C, ONE);
+  await doneWith(o1.id, { m: 'credit', days: 3 });
+  await doneWith(o2.id, { m: 'credit', days: 14, paid: 400000, pm: 'card' });
+  await doneWith(o3.id, { m: 'credit', days: 10 });
+  await backdate(A.u.id, o1.id, plusDays(shopDay(), -4));
+  assert.equal((await debtAct(B.u.id, 'pay', { amount: 100000, m: 'cash', note: 'принёс директор' })).status, 200);
+  await confirmAll(A.u.id); await confirmAll(B.u.id);
+  // магазин C отвечает «Не так» → спорная запись
+  const lgC = await W.storage.get('lg:' + C.u.id);
+  const gC = lgC.rows.find(r => r.k === 'ch').g || lgC.rows.find(r => r.k === 'ch').n;
+  await cb({ id: C.u.id, first_name: 'Магазин' }, 'q:' + gC + ':n');
+  tgLog = [];
+  const r = await exportReq('debts', { f: 'all' });
+  const d = await jsonOf(r);
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.equal(d.n, 3);
+  const doc = lastDoc();
+  dumpFile(doc.file);
+  assert.equal(doc.payload.chat_id, String(SELLER.id));
+  assert.ok(/^debts-\d{4}-\d{2}-\d{2}\.xlsx$/.test(doc.file.name), doc.file.name);
+  assert.ok(doc.payload.caption.includes('магазинов 3'), doc.payload.caption);
+  const x = readXlsx(doc.file.bytes);
+  assert.deepEqual(Object.keys(x), ['Долги', 'История']);
+  const rows = x['Долги'], head = rows[0], col = n => head.indexOf(n);
+  assert.deepEqual(head.slice(0, 5), ['Магазин', 'Организация', 'Телефон', 'Адрес', 'Долг, сум']);
+  assert.equal(rows.length, 4);
+  const byBal = bal => rows.slice(1).find(r => r[col('Долг, сум')] === bal);
+  const a = byBal(1394000);
+  assert.ok(a, 'долг первого магазина');
+  assert.equal(a[col('Просрочено, сум')], 1394000);
+  assert.equal(a[col('Дней просрочки')], 4);
+  assert.equal(a[col('Статус')], 'Просрочен');
+  const b = byBal(994000 - 100000);
+  assert.ok(b, 'долг второго магазина после платежа');
+  assert.equal(b[col('Дней просрочки')], 0);
+  assert.equal(b[col('Статус')], 'Должен в срок');
+  assert.match(String(b[col('Последняя оплата')]), /^\d{4}-\d{2}-\d{2}$/);
+  const c = byBal(7500);
+  assert.equal(c[col('Спорных записей')], 1);
+  assert.ok(String(c[col('Статус')]).includes('спорные записи'));
+  const hist = x['История'], hh = hist[0], hc = n => hh.indexOf(n);
+  assert.ok(hist.length > 4, 'в истории все записи');
+  const chRows = hist.slice(1).filter(r => r[hc('Запись')] === 'Выдача в долг');
+  assert.equal(chRows.length, 3);
+  assert.ok(chRows.every(r => /^Z-/.test(r[hc('№ заказа')])), 'у выдач есть номер заказа');
+  const pays = hist.slice(1).filter(r => r[hc('Запись')] === 'Оплата');
+  assert.deepEqual(pays.map(r => [r[hc('Способ')], r[hc('Сумма, сум')]]).sort(), [['Карта', 400000], ['Наличные', 100000]]);
+  assert.ok(pays.find(r => r[hc('Комментарий')] === 'принёс директор'));
+  assert.ok(hist.slice(1).some(r => r[hc('Ответ магазина')] === 'ответил «Не так»'), 'ответ магазина виден');
+  // фильтры
+  tgLog = [];
+  const over = await jsonOf(await exportReq('debts', { f: 'over' }));
+  assert.equal(over.n, 1);
+  assert.ok(lastDoc().payload.caption.includes('просроченные'));
+  assert.equal(readXlsx(lastDoc().file.bytes)['Долги'].length, 2);
+  const fl = await jsonOf(await exportReq('debts', { f: 'fl' }));
+  assert.equal(fl.n, 1);
+  assert.equal(readXlsx(lastDoc().file.bytes)['Долги'][1][col('Долг, сум')], 7500);
+  assert.equal((await jsonOf(await exportReq('debts', { f: 'zzz' }))).n, 3, 'неизвестный фильтр = все');
+  assert.equal((await jsonOf(await exportReq('debts', {}))).n, 3, 'без фильтра = все');
+  // старые записи свёрнуты в остаток: в истории строка-пояснение
+  const lgB = await W.storage.get('lg:' + B.u.id); lgB.base = { d: 5000, due: '2026-01-01' }; await W.storage.put('lg:' + B.u.id, lgB);
+  await exportReq('debts', { f: 'all' });
+  const hx = readXlsx(lastDoc().file.bytes)['История'], bi = hx.find(r => r[hx[0].indexOf('Запись')] === 'Ранние записи свёрнуты');
+  assert.ok(bi, 'строка про свёрнутые записи');
+  assert.equal(bi[hx[0].indexOf('Сумма, сум')], 5000);
+  assert.equal(bi[hx[0].indexOf('Срок оплаты')], '01.01.2026');
+  // всё погашено → «просроченные» пусто, файла нет
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 1394000, m: 'cash' })).status, 200);
+  tgLog = [];
+  assert.equal((await exportReq('debts', { f: 'over' })).status, 404);
+  assert.equal(tgAll('sendDocument').length, 0);
 });
 
 await t('выгрузки: пустой магазин не ломается', async () => {
