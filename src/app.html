@@ -14,6 +14,7 @@
   --bg:#F3F7F6; --surface:#FFFFFF; --surface-2:#E7EFED; --ink:#14231F; --ink-2:#5B6E69; --line:#D6E3E0;
   --accent:#0F766E; --accent-ink:#FFFFFF; --accent-soft:#D9F0EC; --grp:#B4541A;
   --stage-a:#E2F1EE; --stage-b:#E6ECF7;
+  --bc-bg:#E4F4EC; --bc-edge:#8CC7AC; --bc-bar:#1D8A66; --bc-in:#FFFFFF;
   --ok:#1F7A4D; --ok-soft:#DDF3E6; --warn:#9A5B00; --warn-soft:#FBEBCB; --bad:#B3261E; --bad-soft:#FBE0DD; --info:#1F5FA3; --info-soft:#DCEBFA; --mute:#5B6E69; --mute-soft:#E7EFED;
   --f-display:'Unbounded','Onest',system-ui,sans-serif;
   --f-body:'Onest',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
@@ -24,6 +25,7 @@
     --bg:#0E1614; --surface:#162220; --surface-2:#1D2D2A; --ink:#E8F3F0; --ink-2:#9DB5AF; --line:#27403B;
     --accent:#4FD1C0; --accent-ink:#06211D; --accent-soft:#16403A; --grp:#E8A662;
     --stage-a:#1B2B28; --stage-b:#1B2433;
+    --bc-bg:#1B3A32; --bc-edge:#2F6B58; --bc-bar:#4FD1C0; --bc-in:#162220;
     --ok:#6FD3A0; --ok-soft:#1D3A2D; --warn:#F2B957; --warn-soft:#3F3015; --bad:#FF8A80; --bad-soft:#44201E; --info:#7DB6F0; --info-soft:#1B3149; --mute:#9DB5AF; --mute-soft:#1D2D2A;
     color-scheme:dark;
   }
@@ -32,6 +34,7 @@
   --bg:#0E1614; --surface:#162220; --surface-2:#1D2D2A; --ink:#E8F3F0; --ink-2:#9DB5AF; --line:#27403B;
   --accent:#4FD1C0; --accent-ink:#06211D; --accent-soft:#16403A; --grp:#E8A662;
   --stage-a:#1B2B28; --stage-b:#1B2433;
+  --bc-bg:#1B3A32; --bc-edge:#2F6B58; --bc-bar:#4FD1C0; --bc-in:#162220;
   --ok:#6FD3A0; --ok-soft:#1D3A2D; --warn:#F2B957; --warn-soft:#3F3015; --bad:#FF8A80; --bad-soft:#44201E; --info:#7DB6F0; --info-soft:#1B3149; --mute:#9DB5AF; --mute-soft:#1D2D2A;
   color-scheme:dark;
 }
@@ -574,6 +577,9 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .bcard{padding:12px 14px;gap:6px;margin-bottom:10px;grid-template-columns:minmax(0,1fr)}
 .bcard>*{min-width:0}
 .bcard.dim{opacity:.62}
+/* карточка магазина в «Базе»: цвет заметно отличается от фона экрана */
+.bcard.bst{background:var(--bc-bg);border:1.5px solid var(--bc-edge);border-left:6px solid var(--bc-bar);padding-left:10px;box-shadow:0 1px 4px rgba(20,60,50,.10)}
+.bcard.bst .cmine,.bcard.bst .bnote{background:var(--bc-in)}
 .bh{display:flex;align-items:center;gap:8px;min-width:0}
 .bh h3{flex:0 1 auto;min-width:0;font-size:16px;line-height:1.25}
 .bsigns{display:flex;gap:8px;flex:none}
@@ -4178,7 +4184,7 @@ function baseCardHTML(x){
   const tn=terrName(x.terr);
   const canDel=b.role==='owner'||(b.role==='agent'&&!x.app);
   const ib=(cls,act,ico,lab,extra)=>'<button type="button" class="ibtn'+cls+'" data-act="'+act+'" data-id="'+esc(x.id)+'" aria-label="'+esc(lab)+'"'+(extra||'')+'>'+ICO[ico]+'</button>';
-  return '<article class="bcard'+(w&&x.st==='refuse'?' dim':'')+'"><div class="bh"><h3>'+esc(x.name)+'</h3>'+(signs?'<span class="bsigns">'+signs+'</span>':'')+'<span class="dtag">'+esc(tn||(w?L('без района','rayonsiz'):''))+'</span></div>'
+  return '<article class="bcard bst'+(w&&x.st==='refuse'?' dim':'')+'"><div class="bh"><h3>'+esc(x.name)+'</h3>'+(signs?'<span class="bsigns">'+signs+'</span>':'')+'<span class="dtag">'+esc(tn||(w?L('без района','rayonsiz'):''))+'</span></div>'
     +(x.addr?'<div class="dmeta">'+esc(x.addr)+'</div>':'')
     +(w&&x.note?'<div class="bnote">'+esc(x.note)+'</div>':'')
     +baseLocHTML(x)
