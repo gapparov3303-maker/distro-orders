@@ -6453,7 +6453,7 @@ await t('каталог: товары сворачиваются, всё свё�
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
   assert.equal((html.match(/medit:\{\},pxo:\{\}/g) || []).length, 2, 'S.pxo есть в начальном состоянии и при сбросе');
   const row = fn('prodRow'), sum = fn('pxSumInner'), body = fn('prodBody');
-  assert.ok(/open=!!S\.pxo\[p\.id\]/.test(row) && /\(open\?'<div class="pbody"/.test(row), 'форма рисуется только у раскрытого товара, по умолчанию свёрнут');
+  assert.ok(/open=!!S\.pxo\[p\.id\]/.test(row) && /\(open\?'<div class="pfbody"/.test(row), 'форма рисуется только у раскрытого товара, по умолчанию свёрнут');
   assert.ok(!/pmove|pdel/.test(row + sum), 'в свёрнутой строке нет ▲▼ и удаления');
   assert.ok(/data-act="pmove"/.test(body) && /data-act="pdel"/.test(body) && /data-act="pfold"/.test(body), 'в раскрытой карточке есть ▲▼, удаление и «Свернуть»');
   assert.ok(/aria-expanded="'\+open/.test(row), 'состояние читается и для экранных дикторов');
@@ -6465,6 +6465,14 @@ await t('каталог: товары сворачиваются, всё свё�
   assert.ok(/delete S\.pxo\[id\]/.test(html), 'при удалении товара состояние чистится');
   assert.ok(/pxLive\(p\);\s*queueSave\('prod'\)/.test(html), 'заголовок обновляется при правке полей');
   assert.ok(!/S\.pxo/.test(fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8')), 'раскрытость не уходит на сервер');
+});
+
+await t('каталог: класс блока формы товара не пересекается с .pbody карточки клиента', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  assert.equal((html.match(/^\.pbody\{/gm) || []).length, 1, 'правило .pbody (нижняя часть карточки клиента) одно, без второго с тем же именем');
+  assert.ok(/^\.pfbody\{/m.test(html), 'у формы товара свой класс .pfbody');
+  assert.ok(!/class="pbody" id=/.test(html), 'форма продавца не использует класс .pbody');
+  assert.equal((html.match(/class="pbody"/g) || []).length, 2, '.pbody есть только в двух клиентских карточках (обычной и «на проверке»)');
 });
 
 /* ---------- итог ---------- */
