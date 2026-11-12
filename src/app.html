@@ -2676,7 +2676,7 @@ async function doExport(kind,extra,did){
 async function openPick(body){
   if(S.pickBusy||!S.admin)return;
   S.pickBusy=true;
-  const r=await api('POST','/api/admin/pick',body);
+  const r=await api('POST','/api/admin/pick',Object.assign({lang:LANG},body));
   S.pickBusy=false;
   if(!r.ok||!r.data||!r.data.html){toast(xErrText(r.data&&r.data.error));return}
   S.pick={body,n:r.data.n};
