@@ -1887,13 +1887,13 @@ const DB=()=>S.view==='courier'?S.cr.dbt:S.dbt;
 const dPaint=()=>S.view==='courier'?paintCourier():paintSeller();
 const dApi=()=>S.view==='courier'?'/api/courier/debts':'/api/admin/debts';
 const dLoad=()=>S.view==='courier'?loadCrDebts():loadDebts();
-function newDebts(){return {ok:false,list:[],total:0,overdue:0,n:0,late:0,fl:0,flt:'all',open:null,det:null,ex:{},amount:'',pm:'cash',note:'',busy:false,vn:0,vwhy:'',rn:0,rnote:''}}
+function newDebts(){return {ok:false,list:[],total:0,overdue:0,n:0,late:0,fl:0,flt:'all',open:null,det:null,ex:{},amount:'',pm:'cash',note:'',busy:false,vn:0,vwhy:'',rn:0,rnote:'',morning:true,mbusy:false}}
 async function loadDebts(){
   if(!S.admin||!S.did)return;
   const r=await api('GET','/api/admin/debts');
   if(!r.ok||!r.data||!Array.isArray(r.data.debtors))return;
   const d=S.dbt,same=d.ok&&JSON.stringify([r.data.debtors,r.data.total,r.data.late,r.data.fl])===JSON.stringify([d.list,d.total,d.late,d.fl]);
-  Object.assign(d,{ok:true,list:r.data.debtors,total:r.data.total,overdue:r.data.overdue,n:r.data.n,late:r.data.late,fl:r.data.fl||0});
+  Object.assign(d,{ok:true,list:r.data.debtors,total:r.data.total,overdue:r.data.overdue,n:r.data.n,late:r.data.late,fl:r.data.fl||0,morning:r.data.morning!==false});
   if(!same)renderNav();
   if(same||S.view!=='seller')return;
   paintTabs();
@@ -1913,12 +1913,28 @@ function debtsHTML(){
   if(d.fl>0)h+='<div class="note warnnote" style="margin-bottom:10px">'+L('Спорных записей: '+d.fl+'. Магазин ответил «Не так», не получил сообщение или молчит больше суток.','Bahsli yozuvlar: '+d.fl+'. Doʻkon «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim.')+'</div>'
     +'<div class="filters">'+[['all',L('Все','Hammasi')],['fl',L('Спорные','Bahsli')]].map(f=>'<button type="button" class="chip" data-act="dflt" data-v="'+f[0]+'" aria-pressed="'+(d.flt===f[0])+'">'+f[1]+'</button>').join('')+'</div>';
   h+=dxHTML(d);
-  if(!d.list.length)return h+'<div class="empty"><b>'+L('Долгов пока нет','Qarzlar hozircha yoʻq')+'</b>'+L('Когда вы выдадите заказ «в долг», магазин появится здесь. Оплаты записываются в карточке магазина, в том числе частями.','Buyurtmani «qarzga» topshirganingizda, doʻkon shu yerda paydo boʻladi. Toʻlovlar doʻkon kartochkasida yoziladi, shu jumladan qism-qism.')+'</div>';
+  if(!d.list.length)return h+'<div class="empty"><b>'+L('Долгов пока нет','Qarzlar hozircha yoʻq')+'</b>'+L('Когда вы выдадите заказ «в долг», магазин появится здесь. Оплаты записываются в карточке магазина, в том числе частями.','Buyurtmani «qarzga» topshirganingizda, doʻkon shu yerda paydo boʻladi. Toʻlovlar doʻkon kartochkasida yoziladi, shu jumladan qism-qism.')+'</div>'+dmHTML(d);
   return h+'<div class="dlist">'+d.list.filter(x=>d.flt!=='fl'||x.fl>0).map(x=>{
     const adv=x.bal<0;
     return '<button type="button" class="drow'+(x.days&&!adv?' late':'')+'" data-act="dopen" data-uid="'+x.uid+'"><div class="dn"><b>'+esc(x.name||('ID '+x.uid))+'</b><small>'+esc([x.org,x.phone,x.addr].filter(Boolean).join(' · '))+'</small>'+(x.fl>0?'<small class="bad">'+L('Спорных записей: '+x.fl,'Bahsli yozuvlar: '+x.fl)+'</small>':x.wt>0?'<small>'+L('Ждёт ответа магазина: '+x.wt,'Doʻkon javobi kutilmoqda: '+x.wt)+'</small>':'')+'</div>'
       +'<div class="da"><b>'+(adv?L('Аванс ','Avans ')+money(-x.bal):money(x.bal))+'</b>'+(adv||(x.bal===0&&(x.wt>0||x.fl>0))?'':'<small class="'+(x.days?'bad':'')+'">'+esc(lateTxt(x))+'</small>')+'</div></button>';
-  }).join('')+'</div>';
+  }).join('')+'</div>'+dmHTML(d);
+}
+/* Утреннее напоминание в 9:00: список магазинов с просрочкой приходит продавцу в чат с ботом. Только у продавца. */
+function dmHTML(d){
+  if(S.view==='courier'||!S.admin)return '';
+  return '<div class="xtools" style="margin-top:14px"><button type="button" class="btn ghost sm" data-act="dmorn" aria-pressed="'+(d.morning?'true':'false')+'"'+(d.mbusy?' disabled':'')+'>'+(d.morning?L('Утреннее напоминание: вкл','Ertalabki eslatma: yoqilgan'):L('Утреннее напоминание: выкл','Ertalabki eslatma: oʻchirilgan'))+'</button>'
+    +'<div class="unit">'+L('Каждое утро в 9:00 бот пришлёт в чат список магазинов с просроченным долгом. Если просрочки нет, сообщения не будет. Магазинам ничего не отправляется.','Har kuni ertalab soat 9:00 da bot chatga muddati oʻtgan qarzi bor doʻkonlar roʻyxatini yuboradi. Muddati oʻtgan qarz boʻlmasa, xabar kelmaydi. Doʻkonlarga hech narsa yuborilmaydi.')+'</div></div>';
+}
+async function dMorning(){
+  const d=S.dbt;if(d.mbusy||!S.admin)return;
+  const on=!d.morning;
+  d.mbusy=true;dPaint();
+  const r=await api('POST','/api/admin/debts/morning',{on});
+  d.mbusy=false;
+  if(r.ok&&r.data&&typeof r.data.morning==='boolean'){d.morning=r.data.morning;toast(d.morning?L('Утреннее напоминание включено','Ertalabki eslatma yoqildi'):L('Утреннее напоминание выключено','Ertalabki eslatma oʻchirildi'))}
+  else toast(L('Не получилось. Проверьте соединение и повторите.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urining.'));
+  dPaint();
 }
 /* «Долги в Excel»: кнопка открывает выбор (все / просроченные / спорные), файл уходит продавцу в чат с ботом. Только у продавца. */
 function dxHTML(d){
@@ -5053,6 +5069,7 @@ document.addEventListener('click',e=>{
   else if(a==='whof'){S.own.who.f=t.dataset.v;S.own.who.all=false;renderOwner()}
   else if(a==='whoall'){S.own.who.all=true;const l=$('#who-list');if(l)l.innerHTML=whoListHTML()}
   else if(a==='dxmenu'){S.dxm=!S.dxm;dPaint()}
+  else if(a==='dmorn')dMorning()
   else if(a==='dxport'){S.dxm=false;dPaint();doExport('debts',{f:t.dataset.f})}
   else if(a==='impapply')impApply();
   else if(a==='impcancel'){S.imp=null;paintSeller()}

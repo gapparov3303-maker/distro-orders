@@ -6101,6 +6101,111 @@ await t('вход по коду: код владельца с нового ак�
   assert.equal(tgAll('sendMessage', p => String(p.text).startsWith('🔑')).length, 0);
 });
 
+/* ---------- утреннее напоминание о просрочке ---------- */
+const runMorning = async () => { const jobs = []; await mod.default.scheduled({ cron: '0 4 * * *' }, W.env, { waitUntil: p => jobs.push(p) }); await Promise.all(jobs); };
+const morningMsgs = to => tgAll('sendMessage', p => p.chat_id === to && String(p.text).startsWith('⏰'));
+/* заказ выдан в долг и просрочен на days дней */
+async function overdueDebt(days, cart) {
+  const u = newUser(), o = await readyOrder(u, cart || ONE);
+  await doneWith(o.id, { m: 'credit', days: 3 });
+  await backdate(u.u.id, o.id, plusDays(shopDay(), -days));
+  return u;
+}
+
+await t('утреннее напоминание: продавцу список просроченных, самые давние первыми; без просрочки молчит; в тот же день не повторяется', async () => {
+  await stockWorld();
+  tgLog = [];
+  await runMorning();
+  assert.equal(morningMsgs(SELLER.id).length, 0, 'долгов нет: тихо');
+  const a = await overdueDebt(4), b = await overdueDebt(10, CART);
+  const c = newUser(); { const o = await readyOrder(c, ONE); await doneWith(o.id, { m: 'credit', days: 5 }); }
+  const dd = newUser(); { const o = await readyOrder(dd, ONE); await doneWith(o.id, { m: 'cash' }); }
+  tgLog = [];
+  await runMorning();
+  const m = morningMsgs(SELLER.id);
+  assert.equal(m.length, 1, 'одно сообщение продавцу');
+  const text = m[0].payload.text.replace(/[\u00a0\u202f]/g, ' ');
+  assert.ok(text.includes('просрочка на сегодня') && text.includes('Магазинов: 2'), text);
+  const rows = text.split('\n').filter(x => /^\d+\. /.test(x));
+  assert.equal(rows.length, 2, 'в списке только просроченные: ' + text);
+  assert.ok(rows[0].includes('10 дн.') && rows[0].includes('1 394 000') && rows[1].includes('4 дн.') && rows[1].includes('7 500'), rows.join(' | '));
+  assert.ok(text.includes('просрочено 1 401 500'), 'общая сумма: ' + text);
+  assert.equal(m[0].payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=main&v=seller', 'кнопка в приложение');
+  assert.equal(tgAll('sendMessage', p => p.chat_id === a.u.id || p.chat_id === b.u.id).filter(x => String(x.payload.text).startsWith('⏰')).length, 0, 'магазинам автоматически не пишем');
+  tgLog = [];
+  await runMorning();
+  assert.equal(morningMsgs(SELLER.id).length, 0, 'в тот же день второй раз не шлём');
+});
+
+await t('утреннее напоминание: переключатель выключает рассылку, включает обратно; доступен только продавцу', async () => {
+  await stockWorld();
+  await overdueDebt(3);
+  const sw = (on, init) => call('POST', '/api/admin/debts/morning', { init: init || iS(), body: on });
+  assert.equal((await jsonOf(await call('GET', '/api/admin/debts', { init: iS() }))).morning, true, 'по умолчанию включено');
+  assert.equal((await sw({ on: false }, iA())).status, 403, 'клиент не может');
+  assert.equal((await call('POST', '/api/admin/debts/morning', { body: { on: false } })).status, 401);
+  for (const bad of [{}, { on: 'no' }, { on: 1 }, null]) assert.equal((await sw(bad)).status, 400, JSON.stringify(bad));
+  assert.equal((await sw({ on: false })).status, 200);
+  assert.equal((await jsonOf(await call('GET', '/api/admin/debts', { init: iS() }))).morning, false);
+  tgLog = [];
+  await runMorning();
+  assert.equal(morningMsgs(SELLER.id).length, 0, 'выключено: тихо');
+  assert.equal((await sw({ on: true })).status, 200);
+  assert.equal((await jsonOf(await call('GET', '/api/admin/debts', { init: iS() }))).morning, true);
+  await runMorning();
+  assert.equal(morningMsgs(SELLER.id).length, 1, 'включили снова: сообщение пришло');
+});
+
+await t('утреннее напоминание: длинный список сокращается до 10 строк, сообщение укладывается в лимит Telegram', async () => {
+  await stockWorld();
+  for (let i = 0; i < 12; i++) await overdueDebt(2 + i);
+  tgLog = [];
+  await runMorning();
+  const text = morningMsgs(SELLER.id)[0].payload.text.replace(/[\u00a0\u202f]/g, ' ');
+  assert.equal(text.split('\n').filter(x => /^\d+\. /.test(x)).length, 10);
+  assert.ok(text.includes('Магазинов: 12') && text.trimEnd().endsWith('и ещё 2'), text);
+  assert.ok(text.length < 3000);
+  assert.ok(text.split('\n').filter(x => /^\d+\. /.test(x))[0].includes('13 дн.'), 'самый давний первым');
+});
+
+await t('утреннее напоминание: у каждого дистрибьютора своё, чужие продавцы не получают, отключённые пропускаются', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  tgLog = [];
+  await runMorning();
+  assert.equal(morningMsgs(SELLER.id).length + morningMsgs(DIL.id).length, 0, 'долгов нигде нет: тихо');
+  // долг у второго дистрибьютора: сообщение именно с его названием и только его продавцу
+  const U = newUser();
+  const o = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: U.init(), body: { cart: CART, form: formFor(S.DEFAULT, 'pickup', {}), lang: 'ru', expectTotal: 1394000 } }))).order;
+  for (const to of ['accepted', 'ready']) assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id: o.id, to } })).status, 200);
+  assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id: o.id, to: 'done', pay: { m: 'credit', days: 3 } } })).status, 200);
+  const sh = W.getShop(sid).storage, lg = await sh.get('lg:' + U.u.id), lh = await sh.get('lh:' + U.u.id);
+  lg.rows.forEach(r => { if (r.k === 'ch') r.due = plusDays(shopDay(), -7); }); lh.open.forEach(q => { q.due = plusDays(shopDay(), -7); });
+  await sh.put('lg:' + U.u.id, lg); await sh.put('lh:' + U.u.id, lh);
+  await W.storage.delete('mrd');
+  tgLog = [];
+  await runMorning();
+  const md = morningMsgs(DIL.id), mt = md.length ? md[0].payload.text.replace(/[\u00a0\u202f]/g, ' ') : '';
+  assert.equal(md.length, 1);
+  assert.ok(mt.includes('Альфа Трейд') && mt.includes('7 дн.') && mt.includes('1 394 000'), mt);
+  assert.equal(morningMsgs(SELLER.id).length, 0, 'у первого дистрибьютора просрочки нет, его продавцу не пишем');
+  // отключённый дистрибьютор пропускается
+  const recs = await W.hubStorage.get('d:' + sid);
+  recs.on = false; await W.hubStorage.put('d:' + sid, recs);
+  await sh.delete('mrd'); tgLog = [];
+  await runMorning();
+  assert.equal(morningMsgs(DIL.id).length, 0, 'отключён: тихо');
+});
+
+await t('утреннее напоминание: расписание в wrangler.toml и обработчик scheduled на месте', async () => {
+  const toml = fs.readFileSync(path.join(root, 'wrangler.toml'), 'utf8');
+  assert.match(toml, /\[triggers\]\s*\ncrons = \["0 4 \* \* \*"\]/);
+  assert.equal(typeof mod.default.scheduled, 'function');
+  // без токена бота не падает и ничего не шлёт
+  W = makeWorld({ BOT_TOKEN: '' }); tgLog = [];
+  await runMorning();
+  assert.equal(tgAll('sendMessage').length, 0);
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {

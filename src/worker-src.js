@@ -1186,6 +1186,15 @@ function payLine(pay) {
   if (pay.m !== 'credit') return 'Оплата: ' + PAY_RU[pay.m];
   return 'Оплата: ' + (pay.paid ? PAY_RU[pay.pm] + ' ' + money(pay.paid) + ' + ' : '') + PAY_RU.credit + ' до ' + dmy(pay.due);
 }
+/* Утреннее сообщение продавцу: у кого просрочен долг. late — строки debtRow только с просрочкой, самые давние первыми. */
+const MORNING_ROWS = 10;
+function morningText(shopName, late) {
+  setLang('ru');
+  const over = late.reduce((t, x) => t + (Number(x.over) || 0), 0);
+  const lines = late.slice(0, MORNING_ROWS).map((x, i) => (i + 1) + '. ' + cleanStr(x.name || x.org || ('ID ' + x.uid), 40) + ': ' + money(x.over) + ', ' + x.days + ' дн.');
+  return '⏰ ' + cleanStr(shopName || '', 60) + ': просрочка на сегодня\nМагазинов: ' + late.length + ', просрочено ' + money(over) + '\n\n' + lines.join('\n')
+    + (late.length > MORNING_ROWS ? '\nи ещё ' + (late.length - MORNING_ROWS) : '');
+}
 function debtLine(h, today) {
   if (!h || !(h.bal > 0)) return '';
   const d = lgDue(h.open, today);
@@ -1478,6 +1487,16 @@ export default {
       return stubOf(env.SHOP, did).fetch(withDid(request, did));
     }
     return json({ error: 'not_found' }, 404);
+  },
+  /* Расписание из wrangler.toml (каждое утро): напоминание продавцам о просроченных долгах. */
+  async scheduled(event, env, ctx) {
+    const run = async () => {
+      try {
+        if (env.HUB) await hubCall(env, '/__/morning', {});
+        else await shopCall(env, MAIN, '/__/morning', { origin: '' });
+      } catch (e) { console.error('scheduled failed', e && e.message || e); }
+    };
+    if (ctx && ctx.waitUntil) ctx.waitUntil(run()); else await run();
   }
 };
 
@@ -1910,6 +1929,7 @@ export class Shop {
     if (path === '/__/mod-return') return await this.modReturn(b);
     if (path === '/__/mod-edit') return await this.modEdit(b);
     if (path === '/__/admins') return json({ admins: (await this.st.get('admins')) || [] });
+    if (path === '/__/morning') return json(await this.morning(b.origin));
     if (path === '/__/admin-add') {
       const uid = Number(b.uid);
       if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
@@ -2109,6 +2129,12 @@ export class Shop {
       }
       if (path === '/api/admin/couriers' || path.startsWith('/api/admin/couriers/')) return await this.adminCouriers(request, path, method, uid, u);
       if (path === '/api/admin/debts' && method === 'GET') return json(await this.debtList());
+      if (path === '/api/admin/debts/morning' && method === 'POST') {
+        const r = await this.readBody(request, 500);
+        if (r.err || !r.body || typeof r.body.on !== 'boolean') return json({ error: 'bad_request' }, 400);
+        if (r.body.on) await this.st.delete('mrn'); else await this.st.put('mrn', 0);
+        return json({ ok: true, morning: r.body.on });
+      }
       if (path === '/api/admin/disputes' && method === 'GET') return json({ items: await this.disputes() });
       const dm = path.match(/^\/api\/admin\/debts\/(\d{1,15})(?:\/(pay|void|remind|resolve))?$/);
       if (dm) {
@@ -3046,7 +3072,27 @@ export class Shop {
     const list = idx.map(u => map.get('lh:' + u)).filter(h => h && (h.bal !== 0 || lgFlags(h, Date.now()) > 0 || (h.cwt || []).length)).map(h => debtRow(h, today));
     list.sort((a, b) => ((b.fl > 0) - (a.fl > 0)) || ((a.bal < 0) - (b.bal < 0)) || (b.days - a.days) || (a.due || '9').localeCompare(b.due || '9') || b.bal - a.bal);
     const owing = list.filter(x => x.bal > 0);
-    return { debtors: list, total: owing.reduce((t, x) => t + x.bal, 0), overdue: owing.reduce((t, x) => t + x.over, 0), n: owing.length, late: owing.filter(x => x.days > 0).length, fl: list.reduce((t, x) => t + x.fl, 0) };
+    return { debtors: list, total: owing.reduce((t, x) => t + x.bal, 0), overdue: owing.reduce((t, x) => t + x.over, 0), n: owing.length, late: owing.filter(x => x.days > 0).length, fl: list.reduce((t, x) => t + x.fl, 0), morning: (await this.st.get('mrn')) !== 0 };
+  }
+  /* Утреннее напоминание продавцам. Вызывается площадкой по расписанию. Молчит, если выключено, уже было сегодня или просрочки нет. */
+  async morning(origin) {
+    if (!this.env.BOT_TOKEN) return { sent: 0, why: 'no_token' };
+    if (/^https:\/\/(?!internal)/.test(origin || '')) this.origin = origin;
+    if ((await this.st.get('mrn')) === 0) return { sent: 0, why: 'off' };
+    const day = dayOf(new Date().toISOString());
+    if ((await this.st.get('mrd')) === day) return { sent: 0, why: 'done' };
+    const dl = await this.debtList();
+    const late = dl.debtors.filter(x => x.bal > 0 && x.days > 0).sort((a, b) => b.days - a.days || b.over - a.over);
+    if (!late.length) return { sent: 0, why: 'none' };
+    await this.st.put('mrd', day);      // отметка до отправки: повторный запуск в тот же день не задвоит сообщения
+    const text = morningText((await this.getCfg()).shop.name, late);
+    const markup = this.origin ? openBtn(this.origin, 'Долги', sellerUrl(this.origin, this.did)) : undefined;
+    let sent = 0;
+    for (const aid of (await this.st.get('admins')) || []) {
+      try { const r = await this.tg('sendMessage', Object.assign({ chat_id: aid, text }, markup ? { reply_markup: markup } : {})); if (r && r.ok) sent++; }
+      catch (e) { console.error('morning failed', e && e.message || e); }
+    }
+    return { sent, n: late.length };
   }
   /* Состав заказов, по которым числится долг. Берётся из самих заказов; если заказа уже нет, номер остаётся без состава. */
   async debtOrders(refs) {
@@ -3645,6 +3691,11 @@ export class Hub {
     this.origin = url.origin;
     const path = url.pathname, method = request.method;
     try {
+      // адрес сайта нужен рассылкам по расписанию: там нет запроса, из которого его можно взять
+      if (!this.originSaved && /^https:\/\/(?!internal)/.test(this.origin)) {
+        this.originSaved = true;
+        if ((await this.st.get('origin')) !== this.origin) await this.st.put('origin', this.origin);
+      }
       if (path === '/webhook' && method === 'POST') return await this.webhook(request);
       await this.ensure();
       if (path.startsWith('/__/')) return await this.internal(request, path);
@@ -3668,6 +3719,18 @@ export class Hub {
     const r = await this.readBody(request, 20000);
     const b = r.body && typeof r.body === 'object' ? r.body : {};
     if (path === '/__/ensure') return json({ ok: true, shops: ((await this.st.get('dx')) || []).length });
+    if (path === '/__/morning') {
+      // запуск по расписанию: каждому включённому дистрибьютору напоминание о просрочке
+      await this.ensure();
+      const origin = (await this.st.get('origin')) || '';
+      let sent = 0, shops = 0;
+      for (const rec of await this.allRecs()) {
+        if (!rec.on) continue;
+        try { const r = await shopCall(this.env, rec.id, '/__/morning', { origin }); shops++; sent += (r.data && r.data.sent) || 0; }
+        catch (e) { console.error('morning shop failed', rec.id, e && e.message || e); }
+      }
+      return json({ ok: true, shops, sent });
+    }
     if (path === '/__/bot') { if (typeof b.username === 'string' && /^[A-Za-z0-9_]{3,64}$/.test(b.username)) await this.st.put('bot', b.username); return json({ ok: true }); }
     if (path === '/__/sync') {
       const rec = validDid(b.did) ? await this.getRec(b.did) : null;
