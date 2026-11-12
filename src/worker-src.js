@@ -650,77 +650,91 @@ function xlsxBuild(sheets) {
 /* Время создания заказа хранится по Гринвичу; в выгрузках показываем по часам склада. */
 const shopTime = iso => { const t = Date.parse(iso); return isNaN(t) ? '' : new Date(t + SHOP_TZ * 3600000).toISOString().slice(0, 16).replace('T', ' '); };
 const WD_RU = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-/* «2026-10-30T14:00» → «30.10.2026 (пт) 14:00» */
-function whenRu(s) {
+/* «2026-10-30T14:00» → «30.10.2026 (пт) 14:00» (по-узбекски «(jum)»); язык берётся из setLang */
+function whenDay(s) {
   const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
   if (!m) return String(s || '');
-  return m[3] + '.' + m[2] + '.' + m[1] + ' (' + WD_RU[new Date(+m[1], +m[2] - 1, +m[3]).getDay()] + ') ' + m[4];
+  return m[3] + '.' + m[2] + '.' + m[1] + ' (' + L(WD_RU, UZ_WD)[new Date(+m[1], +m[2] - 1, +m[3]).getDay()] + ') ' + m[4];
 }
 
-function ordersSheets(orders) {
-  setLang('ru');
+/* Выгрузки в Excel идут на языке интерфейса продавца (lang: 'uz' или 'ru'; без lang — русский): названия листов, заголовки,
+   статусы, способы оплаты, названия товаров. Имена, адреса и комментарии клиентов остаются как их ввели. */
+const XL_LANG = lang => lang === 'uz' ? 'uz' : 'ru';
+const PAY_X = { cash: ['Наличные', 'Naqd'], card: ['Карта', 'Karta'], bank: ['Перечисление', 'Oʻtkazma'], credit: ['В долг', 'Qarzga'] };
+const payX = k => PAY_X[k] ? L(PAY_X[k][0], PAY_X[k][1]) : '';
+function ordersSheets(orders, lang) {
+  setLang(XL_LANG(lang));
   const list = orders.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const rows = [['№ заказа', 'Создан', 'Статус', 'Получение', 'Когда', 'Клиент', 'Телефон', 'Организация', 'Telegram', 'Адрес доставки', 'Комментарий', 'Товары, сум', 'Скидка, сум', 'Доставка, сум', 'Итого, сум', 'Позиций', 'Оплата', 'Доставщик']];
-  const items = [['№ заказа', 'Статус', 'Когда', 'Клиент', 'Товар', 'Вес / объём', 'Количество', 'В упаковках', 'Цена, сум', 'Сумма, сум']];
+  const rows = [[L('№ заказа', 'Buyurtma №'), L('Создан', 'Yaratilgan'), L('Статус', 'Holat'), L('Получение', 'Olish usuli'), L('Когда', 'Qachon'), L('Клиент', 'Mijoz'), L('Телефон', 'Telefon'),
+    L('Организация', 'Tashkilot'), 'Telegram', L('Адрес доставки', 'Yetkazib berish manzili'), L('Комментарий', 'Izoh'), L('Товары, сум', 'Mahsulotlar, soʻm'), L('Скидка, сум', 'Chegirma, soʻm'),
+    L('Доставка, сум', 'Yetkazib berish, soʻm'), L('Итого, сум', 'Jami, soʻm'), L('Позиций', 'Pozitsiyalar'), L('Оплата', 'Toʻlov'), L('Доставщик', 'Yetkazuvchi')]];
+  const items = [[L('№ заказа', 'Buyurtma №'), L('Статус', 'Holat'), L('Когда', 'Qachon'), L('Клиент', 'Mijoz'), L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'),
+    L('Количество', 'Soni'), L('В упаковках', 'Qadoqlarda'), L('Цена, сум', 'Narx, soʻm'), L('Сумма, сум', 'Summa, soʻm')]];
   list.forEach(o => {
-    const fee = Number(o.fee) || 0, total = Number(o.total) || 0, disc = Number(o.disc) || 0, st = stOf(o.status, o.mode).name, when = String(o.pickupAt || '').replace('T', ' ');
-    rows.push([o.id, shopTime(o.createdAt), st, o.mode === 'delivery' ? 'Доставка' : 'Самовывоз', when, o.name || '', o.phone || '', o.org || '',
+    const fee = Number(o.fee) || 0, total = Number(o.total) || 0, disc = Number(o.disc) || 0, so = stOf(o.status, o.mode), st = L(so.name, so.uz), when = String(o.pickupAt || '').replace('T', ' ');
+    rows.push([o.id, shopTime(o.createdAt), st, o.mode === 'delivery' ? L('Доставка', 'Yetkazib berish') : L('Самовывоз', 'Olib ketish'), when, o.name || '', o.phone || '', o.org || '',
       o.tg && o.tg.username ? '@' + o.tg.username : '', o.mode === 'delivery' ? (o.address || '') : '', o.comment || '', total - fee + disc, disc, fee, total, (o.items || []).length, payPlain(o.pay), o.crn || '']);
-    (o.items || []).forEach(it => items.push([o.id, st, when, o.name || '', it.name || '', weightLabel(it), Number(it.qty) || 0, packText(it, it.qty), Number(it.price) || 0, (Number(it.price) || 0) * (Number(it.qty) || 0)]));
+    (o.items || []).forEach(it => items.push([o.id, st, when, o.name || '', nm(it) || '', weightLabel(it), Number(it.qty) || 0, packText(it, it.qty), Number(it.price) || 0, (Number(it.price) || 0) * (Number(it.qty) || 0)]));
   });
   return [
-    { name: 'Заказы', w: [11, 17, 16, 12, 17, 22, 17, 22, 16, 34, 30, 14, 12, 14, 14, 9, 30, 18], money: [11, 12, 13, 14], rows },
-    { name: 'Товары в заказах', w: [11, 16, 17, 22, 32, 13, 12, 20, 14, 14], money: [8, 9], rows: items }
+    { name: L('Заказы', 'Buyurtmalar'), w: [11, 17, 16, 12, 17, 22, 17, 22, 16, 34, 30, 14, 12, 14, 14, 9, 30, 18], money: [11, 12, 13, 14], rows },
+    { name: L('Товары в заказах', 'Buyurtmadagi mahsulotlar'), w: [11, 16, 17, 22, 32, 13, 12, 20, 14, 14], money: [8, 9], rows: items }
   ];
 }
-function clientsSheets(clients) {
+function clientsSheets(clients, lang) {
+  setLang(XL_LANG(lang));
   const list = clients.slice().sort((a, b) => String(b.last || b.since).localeCompare(String(a.last || a.since)));
-  const rows = [['Имя', 'Телефон', 'Организация', 'Группа', 'Адреса доставки', 'Заметка', 'Заказов', 'Завершено', 'Сумма завершённых, сум', 'Клиент с', 'Последний заказ', 'Telegram', 'Язык', 'Заблокирован']];
+  const rows = [[L('Имя', 'Ism'), L('Телефон', 'Telefon'), L('Организация', 'Tashkilot'), L('Группа', 'Guruh'), L('Адреса доставки', 'Yetkazib berish manzillari'), L('Заметка', 'Eslatma'), L('Заказов', 'Buyurtmalar'),
+    L('Завершено', 'Yakunlangan'), L('Сумма завершённых, сум', 'Yakunlanganlar summasi, soʻm'), L('Клиент с', 'Mijoz boʻlgan sana'), L('Последний заказ', 'Oxirgi buyurtma'), 'Telegram', L('Язык', 'Til'), L('Заблокирован', 'Bloklangan')]];
   list.forEach(c => rows.push([c.name || '', c.phone || '', c.org || '', c.grp || '', (c.addrs || []).join(' | '), c.note || '', Number(c.n) || 0, Number(c.ds) || 0, Number(c.sum) || 0,
-    shopTime(c.since), shopTime(c.last), c.tg && c.tg.username ? '@' + c.tg.username : '', c.lang === 'uz' ? 'узбекский' : c.lang === 'ru' ? 'русский' : '', c.blocked ? 'да' : '']));
-  return [{ name: 'Клиенты', w: [22, 17, 22, 14, 40, 34, 9, 10, 18, 17, 17, 16, 11, 13], money: [8], rows }];
+    shopTime(c.since), shopTime(c.last), c.tg && c.tg.username ? '@' + c.tg.username : '', c.lang === 'uz' ? L('узбекский', 'oʻzbekcha') : c.lang === 'ru' ? L('русский', 'ruscha') : '', c.blocked ? L('да', 'ha') : '']));
+  return [{ name: L('Клиенты', 'Mijozlar'), w: [22, 17, 22, 14, 40, 34, 9, 10, 18, 17, 17, 16, 11, 13], money: [8], rows }];
 }
 
 /* Долги в Excel. list — строки debtRow, logs — их журналы (в том же порядке). Лист «Долги» по магазинам, лист «История» по всем записям журнала. */
-const CF_PLAIN = { ok: 'подтвердил', wait: 'ждём ответа', no: 'ответил «Не так»', na: 'не получил сообщение' };
-function debtsSheets(list, logs) {
-  setLang('ru');
-  const head = [['Магазин', 'Организация', 'Телефон', 'Адрес', 'Долг, сум', 'Ближайший срок', 'Просрочено, сум', 'Дней просрочки', 'Спорных записей', 'Ждут ответа магазина', 'Последняя оплата', 'Статус']];
-  const hist = [['Магазин', 'Телефон', 'Дата', 'Запись', '№ записи', '№ заказа', 'Сумма, сум', 'Способ', 'Срок оплаты', 'Ответ магазина', 'Записал', 'Комментарий', 'Отменена']];
+const CF_X = { ok: ['подтвердил', 'tasdiqladi'], wait: ['ждём ответа', 'javob kutilmoqda'], no: ['ответил «Не так»', '«Notoʻgʻri» deb javob berdi'], na: ['не получил сообщение', 'xabarni olmadi'] };
+function debtsSheets(list, logs, lang) {
+  setLang(XL_LANG(lang));
+  const head = [[L('Магазин', 'Doʻkon'), L('Организация', 'Tashkilot'), L('Телефон', 'Telefon'), L('Адрес', 'Manzil'), L('Долг, сум', 'Qarz, soʻm'), L('Ближайший срок', 'Eng yaqin muddat'), L('Просрочено, сум', 'Muddati oʻtgan, soʻm'),
+    L('Дней просрочки', 'Kechikish kunlari'), L('Спорных записей', 'Bahsli yozuvlar'), L('Ждут ответа магазина', 'Doʻkon javobini kutayotgan'), L('Последняя оплата', 'Oxirgi toʻlov'), L('Статус', 'Holat')]];
+  const hist = [[L('Магазин', 'Doʻkon'), L('Телефон', 'Telefon'), L('Дата', 'Sana'), L('Запись', 'Yozuv'), L('№ записи', 'Yozuv №'), L('№ заказа', 'Buyurtma №'), L('Сумма, сум', 'Summa, soʻm'), L('Способ', 'Usul'),
+    L('Срок оплаты', 'Toʻlov muddati'), L('Ответ магазина', 'Doʻkon javobi'), L('Записал', 'Kim yozgan'), L('Комментарий', 'Izoh'), L('Отменена', 'Bekor qilingan')]];
   list.forEach((x, i) => {
     const lg = logs[i] || { rows: [] }, rows = Array.isArray(lg.rows) ? lg.rows : [];
     const voided = new Set(rows.filter(r => r.k === 'rv').map(r => r.of));
     const nm = x.name || ('ID ' + x.uid);
     const pays = rows.filter(r => r.k === 'pay' && !voided.has(r.n));
     const last = pays.length ? pays[pays.length - 1].t : '';
-    const st = x.bal < 0 ? 'Аванс (магазин переплатил)' : x.days > 0 ? 'Просрочен' : x.bal > 0 ? 'Должен в срок' : 'Долга нет, есть записи без ответа';
-    head.push([nm, x.org || '', x.phone || '', x.addr || '', x.bal, dmy(x.due), x.over || 0, x.days || 0, x.fl || 0, x.wt || 0, last ? shopTime(last).slice(0, 10) : '', st + (x.fl > 0 ? ' · спорные записи' : '')]);
-    if (lg.base) hist.push([nm, x.phone || '', '', 'Ранние записи свёрнуты', '', '', lg.base.d, '', dmy(lg.base.due), '', '', 'Остаток по старым записям, подробностей нет', '']);
+    const st = x.bal < 0 ? L('Аванс (магазин переплатил)', 'Avans (doʻkon ortiqcha toʻlagan)') : x.days > 0 ? L('Просрочен', 'Muddati oʻtgan') : x.bal > 0 ? L('Должен в срок', 'Muddatida qarzdor') : L('Долга нет, есть записи без ответа', 'Qarz yoʻq, javobsiz yozuvlar bor');
+    head.push([nm, x.org || '', x.phone || '', x.addr || '', x.bal, dmy(x.due), x.over || 0, x.days || 0, x.fl || 0, x.wt || 0, last ? shopTime(last).slice(0, 10) : '', st + (x.fl > 0 ? L(' · спорные записи', ' · bahsli yozuvlar') : '')]);
+    if (lg.base) hist.push([nm, x.phone || '', '', L('Ранние записи свёрнуты', 'Dastlabki yozuvlar jamlangan'), '', '', lg.base.d, '', dmy(lg.base.due), '', '', L('Остаток по старым записям, подробностей нет', 'Eski yozuvlar boʻyicha qoldiq, tafsilotlar yoʻq'), '']);
     rows.forEach(r => {
-      const kind = r.k === 'ch' ? 'Выдача в долг' : r.k === 'pay' ? 'Оплата' : r.k === 'rv' ? 'Отмена записи №' + r.of : r.k === 'rs' ? 'Спор по записи №' + r.of + ' закрыт' : r.k === 'ac' ? 'Акт сверки ' + (r.f ? dmy(r.f) : 'с начала') + ' – ' + dmy(r.e) : '';
+      const kind = r.k === 'ch' ? L('Выдача в долг', 'Qarzga berildi') : r.k === 'pay' ? L('Оплата', 'Toʻlov') : r.k === 'rv' ? L('Отмена записи №' + r.of, 'Yozuv №' + r.of + ' bekor qilindi')
+        : r.k === 'rs' ? L('Спор по записи №' + r.of + ' закрыт', 'Yozuv №' + r.of + ' boʻyicha bahs yopildi')
+        : r.k === 'ac' ? L('Акт сверки ' + (r.f ? dmy(r.f) : 'с начала') + ' – ' + dmy(r.e), 'Solishtirma dalolatnoma ' + (r.f ? dmy(r.f) : 'boshidan') + ' – ' + dmy(r.e)) : '';
       if (!kind) return;
-      hist.push([nm, x.phone || '', shopTime(r.t), kind, r.n, r.ref || '', r.k === 'rs' ? '' : r.k === 'ac' ? Number(r.cb) || 0 : Number(r.a) || 0, r.k === 'pay' ? (PAY_PLAIN[r.m] || '') : '', r.k === 'ch' ? dmy(r.due) : '',
-        isCf(r) ? (CF_PLAIN[r.cf] || '') : '', r.bn || '', r.k === 'pay' ? (r.note || '') : (r.why || ''), voided.has(r.n) ? 'да' : '']);
+      hist.push([nm, x.phone || '', shopTime(r.t), kind, r.n, r.ref || '', r.k === 'rs' ? '' : r.k === 'ac' ? Number(r.cb) || 0 : Number(r.a) || 0, r.k === 'pay' ? payX(r.m) : '', r.k === 'ch' ? dmy(r.due) : '',
+        isCf(r) && CF_X[r.cf] ? L(CF_X[r.cf][0], CF_X[r.cf][1]) : '', r.bn || '', r.k === 'pay' ? (r.note || '') : (r.why || ''), voided.has(r.n) ? L('да', 'ha') : '']);
     });
   });
   return [
-    { name: 'Долги', w: [26, 22, 17, 34, 15, 15, 16, 13, 13, 16, 16, 34], money: [4, 6], rows: head },
-    { name: 'История', w: [26, 17, 17, 28, 10, 12, 15, 15, 13, 22, 20, 36, 11], money: [6], rows: hist }
+    { name: L('Долги', 'Qarzlar'), w: [26, 22, 17, 34, 15, 15, 16, 13, 13, 16, 16, 34], money: [4, 6], rows: head },
+    { name: L('История', 'Tarix'), w: [26, 17, 17, 28, 10, 12, 15, 15, 13, 22, 20, 36, 11], money: [6], rows: hist }
   ];
 }
 
 /* Сборочный лист: сверху общий список «что достать со склада» по выбранным заказам, дальше каждый заказ на отдельной странице.
-   Бумага всегда белая и по-русски: это рабочий документ продавца, его печатают или открывают на телефоне. */
-function pickHtml(orders, shop, prod, cut) {
-  setLang('ru');
+   Бумага всегда белая: это рабочий документ продавца, его печатают или открывают на телефоне. Язык — языка интерфейса (lang), без него русский. */
+function pickHtml(orders, shop, prod, cut, lang) {
+  setLang(XL_LANG(lang));
   const list = orders.slice().sort((a, b) => String(a.pickupAt).localeCompare(String(b.pickupAt)) || String(a.createdAt).localeCompare(String(b.createdAt)));
   const now = shopNow(), stamp = pad(now.getDate()) + '.' + pad(now.getMonth() + 1) + '.' + now.getFullYear() + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
   const shopName = (shop && shop.name) || DEFAULT.shop.name;
   const catIx = new Map(prod.cats.map((c, i) => [c.id, i])), itIx = new Map(prod.items.map((p, i) => [p.id, i]));
   const catOf = new Map(prod.items.map(p => [p.id, p.cat]));
-  const catName = new Map(prod.cats.map(c => [c.id, c.name]));
+  const catName = new Map(prod.cats.map(c => [c.id, L(c.name, c.uz || c.name)]));
   const tr = (cells) => '<tr>' + cells.join('') + '</tr>';
-  let h = '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Сборочный лист — ' + esc(shopName) + '</title><style>'
+  let h = '<!doctype html><html lang="' + L('ru', 'uz') + '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + L('Сборочный лист', 'Yigʻish roʻyxati') + ' — ' + esc(shopName) + '</title><style>'
     + '@page{size:A4;margin:12mm}*{box-sizing:border-box}body{margin:0;padding:14px;font:15px/1.4 Arial,"Helvetica Neue",sans-serif;color:#111;background:#fff}'
     + 'h1{font-size:20px;margin:0 0 2px}h2{font-size:17px;margin:0 0 6px}h3{font-size:13px;margin:14px 0 2px;color:#444;text-transform:uppercase;letter-spacing:.04em}.sub{color:#555;font-size:13px;margin-bottom:14px}'
     + 'section{margin:0 0 24px}.ord{border-top:3px solid #111;padding-top:10px}.ord+.ord,.sum+.ord{break-before:page;page-break-before:always}'
@@ -731,13 +745,14 @@ function pickHtml(orders, shop, prod, cut) {
     + '.row{margin:2px 0}.cm{margin:6px 0;padding:6px 8px;border:1.5px dashed #111;border-radius:6px;font-weight:600}.pay{margin:10px 0 0;font-size:17px}.sign{margin-top:16px;color:#444;font-size:13px}'
     + '.cut{margin:0 0 14px;padding:8px 10px;border:1.5px solid #b3261e;border-radius:6px;color:#b3261e;font-weight:600}'
     + '@media print{body{padding:0}input[type=checkbox]{appearance:none;-webkit-appearance:none;border:1.5px solid #111;border-radius:3px}}'
-    + '</style></head><body><h1>Сборочный лист</h1><div class="sub">' + esc(shopName) + ' · сформирован ' + stamp + ' · заказов: ' + list.length + '</div>';
-  if (cut > 0) h += '<div class="cut">В лист вошли первые ' + list.length + ' заказов, ещё ' + cut + ' не поместились. Откройте лист ещё раз с фильтром по дате.</div>';
+    + '</style></head><body><h1>' + L('Сборочный лист', 'Yigʻish roʻyxati') + '</h1><div class="sub">' + esc(shopName) + L(' · сформирован ', ' · tuzilgan ') + stamp + L(' · заказов: ', ' · buyurtmalar: ') + list.length + '</div>';
+  if (cut > 0) h += '<div class="cut">' + L('В лист вошли первые ' + list.length + ' заказов, ещё ' + cut + ' не поместились. Откройте лист ещё раз с фильтром по дате.',
+    'Roʻyxatga dastlabki ' + list.length + ' ta buyurtma kirdi, yana ' + cut + ' tasi sigʻmadi. Roʻyxatni sana filtri bilan qayta oching.') + '</div>';
   if (list.length > 1) {
     const agg = new Map();
     list.forEach(o => (o.items || []).forEach(it => {
       let a = agg.get(it.id);
-      if (!a) { a = { id: it.id, name: it.name, w: weightLabel(it), qty: 0, n: 0, pk: prod.items.find(x => x.id === it.id) || it }; agg.set(it.id, a); }
+      if (!a) { a = { id: it.id, name: nm(it), w: weightLabel(it), qty: 0, n: 0, pk: prod.items.find(x => x.id === it.id) || it }; agg.set(it.id, a); }
       a.qty += Number(it.qty) || 0; a.n += 1;
     }));
     const rows = [...agg.values()].sort((a, b) => {
@@ -746,10 +761,10 @@ function pickHtml(orders, shop, prod, cut) {
       const ia = itIx.has(a.id) ? itIx.get(a.id) : 1e6, ib = itIx.has(b.id) ? itIx.get(b.id) : 1e6;
       return ia !== ib ? ia - ib : String(a.name).localeCompare(String(b.name), 'ru');
     });
-    h += '<section class="sum"><h2>Всего собрать со склада</h2><table><thead>' + tr(['<th class="c"></th>', '<th>Товар</th>', '<th class="q">Всего</th>', '<th class="p">В заказах</th>']) + '</thead><tbody>';
+    h += '<section class="sum"><h2>' + L('Всего собрать со склада', 'Ombordan jami yigʻish') + '</h2><table><thead>' + tr(['<th class="c"></th>', '<th>' + L('Товар', 'Mahsulot') + '</th>', '<th class="q">' + L('Всего', 'Jami') + '</th>', '<th class="p">' + L('В заказах', 'Buyurtmalarda') + '</th>']) + '</thead><tbody>';
     let lastCat;
     rows.forEach(a => {
-      const cid = catOf.get(a.id), cn = catName.get(cid) || 'Другое';
+      const cid = catOf.get(a.id), cn = catName.get(cid) || L('Другое', 'Boshqa');
       if (cn !== lastCat) { h += '<tr><td colspan="4" style="padding:10px 6px 2px;border-bottom:0"><h3 style="margin:0">' + esc(cn) + '</h3></td></tr>'; lastCat = cn; }
       h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(a.name) + (a.w ? '<small>' + esc(a.w) + '</small>' : '') + '</td>', '<td class="q">' + a.qty + (packText(a.pk, a.qty) ? '<small>' + esc(packText(a.pk, a.qty)) + '</small>' : '') + '</td>', '<td class="p">' + a.n + '</td>']);
     });
@@ -757,19 +772,19 @@ function pickHtml(orders, shop, prod, cut) {
   }
   list.forEach(o => {
     const del = o.mode === 'delivery', fee = Number(o.fee) || 0, disc = Number(o.disc) || 0;
-    h += '<section class="ord"><h2><span class="id">' + esc(o.id) + '</span><span class="tag">' + (del ? 'Доставка' : 'Самовывоз') + '</span><span class="tag">' + esc(stOf(o.status, o.mode).name) + '</span></h2>'
-      + '<div class="row"><b>' + (del ? 'Доставить' : 'Выдать') + ':</b> ' + esc(whenRu(o.pickupAt)) + '</div>'
+    h += '<section class="ord"><h2><span class="id">' + esc(o.id) + '</span><span class="tag">' + (del ? L('Доставка', 'Yetkazib berish') : L('Самовывоз', 'Olib ketish')) + '</span><span class="tag">' + esc(L(stOf(o.status, o.mode).name, stOf(o.status, o.mode).uz)) + '</span></h2>'
+      + '<div class="row"><b>' + (del ? L('Доставить', 'Yetkazish') : L('Выдать', 'Topshirish')) + ':</b> ' + esc(whenDay(o.pickupAt)) + '</div>'
       + '<div class="row"><b>' + esc(o.name || '') + '</b>' + (o.org ? ' · ' + esc(o.org) : '') + ' · ' + esc(o.phone || '') + '</div>'
-      + (del && o.address ? '<div class="row"><b>Адрес:</b> ' + esc(o.address) + '</div>' : '')
+      + (del && o.address ? '<div class="row"><b>' + L('Адрес', 'Manzil') + ':</b> ' + esc(o.address) + '</div>' : '')
       + (o.comment ? '<div class="cm">' + esc(o.comment) + '</div>' : '')
-      + '<table><thead>' + tr(['<th class="c"></th>', '<th>Товар</th>', '<th class="q">Кол-во</th>', '<th class="p">Цена</th>', '<th class="s">Сумма</th>']) + '</thead><tbody>';
+      + '<table><thead>' + tr(['<th class="c"></th>', '<th>' + L('Товар', 'Mahsulot') + '</th>', '<th class="q">' + L('Кол-во', 'Soni') + '</th>', '<th class="p">' + L('Цена', 'Narx') + '</th>', '<th class="s">' + L('Сумма', 'Summa') + '</th>']) + '</thead><tbody>';
     (o.items || []).forEach(it => {
       const w = weightLabel(it);
-      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(it.name) + (w ? '<small>' + esc(w) + '</small>' : '') + '</td>', '<td class="q">' + (Number(it.qty) || 0) + (packText(it, it.qty) ? '<small>' + esc(packText(it, it.qty)) + '</small>' : '') + '</td>', '<td class="p">' + num(it.price) + '</td>', '<td class="s">' + num((Number(it.price) || 0) * (Number(it.qty) || 0)) + '</td>']);
+      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(nm(it)) + (w ? '<small>' + esc(w) + '</small>' : '') + '</td>', '<td class="q">' + (Number(it.qty) || 0) + (packText(it, it.qty) ? '<small>' + esc(packText(it, it.qty)) + '</small>' : '') + '</td>', '<td class="p">' + num(it.price) + '</td>', '<td class="s">' + num((Number(it.price) || 0) * (Number(it.qty) || 0)) + '</td>']);
     });
-    h += '</tbody><tfoot>' + (disc > 0 ? tr(['<td></td>', '<td colspan="3">Скидка ' + (Number(o.dpct) || 0) + '%</td>', '<td class="s">−' + num(disc) + '</td>']) : '') + (fee > 0 ? tr(['<td></td>', '<td colspan="3">Доставка</td>', '<td class="s">' + num(fee) + '</td>']) : '')
-      + tr(['<td></td>', '<td colspan="3">Итого</td>', '<td class="s">' + num(o.total) + '</td>']) + '</tfoot></table>'
-      + '<div class="pay">К оплате при получении: <b>' + esc(money(o.total)) + '</b></div><div class="sign">Собрал: ____________ &nbsp; Проверил: ____________</div></section>';
+    h += '</tbody><tfoot>' + (disc > 0 ? tr(['<td></td>', '<td colspan="3">' + L('Скидка ', 'Chegirma ') + (Number(o.dpct) || 0) + '%</td>', '<td class="s">−' + num(disc) + '</td>']) : '') + (fee > 0 ? tr(['<td></td>', '<td colspan="3">' + L('Доставка', 'Yetkazib berish') + '</td>', '<td class="s">' + num(fee) + '</td>']) : '')
+      + tr(['<td></td>', '<td colspan="3">' + L('Итого', 'Jami') + '</td>', '<td class="s">' + num(o.total) + '</td>']) + '</tfoot></table>'
+      + '<div class="pay">' + L('К оплате при получении: ', 'Olganda toʻlanadi: ') + '<b>' + esc(money(o.total)) + '</b></div><div class="sign">' + L('Собрал: ____________ &nbsp; Проверил: ____________', 'Yigʻdi: ____________ &nbsp; Tekshirdi: ____________') + '</div></section>';
   });
   return h + '</body></html>';
 }
@@ -1150,7 +1165,6 @@ function handText(r) {
   });
 }
 const handDesc = r => (r.k === 'ox' ? L('отмена сдачи ', 'topshirishni bekor qilish ') : L('сдача ', 'topshirish ')) + money(r.a);
-const PAY_PLAIN = { cash: 'Наличные', card: 'Карта', bank: 'Перечисление', credit: 'В долг' };
 const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
 /* Как заплатил магазин при выдаче заказа. Не указано — наличные: так было, пока оплата при получении была единственной. null — данные неверны. */
 function cleanPay(p, total, today) {
@@ -1224,8 +1238,8 @@ const debtRow = (h, today) => Object.assign({ uid: h.uid, name: h.name || '', or
 /* Оплата заказа простым текстом для Excel. */
 function payPlain(pay) {
   if (!pay) return '';
-  if (pay.m !== 'credit') return PAY_PLAIN[pay.m] || '';
-  return (pay.paid ? PAY_PLAIN[pay.pm] + ' ' + pay.paid + ' + ' : '') + 'В долг до ' + dmy(pay.due);
+  if (pay.m !== 'credit') return payX(pay.m);
+  return (pay.paid ? payX(pay.pm) + ' ' + pay.paid + ' + ' : '') + L('В долг до ' + dmy(pay.due), 'Qarzga ' + dmy(pay.due) + ' gacha');
 }
 function payLine(pay) {
   if (!pay) return '';
@@ -1443,6 +1457,8 @@ function rpAdd(rp, o, pct, catOf) {
     c.n += 1; c.sum += total;
   }
 }
+/* Вес / объём товара сразу на двух языках: w — по-русски, wu — по-узбекски (для Excel на языке интерфейса). */
+function weightBoth(it) { setLang('uz'); const wu = weightLabel(it); setLang('ru'); return { w: weightLabel(it), wu }; }
 /* Собирает отчёт за days дней, заканчивая днём today. Вход: rp — Map «день → запись», rp0 — с какого дня ведётся учёт. */
 function reportBuild(o) {
   const { days, today, rp, rp0, prod, stk } = o;
@@ -1469,7 +1485,7 @@ function reportBuild(o) {
   const pitem = new Map((prod ? prod.items : []).map(x => [x.id, x]));
   const prodsOut = [...prods.values()].sort((a, b) => b.sum - a.sum || b.qty - a.qty).slice(0, 20).map(x => {
     const it = pitem.get(x.id);
-    return Object.assign({}, x, it ? { name: it.name, w: weightLabel(it) } : {});
+    return Object.assign({}, x, it ? Object.assign({ name: it.name, uz: it.uz || '' }, weightBoth(it)) : {});
   });
   const clOut = [...cls.values()].sort((a, b) => b.sum - a.sum || b.n - a.n).slice(0, 10);
   // что пора закупать: у товаров с учётом остатка считаем, на сколько дней хватит при нынешних продажах (за последние 30 дней или сколько есть)
@@ -1485,7 +1501,7 @@ function reportBuild(o) {
     if (!(q > 0)) continue;
     const avail = stkAvail(s), daily = q / W, left = avail / daily;
     if (left > RP_COVER) continue;
-    list.push({ id: it.id, name: it.name, w: weightLabel(it), avail, daily: Math.round(daily * 100) / 100, left: Math.round(left * 10) / 10, need: Math.max(0, Math.ceil(daily * RP_COVER - avail)) });
+    list.push(Object.assign({ id: it.id, name: it.name, uz: it.uz || '' }, weightBoth(it), { avail, daily: Math.round(daily * 100) / 100, left: Math.round(left * 10) / 10, need: Math.max(0, Math.ceil(daily * RP_COVER - avail)) }));
   }
   list.sort((a, b) => a.left - b.left);
   return {
@@ -1538,25 +1554,29 @@ function analyticsBuild(o) {
 }
 const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const ruDay = d => d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4);
-const ruMonth = m => MONTHS_RU[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(0, 4);
-function reportSheets(r) {
-  setLang('ru');
-  const days = [['Дата', 'Заказов', 'Сумма, сум']].concat(r.series.map(x => [ruDay(x.d), x.n, x.sum]));
-  days.push(['Итого', r.tot.n, r.tot.sum]);
-  const months = [['Месяц', 'Заказов', 'Сумма, сум']].concat(r.months.map(x => [ruMonth(x.m), x.n, x.sum]));
-  const prods = [['Товар', 'Вес / объём', 'Продано, шт', 'Сумма, сум']].concat(r.prods.map(x => [x.name, x.w || '', x.qty, x.sum]));
-  const cl = [['Клиент', 'Организация', 'Заказов', 'Сумма, сум']].concat(r.cl.map(x => [x.name, x.org || '', x.n, x.sum]));
-  const buy = [['Товар', 'Вес / объём', 'Свободно, шт', 'Продаётся в день, шт', 'Хватит на, дней', 'Докупить на ' + r.buy.cover + ' дн., шт']].concat(r.buy.list.map(x => [x.name, x.w || '', x.avail, x.daily, x.left, x.need]));
-  const head = ['Отчёт за ' + ruDay(r.from) + ' — ' + ruDay(r.to), 'Учёт продаж ведётся с ' + ruDay(r.since) + '. В отчёт входят заказы со статусом «выдан» и «доставлен».',
-    'Сумма товара считается по ценам в заказе, до скидки на весь заказ. Сумма заказа — то, что заплатил клиент (со скидкой и доставкой).',
-    'Заказов: ' + r.tot.n + '. Сумма: ' + num(r.tot.sum) + ' сум. Скидки: ' + num(r.tot.disc) + ' сум. Доставка: ' + num(r.tot.fee) + ' сум. Средний заказ: ' + num(r.tot.avg) + ' сум.'];
+const ruMonth = m => L(MONTHS_RU, UZ_MO)[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(0, 4);
+function reportSheets(r, lang) {
+  setLang(XL_LANG(lang));
+  const nmx = x => L(x.name, x.uz || x.name), wx = x => (L(x.w, x.wu || x.w)) || '';
+  const days = [[L('Дата', 'Sana'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.series.map(x => [ruDay(x.d), x.n, x.sum]));
+  days.push([L('Итого', 'Jami'), r.tot.n, r.tot.sum]);
+  const months = [[L('Месяц', 'Oy'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.months.map(x => [ruMonth(x.m), x.n, x.sum]));
+  const prods = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Продано, шт', 'Sotildi, dona'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.prods.map(x => [nmx(x), wx(x), x.qty, x.sum]));
+  const cl = [[L('Клиент', 'Mijoz'), L('Организация', 'Tashkilot'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.cl.map(x => [x.name, x.org || '', x.n, x.sum]));
+  const buy = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Свободно, шт', 'Boʻsh, dona'), L('Продаётся в день, шт', 'Kuniga sotiladi, dona'), L('Хватит на, дней', 'Necha kunga yetadi'),
+    L('Докупить на ' + r.buy.cover + ' дн., шт', r.buy.cover + ' kunga sotib olish, dona')]].concat(r.buy.list.map(x => [nmx(x), wx(x), x.avail, x.daily, x.left, x.need]));
+  const head = [L('Отчёт за ' + ruDay(r.from) + ' — ' + ruDay(r.to), 'Hisobot: ' + ruDay(r.from) + ' — ' + ruDay(r.to)),
+    L('Учёт продаж ведётся с ' + ruDay(r.since) + '. В отчёт входят заказы со статусом «выдан» и «доставлен».', 'Savdo hisobi ' + ruDay(r.since) + ' dan yuritiladi. Hisobotga «topshirildi» va «yetkazildi» holatidagi buyurtmalar kiradi.'),
+    L('Сумма товара считается по ценам в заказе, до скидки на весь заказ. Сумма заказа — то, что заплатил клиент (со скидкой и доставкой).', 'Mahsulot summasi buyurtmadagi narxlar boʻyicha, butun buyurtmaga chegirmagacha hisoblanadi. Buyurtma summasi — mijoz toʻlagan summa (chegirma va yetkazib berish bilan).'),
+    L('Заказов: ' + r.tot.n + '. Сумма: ' + num(r.tot.sum) + ' сум. Скидки: ' + num(r.tot.disc) + ' сум. Доставка: ' + num(r.tot.fee) + ' сум. Средний заказ: ' + num(r.tot.avg) + ' сум.',
+      'Buyurtmalar: ' + r.tot.n + '. Summa: ' + num(r.tot.sum) + ' soʻm. Chegirmalar: ' + num(r.tot.disc) + ' soʻm. Yetkazib berish: ' + num(r.tot.fee) + ' soʻm. Oʻrtacha buyurtma: ' + num(r.tot.avg) + ' soʻm.')];
   return [
-    { name: 'Сводка', w: [150], plain: true, rows: head.map(x => [x]) },
-    { name: 'По дням', w: [14, 11, 16], money: [2], rows: days },
-    { name: 'По месяцам', w: [20, 11, 16], money: [2], rows: months },
-    { name: 'Товары', w: [38, 14, 14, 16], money: [3], rows: prods },
-    { name: 'Клиенты', w: [30, 26, 11, 16], money: [3], rows: cl },
-    { name: 'Что закупать', w: [38, 14, 14, 20, 16, 24], rows: buy }
+    { name: L('Сводка', 'Xulosa'), w: [150], plain: true, rows: head.map(x => [x]) },
+    { name: L('По дням', 'Kunlar boʻyicha'), w: [14, 11, 16], money: [2], rows: days },
+    { name: L('По месяцам', 'Oylar boʻyicha'), w: [20, 11, 16], money: [2], rows: months },
+    { name: L('Товары', 'Mahsulotlar'), w: [38, 14, 14, 16], money: [3], rows: prods },
+    { name: L('Клиенты', 'Mijozlar'), w: [30, 26, 11, 16], money: [3], rows: cl },
+    { name: L('Что закупать', 'Nimani sotib olish'), w: [38, 14, 14, 20, 16, 24], rows: buy }
   ];
 }
 
@@ -1823,7 +1843,7 @@ export class Shop {
     return this.getOrders(((await this.st.get('act')) || []).concat((await this.st.get('hist')) || []));
   }
   /* Резервная копия: архив с backup.json (всё, что хранит бот), фото товаров и коротким описанием. Токен и код продавца в хранилище не лежат. */
-  async backupFiles() {
+  async backupFiles(lang) {
     await this.ensureClients();
     const prod = await this.getProd(), orders = await this.allOrders();
     const idx = await this.clientsIdx(), cmap = await this.getMany(idx.map(x => 'c:' + x));
@@ -1858,10 +1878,17 @@ export class Shop {
       couriers: await this.couriersDump(),
       photos: { saved: photos.length, of: withPhoto.length }
     };
-    const readme = 'Резервная копия магазина «' + ((data.cfg.shop && data.cfg.shop.name) || '') + '»\r\nСоздана: ' + shopTime(at) + ' (время склада)\r\n\r\n'
+    const shopN = (data.cfg.shop && data.cfg.shop.name) || '';
+    setLang(XL_LANG(lang));
+    const readme = L('Резервная копия магазина «' + shopN + '»\r\nСоздана: ' + shopTime(at) + ' (время склада)\r\n\r\n'
       + 'backup.json — настройки, каталог, остатки, заказы, клиенты.\r\nphotos/ — фото товаров (' + photos.length + ' из ' + withPhoto.length + ').\r\n\r\n'
       + 'Файл не содержит токена бота и кода продавца. Храните его в надёжном месте: в нём телефоны и адреса клиентов.\r\n'
-      + 'Чтобы вернуть данные, передайте этот файл разработчику бота.\r\n';
+      + 'Чтобы вернуть данные, передайте этот файл разработчику бота.\r\n',
+      '«' + shopN + '» doʻkonining zaxira nusxasi\r\nYaratilgan: ' + shopTime(at) + ' (ombor vaqti)\r\n\r\n'
+      + 'backup.json — sozlamalar, katalog, qoldiqlar, buyurtmalar, mijozlar.\r\nphotos/ — mahsulot rasmlari (' + withPhoto.length + ' tadan ' + photos.length + ' tasi).\r\n\r\n'
+      + 'Fayl bot tokenini va sotuvchi kodini oʻz ichiga olmaydi. Uni ishonchli joyda saqlang: unda mijozlarning telefon raqamlari va manzillari bor.\r\n'
+      + 'Maʼlumotlarni tiklash uchun bu faylni bot dasturchisiga bering.\r\n');
+    setLang('ru');
     return {
       files: [{ name: 'backup.json', data: enc.encode(JSON.stringify(data)) }, { name: 'README.txt', data: enc.encode(readme) }].concat(photos),
       info: { orders: orders.length, clients: data.clients.length, photos: photos.length, photosOf: withPhoto.length }
@@ -1892,34 +1919,36 @@ export class Shop {
   }
   /* Собирает файл выгрузки. kind: orders | clients | backup | catalog | report | debts | pick. Возвращает {name, bytes, mime, caption, n} или {err}. */
   async makeExport(kind, b) {
-    setLang('ru');
+    const uz = !!b && b.lang === 'uz', lang = uz ? 'uz' : 'ru';
+    setLang(lang);
     const day = ymd(shopNow());
     if (kind === 'orders') {
       const orders = await this.allOrders();
-      return { name: 'orders-' + day + '.xlsx', bytes: xlsxBuild(ordersSheets(orders)), mime: XLSX_MIME, n: orders.length,
-        caption: 'Заказы: ' + orders.length + ' (активные и последние завершённые). Откройте в Excel.' };
+      return { name: 'orders-' + day + '.xlsx', bytes: xlsxBuild(ordersSheets(orders, lang)), mime: XLSX_MIME, n: orders.length,
+        caption: uz ? 'Buyurtmalar: ' + orders.length + ' (faol va oxirgi yakunlanganlar). Excelda oching.' : 'Заказы: ' + orders.length + ' (активные и последние завершённые). Откройте в Excel.' };
     }
     if (kind === 'clients') {
       await this.ensureClients();
       const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
       const list = idx.map(x => map.get('c:' + x)).filter(Boolean);
-      return { name: 'clients-' + day + '.xlsx', bytes: xlsxBuild(clientsSheets(list)), mime: XLSX_MIME, n: list.length, caption: 'Клиенты: ' + list.length + '. Откройте в Excel.' };
+      return { name: 'clients-' + day + '.xlsx', bytes: xlsxBuild(clientsSheets(list, lang)), mime: XLSX_MIME, n: list.length, caption: uz ? 'Mijozlar: ' + list.length + '. Excelda oching.' : 'Клиенты: ' + list.length + '. Откройте в Excel.' };
     }
     if (kind === 'backup') {
-      const bk = await this.backupFiles();
+      const bk = await this.backupFiles(lang);
       return { name: 'backup-' + day + '.zip', bytes: zipStore(bk.files), mime: 'application/zip', n: bk.info.orders,
-        caption: 'Резервная копия: заказов ' + bk.info.orders + ', клиентов ' + bk.info.clients + ', фото ' + bk.info.photos + (bk.info.photos < bk.info.photosOf ? ' из ' + bk.info.photosOf : '') + '. Сохраните файл в надёжном месте.' };
+        caption: uz ? 'Zaxira nusxasi: buyurtmalar ' + bk.info.orders + ', mijozlar ' + bk.info.clients + ', rasmlar ' + bk.info.photos + (bk.info.photos < bk.info.photosOf ? ' (' + bk.info.photosOf + ' tadan)' : '') + '. Faylni ishonchli joyda saqlang.'
+          : 'Резервная копия: заказов ' + bk.info.orders + ', клиентов ' + bk.info.clients + ', фото ' + bk.info.photos + (bk.info.photos < bk.info.photosOf ? ' из ' + bk.info.photosOf : '') + '. Сохраните файл в надёжном месте.' };
     }
     if (kind === 'catalog') {
-      const prod = await this.getProd(), uz = b && b.lang === 'uz';
+      const prod = await this.getProd();
       return { name: 'catalog-' + day + '.xlsx', bytes: xlsxBuild(catalogSheets(prod, uz ? 'uz' : 'ru')), mime: XLSX_MIME, n: prod.items.length,
         caption: uz ? 'Katalog: mahsulotlar ' + prod.items.length + '. Narxlarni tuzating, faylni saqlang va ilovada yuklang: Katalog → Prays yuklash.'
           : 'Каталог: товаров ' + prod.items.length + '. Измените цены, сохраните файл и загрузите его в приложении: Каталог → Загрузить прайс.' };
     }
     if (kind === 'report') {
       const r = await this.report(Number(b && b.days));
-      return { name: 'report-' + day + '.xlsx', bytes: xlsxBuild(reportSheets(r)), mime: XLSX_MIME, n: r.tot.n,
-        caption: 'Отчёт за ' + r.days + ' дн.: заказов ' + r.tot.n + ', сумма ' + num(r.tot.sum) + ' сум. Откройте в Excel.' };
+      return { name: 'report-' + day + '.xlsx', bytes: xlsxBuild(reportSheets(r, lang)), mime: XLSX_MIME, n: r.tot.n,
+        caption: uz ? 'Hisobot, ' + r.days + ' kun: buyurtmalar ' + r.tot.n + ', summa ' + num(r.tot.sum) + ' soʻm. Excelda oching.' : 'Отчёт за ' + r.days + ' дн.: заказов ' + r.tot.n + ', сумма ' + num(r.tot.sum) + ' сум. Откройте в Excel.' };
     }
     if (kind === 'debts') {
       // f: all — все записи, over — просроченные, fl — спорные
@@ -1929,14 +1958,15 @@ export class Shop {
       if (!list.length) return { err: 'empty' };
       const map = await this.getMany(list.map(x => 'lg:' + x.uid));
       const owe = list.filter(x => x.bal > 0);
-      return { name: 'debts-' + day + '.xlsx', bytes: xlsxBuild(debtsSheets(list, list.map(x => map.get('lg:' + x.uid) || null))), mime: XLSX_MIME, n: list.length,
-        caption: 'Долги (' + (f === 'over' ? 'просроченные' : f === 'fl' ? 'спорные' : 'все') + '): магазинов ' + list.length + ', должны ' + num(owe.reduce((t, x) => t + x.bal, 0)) + ' сум, просрочено ' + num(owe.reduce((t, x) => t + x.over, 0)) + ' сум. Откройте в Excel.' };
+      return { name: 'debts-' + day + '.xlsx', bytes: xlsxBuild(debtsSheets(list, list.map(x => map.get('lg:' + x.uid) || null), lang)), mime: XLSX_MIME, n: list.length,
+        caption: uz ? 'Qarzlar (' + (f === 'over' ? 'muddati oʻtgan' : f === 'fl' ? 'bahsli' : 'hammasi') + '): doʻkonlar ' + list.length + ', qarzdor ' + num(owe.reduce((t, x) => t + x.bal, 0)) + ' soʻm, muddati oʻtgan ' + num(owe.reduce((t, x) => t + x.over, 0)) + ' soʻm. Excelda oching.'
+          : 'Долги (' + (f === 'over' ? 'просроченные' : f === 'fl' ? 'спорные' : 'все') + '): магазинов ' + list.length + ', должны ' + num(owe.reduce((t, x) => t + x.bal, 0)) + ' сум, просрочено ' + num(owe.reduce((t, x) => t + x.over, 0)) + ' сум. Откройте в Excel.' };
     }
     if (kind === 'pick') {
       const p = await this.pickOrders(b || {});
       if (!p.orders.length) return { err: 'empty' };
-      return { name: 'sborka-' + day + '.html', bytes: enc.encode(pickHtml(p.orders, (await this.getCfg()).shop, await this.getProd(), p.cut)), mime: 'text/html', n: p.orders.length,
-        caption: 'Сборочный лист: заказов ' + p.orders.length + '. Откройте файл в браузере и нажмите Ctrl+P, чтобы распечатать.' };
+      return { name: 'sborka-' + day + '.html', bytes: enc.encode(pickHtml(p.orders, (await this.getCfg()).shop, await this.getProd(), p.cut, lang)), mime: 'text/html', n: p.orders.length,
+        caption: uz ? 'Yigʻish roʻyxati: buyurtmalar ' + p.orders.length + '. Faylni brauzerda oching va chop etish uchun Ctrl+P bosing.' : 'Сборочный лист: заказов ' + p.orders.length + '. Откройте файл в браузере и нажмите Ctrl+P, чтобы распечатать.' };
     }
     return { err: 'bad_request' };
   }
@@ -2290,7 +2320,7 @@ export class Shop {
         if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
         const p = await this.pickOrders(r.body);
         if (!p.orders.length) return json({ error: 'empty' }, 404);
-        return json({ html: pickHtml(p.orders, (await this.getCfg()).shop, await this.getProd(), p.cut), n: p.orders.length, cut: p.cut });
+        return json({ html: pickHtml(p.orders, (await this.getCfg()).shop, await this.getProd(), p.cut, r.body.lang === 'uz' ? 'uz' : 'ru'), n: p.orders.length, cut: p.cut });
       }
       if (path === '/api/admin/export' && method === 'POST') {
         const r = await this.readBody(request, 4000);

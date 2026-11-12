@@ -3063,7 +3063,7 @@ await t('отчёты: «что пора закупать» считает по 
   let d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
   assert.equal(d.buy.window, 10);
   assert.equal(d.buy.cover, 14);
-  assert.deepEqual(d.buy.list, [{ id: 'p4', name: 'Макароны', w: '400 г', avail: 30, daily: 5, left: 6, need: 40 }]);
+  assert.deepEqual(d.buy.list, [{ id: 'p4', name: 'Макароны', uz: 'Makaron', w: '400 г', wu: '400 g', avail: 30, daily: 5, left: 6, need: 40 }]);
   // товар без учёта остатка в подсказку не попадает, а у товара с нулевым остатком «хватит на 0 дней»
   assert.equal((await setSt('p1', 0)).status, 200);
   d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
@@ -3073,7 +3073,7 @@ await t('отчёты: «что пора закупать» считает по 
   const o = await placeP(A, [{ id: 'p4', qty: 10 }]);
   assert.equal(o.status, 200);
   d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
-  assert.deepEqual(d.buy.list.find(x => x.id === 'p4'), { id: 'p4', name: 'Макароны', w: '400 г', avail: 20, daily: 5, left: 4, need: 50 });
+  assert.deepEqual(d.buy.list.find(x => x.id === 'p4'), { id: 'p4', name: 'Макароны', uz: 'Makaron', w: '400 г', wu: '400 g', avail: 20, daily: 5, left: 4, need: 50 });
 });
 
 await t('отчёты: старше 400 дней записи удаляются, остальные остаются', async () => {
@@ -6777,6 +6777,153 @@ await t('утро, остатки, проверка товаров и спорн
   sent.forEach(x => { assert.ok(/[A-Za-z]/.test(x.text.split('\n')[0]) && /[А-Яа-я]/.test(x.text) && x.text.includes('\n\n'), 'нет двух частей: ' + x.text); assert.ok(x.text.length <= 4096); });
   const st = stockAlerts()[0].payload.text;
   assert.ok(st.startsWith('Ombordagi qoldiqlar:') && st.includes('ta qoldi (chegara 10)') && st.includes('\n\nОстатки на складе:'), st);
+});
+
+/* ---------- Excel и сборочный лист на языке интерфейса ---------- */
+const hasRu = x => /[А-Яа-яЁё]/.test(String(x));
+const noRuCells = (rows, skipCols) => rows.forEach((r, i) => r.forEach((c, j) => { if (!(skipCols || []).includes(j) && typeof c === 'string' && hasRu(c)) assert.fail('русский текст в узбекском файле, строка ' + (i + 1) + ', колонка ' + (j + 1) + ': ' + c); }));
+
+await t('Excel по-узбекски: заказы и клиенты — листы, заголовки, статусы, способ оплаты и названия товаров на узбекском; данные клиента как введены', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = (await jsonOf(await place(A, [{ id: 'p1', qty: 2 }, { id: 'p2', qty: 1 }], { form: formFor(S.DEFAULT, 'delivery', { comment: 'Позвоните за час' }) }, 'delivery'))).order;
+  for (const to of ['accepted', 'ready']) assert.equal((await setStatus(o.id, to)).status, 200);
+  assert.equal((await doneWith(o.id, { m: 'credit', days: 7, paid: 100000, pm: 'cash' })).status, 200);
+  tgLog = [];
+  const r = await exportReq('orders', { lang: 'uz' });
+  assert.equal(r.status, 200);
+  const doc = lastDoc();
+  assert.ok(doc.payload.caption.startsWith('Buyurtmalar: 1') && doc.payload.caption.includes('Excelda oching'), doc.payload.caption);
+  const x = readXlsx(doc.file.bytes);
+  assert.deepEqual(Object.keys(x), ['Buyurtmalar', 'Buyurtmadagi mahsulotlar']);
+  const head = x['Buyurtmalar'][0], row = x['Buyurtmalar'].find(q => q[0] === o.id), col = n => head.indexOf(n);
+  assert.deepEqual(head.slice(0, 6), ['Buyurtma №', 'Yaratilgan', 'Holat', 'Olish usuli', 'Qachon', 'Mijoz']);
+  assert.equal(row[col('Holat')], 'Yetkazildi');
+  assert.equal(row[col('Olish usuli')], 'Yetkazib berish');
+  assert.ok(String(row[col('Toʻlov')]).startsWith('Naqd 100000 + Qarzga ') && String(row[col('Toʻlov')]).endsWith(' gacha'), row[col('Toʻlov')]);
+  assert.equal(row[col('Izoh')], 'Позвоните за час');
+  assert.equal(row[col('Mijoz')], 'ООО Ориент');
+  const items = x['Buyurtmadagi mahsulotlar'];
+  assert.deepEqual(items[0].slice(0, 6), ['Buyurtma №', 'Holat', 'Qachon', 'Mijoz', 'Mahsulot', 'Ogʻirlik / hajm']);
+  const names = items.slice(1).map(q => q[4]).sort();
+  assert.deepEqual(names, ['Guruch', 'Kungaboqar yogʻi'], 'названия товаров по-узбекски');
+  assert.ok(items.slice(1).every(q => /\b(kg|l)\b/.test(q[5])), 'вес с узбекскими единицами: ' + JSON.stringify(items.slice(1).map(q => q[5])));
+  noRuCells(x['Buyurtmalar'], [col('Izoh'), col('Mijoz'), col('Manzil'), col('Yetkazib berish manzili')].filter(i => i >= 0).concat([5, 9, 10]));
+  noRuCells(items, [3]);
+  // клиенты
+  tgLog = [];
+  assert.equal((await exportReq('clients', { lang: 'uz' })).status, 200);
+  const cdoc = lastDoc();
+  assert.ok(cdoc.payload.caption.startsWith('Mijozlar: 1'), cdoc.payload.caption);
+  const cx = readXlsx(cdoc.file.bytes);
+  assert.deepEqual(Object.keys(cx), ['Mijozlar']);
+  assert.deepEqual(cx['Mijozlar'][0].slice(0, 6), ['Ism', 'Telefon', 'Tashkilot', 'Guruh', 'Yetkazib berish manzillari', 'Eslatma']);
+  assert.equal(cx['Mijozlar'][1][cx['Mijozlar'][0].indexOf('Til')], 'ruscha');
+  // без lang по-прежнему русский
+  tgLog = [];
+  await exportReq('orders');
+  assert.deepEqual(Object.keys(readXlsx(lastDoc().file.bytes)), ['Заказы', 'Товары в заказах']);
+  tgLog = [];
+  await exportReq('orders', { lang: 'xx' });
+  assert.deepEqual(Object.keys(readXlsx(lastDoc().file.bytes)), ['Заказы', 'Товары в заказах'], 'неизвестный язык = русский');
+});
+
+await t('Excel по-узбекски: долги — листы «Qarzlar» и «Tarix», статусы, способы оплаты, записи журнала и подпись файла', async () => {
+  await stockWorld();
+  const A = await overdueDebt(4, CART);
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 100000, m: 'cash', note: 'принёс директор' })).status, 200);
+  tgLog = [];
+  const r = await exportReq('debts', { f: 'all', lang: 'uz' });
+  assert.equal(r.status, 200);
+  const doc = lastDoc();
+  assert.ok(doc.payload.caption.startsWith('Qarzlar (hammasi): doʻkonlar 1') && doc.payload.caption.includes('Excelda oching'), doc.payload.caption);
+  const x = readXlsx(doc.file.bytes);
+  assert.deepEqual(Object.keys(x), ['Qarzlar', 'Tarix']);
+  const head = x['Qarzlar'][0], col = n => head.indexOf(n);
+  assert.deepEqual(head.slice(0, 5), ['Doʻkon', 'Tashkilot', 'Telefon', 'Manzil', 'Qarz, soʻm']);
+  assert.equal(x['Qarzlar'][1][col('Holat')], 'Muddati oʻtgan');
+  const hist = x['Tarix'], hc = n => hist[0].indexOf(n);
+  assert.deepEqual(hist[0].slice(0, 5), ['Doʻkon', 'Telefon', 'Sana', 'Yozuv', 'Yozuv №']);
+  const kinds = hist.slice(1).map(q => q[hc('Yozuv')]);
+  assert.ok(kinds.includes('Qarzga berildi') && kinds.includes('Toʻlov'), kinds.join(', '));
+  assert.deepEqual(hist.slice(1).filter(q => q[hc('Yozuv')] === 'Toʻlov').map(q => q[hc('Usul')]), ['Naqd']);
+  noRuCells(x['Qarzlar'], [0, 1, 3]);
+  noRuCells(hist, [0, hc('Izoh')]);
+  // свёрнутые старые записи
+  const lg = await W.storage.get('lg:' + A.u.id); lg.base = { d: 5000, due: '2026-01-01' }; await W.storage.put('lg:' + A.u.id, lg);
+  await exportReq('debts', { f: 'over', lang: 'uz' });
+  assert.ok(lastDoc().payload.caption.startsWith('Qarzlar (muddati oʻtgan)'));
+  const hx = readXlsx(lastDoc().file.bytes)['Tarix'];
+  assert.ok(hx.some(q => q[hx[0].indexOf('Yozuv')] === 'Dastlabki yozuvlar jamlangan'));
+  // и по-русски по умолчанию
+  await exportReq('debts', { f: 'all' });
+  assert.deepEqual(Object.keys(readXlsx(lastDoc().file.bytes)), ['Долги', 'История']);
+});
+
+await t('Excel по-узбекски: отчёт — листы, заголовки, месяц, названия и вес товаров, текст сводки и «Что закупать»', async () => {
+  await stockWorld();
+  const st = W.storage, ago = n => new Date(Date.now() + 5 * 3600000 - n * 86400000).toISOString().slice(0, 10);
+  await st.put('rp0', ago(9));
+  const days = [];
+  for (let i = 9; i >= 0; i--) {
+    days.push(ago(i));
+    await st.put('rp:' + ago(i), { n: 1, sum: 37500, disc: 0, fee: 0, items: [{ id: 'p4', name: 'Макароны', qty: 5, sum: 37500 }], cl: [{ uid: 7, name: 'ООО Ориент', org: '', n: 1, sum: 37500 }] });
+  }
+  await st.put('rpx', days);
+  assert.equal((await setSt('p4', 30, 10)).status, 200);
+  tgLog = [];
+  const r = await exportReq('report', { days: 30, lang: 'uz' });
+  assert.equal(r.status, 200);
+  const doc = lastDoc();
+  assert.ok(doc.payload.caption.startsWith('Hisobot, 30 kun: buyurtmalar 10') && doc.payload.caption.includes('Excelda oching'), doc.payload.caption);
+  const x = readXlsx(doc.file.bytes);
+  assert.deepEqual(Object.keys(x), ['Xulosa', 'Kunlar boʻyicha', 'Oylar boʻyicha', 'Mahsulotlar', 'Mijozlar', 'Nimani sotib olish']);
+  assert.ok(x['Xulosa'][0][0].startsWith('Hisobot: ') && x['Xulosa'][3][0].startsWith('Buyurtmalar: 10. Summa: ') && x['Xulosa'][3][0].includes(' soʻm.'), JSON.stringify(x['Xulosa']));
+  assert.deepEqual(x['Kunlar boʻyicha'][0], ['Sana', 'Buyurtmalar', 'Summa, soʻm']);
+  assert.equal(x['Kunlar boʻyicha'][x['Kunlar boʻyicha'].length - 1][0], 'Jami');
+  assert.ok(/^(yanvar|fevral|mart|aprel|may|iyun|iyul|avgust|sentyabr|oktyabr|noyabr|dekabr) \d{4}$/.test(x['Oylar boʻyicha'][1][0]), x['Oylar boʻyicha'][1][0]);
+  assert.deepEqual(x['Mahsulotlar'][1].slice(0, 3), ['Makaron', '400 g', 50]);
+  assert.deepEqual(x['Nimani sotib olish'][0].slice(0, 5), ['Mahsulot', 'Ogʻirlik / hajm', 'Boʻsh, dona', 'Kuniga sotiladi, dona', 'Necha kunga yetadi']);
+  assert.equal(x['Nimani sotib olish'][0][5], '14 kunga sotib olish, dona');
+  assert.deepEqual(x['Nimani sotib olish'][1].slice(0, 2), ['Makaron', '400 g']);
+  noRuCells(x['Xulosa'].concat(x['Kunlar boʻyicha'], x['Oylar boʻyicha'], x['Mahsulotlar'], x['Nimani sotib olish']), []);
+  tgLog = [];
+  await exportReq('report', { days: 30 });
+  const ru = readXlsx(lastDoc().file.bytes);
+  assert.deepEqual(Object.keys(ru), ['Сводка', 'По дням', 'По месяцам', 'Товары', 'Клиенты', 'Что закупать']);
+  assert.deepEqual(ru['Товары'][1].slice(0, 3), ['Макароны', '400 г', 50]);
+});
+
+await t('сборочный лист и резервная копия по-узбекски: язык листа и файла-пояснения, названия товаров; без lang — русский', async () => {
+  await stockWorld();
+  const A = newUser(), B = newUser();
+  await place(A, [{ id: 'p1', qty: 2 }], { form: formFor(S.DEFAULT, 'delivery', { comment: 'Позвоните за час' }) }, 'delivery');
+  await place(B, [{ id: 'p2', qty: 1 }, { id: 'p1', qty: 1 }]);
+  const uzP = await jsonOf(await pickReq({ lang: 'uz' }));
+  assert.equal(uzP.n, 2);
+  assert.ok(uzP.html.includes('<html lang="uz">') && uzP.html.includes('<h1>Yigʻish roʻyxati</h1>') && uzP.html.includes('Ombordan jami yigʻish') && uzP.html.includes('Olganda toʻlanadi:') && uzP.html.includes('Yigʻdi:'), 'узбекские подписи');
+  assert.ok(uzP.html.includes('Guruch') && uzP.html.includes('Kungaboqar yogʻi') && uzP.html.includes('Yetkazib berish') && uzP.html.includes('Olib ketish') && uzP.html.includes('Yangi'), 'названия товаров, получение и статус по-узбекски');
+  assert.ok(uzP.html.includes('Позвоните за час'), 'комментарий клиента как есть');
+  const visible = uzP.html.replace(/<style>[\s\S]*?<\/style>/, '').replace(/Позвоните за час/g, '').replace(/ООО Ориент|Оптовая база|Навои, ул. Галаба 12, склад 3/g, '');
+  assert.ok(!hasRu(visible), 'в узбекском листе остался русский: ' + (visible.match(/[^<>]{0,30}[А-Яа-яЁё]+[^<>]{0,30}/) || [''])[0]);
+  const ruP = await jsonOf(await pickReq({}));
+  assert.ok(ruP.html.includes('<html lang="ru">') && ruP.html.includes('<h1>Сборочный лист</h1>') && ruP.html.includes('Всего собрать со склада'));
+  // файлом в чат
+  tgLog = [];
+  assert.equal((await exportReq('pick', { lang: 'uz' })).status, 200);
+  const pd = lastDoc();
+  assert.ok(pd.payload.caption.startsWith('Yigʻish roʻyxati: buyurtmalar 2') && pd.payload.caption.includes('Ctrl+P'), pd.payload.caption);
+  assert.ok(new TextDecoder().decode(pd.file.bytes).includes('<h1>Yigʻish roʻyxati</h1>'));
+  // резервная копия: пояснение и подпись
+  tgLog = [];
+  assert.equal((await exportReq('backup', { lang: 'uz' })).status, 200);
+  const bd = lastDoc();
+  assert.ok(bd.payload.caption.startsWith('Zaxira nusxasi: buyurtmalar 2'), bd.payload.caption);
+  const readme = new TextDecoder().decode(unzip(bd.file.bytes)['README.txt']);
+  assert.ok(readme.includes('doʻkonining zaxira nusxasi') && readme.includes('backup.json — sozlamalar') && !hasRu(readme.replace(/«[^»]*»/, '')), readme);
+  tgLog = [];
+  await exportReq('backup');
+  assert.ok(new TextDecoder().decode(unzip(lastDoc().file.bytes)['README.txt']).startsWith('Резервная копия магазина'));
 });
 
 /* ---------- итог ---------- */
