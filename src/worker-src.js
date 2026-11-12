@@ -1044,6 +1044,8 @@ const DEBT_ORD_MAX = 100, LG_MAX = 500, LG_FOLD = 100, LG_NOTE = 80, LG_SHOW = 1
 const PAY_RU = { cash: '💵 Наличные', card: '💳 Карта', bank: '🏦 Перечисление', credit: '📒 В долг' };
 /* Контроль денег: сколько ждём ответа магазина, сколько безналичных оплат доставщика ждут сверки, длина причины и комментария. */
 const CF_LATE = 24 * 3600000, NV_MAX = 100, WHY_MIN = 3, WHY_MAX = 80, RES_MAX = 120;
+/* Как назвать человека в сообщении владельцу: имя, логин и номер, чтобы не перепутать тёзок. */
+const whoFull = u => (whoName(u) || 'Без имени') + (u && u.username ? ' (@' + u.username + ')' : '') + ', ID ' + (u && u.id);
 const whoName = u => cleanStr([u && u.first_name, u && u.last_name].filter(Boolean).join(' ') || (u && u.username) || '', 40);
 
 /* ---------- доставка: доставщики и касса наличных ---------- */
@@ -3523,6 +3525,7 @@ const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
 const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50;
+const PEOPLE_GAP = 600000, PEOPLE_MAX = 1000;
 const BASE_STATUS = ['new', 'talk', 'refuse'];
 /* Ключ для поиска повторов: последние 9 цифр номера (код страны, пробелы и скобки не мешают). */
 const phoneKey = p => { const d = String(p || '').replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
@@ -3615,6 +3618,7 @@ export class Hub {
       return { r: 'bad' };
     }
     if (f.n || f.until) await this.st.delete('fail:' + uid);
+    const had = (await this.sellsOf(uid)).includes(did), hadOwner = (await this.owners()).includes(uid);
     const res = await shopCall(this.env, did, '/__/admin-add', { uid });
     if (!res.ok || !res.data) return { r: 'error' };
     await this.setSeller(uid, did, true, res.data.admins);
@@ -3622,7 +3626,8 @@ export class Hub {
       const own = await this.owners();
       if (!own.includes(uid)) { own.push(uid); await this.st.put('owners', own); }
     }
-    return { r: 'ok', did, owner };
+    // fresh: этот человек вошёл по коду впервые (стал продавцом или владельцем), а не повторил команду
+    return { r: 'ok', did, owner, fresh: !had || (owner && !hadOwner) };
   }
   /* Запоминает, у каких дистрибьюторов человек продавец, и сколько продавцов у дистрибьютора. */
   async setSeller(uid, did, on, admins) {
@@ -3738,6 +3743,47 @@ export class Hub {
     return a && a.on && a.uid === uid ? a : null;
   }
   async agentLink(id) { const b = await this.botName(); return b ? 'https://t.me/' + b + '?start=a_' + id : ''; }
+  /* Реестр людей: кто открывал приложение или писал боту (имя, логин, первый и последний заход). Роли здесь не хранятся: они считаются при показе списка.
+     Запись обновляется не чаще раза в 10 минут на человека, чтобы каждый запрос не писал в хранилище. */
+  async touchPerson(u) {
+    try {
+      if (!u || !Number.isInteger(u.id) || u.id <= 0) return;
+      const now = Date.now();
+      if (!this.pseen) this.pseen = new Map();
+      if (now - (this.pseen.get(u.id) || 0) < PEOPLE_GAP) return;
+      if (this.pseen.size > 5000) this.pseen.clear();
+      this.pseen.set(u.id, now);
+      const nm = whoName(u), un = cleanStr(u.username || '', 40), iso = new Date(now).toISOString();
+      const cur = await this.st.get('pp:' + u.id);
+      if (cur && cur.nm === nm && cur.un === un && now - Date.parse(cur.last) < PEOPLE_GAP) return;
+      await this.st.put('pp:' + u.id, { id: u.id, nm, un, first: cur && cur.first ? cur.first : iso, last: iso });
+    } catch (e) { console.error('touchPerson failed', e && e.message || e); }
+  }
+  /* Список для владельца: все, кто заходил, плюс держатели ролей, которых ещё не видели после появления списка. Самые свежие первыми. */
+  async peopleSeen() {
+    const rec = new Map();
+    const row = (id) => { let r = rec.get(id); if (!r) { r = { id, nm: '', un: '', first: '', last: '', roles: [], shop: null }; rec.set(id, r); } return r; };
+    for (const v of (await this.st.list({ prefix: 'pp:' })).values()) if (v && v.id) Object.assign(row(v.id), { nm: v.nm || '', un: v.un || '', first: v.first || '', last: v.last || '' });
+    const recs = new Map((await this.allRecs()).map(r => [r.id, r.name]));
+    const uidOf = k => Number(String(k).slice(String(k).indexOf(':') + 1));
+    for (const id of await this.owners()) row(id).roles.push({ r: 'owner' });
+    for (const [k, list] of (await this.st.list({ prefix: 'adm:' })).entries()) for (const did of Array.isArray(list) ? list : []) row(uidOf(k)).roles.push({ r: 'seller', n: recs.get(did) || did });
+    for (const [k, list] of (await this.st.list({ prefix: 'dls:' })).entries()) for (const did of Array.isArray(list) ? list : []) if (recs.has(did)) row(uidOf(k)).roles.push({ r: 'courier', n: recs.get(did) });
+    const ags = new Map((await this.allAgents()).map(a => [a.id, a]));
+    for (const a of ags.values()) if (a.on && a.uid) row(a.uid).roles.push({ r: 'agent', n: a.name });
+    for (const b of (await this.st.list({ prefix: 'b:' })).values()) if (b && b.uid) row(b.uid).shop = { name: b.name || '', phone: b.phone || '' };
+    const all = [...rec.values()].filter(x => Number.isInteger(x.id) && x.id > 0);
+    all.sort((a, b) => String(b.last).localeCompare(String(a.last)) || a.id - b.id);
+    return { people: all.slice(0, PEOPLE_MAX), total: all.length, max: PEOPLE_MAX };
+  }
+  /* Сообщение всем владельцам площадки (кроме самого человека, если он владелец). */
+  async notifyOwners(text, exceptUid) {
+    if (!this.env.BOT_TOKEN) return;
+    for (const o of await this.owners()) {
+      if (o === exceptUid) continue;
+      try { await this.tg('sendMessage', { chat_id: o, text }); } catch (e) { console.error('owner notify failed', e && e.message || e); }
+    }
+  }
   async baseRole(uid) {
     if ((await this.owners()).includes(uid)) return { r: 'owner' };
     const ag = await this.agentOf(uid);
@@ -4060,6 +4106,7 @@ export class Hub {
   }
   async adminPeople(request, path, method) {
     if (path === '/api/hub/admin/people' && method === 'GET') return json(await this.peopleState());
+    if (path === '/api/hub/admin/people/list' && method === 'GET') return json(await this.peopleSeen());
     if (path === '/api/hub/admin/terr' && method === 'POST') {
       const r = await this.readBody(request, 4000);
       const names = r.body && Array.isArray(r.body.names) ? r.body.names.filter(x => typeof x === 'string') : null;
@@ -4194,10 +4241,11 @@ export class Hub {
       return { r: 'bad' };
     }
     if (f.n || f.until) await this.st.delete('fail:' + uid);
-    if (ag.uid && ag.uid !== uid) await this.st.delete('agu:' + ag.uid);
+    const prev = ag.uid && ag.uid !== uid ? ag.uid : 0, fresh = ag.uid !== uid;
+    if (prev) await this.st.delete('agu:' + prev);
     ag.uid = uid;
     await this.st.put({ ['a:' + ag.id]: ag, ['agu:' + uid]: ag.id });
-    return { r: 'ok', ag };
+    return { r: 'ok', ag, fresh, prev };
   }
 
   /* --- приложение --- */
@@ -4212,6 +4260,7 @@ export class Hub {
     const out = { title: await this.title(), shops: recs.map(pubRec), terrs };
     const au = await this.auth(request);
     if (au.user) {
+      await this.touchPerson(au.user);
       const sells = await this.sellsOf(au.user.id);
       const all = await this.allRecs();
       const mine = sells.map(id => all.find(r => r.id === id)).filter(Boolean);
@@ -4248,6 +4297,7 @@ export class Hub {
   async api(request, path, method) {
     const au = await this.auth(request);
     if (au.err) return json({ error: au.err }, au.err === 'no_token' ? 500 : 401);
+    await this.touchPerson(au.user);
     const uid = au.user.id;
 
     if (path === '/api/hub/orders' && method === 'GET') {
@@ -4594,6 +4644,7 @@ export class Hub {
   }
   async onMessage(msg) {
     if (!msg.from || !msg.chat || msg.chat.type !== 'private') return;
+    await this.touchPerson(msg.from);
     const uid = msg.from.id, chat = msg.chat.id;
     const text = String(msg.text || '').trim();
     const lang = String(msg.from.language_code || '').toLowerCase().startsWith('uz') ? 'uz' : 'ru';
@@ -4613,6 +4664,7 @@ export class Hub {
       await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });
       if (res.r === 'ok') {
         const rec = await this.getRec(res.did);
+        if (res.fresh) await this.notifyOwners('🔑 Вход по коду: ' + whoFull(msg.from) + ' вошёл как ' + (res.owner ? 'владелец площадки' : 'продавец «' + (rec ? rec.name : res.did) + '»') + '.', uid);
         const who = res.did === MAIN && res.owner ? 'Готово, вы продавец.' : 'Готово, вы продавец «' + (rec ? rec.name : res.did) + '».';
         await this.tg('sendMessage', {
           chat_id: chat,
@@ -4641,6 +4693,7 @@ export class Hub {
       const res = await this.tryAgentCode(code, uid);
       await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });   // код не должен оставаться в переписке
       if (res.r === 'ok') {
+        if (res.fresh) await this.notifyOwners('🔑 Вход по коду: ' + whoFull(msg.from) + ' вошёл как агент «' + res.ag.name + '».' + (res.prev ? ' Этот код раньше был у другого Telegram-аккаунта (ID ' + res.prev + '), тот аккаунт отключён.' : ''), uid);
         const names = (await this.terrs()).filter(t => (res.ag.terr || []).includes(t.id)).map(t => t.name);
         await this.tg('sendMessage', {
           chat_id: chat,
@@ -4657,7 +4710,7 @@ export class Hub {
     const payload = cmd === '/start' ? (text.split(/\s+/)[1] || '') : '';
     // «/start c_<дистрибьютор>_<ключ>» — приглашение доставщика, которое выдал продавец
     const cj = payload.match(/^c_([a-z0-9]{2,12})_([a-z0-9]{6,12})$/);
-    if (cj) { await this.courierJoin(uid, chat, lang, cj[1], cj[2]); return; }
+    if (cj) { await this.courierJoin(uid, chat, lang, cj[1], cj[2], msg.from); return; }
     // «/start a_<номер>» — личная ссылка агента: магазин, пришедший по ней, закрепляется за агентом (при первом заказе)
     const am0 = payload.match(/^a_(a[a-z0-9]{3,10})$/);
     if (am0 && !(await this.st.get('ref:' + uid))) { const ag = await this.st.get('a:' + am0[1]); if (ag && ag.on) await this.st.put('ref:' + uid, ag.id); }
@@ -4671,7 +4724,7 @@ export class Hub {
     });
   }
   /* Доставщик нажал ссылку-приглашение: хранилище дистрибьютора проверяет ключ и записывает его, площадка запоминает, где он доставщик. */
-  async courierJoin(uid, chat, lang, did, tok) {
+  async courierJoin(uid, chat, lang, did, tok, from) {
     const say = (ru, uz, markup) => this.tg('sendMessage', { chat_id: chat, text: bilingual(lang, ru, uz), reply_markup: markup });
     const rec = await this.getRec(did);
     const r = rec ? await shopCall(this.env, did, '/__/courier-join', { uid, token: tok }) : null;
@@ -4682,6 +4735,7 @@ export class Hub {
     }
     const dl = (await this.st.get('dls:' + uid)) || [];
     if (!dl.includes(did)) await this.st.put('dls:' + uid, dl.concat([did]));
+    await this.notifyOwners('🔑 Вход по приглашению: ' + whoFull(from || { id: uid }) + ' стал доставщиком «' + rec.name + '».', uid);
     await say('Готово, вы доставщик «' + rec.name + '». Когда продавец отметит заказ готовым к доставке, он придёт сюда с кнопкой «Взял». Заказы, должников и кассу смотрите в приложении.',
       'Tayyor, siz «' + rec.name + '» yetkazib beruvchisisiz. Sotuvchi buyurtmani yetkazishga tayyor deb belgilasa, u shu yerga «Взял» tugmasi bilan keladi. Buyurtmalar, qarzdorlar va kassa ilovada.',
       openBtn(this.origin, lang === 'uz' ? 'Yetkazib berishni ochish' : 'Открыть доставку', courierUrl(this.origin, did)));

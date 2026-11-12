@@ -610,6 +610,9 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .bh{display:flex;align-items:center;gap:8px;min-width:0}
 .bh h3{flex:0 1 auto;min-width:0;font-size:16px;line-height:1.25}
 .bsigns{display:flex;gap:8px;flex:none}
+.who-s{margin:2px 0 10px}
+.who .wtags{display:flex;flex-wrap:wrap;gap:2px 12px}
+.who .bh h3{font-size:15px}
 .bh .dtag{margin-left:auto;flex:none;padding-left:4px}
 .sgn{position:relative;width:26px;height:26px;border-radius:50%;border:0;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none;font:inherit}
 button.sgn{cursor:pointer}
@@ -795,7 +798,7 @@ const S={
   an:{days:30,sh:'',tab:'cats',sort:'sum',all:false,data:null,shops:[],err:false,seq:0},
   did:'',epoch:0,switching:false,off:false,otherCart:null,
   hub:{title:'',shops:[],me:null,terrs:[],loaded:false,err:false},
-  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null},
+  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0}
 };
@@ -4446,6 +4449,7 @@ async function loadOwner(){
   loadDisputes();
   loadOwnerStats();
   loadOwnerPeople();
+  loadOwnerWho();
   const r=await api('GET','/api/hub/admin/shops');
   const o=S.own;
   if(!r.ok||!r.data){o.err=true;o.loaded=true;if(S.view==='owner')renderOwner();return}
@@ -4501,7 +4505,7 @@ async function ownPct(id){
 /* раздел владельца: каждый блок на своём экране, заходят в него из меню ☰ (категория → подраздел) */
 const ownSecs=()=>[
   ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')],['comm',L('Комиссия','Komissiya'),L('Заказы и комиссия','Buyurtmalar va komissiya')]]],
-  ['team',L('Агенты и территории','Agentlar va hududlar'),[['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
+  ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
   ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['clients',L('База магазинов','Doʻkonlar bazasi'),L('База магазинов','Doʻkonlar bazasi')]]]
 ];
@@ -4575,6 +4579,7 @@ function renderOwner(){
     else if(sec==='comm')h+=ownStatsHTML();
     else if(sec==='title')h+=ownTitleHTML();
     else if(sec==='disp')h+=ownDispHTML();
+    else if(sec==='people')h+=ownWhoHTML();
     else h+=ownPeopleHTML(sec);
   }
   view.innerHTML=h+'</div>';
@@ -4630,6 +4635,49 @@ const peopleErr=e=>({
   code_taken:L('Такой код уже занят, придумайте другой','Bu kod band, boshqasini oʻylab toping'),
   forbidden:L('Раздел только для владельца','Boʻlim faqat egasi uchun')
 }[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
+/* «Люди»: все, кто открывал приложение или писал боту, и держатели ролей. Только просмотр: поиск и фильтр по роли считаются здесь, на телефоне. */
+async function loadOwnerWho(){
+  if(!isOwner())return;
+  const W=S.own.who,r=await api('GET','/api/hub/admin/people/list');
+  if(!r.ok||!r.data||!Array.isArray(r.data.people)){W.err=!W.ok;if(!W.ok&&S.view==='owner'&&S.own.sec==='people')ownRefresh();return}
+  W.ok=true;W.err=false;W.people=r.data.people;W.total=r.data.total||r.data.people.length;
+  if(S.view==='owner'&&S.own.sec==='people')ownRefresh();
+}
+const WHO_ROLES=()=>[['owner',L('Владельцы','Egalar')],['seller',L('Продавцы','Sotuvchilar')],['agent',L('Агенты','Agentlar')],['courier',L('Доставщики','Yetkazuvchilar')],['shop',L('Магазины','Doʻkonlar')]];
+/* роли человека для фильтра: без особых ролей он «магазин» (обычный клиент) */
+const whoRoles=x=>x.roles.length?[...new Set(x.roles.map(r=>r.r))]:['shop'];
+function whoFiltered(){
+  const W=S.own.who,q=W.q.trim().toLowerCase().replace(/^@/,'');
+  return W.people.filter(x=>(W.f==='all'||whoRoles(x).includes(W.f))&&(!q||[x.nm,x.un,String(x.id),x.shop&&x.shop.name,x.shop&&x.shop.phone,...x.roles.map(r=>r.n)].filter(Boolean).some(v=>String(v).toLowerCase().includes(q))));
+}
+function whoRoleTag(r){
+  const nm={owner:L('Владелец','Ega'),seller:L('Продавец','Sotuvchi'),agent:L('Агент','Agent'),courier:L('Доставщик','Yetkazuvchi')}[r.r]||r.r;
+  return '<span class="dtag">'+esc(nm+(r.n?' · '+r.n:''))+'</span>';
+}
+function whoRowHTML(x){
+  const tags=x.roles.length?x.roles.map(whoRoleTag).join(''):'<span class="dtag">'+esc(L('Магазин','Doʻkon')+(x.shop&&x.shop.name?' · '+x.shop.name:''))+'</span>';
+  const name=x.nm||(x.shop&&x.shop.name)||L('Без имени','Ismsiz');
+  const seen=x.last?L('Заходил: ','Kirgan: ')+agoTxt(x.last)+(x.first?L(' · с ',' · ')+jrDay(x.first)+(LANG==='uz'?' dan':''):''):L('Пока не заходил после появления списка','Roʻyxat paydo boʻlgandan keyin hali kirmagan');
+  return '<div class="bcard who"><div class="bh"><h3>'+esc(name)+'</h3></div>'
+    +'<div class="dmeta">'+esc([x.un?'@'+x.un:'',x.shop&&x.shop.phone,'ID '+x.id].filter(Boolean).join(' · '))+'</div>'
+    +'<div class="wtags">'+tags+'</div><div class="dmeta">'+esc(seen)+'</div></div>';
+}
+const jrDay=iso=>{const d=new Date(iso);return isNaN(d)?'':pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear()};
+function whoListHTML(){
+  const W=S.own.who,list=whoFiltered(),CAP=100,shown=W.all?list:list.slice(0,CAP);
+  if(!list.length)return '<div class="empty"><b>'+L('Никого не нашли','Hech kim topilmadi')+'</b>'+L('Измените поиск или фильтр.','Qidiruv yoki filtrni oʻzgartiring.')+'</div>';
+  return shown.map(whoRowHTML).join('')+(list.length>shown.length?'<div class="row-btns"><button type="button" class="btn ghost" data-act="whoall">'+L('Показать всех ('+list.length+')','Hammasini koʻrsatish ('+list.length+')')+'</button></div>':'');
+}
+function ownWhoHTML(){
+  const W=S.own.who;
+  if(!W.ok)return W.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div>':'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  const cnt=k=>W.people.filter(x=>whoRoles(x).includes(k)).length;
+  return '<p class="lead">'+L('Все, кто открывал приложение или писал боту, и те, у кого есть роль. Роль у человека видна сразу, а имя и дата захода появляются, когда он откроет приложение.','Ilovani ochgan yoki botga yozgan hamma, shuningdek roli bor odamlar. Rol darhol koʻrinadi, ism va kirgan sana esa odam ilovani ochganda paydo boʻladi.')+'</p>'
+    +'<div class="filters">'+[['all',L('Все','Hammasi'),W.people.length]].concat(WHO_ROLES().map(r=>[r[0],r[1],cnt(r[0])])).map(f=>'<button type="button" class="chip" data-act="whof" data-v="'+f[0]+'" aria-pressed="'+(W.f===f[0])+'">'+f[1]+' · '+f[2]+'</button>').join('')+'</div>'
+    +'<div class="who-s"><input type="search" id="who-q" data-own-who="q" value="'+esc(W.q)+'" placeholder="'+esc(L('Имя, @логин, телефон или ID','Ism, @login, telefon yoki ID'))+'" aria-label="'+esc(L('Поиск людей','Odamlarni qidirish'))+'" autocomplete="off" maxlength="60"></div>'
+    +(W.total>W.people.length?'<div class="note" style="margin-bottom:10px">'+L('В списке первые '+W.people.length+' из '+W.total+'.','Roʻyxatda '+W.total+' tadan dastlabki '+W.people.length+' tasi.')+'</div>':'')
+    +'<div id="who-list">'+whoListHTML()+'</div>';
+}
 async function loadOwnerPeople(){
   if(!isOwner())return;
   const r=await api('GET','/api/hub/admin/people');
@@ -5002,6 +5050,8 @@ document.addEventListener('click',e=>{
   else if(a==='cgrp'){const el=document.getElementById('cf-grp');if(el&&S.base.cf){el.value=t.dataset.v;S.base.cf.grp=t.dataset.v;el.focus()}}
   else if(a==='bxport')doExport(t.dataset.k,undefined,baseShop());
   else if(a==='pmenu'){S.pm=!S.pm;paintSeller()}
+  else if(a==='whof'){S.own.who.f=t.dataset.v;S.own.who.all=false;renderOwner()}
+  else if(a==='whoall'){S.own.who.all=true;const l=$('#who-list');if(l)l.innerHTML=whoListHTML()}
   else if(a==='dxmenu'){S.dxm=!S.dxm;dPaint()}
   else if(a==='dxport'){S.dxm=false;dPaint();doExport('debts',{f:t.dataset.f})}
   else if(a==='impapply')impApply();
@@ -5124,6 +5174,7 @@ document.addEventListener('input',e=>{
     const [aid,tid]=t.dataset.agterr.split(':'),ag=S.own.ppl&&S.own.ppl.agents.find(x=>x.id===aid);
     if(ag){const set=new Set(ag.terr);if(t.checked)set.add(tid);else set.delete(tid);peopleCall('PUT','/agents/'+encodeURIComponent(aid),{terr:[...set]})}
   }
+  else if(t.dataset.ownWho!==undefined){const W=S.own.who;W[t.dataset.ownWho]=t.value;W.all=false;const l=$('#who-list');if(l)l.innerHTML=whoListHTML()}
   else if(t.dataset.own!==undefined){S.own[t.dataset.own]=t.value;if(t.dataset.own!=='ftitle'&&S.own.err2){S.own.err2='';const er=$('#o-err');if(er)er.textContent=''}}
   else if(t.dataset.qty!==undefined){
     /* количество вводят с клавиатуры: пока клиент печатает, обновляем только суммы */
