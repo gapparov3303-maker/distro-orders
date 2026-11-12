@@ -6206,6 +6206,21 @@ await t('утреннее напоминание: расписание в wrangl
   assert.equal(tgAll('sendMessage').length, 0);
 });
 
+/* ---------- вид: рамки и поля ---------- */
+await t('вид: рамка --edge задана во всех темах, поля и карточки не прозрачные, товар в корзине получает зелёную рамку', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  assert.equal((html.match(/--edge:#[0-9A-Fa-f]{6};/g) || []).length, 3, 'токен в светлой теме и в двух тёмных блоках');
+  assert.ok(/input\[type=text\][^{]*\{[^}]*background:var\(--bg\);border:1\.5px solid var\(--edge\)/.test(html), 'поля: фон страницы и рамка');
+  for (const sel of ['.card', '.stat', '.lbox', '.drow', '.dvc', '.dcard', '.mcard', '.rcard', '.pcard', '.chip', '.payb']) {
+    const m = html.match(new RegExp('^' + sel.replace('.', '\\.') + '\\{[^}]*\\}', 'm'));
+    assert.ok(m, 'правило ' + sel);
+    assert.ok(/border:(1|1\.5|2)px (solid|dashed) var\(--edge\)/.test(m[0]), sel + ' без заметной рамки: ' + m[0].slice(0, 120));
+  }
+  assert.ok(/\.pcard\.incart\{border-color:var\(--accent\)\}/.test(html), 'зелёная рамка в корзине');
+  assert.ok(html.includes("(!off&&S.cart[p.id]>0?' incart':'')") && html.includes("classList.toggle('incart'"), 'класс ставится при отрисовке и при смене количества');
+  assert.ok(/\.pf>div:not\(\.full\)\{display:flex;flex-direction:column;justify-content:flex-end\}/.test(html), 'пары полей формы товара выровнены по нижнему краю');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
