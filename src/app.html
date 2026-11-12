@@ -105,6 +105,8 @@ html.mn-open,html.mn-open body{overflow:hidden}
 .ltag.uz{background:var(--accent-soft);color:var(--accent);border-color:transparent}
 .hint{display:block;font-size:12px;line-height:1.35;font-weight:400;color:var(--ink-2);margin:5px 0 0}
 .pf>.hint,.rvform>.hint{margin:-4px 0 0}
+.payb>.hint{margin:-4px 0 0}
+.trow+.hint,.pctrow+.hint{margin:-2px 0 8px}
 input[type=text],input[type=tel],input[type=number],input[type=date],input[type=search],select,textarea{width:100%;background:var(--bg);border:1.5px solid var(--edge);border-radius:10px;padding:11px 12px;min-width:0}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
 input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--bad)}
@@ -899,12 +901,12 @@ function terrFieldHTML(){
   const cur=terrCur();
   return '<div class="full"><label class="lab" for="f-terr">'+L('Ваш район или город','Rayon yoki shahringiz')+'</label><select id="f-terr" data-f="terr"><option value="">'+L('Выберите район или город','Rayon yoki shaharni tanlang')+'</option>'
     +S.hub.terrs.map(t=>'<option value="'+esc(t.id)+'"'+(t.id===cur?' selected':'')+'>'+esc(t.name)+'</option>').join('')
-    +'<option value="-"'+(cur==='-'?' selected':'')+'>'+L('Другой район','Boshqa hudud')+'</option></select><div class="err" id="e-terr"></div></div>';
+    +'<option value="-"'+(cur==='-'?' selected':'')+'>'+L('Другой район','Boshqa hudud')+'</option></select>'+hintD('Нужен, чтобы закрепить ваш магазин за агентом вашего района.','Doʻkoningizni hududingizdagi agentga biriktirish uchun kerak.')+'<div class="err" id="e-terr"></div></div>';
 }
 function regionFieldHTML(){
   const z=zone(),cur=orderRegion(),off=S.region&&!z.includes(S.region);
   return '<div class="full"><label class="lab" for="f-region">'+L('Регион доставки','Yetkazib berish hududi')+'</label><select id="f-region" data-f="region"><option value="">'+L('Выберите регион','Hududni tanlang')+'</option>'
-    +z.map(id=>'<option value="'+id+'"'+(id===cur?' selected':'')+'>'+esc(regionName(id))+'</option>').join('')+'</select><div class="err" id="e-region"></div>'
+    +z.map(id=>'<option value="'+id+'"'+(id===cur?' selected':'')+'>'+esc(regionName(id))+'</option>').join('')+'</select>'+hintD('Дистрибьютор доставляет только в эти регионы. Самовывоз доступен всем.','Distribyutor faqat shu hududlarga yetkazib beradi. Olib ketish hamma uchun ochiq.')+'<div class="err" id="e-region"></div>'
     +(off?'<div class="note warnnote" role="status" style="margin-top:8px">'+esc(L('Этот дистрибьютор не доставляет в ваш регион ('+regionName(S.region)+'). Выберите самовывоз или регион из списка.','Bu distribyutor sizning hududingizga ('+regionName(S.region)+') yetkazib bermaydi. Olib ketishni yoki roʻyxatdagi hududni tanlang.'))+'</div>':'')+'</div>';
 }
 /* в каталоге: куда доставляет этот дистрибьютор, и предупреждение, если не в регион магазина */
@@ -1378,13 +1380,13 @@ function formHTML(pk){
   return '<div class="form">'
     +(canDel?'<div class="full"><div class="seg" role="group" aria-label="'+esc(L('Способ получения','Olish usuli'))+'"><button type="button" data-act="mode" data-v="pickup" aria-pressed="'+(!del)+'">'+L('Самовывоз','Olib ketish')+'</button><button type="button" data-act="mode" data-v="delivery" aria-pressed="'+del+'">'+L('Доставка','Yetkazib berish')+'</button></div></div>':'')
     +(del&&zoneOn()?regionFieldHTML():'')
-    +'<div><label class="lab" for="f-name">'+L('Ваше имя или название компании','Ismingiz yoki kompaniya nomi')+'</label><input type="text" id="f-name" data-f="name" value="'+esc(S.form.name)+'" autocomplete="name"><div class="err" id="e-name"></div></div>'
-    +'<div><label class="lab" for="f-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="f-phone" data-f="phone" value="'+esc(S.form.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel"><div class="err" id="e-phone"></div></div>'
+    +'<div><label class="lab" for="f-name">'+L('Ваше имя или название компании','Ismingiz yoki kompaniya nomi')+'</label><input type="text" id="f-name" data-f="name" value="'+esc(S.form.name)+'" autocomplete="name">'+hintD('Так продавец увидит заказ. Пример: Анвар или магазин «Зафар».','Sotuvchi buyurtmani shu nom bilan koʻradi. Masalan: Anvar yoki «Zafar» doʻkoni.')+'<div class="err" id="e-name"></div></div>'
+    +'<div><label class="lab" for="f-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="f-phone" data-f="phone" value="'+esc(S.form.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel">'+hintD('По этому номеру продавец позвонит, если нужно уточнить заказ.','Buyurtmani aniqlashtirish kerak boʻlsa, sotuvchi shu raqamga qoʻngʻiroq qiladi.')+'<div class="err" id="e-phone"></div></div>'
     +(terrOn()?terrFieldHTML():'')
-    +(del?'<div class="full"><label class="lab" for="f-address">'+L('Адрес доставки','Yetkazib berish manzili')+'</label><textarea id="f-address" data-f="address" rows="2" maxlength="200" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'" autocomplete="street-address">'+esc(S.form.address)+'</textarea><div class="err" id="e-address"></div>'+addrChips()+'</div>':'')
-    +'<div><label class="lab" for="f-date">'+(del?L('Дата доставки','Yetkazib berish sanasi'):L('Дата получения','Olish sanasi'))+'</label><input type="date" id="f-date" data-f="date" min="'+pk.min+'" max="'+pk.max+'" value="'+esc(S.form.date)+'"><div class="err" id="e-date"></div></div>'
-    +'<div><label class="lab" for="f-time">'+L('Время','Vaqt')+'</label><select id="f-time" data-f="time"></select><div class="err" id="e-time"></div></div>'
-    +'<div class="full"><label class="lab" for="f-comment">'+L('Пожелания к заказу','Buyurtmaga istaklar')+'</label><textarea id="f-comment" data-f="comment" placeholder="'+esc(L('Как позвонить, пожелания к упаковке','Qachon qoʻngʻiroq qilish, qadoqlash boʻyicha istaklar'))+'">'+esc(S.form.comment)+'</textarea></div>'
+    +(del?'<div class="full"><label class="lab" for="f-address">'+L('Адрес доставки','Yetkazib berish manzili')+'</label><textarea id="f-address" data-f="address" rows="2" maxlength="200" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'" autocomplete="street-address">'+esc(S.form.address)+'</textarea>'+hintD('Город, улица, дом и ориентир, чтобы доставщик вас нашёл. Можно выбрать сохранённый адрес.','Yetkazuvchi sizni topishi uchun shahar, koʻcha, uy va moʻljalni yozing. Saqlangan manzilni tanlash mumkin.')+'<div class="err" id="e-address"></div>'+addrChips()+'</div>':'')
+    +'<div><label class="lab" for="f-date">'+(del?L('Дата доставки','Yetkazib berish sanasi'):L('Дата получения','Olish sanasi'))+'</label><input type="date" id="f-date" data-f="date" min="'+pk.min+'" max="'+pk.max+'" value="'+esc(S.form.date)+'">'+hintD(del?'День, когда нужно привезти заказ.':'День, когда вы заберёте заказ.',del?'Buyurtmani olib kelish kerak boʻlgan kun.':'Buyurtmani olib ketadigan kuningiz.')+'<div class="err" id="e-date"></div></div>'
+    +'<div><label class="lab" for="f-time">'+L('Время','Vaqt')+'</label><select id="f-time" data-f="time"></select>'+hintD('Время с шагом 30 минут, не раньше срока подготовки заказа.','Vaqt 30 daqiqa qadam bilan, buyurtma tayyorlanish muddatidan oldin emas.')+'<div class="err" id="e-time"></div></div>'
+    +'<div class="full"><label class="lab" for="f-comment">'+L('Пожелания к заказу','Buyurtmaga istaklar')+'</label><textarea id="f-comment" data-f="comment" placeholder="'+esc(L('Как позвонить, пожелания к упаковке','Qachon qoʻngʻiroq qilish, qadoqlash boʻyicha istaklar'))+'">'+esc(S.form.comment)+'</textarea>'+hintD('Необязательно. Например: позвонить за час, мелкие товары в отдельный пакет.','Majburiy emas. Masalan: bir soat oldin qoʻngʻiroq qiling, mayda mahsulotlarni alohida paketga soling.')+'</div>'
     +'<div class="full locbox" id="locbox">'+locBoxHTML()+'</div>'
     +'</div>';
 }
@@ -1644,10 +1646,10 @@ function renderProfile(){
       +(S.blocked?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(blockedTxt())+'</div>':'')
       +rolesBoxHTML()
       +'<div class="card"><div class="form">'
-      +'<div><label class="lab" for="p-name">'+L('Ваше имя','Ismingiz')+'</label><input type="text" id="p-name" data-pf="name" maxlength="60" value="'+esc(p.name)+'" autocomplete="name"><div class="err" id="pe-name"></div></div>'
-      +'<div><label class="lab" for="p-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="p-phone" data-pf="phone" maxlength="25" value="'+esc(p.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel"><div class="err" id="pe-phone"></div></div>'
-      +'<div class="full"><label class="lab" for="p-org">'+L('Организация (магазин, кафе, компания)','Tashkilot (doʻkon, kafe, kompaniya)')+'</label><input type="text" id="p-org" data-pf="org" maxlength="80" value="'+esc(p.org)+'" autocomplete="organization"><div class="err" id="pe-org"></div></div>'
-      +'<div class="full"><label class="lab" for="p-addrs">'+L('Адреса доставки: каждый с новой строки, до 5','Yetkazib berish manzillari: har biri yangi qatordan, 5 tagacha')+'</label><textarea id="p-addrs" data-pf="addrs" rows="4" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'">'+esc((p.addrs||[]).join('\n'))+'</textarea><div class="err" id="pe-addrs"></div></div>'
+      +'<div><label class="lab" for="p-name">'+L('Ваше имя','Ismingiz')+'</label><input type="text" id="p-name" data-pf="name" maxlength="60" value="'+esc(p.name)+'" autocomplete="name">'+hintD('Так вас увидят в заказах. Пример: Анвар.','Buyurtmalarda sizni shunday koʻrishadi. Masalan: Anvar.')+'<div class="err" id="pe-name"></div></div>'
+      +'<div><label class="lab" for="p-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="p-phone" data-pf="phone" maxlength="25" value="'+esc(p.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel">'+hintD('Подставляется в каждый заказ, при оформлении его можно изменить.','Har bir buyurtmaga qoʻyiladi, buyurtma berishda oʻzgartirish mumkin.')+'<div class="err" id="pe-phone"></div></div>'
+      +'<div class="full"><label class="lab" for="p-org">'+L('Организация (магазин, кафе, компания)','Tashkilot (doʻkon, kafe, kompaniya)')+'</label><input type="text" id="p-org" data-pf="org" maxlength="80" value="'+esc(p.org)+'" autocomplete="organization">'+hintD('Название вашего магазина, кафе или компании. Пример: магазин «Зафар».','Doʻkon, kafe yoki kompaniyangiz nomi. Masalan: «Zafar» doʻkoni.')+'<div class="err" id="pe-org"></div></div>'
+      +'<div class="full"><label class="lab" for="p-addrs">'+L('Адреса доставки: каждый с новой строки, до 5','Yetkazib berish manzillari: har biri yangi qatordan, 5 tagacha')+'</label><textarea id="p-addrs" data-pf="addrs" rows="4" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'">'+esc((p.addrs||[]).join('\n'))+'</textarea>'+hintD('Подставляются в заказ одним нажатием. Пример: Навои, ул. Галаба 12, рядом с аптекой.','Buyurtmaga bir bosishda qoʻyiladi. Masalan: Navoiy, Gʻalaba koʻchasi 12, dorixona yonida.')+'<div class="err" id="pe-addrs"></div></div>'
       +'</div><div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="pfsave" data-act="pfsave">'+L('Сохранить','Saqlash')+'</button></div></div>';
   }
   view.innerHTML=h+'</div>';
@@ -1772,9 +1774,9 @@ function payBlockHTML(o){
     h+='<div class="pyrow">'+['cash','card','bank','credit'].filter(k=>k!=='credit'||S.view!=='courier'||S.courier.credit!==false).map(k=>'<button type="button" class="chip" data-act="paym" data-m="'+k+'"'+(S.cr.busy&&S.view==='courier'?' disabled':'')+'>'+esc(payName(k))+'</button>').join('')+'</div>';
   }else{
     h+='<div class="pyrow"><label for="pd-days">'+L('В долг на (дней)','Qarzga (kun)')+'</label><input type="number" id="pd-days" inputmode="numeric" min="1" max="90" step="1" value="'+esc(p.days)+'">'
-      +[3,7,14,30].map(n=>'<button type="button" class="chip" data-act="paydays" data-n="'+n+'" aria-pressed="'+(String(p.days)===String(n))+'">'+n+'</button>').join('')+'</div>'
+      +[3,7,14,30].map(n=>'<button type="button" class="chip" data-act="paydays" data-n="'+n+'" aria-pressed="'+(String(p.days)===String(n))+'">'+n+'</button>').join('')+'</div>'+hintD('Через сколько дней магазин должен вернуть деньги. Пример: 7.','Doʻkon pulni necha kundan keyin qaytarishi kerak. Masalan: 7.')+''
       +'<div class="pyrow"><label for="pd-paid">'+L('Оплачено сразу (необязательно)','Darhol toʻlangan (ixtiyoriy)')+'</label><input type="number" id="pd-paid" inputmode="numeric" min="0" step="1" value="'+esc(p.paid)+'" placeholder="0">'
-      +['cash','card','bank'].map(k=>'<button type="button" class="chip" data-act="paypm" data-v="'+k+'" aria-pressed="'+(p.pm===k)+'">'+esc(payName(k))+'</button>').join('')+'</div>'
+      +['cash','card','bank'].map(k=>'<button type="button" class="chip" data-act="paypm" data-v="'+k+'" aria-pressed="'+(p.pm===k)+'">'+esc(payName(k))+'</button>').join('')+'</div>'+hintD('Часть суммы, которую магазин отдал сразу, и как он заплатил. Остальное запишется в долг.','Doʻkon darhol bergan summa qismi va qanday toʻlagani. Qolgani qarzga yoziladi.')+''
       +'<div class="pmute" id="pd-rest">'+payRestTxt(o)+'</div>'
       +'<div class="pyrow"><button type="button" class="btn sm" data-act="paygo">'+L('Выдать в долг','Qarzga topshirish')+'</button></div>';
   }
@@ -2020,14 +2022,14 @@ function voidFormHTML(){
   const d=DB(),dis=d.busy?' disabled':'';
   return '<div class="payb"><div class="pt">'+L('Отмена записи об оплате','Toʻlov yozuvini bekor qilish')+'</div>'
     +'<div class="pmute">'+L('Долг магазина вернётся. Магазин и доставщик получат сообщение с причиной.','Doʻkon qarzi qaytadi. Doʻkon va yetkazuvchi sabab bilan xabar oladi.')+'</div>'
-    +'<div class="pyrow"><input type="text" id="dx-why" maxlength="80" value="'+esc(d.vwhy)+'" placeholder="'+esc(L('Причина (обязательно)','Sabab (majburiy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><input type="text" id="dx-why" maxlength="80" value="'+esc(d.vwhy)+'" placeholder="'+esc(L('Причина (обязательно)','Sabab (majburiy)'))+'"'+dis+'></div>'+hintD('Её увидят магазин и доставщик. Пример: записал не ту сумму.','Uni doʻkon va yetkazuvchi koʻradi. Masalan: notoʻgʻri summa yozilgan.')+''
     +'<div class="pyrow"><button type="button" class="btn sm dangerbtn" data-act="dvoidgo"'+dis+'>'+L('Отменить запись','Yozuvni bekor qilish')+'</button><button type="button" class="btn ghost sm" data-act="dvoidno">'+L('Не отменять','Bekor qilmaslik')+'</button></div></div>';
 }
 function resFormHTML(){
   const d=DB(),dis=d.busy?' disabled':'';
   return '<div class="payb"><div class="pt">'+L('Закрыть спорную запись','Bahsli yozuvni yopish')+'</div>'
     +'<div class="pmute">'+L('Напишите, как вы разобрались с магазином. Запись останется в журнале с вашим именем и комментарием.','Doʻkon bilan qanday hal qilganingizni yozing. Yozuv jurnalda ismingiz va izohingiz bilan qoladi.')+'</div>'
-    +'<div class="pyrow"><input type="text" id="dx-note" maxlength="120" value="'+esc(d.rnote)+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><input type="text" id="dx-note" maxlength="120" value="'+esc(d.rnote)+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+dis+'></div>'+hintD('Что вы сделали, чтобы разобраться. Пример: позвонил, деньги получены.','Hal qilish uchun nima qildingiz. Masalan: qoʻngʻiroq qildim, pul olindi.')+''
     +'<div class="pyrow"><button type="button" class="btn sm" data-act="dresgo"'+dis+'>'+L('Закрыть','Yopish')+'</button><button type="button" class="btn ghost sm" data-act="dresno">'+L('Не сейчас','Hozir emas')+'</button></div></div>';
 }
 function lgRowHTML(r){
@@ -2072,10 +2074,10 @@ function debtorHTML(){
   h+='<div class="payb"><div class="pt">'+L('Принять оплату','Toʻlovni qabul qilish')+'</div>'
     +'<div class="pmute">'+L('Можно любую сумму, в том числе часть долга. Оплата закрывает самые старые долги первыми.','Istalgan summa mumkin, qarzning bir qismi ham. Toʻlov eng eski qarzlarni birinchi yopadi.')+'</div>'
     +'<div class="pyrow"><label for="dp-amount">'+L('Сумма','Summa')+'</label><input type="number" id="dp-amount" inputmode="numeric" min="1" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'>'
-    +(x.bal>0?'<button type="button" class="chip" data-act="dfull">'+L('Весь долг','Butun qarz')+'</button>':'')+'</div>'
+    +(x.bal>0?'<button type="button" class="chip" data-act="dfull">'+L('Весь долг','Butun qarz')+'</button>':'')+'</div>'+hintD('Сколько магазин отдал сейчас, в сумах. Пример: 500000.','Doʻkon hozir qancha berdi, soʻmda. Masalan: 500000.')+''
     +(crLimHit()?'<div class="note warnnote">'+L('Лимит наличных достигнут: сдайте деньги продавцу. Наличные пока не принять, карту и перечисление можно.','Naqd limit tugadi: pulni sotuvchiga topshiring. Hozircha naqd olinmaydi, karta va oʻtkazma mumkin.')+'</div>':'')
     +'<div class="pyrow">'+['cash','card','bank'].map(k=>'<button type="button" class="chip" data-act="dpm" data-v="'+k+'" aria-pressed="'+(d.pm===k)+'">'+esc(payName(k))+'</button>').join('')+'</div>'
-    +'<div class="pyrow"><input type="text" id="dp-note" maxlength="80" value="'+esc(d.note)+'" placeholder="'+esc(L('Заметка (необязательно)','Izoh (ixtiyoriy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><input type="text" id="dp-note" maxlength="80" value="'+esc(d.note)+'" placeholder="'+esc(L('Заметка (необязательно)','Izoh (ixtiyoriy)'))+'"'+dis+'></div>'+hintD('Для памяти, магазин её не увидит. Пример: принёс директор.','Eslab qolish uchun, doʻkon koʻrmaydi. Masalan: direktor olib keldi.')+''
     +'<div class="pyrow"><button type="button" class="btn sm" data-act="dpay"'+dis+'>'+L('Записать оплату','Toʻlovni yozish')+'</button>'
     +(x.bal>0?'<button type="button" class="btn ghost sm" data-act="dremind"'+dis+'>'+L('Напомнить в Telegram','Telegramda eslatish')+'</button>':'')
     +(S.view!=='courier'?'<button type="button" class="btn ghost sm" data-act="dact" aria-expanded="'+!!d.actOpen+'"'+dis+'>'+L('Акт сверки','Solishtirma dalolatnoma')+'</button>':'')+'</div></div>'
@@ -2290,14 +2292,14 @@ function hdVoidForm(){
   const d=S.dv,dis=d.busy?' disabled':'';
   return '<div class="payb"><div class="pt">'+L('Отмена записи о сдаче','Topshirish yozuvini bekor qilish')+'</div>'
     +'<div class="pmute">'+L('Деньги снова будут числиться на руках у доставщика. Он получит сообщение с причиной и подтвердит или оспорит.','Pul yana yetkazuvchi qoʻlida hisoblanadi. U sabab bilan xabar oladi va tasdiqlaydi yoki e’tiroz bildiradi.')+'</div>'
-    +'<div class="pyrow"><input type="text" id="dh-why" maxlength="80" value="'+esc(d.why)+'" placeholder="'+esc(L('Причина (обязательно)','Sabab (majburiy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><input type="text" id="dh-why" maxlength="80" value="'+esc(d.why)+'" placeholder="'+esc(L('Причина (обязательно)','Sabab (majburiy)'))+'"'+dis+'></div>'+hintD('Её увидит доставщик. Пример: записал не ту сумму.','Uni yetkazuvchi koʻradi. Masalan: notoʻgʻri summa yozilgan.')+''
     +'<div class="pyrow"><button type="button" class="btn sm dangerbtn" data-act="dhvgo"'+dis+'>'+L('Отменить сдачу','Topshirishni bekor qilish')+'</button><button type="button" class="btn ghost sm" data-act="dhvno">'+L('Не отменять','Bekor qilmaslik')+'</button></div></div>';
 }
 function hdResForm(){
   const d=S.dv,dis=d.busy?' disabled':'';
   return '<div class="payb"><div class="pt">'+L('Закрыть спорную запись','Bahsli yozuvni yopish')+'</div>'
     +'<div class="pmute">'+L('Напишите, как вы разобрались с доставщиком. Запись останется в журнале с вашим именем и комментарием.','Yetkazuvchi bilan qanday hal qilganingizni yozing. Yozuv jurnalda ismingiz va izohingiz bilan qoladi.')+'</div>'
-    +'<div class="pyrow"><input type="text" id="dh-note" maxlength="120" value="'+esc(d.note)+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><input type="text" id="dh-note" maxlength="120" value="'+esc(d.note)+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+dis+'></div>'+hintD('Что вы сделали, чтобы разобраться. Пример: пересчитали деньги вместе.','Hal qilish uchun nima qildingiz. Masalan: pulni birga sanadik.')+''
     +'<div class="pyrow"><button type="button" class="btn sm" data-act="dhrgo"'+dis+'>'+L('Закрыть','Yopish')+'</button><button type="button" class="btn ghost sm" data-act="dhrno">'+L('Не сейчас','Hozir emas')+'</button></div></div>';
 }
 /* Кнопки под записью о сдаче: у продавца (cid) отмена и закрытие спора, у самого доставщика ответ «Верно» / «Не так». */
@@ -2450,7 +2452,7 @@ function couriersHTML(){
   const d=S.dv;
   let h='<p class="lead">'+L('Доставщики возят заказы с доставкой и принимают наличные. Когда вы отметите заказ «Готов к отправке», он придёт всем доставщикам в Telegram с кнопкой «Взял», и первый нажавший его возьмёт. Добавьте человека и отправьте ему ссылку: нажав её, он станет вашим доставщиком.','Yetkazuvchilar yetkazib berish buyurtmalarini olib boradi va naqd pul qabul qiladi. Buyurtmani «Joʻnatishga tayyor» deb belgilasangiz, u hamma yetkazuvchilarga Telegramda «Взял» tugmasi bilan boradi, birinchi bosgan oladi. Odamni qoʻshing va unga havola yuboring: uni bosib, u yetkazuvchingiz boʻladi.')+'</p>';
   h+='<div class="payb"><div class="pt">'+L('Добавить доставщика','Yetkazuvchi qoʻshish')+'</div>'
-    +'<div class="pyrow"><input type="text" id="dv-name" maxlength="40" value="'+esc(d.name)+'" placeholder="'+esc(L('Имя','Ism'))+'"><input type="tel" id="dv-phone" maxlength="25" value="'+esc(d.phone)+'" placeholder="'+esc(L('Телефон (необязательно)','Telefon (ixtiyoriy)'))+'"></div>'
+    +'<div class="pyrow"><input type="text" id="dv-name" maxlength="40" value="'+esc(d.name)+'" placeholder="'+esc(L('Имя','Ism'))+'"><input type="tel" id="dv-phone" maxlength="25" value="'+esc(d.phone)+'" placeholder="'+esc(L('Телефон (необязательно)','Telefon (ixtiyoriy)'))+'"></div>'+hintD('Имя нужно, чтобы отличать доставщиков в списке. Телефон можно не указывать. Пример: Рустам, +998 90 123 45 67.','Ism yetkazuvchilarni roʻyxatda ajratish uchun kerak. Telefonni yozmasa ham boʻladi. Masalan: Rustam, +998 90 123 45 67.')+''
     +'<div class="pyrow"><button type="button" class="btn sm" data-act="dvadd"'+(d.busy?' disabled':'')+'>'+L('Получить ссылку','Havolani olish')+'</button></div></div>';
   if(!d.ok)return h+loadingHTML();
   if(!d.list.length)return h+'<div class="empty"><b>'+L('Доставщиков пока нет','Yetkazuvchilar hozircha yoʻq')+'</b>'+L('Если возите заказы сами, этот раздел не нужен.','Buyurtmalarni oʻzingiz olib borsangiz, bu boʻlim kerak emas.')+'</div>';
@@ -2488,7 +2490,7 @@ function dvCardHTML(c){
     +btn('dvdel',L('Удалить','Oʻchirish'),'dangerbtn')+'</div>';
   if(open&&d.mode==='hand'){
     h+='<div class="payb"><div class="pt">'+L('Доставщик сдал вам наличные','Yetkazuvchi sizga naqd pul topshirdi')+'</div>'
-      +'<div class="pyrow"><label for="dv-amount">'+L('Сумма','Summa')+'</label><input type="number" id="dv-amount" inputmode="numeric" min="1" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'><button type="button" class="chip" data-act="dvall">'+L('Всё','Hammasi')+'</button></div>'
+      +'<div class="pyrow"><label for="dv-amount">'+L('Сумма','Summa')+'</label><input type="number" id="dv-amount" inputmode="numeric" min="1" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'><button type="button" class="chip" data-act="dvall">'+L('Всё','Hammasi')+'</button></div>'+hintD('Сколько наличных доставщик отдал вам, в сумах. «Всё» подставит всю сумму, что у него на руках.','Yetkazuvchi sizga qancha naqd pul berdi, soʻmda. «Hammasi» uning qoʻlidagi butun summani qoʻyadi.')+''
       +'<div class="pyrow"><button type="button" class="btn sm" data-act="dvgo"'+dis+'>'+L('Записать','Yozish')+'</button><button type="button" class="btn ghost sm" data-act="dvclose">'+L('Закрыть','Yopish')+'</button></div></div>';
   }
   if(open&&d.mode==='nv'){
@@ -2499,7 +2501,7 @@ function dvCardHTML(c){
   if(open&&d.mode==='lim'){
     h+='<div class="payb"><div class="pt">'+L('Лимит наличных','Naqd limiti')+'</div>'
       +'<div class="pmute">'+L('Если у доставщика на руках столько наличных или больше, он не может взять новый заказ и принять наличные оплаты долга, пока не сдаст деньги вам. Ноль — без лимита.','Yetkazuvchining qoʻlida shuncha yoki undan koʻp naqd pul boʻlsa, pulni sizga topshirmaguncha yangi buyurtma ola olmaydi va qarzning naqd toʻlovini qabul qila olmaydi. Nol — limitsiz.')+'</div>'
-      +'<div class="pyrow"><label for="dv-lim">'+L('Сумма','Summa')+'</label><input type="number" id="dv-lim" inputmode="numeric" min="0" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'><button type="button" class="chip" data-act="dvlimoff">'+L('Без лимита','Limitsiz')+'</button></div>'
+      +'<div class="pyrow"><label for="dv-lim">'+L('Сумма','Summa')+'</label><input type="number" id="dv-lim" inputmode="numeric" min="0" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'><button type="button" class="chip" data-act="dvlimoff">'+L('Без лимита','Limitsiz')+'</button></div>'+hintD('Сумма в сумах. Пример: 5000000. Ноль — без лимита.','Summa soʻmda. Masalan: 5000000. Nol — limitsiz.')+''
       +'<div class="pyrow"><button type="button" class="btn sm" data-act="dvlimgo"'+dis+'>'+L('Сохранить','Saqlash')+'</button><button type="button" class="btn ghost sm" data-act="dvclose">'+L('Закрыть','Yopish')+'</button></div></div>';
   }
   if(open&&d.mode==='dl'){
@@ -2844,6 +2846,8 @@ const PF_HINT=()=>({
   oldS:L('Старая цена показывается зачёркнутой рядом с новой, нужна только для акции.','Eski narx yangisi yonida chizilgan holda koʻrinadi, faqat aksiya uchun kerak.')});
 const pfHint=k=>'<span class="hint">'+esc(PF_HINT()[k])+'</span>';
 const pfHintRow=k=>'<div class="full hint">'+esc(PF_HINT()[k])+'</div>';
+/* короткая подсказка мелким серым текстом под полем (текст по-русски и по-узбекски) */
+const hintD=(ru,uz)=>'<div class="hint">'+esc(L(ru,uz))+'</div>';
 const PF_FULL=['name','uz','desc','descUz','cat'];
 /* свёрнутая строка товара в редакторе: фото, название, цена и пометки; по нажатию открывается полная форма.
    Какие товары раскрыты, помнит S.pxo (только на время работы, на сервер не уходит) */
@@ -3042,7 +3046,7 @@ function stockRowHTML(p){
     :'<span class="st ok">'+L('В наличии','Mavjud')+'</span>';
   const head='<div class="sh"><div class="sn"><b>'+esc(p.name)+'</b><small>'+(w?esc(w):'')+(w&&cat?' · ':'')+(cat?esc(cat.name):'')+'</small></div>'+pill+'</div>';
   const numIn=(k,ph,aria,val)=>'<input type="number" id="'+k+'-'+id+'" inputmode="numeric" min="0" max="1000000" step="1"'+(k==='sl'?' data-sl="'+id+'"':'')+' value="'+val+'" placeholder="'+esc(ph)+'" aria-label="'+esc(aria)+'"'+dis+'>';
-  const lowIn='<div class="sth"><label for="sl-'+id+'">'+L('Предупредить, когда меньше','Bundan kam qolsa ogohlantirish')+'</label>'+numIn('sl','0',L('Порог «мало»','«Oz qoldi» chegarasi'),s?s.low:'')+'</div>';
+  const lowIn='<div class="sth"><label for="sl-'+id+'">'+L('Предупредить, когда меньше','Bundan kam qolsa ogohlantirish')+'</label>'+numIn('sl','0',L('Порог «мало»','«Oz qoldi» chegarasi'),s?s.low:'')+'</div>'+hintD('Когда свободного станет столько или меньше, будет пометка «Заканчивается» и придёт предупреждение. Ноль — не предупреждать.','Boʻshi shuncha yoki kam qolganda «Tugayapti» belgisi chiqadi va ogohlantirish keladi. Nol — ogohlantirmaslik.');
   if(!s){
     return '<div class="srow" id="srow-'+id+'">'+head
       +'<div class="sact'+(packSize(p,'blk')||packSize(p,'box')?' haspk':'')+'">'+numIn('sn',L('Сколько на складе','Omborda qancha'),L('Сколько сейчас на складе','Hozir omborda qancha'),'')+stockUnitSel(p)
@@ -3353,8 +3357,8 @@ function clientSheetHTML(){
     body+='<div class="cact">'+(phone?'<a class="btn ghost sm" href="tel:'+esc(phone)+'">'+L('Позвонить','Qoʻngʻiroq')+'</a>':'')+(tgu?'<a class="btn ghost sm" data-act="contact" href="https://t.me/'+encodeURIComponent(tgu)+'" target="_blank" rel="noopener">Telegram</a>':'')+'</div>';
     body+='<div class="cst"><div><small>'+(owner?L('Заказов у всех','Hammasida buyurtma'):L('Заказов у вас','Sizda buyurtma'))+'</small><b>'+num(m.n)+'</b></div><div><small>'+L('Выдано на','Topshirildi')+'</small><b>'+money(m.sum)+'</b></div><div><small>'+L('Последний','Oxirgisi')+'</small><b>'+(m.last?esc(agoTxt(m.last)):'—')+'</b></div></div>';
     if(owner&&m.by&&m.by.length)body+='<div class="csec"><h3>'+L('По дистрибьюторам','Distribyutorlar boʻyicha')+'</h3>'+m.by.map(y=>'<div class="corder"><span class="oid">'+esc(y.name||y.did)+'</span><b>'+L('заказов: ','buyurtma: ')+num(y.n)+(y.sum?' · '+money(y.sum):'')+'</b></div>').join('')+'</div>';
-    if(baseShop())body+='<div class="csec form"><div class="full"><label class="lab" for="cf-grp">'+L('Группа','Guruh')+'</label><input type="text" id="cf-grp" data-cf="grp" maxlength="30" value="'+esc(f.grp)+'" placeholder="'+esc(L('Например: Магазин','Masalan: Doʻkon'))+'" autocomplete="off"><div class="gchips">'+groupSuggest().map(g=>'<button type="button" class="chip" data-act="cgrp" data-v="'+esc(g)+'">'+esc(g)+'</button>').join('')+'</div></div>'
-      +'<div class="full"><label class="lab" for="cf-note">'+L('Заметка (видна только вам)','Eslatma (faqat sizga koʻrinadi)')+'</label><textarea id="cf-note" data-cf="note" rows="3" maxlength="500" placeholder="'+esc(L('Например: платит в конце недели','Masalan: hafta oxirida toʻlaydi'))+'">'+esc(f.note)+'</textarea></div>'
+    if(baseShop())body+='<div class="csec form"><div class="full"><label class="lab" for="cf-grp">'+L('Группа','Guruh')+'</label><input type="text" id="cf-grp" data-cf="grp" maxlength="30" value="'+esc(f.grp)+'" placeholder="'+esc(L('Например: Магазин','Masalan: Doʻkon'))+'" autocomplete="off">'+hintD('Чтобы собрать похожих клиентов вместе. Пример: Магазин, Кафе, Оптовик.','Oʻxshash mijozlarni birlashtirish uchun. Masalan: Doʻkon, Kafe, Ulgurji.')+'<div class="gchips">'+groupSuggest().map(g=>'<button type="button" class="chip" data-act="cgrp" data-v="'+esc(g)+'">'+esc(g)+'</button>').join('')+'</div></div>'
+      +'<div class="full"><label class="lab" for="cf-note">'+L('Заметка (видна только вам)','Eslatma (faqat sizga koʻrinadi)')+'</label><textarea id="cf-note" data-cf="note" rows="3" maxlength="500" placeholder="'+esc(L('Например: платит в конце недели','Masalan: hafta oxirida toʻlaydi'))+'">'+esc(f.note)+'</textarea>'+hintD('Для себя: клиент и другие дистрибьюторы её не видят.','Oʻzingiz uchun: mijoz va boshqa distribyutorlar koʻrmaydi.')+'</div>'
       +'<div class="full"><label class="ck"><input type="checkbox" id="cf-blocked" data-cf="blocked"'+(f.blocked?' checked':'')+(my.has?'':' disabled')+'><span>'+L('Заблокировать','Bloklash')+'<small>'+(my.has?L('Магазин не сможет оформить заказ у вас, пока вы не снимете блокировку. У других дистрибьюторов он заказывает как раньше.','Siz blokni olmaguningizcha doʻkon sizdan buyurtma bera olmaydi. Boshqa distribyutorlarda avvalgidek buyurtma beradi.'):L('Доступно, когда магазин закажет у вас или заполнит профиль в вашем каталоге.','Doʻkon sizdan buyurtma berganda yoki katalogingizda profilini toʻldirganda mavjud boʻladi.'))+'</small></span></label></div></div>';
     body+='<div class="csec"><h3>'+(owner?L('История заказов у всех дистрибьюторов','Barcha distribyutorlardagi buyurtmalar tarixi'):L('История заказов','Buyurtmalar tarixi'))+'</h3>'+cardOrdersHTML(d)+'</div>';
   }
@@ -3610,25 +3614,25 @@ function regionsEditHTML(){
 }
 function settingsHTML(){
   const s=S.cfg.shop;
-  const num=(id,lab,k,min,max)=>'<div><label class="lab" for="s-'+id+'">'+lab+'</label><input type="number" id="s-'+id+'" inputmode="numeric" min="'+min+'" max="'+max+'" data-s="'+k+'" value="'+esc(s[k])+'"></div>';
+  const num=(id,lab,k,min,max,hint)=>'<div><label class="lab" for="s-'+id+'">'+lab+'</label><input type="number" id="s-'+id+'" inputmode="numeric" min="'+min+'" max="'+max+'" data-s="'+k+'" value="'+esc(s[k])+'">'+(hint?hintD(hint[0],hint[1]):'')+'</div>';
   return '<div class="savebar" id="savebar"></div><div class="card"><div class="settings">'
-    +'<div><label class="lab" for="s-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="s-name" data-s="name" value="'+esc(s.name)+'" maxlength="60"></div>'
-    +'<div><label class="lab" for="s-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="s-phone" data-s="phone" value="'+esc(s.phone)+'" placeholder="+998 …"></div>'
-    +'<div><label class="lab" for="s-tg">'+L('Telegram для вопросов по заказу, без @','Buyurtma savollari uchun Telegram, @ belgisisiz')+'</label><input type="text" id="s-tg" data-s="telegram" value="'+esc(s.telegram)+'"></div>'
+    +'<div><label class="lab" for="s-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="s-name" data-s="name" value="'+esc(s.name)+'" maxlength="60">'+hintD('Так вас видят клиенты в списке дистрибьюторов и в сообщениях бота. Пример: Навои Фуд.','Mijozlar sizni distribyutorlar roʻyxatida va bot xabarlarida shunday koʻradi. Masalan: Navoiy Fud.')+'</div>'
+    +'<div><label class="lab" for="s-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="s-phone" data-s="phone" value="'+esc(s.phone)+'" placeholder="+998 …">'+hintD('Клиент увидит его в сообщениях бота о заказе и сможет позвонить. Пример: +998 90 123 45 67.','Mijoz uni bot xabarlarida koʻradi va qoʻngʻiroq qila oladi. Masalan: +998 90 123 45 67.')+'</div>'
+    +'<div><label class="lab" for="s-tg">'+L('Telegram для вопросов по заказу, без @','Buyurtma savollari uchun Telegram, @ belgisisiz')+'</label><input type="text" id="s-tg" data-s="telegram" value="'+esc(s.telegram)+'">'+hintD('Логин без @: клиент сможет написать вам из карточки заказа. Пример: navoi_food.','Login @ belgisisiz: mijoz buyurtma kartochkasidan sizga yoza oladi. Masalan: navoi_food.')+'</div>'
     +'<div></div>'
-    +'<div><label class="lab" for="s-addr">'+L('Адрес самовывоза (по-русски)','Olib ketish manzili (ruscha)')+'</label><input type="text" id="s-addr" data-s="address" value="'+esc(s.address)+'"></div>'
-    +'<div><label class="lab" for="s-addruz">'+L('Адрес самовывоза (по-узбекски)','Olib ketish manzili (oʻzbekcha)')+'</label><input type="text" id="s-addruz" data-s="addressUz" value="'+esc(s.addressUz)+'"></div>'
-    +'<div class="full"><label class="chk"><input type="checkbox" id="s-delivery" data-s="delivery"'+(s.delivery!==false?' checked':'')+'> '+L('Доставка по адресу включена','Manzilga yetkazib berish yoqilgan')+'</label></div>'
-    +num('lead',L('Самовывоз: заказ за, часов минимум','Olib ketish: buyurtma, kamida soat'),'leadHours',0,240)
-    +num('dlead',L('Доставка: заказ за, часов минимум','Yetkazib berish: buyurtma, kamida soat'),'deliveryLeadHours',0,240)
-    +num('minorder',L('Минимальная сумма заказа, сум (0 — без минимума)','Buyurtmaning minimal summasi, soʻm (0 — cheklovsiz)'),'minOrder',0,1000000000)
-    +num('dfee',L('Стоимость доставки, сум (0 — бесплатно)','Yetkazib berish narxi, soʻm (0 — bepul)'),'deliveryFee',0,1000000000)
-    +num('dfree',L('Доставка бесплатна от суммы, сум (0 — нет порога)','Yetkazib berish bepul boʻladigan summa, soʻm (0 — chegarasiz)'),'freeDeliveryFrom',0,1000000000)
+    +'<div><label class="lab" for="s-addr">'+L('Адрес самовывоза (по-русски)','Olib ketish manzili (ruscha)')+'</label><input type="text" id="s-addr" data-s="address" value="'+esc(s.address)+'">'+hintD('Куда клиенту приехать за заказом. Это видят клиенты в русском режиме. Пример: Навои, ул. Галаба 12.','Mijoz buyurtmani olgani qayerga kelishi. Buni ruscha rejimdagi mijozlar koʻradi. Masalan: Navoiy, Gʻalaba koʻchasi 12.')+'</div>'
+    +'<div><label class="lab" for="s-addruz">'+L('Адрес самовывоза (по-узбекски)','Olib ketish manzili (oʻzbekcha)')+'</label><input type="text" id="s-addruz" data-s="addressUz" value="'+esc(s.addressUz)+'">'+hintD('То же для клиентов в узбекском режиме. Если оставить пустым, они увидят русский адрес.','Xuddi shu, oʻzbekcha rejimdagi mijozlar uchun. Boʻsh qoldirsangiz, ruscha manzil koʻrinadi.')+'</div>'
+    +'<div class="full"><label class="chk"><input type="checkbox" id="s-delivery" data-s="delivery"'+(s.delivery!==false?' checked':'')+'> '+L('Доставка по адресу включена','Manzilga yetkazib berish yoqilgan')+'</label>'+hintD('Если выключить, клиенты смогут заказать только самовывоз.','Oʻchirsangiz, mijozlar faqat olib ketishni tanlay oladi.')+'</div>'
+    +num('lead',L('Самовывоз: заказ за, часов минимум','Olib ketish: buyurtma, kamida soat'),'leadHours',0,240,['Раньше, чем через столько часов после заказа, время самовывоза выбрать нельзя. Пример: 2. Ноль — можно сразу.','Buyurtmadan shuncha soat oʻtmasdan olib ketish vaqtini tanlab boʻlmaydi. Masalan: 2. Nol — darhol mumkin.'])
+    +num('dlead',L('Доставка: заказ за, часов минимум','Yetkazib berish: buyurtma, kamida soat'),'deliveryLeadHours',0,240,['Раньше, чем через столько часов после заказа, время доставки выбрать нельзя. Пример: 24.','Buyurtmadan shuncha soat oʻtmasdan yetkazib berish vaqtini tanlab boʻlmaydi. Masalan: 24.'])
+    +num('minorder',L('Минимальная сумма заказа, сум (0 — без минимума)','Buyurtmaning minimal summasi, soʻm (0 — cheklovsiz)'),'minOrder',0,1000000000,['Заказ на меньшую сумму оформить нельзя. Пример: 500000.','Bundan kam summadagi buyurtmani rasmiylashtirib boʻlmaydi. Masalan: 500000.'])
+    +num('dfee',L('Стоимость доставки, сум (0 — бесплатно)','Yetkazib berish narxi, soʻm (0 — bepul)'),'deliveryFee',0,1000000000,['Добавляется к заказу, если клиент выбрал доставку. Пример: 20000.','Mijoz yetkazib berishni tanlasa, buyurtmaga qoʻshiladi. Masalan: 20000.'])
+    +num('dfree',L('Доставка бесплатна от суммы, сум (0 — нет порога)','Yetkazib berish bepul boʻladigan summa, soʻm (0 — chegarasiz)'),'freeDeliveryFrom',0,1000000000,['Если товаров на эту сумму или больше, доставка бесплатна. Пример: 1000000.','Mahsulotlar shu summaga yoki undan koʻp boʻlsa, yetkazib berish bepul. Masalan: 1000000.'])
     +'<div class="full"><div class="note">'+L('Минимальная сумма считается по товарам и действует и на самовывоз, и на доставку. Стоимость доставки добавляется к заказу только при доставке; если указан порог, при сумме товаров от него доставка бесплатна.','Minimal summa mahsulotlar boʻyicha hisoblanadi va olib ketishga ham, yetkazib berishga ham taalluqli. Yetkazib berish narxi faqat yetkazishda qoʻshiladi; chegara koʻrsatilsa, mahsulotlar shu summadan oshganda yetkazish bepul.')+'</div></div>'
     +(regionsOn()?regionsEditHTML():'')
     +discEditHTML()
-    +num('from',L('Время работы с, часов','Ish vaqti: dan, soat'),'openFrom',0,22)
-    +num('to',L('Время работы до, часов','Ish vaqti: gacha, soat'),'openTo',1,23)
+    +num('from',L('Время работы с, часов','Ish vaqti: dan, soat'),'openFrom',0,22,['С этого часа клиенты могут выбирать время получения. Пример: 9.','Mijozlar olish vaqtini shu soatdan boshlab tanlay oladi. Masalan: 9.'])
+    +num('to',L('Время работы до, часов','Ish vaqti: gacha, soat'),'openTo',1,23,['До этого часа включительно. Пример: 20.','Shu soatgacha, shu soat ham kiradi. Masalan: 20.'])
     +'</div></div>'
     +sellLinkHTML()
     +'<div class="card"><h3>'+L('Резервная копия','Zaxira nusxasi')+'</h3><div class="unit">'+L('Один файл со всем: настройки, каталог с фото, остатки, заказы и клиенты. Он придёт вам в чат с ботом. Храните его в надёжном месте: в нём телефоны и адреса клиентов. Токен бота и код продавца в файл не попадают.','Hammasi bitta faylda: sozlamalar, rasmli katalog, qoldiqlar, buyurtmalar va mijozlar. U botdagi chatingizga keladi. Uni ishonchli joyda saqlang: unda mijozlarning telefon va manzillari bor. Bot tokeni va sotuvchi kodi faylga kirmaydi.')+'</div>'+xbtn('backup')+'</div>';
@@ -4402,14 +4406,14 @@ function baseFormHTML(){
   const tl=agent&&b.mine.length?b.terrs.filter(t=>b.mine.includes(t.id)):b.terrs;
   const opt=(v,lab,cur)=>'<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(lab)+'</option>';
   return '<div class="card" id="bform"><h3>'+(b.edit==='new'?L('Новый магазин','Yangi doʻkon'):L('Данные магазина','Doʻkon maʼlumotlari'))+'</h3><div class="form">'
-    +'<div class="full"><label class="lab" for="bf-name">'+L('Название магазина','Doʻkon nomi')+'</label><input type="text" id="bf-name" data-bf="name" maxlength="60" value="'+esc(f.name)+'" autocomplete="off"></div>'
-    +'<div><label class="lab" for="bf-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="bf-phone" data-bf="phone" value="'+esc(f.phone)+'" placeholder="+998 90 123 45 67" autocomplete="off"></div>'
-    +'<div><label class="lab" for="bf-terr">'+L('Территория','Hudud')+'</label><select id="bf-terr" data-bf="terr">'+opt('',agent?L('Выберите территорию','Hududni tanlang'):L('Без территории','Hududsiz'),f.terr)+tl.map(t=>opt(t.id,t.name,f.terr)).join('')+'</select></div>'
-    +'<div class="full"><label class="lab" for="bf-addr">'+L('Адрес','Manzil')+'</label><input type="text" id="bf-addr" data-bf="addr" maxlength="200" value="'+esc(f.addr)+'" autocomplete="off"></div>'
-    +'<div><label class="lab" for="bf-st">'+L('Статус','Holat')+'</label><select id="bf-st" data-bf="st">'+['new','talk','refuse'].map(k=>opt(k,BST()[k],f.st)).join('')+'</select></div>'
-    +(b.role==='owner'?'<div><label class="lab" for="bf-agent">'+L('Агент','Agent')+'</label><select id="bf-agent" data-bf="agent">'+opt('','—',f.agent)+b.agents.map(a=>opt(a.id,a.name,f.agent)).join('')+'</select></div>':'')
+    +'<div class="full"><label class="lab" for="bf-name">'+L('Название магазина','Doʻkon nomi')+'</label><input type="text" id="bf-name" data-bf="name" maxlength="60" value="'+esc(f.name)+'" autocomplete="off">'+hintD('Как магазин называется на вывеске. Пример: магазин «Зафар».','Doʻkon peshtaxtasidagi nomi. Masalan: «Zafar» doʻkoni.')+'</div>'
+    +'<div><label class="lab" for="bf-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="bf-phone" data-bf="phone" value="'+esc(f.phone)+'" placeholder="+998 90 123 45 67" autocomplete="off">'+hintD('Телефон владельца или продавца магазина.','Doʻkon egasi yoki sotuvchisining telefoni.')+'</div>'
+    +'<div><label class="lab" for="bf-terr">'+L('Территория','Hudud')+'</label><select id="bf-terr" data-bf="terr">'+opt('',agent?L('Выберите территорию','Hududni tanlang'):L('Без территории','Hududsiz'),f.terr)+tl.map(t=>opt(t.id,t.name,f.terr)).join('')+'</select>'+hintD('Район или город, к которому относится магазин.','Doʻkon qaysi tuman yoki shaharga tegishli.')+'</div>'
+    +'<div class="full"><label class="lab" for="bf-addr">'+L('Адрес','Manzil')+'</label><input type="text" id="bf-addr" data-bf="addr" maxlength="200" value="'+esc(f.addr)+'" autocomplete="off">'+hintD('Улица, дом, ориентир. Пример: ул. Галаба 12, рядом с аптекой.','Koʻcha, uy, moʻljal. Masalan: Gʻalaba koʻchasi 12, dorixona yonida.')+'</div>'
+    +'<div><label class="lab" for="bf-st">'+L('Статус','Holat')+'</label><select id="bf-st" data-bf="st">'+['new','talk','refuse'].map(k=>opt(k,BST()[k],f.st)).join('')+'</select>'+hintD('На каком этапе разговор с магазином.','Doʻkon bilan suhbat qaysi bosqichda.')+'</div>'
+    +(b.role==='owner'?'<div><label class="lab" for="bf-agent">'+L('Агент','Agent')+'</label><select id="bf-agent" data-bf="agent">'+opt('','—',f.agent)+b.agents.map(a=>opt(a.id,a.name,f.agent)).join('')+'</select>'+hintD('Агент, за которым закреплён магазин.','Doʻkon biriktirilgan agent.')+'</div>':'')
     +baseLocFormHTML()
-    +'<div class="full"><label class="lab" for="bf-note">'+L('Заметка о визите (магазин и дистрибьюторы её не видят)','Tashrif haqida eslatma (doʻkon va distribyutorlar koʻrmaydi)')+'</label><textarea id="bf-note" data-bf="note" rows="3" maxlength="500">'+esc(f.note)+'</textarea></div>'
+    +'<div class="full"><label class="lab" for="bf-note">'+L('Заметка о визите (магазин и дистрибьюторы её не видят)','Tashrif haqida eslatma (doʻkon va distribyutorlar koʻrmaydi)')+'</label><textarea id="bf-note" data-bf="note" rows="3" maxlength="500">'+esc(f.note)+'</textarea>'+hintD('Что удалось выяснить за визит. Пример: придёт во вторник, интересует масло.','Tashrif vaqtida nima aniqlandi. Masalan: seshanba kuni keladi, yogʻ qiziqtiradi.')+'</div>'
     +'</div><div class="err" id="bferr" role="alert">'+esc(b.ferr)+'</div>'
     +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="basesave"'+(b.busy?' disabled':'')+'>'+(b.busy?L('Сохраняем…','Saqlanmoqda…'):L('Сохранить','Saqlash'))+'</button><button type="button" class="btn ghost" data-act="basecancel"'+(b.busy?' disabled':'')+'>'+L('Отмена','Bekor qilish')+'</button></div></div>';
 }
@@ -4565,7 +4569,7 @@ function dispHandHTML(x){
     +'<div class="dpw">'+esc(jrDate(x.t))+(x.bn?' · '+L('Записал: ','Yozgan: ')+esc(x.bn):'')+'</div>'
     +'<span class="cfs"><span class="cfc bad">'+why+'</span></span>'
     +'<div class="pyrow"><input type="text" id="dn-'+esc(key)+'" data-dnote="'+esc(key)+'" maxlength="120" value="'+esc(D.note[key]||'')+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+(D.busy===key?' disabled':'')+'>'
-    +'<button type="button" class="btn sm" data-act="dispres" data-did="'+esc(x.did)+'" data-cid="'+esc(x.cid)+'" data-n="'+x.n+'"'+(D.busy?' disabled':'')+'>'+L('Закрыть','Yopish')+'</button></div></div>';
+    +'<button type="button" class="btn sm" data-act="dispres" data-did="'+esc(x.did)+'" data-cid="'+esc(x.cid)+'" data-n="'+x.n+'"'+(D.busy?' disabled':'')+'>'+L('Закрыть','Yopish')+'</button></div>'+hintD('Что вы сделали, чтобы разобраться. Пример: позвонил, деньги получены.','Hal qilish uchun nima qildingiz. Masalan: qoʻngʻiroq qildim, pul olindi.')+'</div>';
 }
 function dispCardHTML(x){
   if(x.h)return dispHandHTML(x);
@@ -4578,7 +4582,7 @@ function dispCardHTML(x){
     +'<div class="dpw">'+esc(jrDate(x.t))+(x.bn?' · '+L('Записал: ','Yozgan: ')+esc(x.bn):'')+'</div>'
     +'<span class="cfs"><span class="cfc bad">'+why+'</span></span>'
     +'<div class="pyrow"><input type="text" id="dn-'+esc(key)+'" data-dnote="'+esc(key)+'" maxlength="120" value="'+esc(D.note[key]||'')+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+(D.busy===key?' disabled':'')+'>'
-    +'<button type="button" class="btn sm" data-act="dispres" data-did="'+esc(x.did)+'" data-uid="'+x.uid+'" data-n="'+x.n+'"'+(D.busy?' disabled':'')+'>'+L('Закрыть','Yopish')+'</button></div></div>';
+    +'<button type="button" class="btn sm" data-act="dispres" data-did="'+esc(x.did)+'" data-uid="'+x.uid+'" data-n="'+x.n+'"'+(D.busy?' disabled':'')+'>'+L('Закрыть','Yopish')+'</button></div>'+hintD('Что вы сделали, чтобы разобраться. Пример: позвонил, деньги получены.','Hal qilish uchun nima qildingiz. Masalan: qoʻngʻiroq qildim, pul olindi.')+'</div>';
 }
 function ownDispHTML(){
   const D=S.own.disp;
@@ -4694,8 +4698,8 @@ function ownAddHTML(){
     h+='<p class="lead">'+L('Каждому дистрибьютору вы даёте личный код. Он пишет боту «/admin КОД», становится продавцом и сам добавляет товары в приложении.','Har bir distribyutorga shaxsiy kod berasiz. U botga «/admin KOD» deb yozadi, sotuvchi boʻladi va mahsulotlarni ilovada oʻzi qoʻshadi.')+'</p>';
     const full=o.shops.length>=o.max;
     h+='<div class="card"><h3>'+L('Добавить дистрибьютора','Distribyutor qoʻshish')+'</h3><div class="form">'
-      +'<div><label class="lab" for="o-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="o-name" data-own="fname" maxlength="60" value="'+esc(o.fname)+'" autocomplete="off"></div>'
-      +'<div><label class="lab" for="o-code">'+L('Свой код (от 12 символов) или пусто — придумаем','Oʻz kodingiz (12 belgidan) yoki boʻsh — oʻzimiz yaratamiz')+'</label><input type="text" id="o-code" data-own="fcode" maxlength="64" value="'+esc(o.fcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false"></div>'
+      +'<div><label class="lab" for="o-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="o-name" data-own="fname" maxlength="60" value="'+esc(o.fname)+'" autocomplete="off">'+hintD('Так дистрибьютор будет назван в списке. Пример: Навои Фуд.','Distribyutor roʻyxatda shunday nomlanadi. Masalan: Navoiy Fud.')+'</div>'
+      +'<div><label class="lab" for="o-code">'+L('Свой код (от 12 символов) или пусто — придумаем','Oʻz kodingiz (12 belgidan) yoki boʻsh — oʻzimiz yaratamiz')+'</label><input type="text" id="o-code" data-own="fcode" maxlength="64" value="'+esc(o.fcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Этот код дистрибьютор отправит боту командой «/admin КОД». Если оставить пустым, бот придумает код сам.','Distribyutor bu kodni botga «/admin KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div>'
       +'</div><div class="err" id="o-err" role="alert">'+esc(o.err2||'')+'</div>'
       +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="ownadd" data-act="ownadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='add'?L('Добавляем…','Qoʻshilmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
       +(full?'<div class="note" style="margin-top:10px">'+esc(ownErr('too_many'))+'</div>':'')+'</div>';
@@ -4752,7 +4756,7 @@ function ownShopStatsHTML(id){
     +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(x.base))+'</span></div>'
     +(x.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(x.active)+'</span></div>':'')
     +'<div class="r t"><span>'+L('Комиссия ','Komissiya ')+esc(fmtPct(x.pct))+'%</span><span>'+esc(money(x.cm))+'</span></div></div>'
-    +'<div class="pctrow"><div><label class="lab" for="pc-'+esc(id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(id)+'" data-opct="'+esc(id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off"></div>'
+    +'<div class="pctrow"><div><label class="lab" for="pc-'+esc(id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(id)+'" data-opct="'+esc(id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off">'+hintD('Сколько процентов от суммы выданных заказов вы берёте. Пример: 2,5.','Topshirilgan buyurtmalar summasidan necha foiz olasiz. Masalan: 2,5.')+'</div>'
     +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>';
 }
 async function ownAdd(){
@@ -4869,7 +4873,7 @@ function ownPeopleHTML(part){
   h+='<div class="card"><h3>'+L('Территории','Hududlar')+'</h3><div class="unit">'+L('Районы и города, по которым агенты закрепляют магазины. Например: Навои, Зарафшан, Кармана.','Agentlar doʻkonlarni biriktiradigan tuman va shaharlar. Masalan: Navoiy, Zarafshon, Karmana.')+'</div>';
   h+=p.terr.map(t=>'<div class="trow"><input type="text" id="tn-'+esc(t.id)+'" value="'+esc(t.name)+'" maxlength="40" aria-label="'+esc(L('Название территории','Hudud nomi'))+'"><span class="dtag" title="'+esc(L('Магазинов','Doʻkonlar'))+'">'+num(t.n)+'</span>'
     +'<button type="button" class="btn ghost sm" data-act="terrsave" data-id="'+esc(t.id)+'"'+dis+' aria-label="'+esc(L('Сохранить название','Nomini saqlash'))+'" title="'+esc(L('Сохранить название','Nomini saqlash'))+'">✓</button><button type="button" class="btn ghost sm" data-act="terrdel" data-id="'+esc(t.id)+'"'+dis+' aria-label="'+esc(L('Удалить территорию','Hududni oʻchirish'))+'" title="'+esc(L('Удалить территорию','Hududni oʻchirish'))+'">✕</button></div>').join('');
-  h+='<div class="trow"><input type="text" id="o-tname" data-own="tname" maxlength="40" value="'+esc(o.tname)+'" placeholder="'+esc(L('Новая территория','Yangi hudud'))+'" autocomplete="off" aria-label="'+esc(L('Новая территория','Yangi hudud'))+'"><button type="button" class="btn sm" data-act="terradd"'+dis+'>'+L('Добавить','Qoʻshish')+'</button></div>'
+  h+='<div class="trow"><input type="text" id="o-tname" data-own="tname" maxlength="40" value="'+esc(o.tname)+'" placeholder="'+esc(L('Новая территория','Yangi hudud'))+'" autocomplete="off" aria-label="'+esc(L('Новая территория','Yangi hudud'))+'"><button type="button" class="btn sm" data-act="terradd"'+dis+'>'+L('Добавить','Qoʻshish')+'</button></div>'+hintD('Название района или города. Пример: Кармана.','Tuman yoki shahar nomi. Masalan: Karmana.')+''
     +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="terrpreset"'+dis+'>'+L('Добавить районы и города Навоийской области','Navoiy viloyati tumanlari va shaharlarini qoʻshish')+'</button></div></div>';
   }
   else if(part==='agents'){
@@ -4889,8 +4893,8 @@ function ownPeopleHTML(part){
     +'<button type="button" class="btn ghost sm" data-act="agentcode" data-id="'+esc(a.id)+'"'+dis+'>'+L('Новый код','Yangi kod')+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="agentdel" data-id="'+esc(a.id)+'"'+dis+'>'+L('Удалить','Oʻchirish')+'</button>'
     +(a.link?'<button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(a.link)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Ссылка агента','Agent havolasi')+'</button>':'')+'</div></div>').join('');
-  h+='<div class="form" style="margin-top:12px"><div><label class="lab" for="o-aname">'+L('Имя агента','Agent ismi')+'</label><input type="text" id="o-aname" data-own="aname" maxlength="60" value="'+esc(o.aname)+'" autocomplete="off"></div>'
-    +'<div><label class="lab" for="o-acode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-acode" data-own="acode" maxlength="64" value="'+esc(o.acode)+'" autocomplete="off" autocapitalize="off" spellcheck="false"></div></div>'
+  h+='<div class="form" style="margin-top:12px"><div><label class="lab" for="o-aname">'+L('Имя агента','Agent ismi')+'</label><input type="text" id="o-aname" data-own="aname" maxlength="60" value="'+esc(o.aname)+'" autocomplete="off">'+hintD('Как вы зовёте агента. Пример: Бобур.','Agentni qanday chaqirasiz. Masalan: Bobur.')+'</div>'
+    +'<div><label class="lab" for="o-acode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-acode" data-own="acode" maxlength="64" value="'+esc(o.acode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Агент отправит этот код боту командой «/agent КОД». Если оставить пустым, бот придумает код сам.','Agent bu kodni botga «/agent KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div></div>'
     +(p.terr.length?'<div class="lab" style="margin-top:8px">'+L('Территории нового агента','Yangi agent hududlari')+'</div><div class="tsel">'+p.terr.map(t=>'<label class="chk"><input type="checkbox" data-aterr="'+esc(t.id)+'"'+(o.aterr.includes(t.id)?' checked':'')+'> '+esc(t.name)+'</label>').join('')+'</div>':'')
     +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="agentadd"'+dis+'>'+L('Добавить агента','Agent qoʻshish')+'</button></div></div>';
   }
