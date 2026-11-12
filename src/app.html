@@ -279,6 +279,12 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .ord .pl{display:flex;justify-content:space-between;gap:6px;font-size:12.5px;line-height:1.3}
 .ord .pl span:first-child{min-width:0;overflow-wrap:anywhere}
 .ord .pl span:last-child{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.ord .pls{display:grid;gap:3px}
+.ord .ptg{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:32px;margin:1px 0;padding:0 10px;border:0;border-radius:10px;background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;text-align:left;cursor:pointer}
+.ord .ptg i{font-style:normal;font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap}
+.ord .ptg i::after{content:" ▾"}
+.ord.fold:not(.open) .pls{display:none}
+.ord.fold.open .ptg i::after{content:" ▴"}
 
 /* settings, cards */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px}
@@ -597,7 +603,7 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .bcard>*{min-width:0}
 .bcard.dim{opacity:.62}
 /* карточка магазина в «Базе»: цвет заметно отличается от фона экрана */
-.bcard.bst{background:var(--bc-bg);border:1.5px solid var(--bc-edge);border-left:6px solid var(--bc-bar);padding-left:10px;box-shadow:0 1px 4px rgba(20,60,50,.10)}
+.bcard.bst{--bc-bg:var(--surface);--bc-edge:var(--oedge);--bc-in:var(--bg);background:var(--bc-bg);border:1.5px solid var(--bc-edge);border-left:6px solid var(--bc-bar);padding-left:10px}
 .bcard.bst .cmine,.bcard.bst .bnote{background:var(--bc-in)}
 .bh{display:flex;align-items:center;gap:8px;min-width:0}
 .bh h3{flex:0 1 auto;min-width:0;font-size:16px;line-height:1.25}
@@ -776,7 +782,7 @@ const S={
   region:'',showFar:false,regSent:false,regOnly:null,
   myOrders:[],allOrders:[],stats:{doneSum:0,doneCount:0},
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
-  busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,
+  busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,ox:{},
   prod:{cats:[],items:[]},cart:{},shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
   pfilter:'all',medit:{},upl:{},dirtyC:false,dirtyP:false,cd:null,
   stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,
@@ -1556,12 +1562,16 @@ function orderCard(o,m){
   const acts=m==='seller'?sellerActs(o):m==='courier'?courierActs(o):rep+(o.status==='new'?'<button type="button" class="btn ghost sm" data-act="mycancel" data-id="'+esc(o.id)+'"'+dd+'>'+(S.cc===key?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить заказ','Buyurtmani bekor qilish'))+'</button>':'');
   // картинки товаров есть только у открытого сейчас дистрибьютора
   const del=o.mode==='delivery';
-  return '<article class="ord'+(m==='seller'&&o.status==='new'?' is-new':'')+'" data-st="'+esc(o.status)+'"><div class="otop">'+orderThumbs(o,od)+pill(o)+'</div><div class="ob">'
+  const nItems=(o.items||[]).length,fold=nItems>=4,open=fold&&!!S.ox[key];
+  return '<article class="ord'+(m==='seller'&&o.status==='new'?' is-new':'')+(fold?' fold'+(open?' open':''):'')+'" data-st="'+esc(o.status)+'"><div class="otop">'+orderThumbs(o,od)+pill(o)+'</div><div class="ob">'
     +(m==='mine'&&o.shopName?'<div class="dtag">'+esc(o.shopName)+'</div>':'')
     +'<div class="meta"><span class="oid">'+esc(o.id)+'</span><span class="when">'+esc(fmtWhen(o.pickupAt))+'</span><span class="spec">'+(del?L('Доставка: ','Yetkazib berish: ')+esc((o.region&&regionName(o.region)?regionName(o.region)+', ':'')+(o.address||'')):L('Самовывоз','Olib ketish'))+'</span></div>'
+    +(fold?'<button type="button" class="ptg" data-act="oitems" data-id="'+esc(o.id)+'"'+dd+' aria-expanded="'+(open?'true':'false')+'"><span>'+nItems+' '+L(nItems<5?'товара':'товаров','mahsulot')+'</span><i>'+(open?L('Свернуть','Yigʻish'):L('Показать','Koʻrsatish'))+'</i></button>':'')
+    +'<div class="pls">'
     +(o.items||[]).map(it=>'<div class="pl">'+itemRow(it)+'</div>').join('')
     +discRow(o,'pl')
     +(o.fee>0?'<div class="pl"><span>'+L('Стоимость доставки','Yetkazib berish narxi')+'</span><span>'+money(o.fee)+'</span></div>':'')
+    +'</div>'
     +(m==='seller'||m==='courier'?'<div class="cust"><b>'+esc(o.name)+'</b>'+(o.org?' <span>'+esc(o.org)+'</span>':'')+' <span>'+esc(o.phone)+'</span>'+(o.tg&&o.tg.username?' <span>@'+esc(o.tg.username)+'</span>':'')+(m==='courier'?' <a class="btn ghost sm" href="'+telHref(o.phone)+'">'+L('Позвонить','Qoʻngʻiroq')+'</a>':'')+' <button type="button" class="btn ghost sm ic" data-act="copy" data-v="'+esc(m==='courier'&&o.address?o.address:o.phone)+'"'+(m==='courier'?' data-ok="'+L('Адрес скопирован','Manzil nusxalandi')+'" data-lab=""':'')+' title="'+(m==='courier'?L('Копировать адрес','Manzilni nusxalash'):L('Копировать','Nusxalash'))+'" aria-label="'+(m==='courier'?L('Копировать адрес','Manzilni nusxalash'):L('Копировать','Nusxalash'))+'">'+ICO.copy+'</button></div>':'')
     +((m==='seller'||m==='courier')&&o.crn&&!o.mine&&o.status!=='done'?'<div class="note">🚚 '+L('Везёт: ','Olib ketmoqda: ')+esc(o.crn)+'</div>':'')
     +(m==='seller'&&o.status==='done'&&o.crn?'<div class="note">🚚 '+L('Доставил: ','Yetkazdi: ')+esc(o.crn)+'</div>':'')
@@ -5053,6 +5063,11 @@ document.addEventListener('click',e=>{
   else if(a==='dflt'){const d=DB();d.flt=t.dataset.v;dPaint()}
   else if(a==='dremind')debtRemind()
   else if(a==='contact'){try{if(S.tg&&S.initData&&S.tg.openTelegramLink){e.preventDefault();S.tg.openTelegramLink(t.href)}}catch(err){}}
+  else if(a==='oitems'){
+    const k=okey(t.dataset.id,t.dataset.d||S.did),card=t.closest('.ord'),on=!S.ox[k];
+    if(on)S.ox[k]=1;else delete S.ox[k];
+    if(card){card.classList.toggle('open',on);t.setAttribute('aria-expanded',on?'true':'false');const i=t.querySelector('i');if(i)i.textContent=on?L('Свернуть','Yigʻish'):L('Показать','Koʻrsatish')}
+  }
   else if(a==='scancel'||a==='mycancel'){
     const id=t.dataset.id,d=t.dataset.d||S.did,k=okey(id,d);
     if(S.cc===k){
