@@ -432,8 +432,26 @@ html.lb-open,html.lb-open body{overflow:hidden}
 }
 
 /* seller: catalog editor */
-.prow{display:grid;grid-template-columns:232px minmax(0,1fr);gap:14px;padding:12px;margin:16px -6px 0;border:1.5px solid var(--line);border-radius:14px;background:var(--bg);box-shadow:inset 4px 0 0 var(--accent)}
+.prow{padding:12px;margin:16px -6px 0;border:1.5px solid var(--line);border-radius:14px;background:var(--bg);box-shadow:inset 4px 0 0 var(--accent)}
 .prow.off{box-shadow:inset 4px 0 0 var(--mute)}
+.prow.fold{padding:8px 12px;margin-top:10px}
+.pbody{display:grid;grid-template-columns:232px minmax(0,1fr);gap:14px;margin-top:12px;padding-top:12px;border-top:1.5px solid var(--line)}
+.psum{appearance:none;width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;border-radius:10px;min-height:56px}
+.psum .pth{width:48px;height:48px;border-radius:10px;overflow:hidden;background:var(--mute-soft);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;flex:none}
+.psum .pth img{width:100%;height:100%;object-fit:cover}
+.psum .ptx{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 0}
+.psum .ptx b{overflow-wrap:anywhere}
+.psum .ptx small{color:var(--ink-2)}
+.psum .ptx em{font-style:normal;color:var(--warn);font-weight:600}
+.psum .ptx i{font-style:normal;color:var(--ink-2)}
+.ppills{display:flex;flex-wrap:wrap;gap:4px}
+.ppills:empty{display:none}
+.psum[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
+.mtag.off{background:var(--bad-soft);color:var(--bad)}
+.mtag.sale{background:var(--warn-soft);color:var(--warn)}
+.mtag.new{background:var(--info-soft);color:var(--info)}
+.pfoldbar{margin:10px 0 0}
+.pfoldbtn{margin-left:auto}
 .prow.off .pf{opacity:.8}
 .pph{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .pslots{display:grid;grid-template-columns:repeat(3,72px);gap:8px}
@@ -466,7 +484,7 @@ html.lb-open,html.lb-open body{overflow:hidden}
   .crow input{grid-column:1}
 }
 @media (max-width:560px){
-  .prow{grid-template-columns:minmax(0,1fr)}
+  .pbody{grid-template-columns:minmax(0,1fr)}
   .pslots{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;max-width:288px}
   .pslot{width:auto;height:auto;aspect-ratio:1}
 }
@@ -792,7 +810,7 @@ const S={
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
   busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,ox:{},
   prod:{cats:[],items:[]},cart:{},shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
-  pfilter:'all',medit:{},upl:{},dirtyC:false,dirtyP:false,cd:null,
+  pfilter:'all',medit:{},pxo:{},upl:{},dirtyC:false,dirtyP:false,cd:null,
   stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,
   profile:null,blocked:false,pfBusy:false,
   pm:false,xbusy:'',pick:null,pickBusy:false,
@@ -838,7 +856,7 @@ function resetShopState(){
   Object.assign(S,{
     cfg:clone(DEFAULT),prod:{cats:[],items:[]},cart:{},otherCart:null,shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
     admin:false,off:false,profile:null,blocked:false,fav:[],allOrders:[],stats:{doneSum:0,doneCount:0},
-    sellerTab:'orders',pfilter:'all',medit:{},upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
+    sellerTab:'orders',pfilter:'all',medit:{},pxo:{},upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
     stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,dbt:newDebts(),pay:null,courier:null,cr:newCour(),dv:newDv(),
     pm:false,xbusy:'',pick:null,pickBusy:false,imp:null,impBusy:false,regOnly:null,
     rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
@@ -2771,7 +2789,7 @@ function mergeMod(prod){
   else paintModBits();
 }
 function paintModBits(){
-  S.prod.items.forEach(p=>{const el=document.getElementById('mh-'+p.id);if(el)el.innerHTML=modHeadInner(p)});
+  S.prod.items.forEach(p=>{const el=document.getElementById('mh-'+p.id);if(el)el.innerHTML=modHeadInner(p);pxLive(p)});
   const b=document.getElementById('mban');if(b)b.innerHTML=modBanInner();
 }
 const MOD_WHY={name:['название','nomi'],price:['цену','narxi'],cat:['категорию','kategoriyasi']};
@@ -2789,7 +2807,12 @@ async function modSubmit(ids){
       const p=S.prod.items.find(x=>x.id===bad[0].id);
       toast((p?'«'+nm(p)+'»: ':'')+L('укажите '+bad[0].why.map(w=>MOD_WHY[w][0]).join(', '),bad[0].why.map(w=>MOD_WHY[w][1]).join(', ')+' koʻrsating'));
     }else toast(L('Нечего отправлять','Yuboradigan narsa yoʻq'));
-    paintSeller();return;
+    /* товары, у которых не хватает данных, раскрываются сами */
+    bad.forEach(b=>{S.pxo[b.id]=true});
+    if(bad.length&&S.pfilter!=='all'&&!S.prod.items.some(p=>p.id===bad[0].id&&p.cat===S.pfilter))S.pfilter='all';
+    paintSeller();
+    if(bad.length){const row=document.getElementById('prow-'+bad[0].id);if(row)try{row.scrollIntoView({block:'start'});window.scrollBy(0,-72)}catch(x){}}
+    return;
   }
   ids&&ids.forEach(id=>{delete S.medit[id]});
   S.prod.items.forEach(p=>{if(!inModGroup(p))delete S.medit[p.id]});
@@ -2797,12 +2820,55 @@ async function modSubmit(ids){
   const n=r.data.sent||0;
   toast(L('Отправлено на проверку: '+n+(bad.length?'. Не хватает данных у '+bad.length+'.':''),'Tekshiruvga yuborildi: '+n+(bad.length?'. '+bad.length+' tasida maʼlumot yetishmaydi.':'')));
 }
+/* свёрнутая строка товара в редакторе: фото, название, цена и пометки; по нажатию открывается полная форма.
+   Какие товары раскрыты, помнит S.pxo (только на время работы, на сервер не уходит) */
+function pxPills(p){
+  let h=modTag(p);
+  if(p.on===false)h+='<span class="mtag off">'+L('Нет в наличии','Mavjud emas')+'</span>';
+  else if(p.av===0)h+='<span class="mtag off">'+L('Остаток закончился','Qoldiq tugagan')+'</span>';
+  if(p.tag==='sale'||p.tag==='new')h+='<span class="mtag '+p.tag+'">'+tagName(p.tag)+'</span>';
+  return h;
+}
+function pxSumInner(p){
+  const w=weightLabel(p),n=nm(p)||p.name||p.uz||'';
+  const th=p.pv?'<img src="'+imgUrl(p)+'" alt="" decoding="async">':'<span class="ph" aria-hidden="true">📦</span>';
+  return '<span class="pth">'+th+'</span><span class="ptx"><b>'+(n?esc(n):'<i>'+L('Без названия','Nomsiz')+'</i>')+'</b><small>'+(w?esc(w)+' · ':'')+(p.price>0?money(p.price):'<em>'+L('цена не указана','narx koʻrsatilmagan')+'</em>')+'</small><span class="ppills">'+pxPills(p)+'</span></span><span class="lchev">'+ICO.chev+'</span>';
+}
+function pxLive(p){const s=document.getElementById('psum-'+p.id);if(s)s.innerHTML=pxSumInner(p)}
 function prodRow(p){
+  const id=esc(p.id),open=!!S.pxo[p.id];
+  return '<div class="prow'+(p.on===false?' off':'')+(open?' open':' fold')+'" id="prow-'+id+'"><button type="button" class="psum" id="psum-'+id+'" data-act="pfold" data-id="'+id+'" aria-expanded="'+open+'" aria-controls="pbody-'+id+'">'+pxSumInner(p)+'</button>'
+    +(open?'<div class="pbody" id="pbody-'+id+'">'+prodBody(p)+'</div>':'')+'</div>';
+}
+/* раскрыть или свернуть один товар: перерисовывается только его карточка, страница не прыгает */
+function pxSet(id,open){
+  const p=S.prod.items.find(x=>x.id===id),el=document.getElementById('prow-'+id);
+  if(!p||!el)return;
+  if(open)S.pxo[id]=true;else delete S.pxo[id];
+  const w=document.createElement('div');w.innerHTML=prodRow(p);
+  el.replaceWith(w.firstElementChild);
+  const b=document.getElementById('psum-'+id);
+  if(b){
+    try{b.focus({preventScroll:true})}catch(x){}
+    const r=b.getBoundingClientRect();
+    if(r.top<64||r.bottom>window.innerHeight)try{b.scrollIntoView({block:'center'})}catch(x){}
+  }
+}
+/* «Свернуть все» / «Развернуть все»: кнопки остаются на месте под пальцем */
+function pxAll(open){
+  const ids=S.prod.items.filter(p=>!inModGroup(p)&&(S.pfilter==='all'||p.cat===S.pfilter)).map(p=>p.id);
+  if(open)ids.forEach(id=>{S.pxo[id]=true});else S.pxo={};
+  const bar=document.getElementById('pfoldbar'),y=bar?bar.getBoundingClientRect().top:0;
+  paintSeller();
+  const nb=document.getElementById('pfoldbar');
+  if(bar&&nb){const d=nb.getBoundingClientRect().top-y;if(d)window.scrollBy(0,d)}
+}
+function prodBody(p){
   const id=esc(p.id);
   const fld=(k,lab,inner,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><label class="lab" for="p'+k+'-'+id+'">'+lab+'</label>'+inner+'</div>';
   const inp=(k,type,val,extra)=>'<input type="'+type+'" id="p'+k+'-'+id+'" data-pid="'+id+'" data-pp="'+k+'" value="'+esc(val)+'"'+(extra||'')+'>';
   const ta=(k,val)=>'<textarea id="p'+k+'-'+id+'" data-pid="'+id+'" data-pp="'+k+'" maxlength="300" rows="2">'+esc(val)+'</textarea>';
-  return '<div class="prow'+(p.on===false?' off':'')+'" id="prow-'+id+'"><div class="pph" id="pph-'+id+'">'+photoBlock(p)+'</div><div class="pf"><div class="full mh" id="mh-'+id+'">'+modHeadInner(p)+'</div>'
+  return '<div class="pph" id="pph-'+id+'">'+photoBlock(p)+'</div><div class="pf"><div class="full mh" id="mh-'+id+'">'+modHeadInner(p)+'</div>'
     +fld('name',L('Название','Nomi'),inp('name','text',p.name,' maxlength="60"'),'full')
     +fld('uz',L('Название по-узбекски','Oʻzbekcha nomi'),inp('uz','text',p.uz||'',' maxlength="60"'),'full')
     +fld('desc',L('Описание','Tavsif'),ta('desc',p.desc||''),'full')
@@ -2820,8 +2886,9 @@ function prodRow(p){
     +'<div class="full unit" style="margin:0">'+L('Блок и коробка — для удобства: цена и остаток всегда считаются в штуках. Если указать, у клиента появятся кнопки «+ блок» и «+ коробка», а в заказах будет видно, сколько это коробок. Допустимо от 2 до 500 штук.','Blok va quti — qulaylik uchun: narx va qoldiq doim donada hisoblanadi. Koʻrsatilsa, mijozda «+ blok» va «+ quti» tugmalari paydo boʻladi, buyurtmalarda esa necha quti ekani koʻrinadi. 2 dan 500 donagacha.')+'</div>'
     +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' шт. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' dona. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
     +'<div class="full pact"><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="-1" aria-label="'+esc(L('Выше','Yuqoriga'))+'">▲</button><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="1" aria-label="'+esc(L('Ниже','Pastga'))+'">▼</button>'
-    +'<button type="button" class="btn ghost sm" data-act="pdel" data-id="'+id+'">'+(S.cd===p.id?L('Точно удалить?','Aniq oʻchirilsinmi?'):L('Удалить товар','Mahsulotni oʻchirish'))+'</button></div>'
-    +'</div></div>';
+    +'<button type="button" class="btn ghost sm" data-act="pdel" data-id="'+id+'">'+(S.cd===p.id?L('Точно удалить?','Aniq oʻchirilsinmi?'):L('Удалить товар','Mahsulotni oʻchirish'))+'</button>'
+    +'<button type="button" class="btn ghost sm pfoldbtn" data-act="pfold" data-id="'+id+'">'+L('Свернуть','Yigʻish')+'</button></div>'
+    +'</div>';
 }
 /* ---------- прайс из Excel ---------- */
 const IMP_F={price:['цена','narx'],name:['название','nomi'],uz:['название (узб.)','nomi (uz)'],desc:['описание','tavsif'],descUz:['описание (узб.)','tavsif (uz)'],cat:['категория','kategoriya'],amount:['вес','ogʻirlik'],unit:['единица','birlik'],on:['в наличии','mavjud'],tag:['метка','belgi'],old:['старая цена','eski narx']};
@@ -2903,6 +2970,7 @@ function prodHTML(){
   if(pend.length)h+='<div class="mgroup"><h4>'+L('На проверке','Tekshiruvda')+' · '+pend.length+'</h4>'+pend.map(modCard).join('')+'</div>';
   if(P.cats.length>1)h+='<div class="filters" style="margin:8px 0 4px">'+[['all',L('Все','Barchasi')]].concat(P.cats.map(c=>[c.id,c.name])).map(c=>'<button type="button" class="chip" data-act="pfilter" data-id="'+esc(c[0])+'" aria-pressed="'+(S.pfilter===c[0])+'">'+esc(c[1])+'</button>').join('')+'</div>';
   if(!list.length)h+='<div class="unit" style="padding:10px 0">'+(P.items.length-pend.length?L('В этой категории пока ничего нет.','Bu kategoriyada hozircha hech narsa yoʻq.'):L('Товаров пока нет. Нажмите «Добавить товар».','Mahsulotlar hozircha yoʻq. «Mahsulot qoʻshish» tugmasini bosing.'))+'</div>';
+  if(list.length>1)h+='<div class="row-btns pfoldbar" id="pfoldbar"><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="0">'+L('Свернуть все','Hammasini yigʻish')+'</button><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="1">'+L('Развернуть все','Hammasini yoyish')+'</button></div>';
   list.forEach(p=>{h+=prodRow(p)});
   h+='<div style="margin-top:10px"><button type="button" class="btn" data-act="pnew">'+L('+ Добавить товар','+ Mahsulot qoʻshish')+'</button></div></div>';
   return h;
@@ -4996,6 +5064,8 @@ document.addEventListener('click',e=>{
     S.prod.cats=S.prod.cats.filter(c=>c.id!==id);queueSave('prod');paintSeller();
   }
   else if(a==='pfilter'){S.pfilter=t.dataset.id;paintSeller()}
+  else if(a==='pfold')pxSet(t.dataset.id,!S.pxo[t.dataset.id]);
+  else if(a==='pfoldall')pxAll(t.dataset.v==='1');
   else if(a==='rseg'){if(S.rv.seg!==t.dataset.v){S.rv.seg=t.dataset.v;S.rv.did='';S.rv.cat='';S.rv.items=[];loadReview()}}
   else if(a==='rvreload')loadReview();
   else if(a==='rdist'){S.rv.did=S.rv.did===t.dataset.did?'':t.dataset.did;paintReview()}
@@ -5015,7 +5085,7 @@ document.addEventListener('click',e=>{
   else if(a==='msub1')modSubmit([t.dataset.id]);
   else if(a==='msuball')modSubmit(S.prod.items.filter(p=>p.ms==='draft').map(p=>p.id));   // только черновики: возвращённые уходят после исправления, кнопкой у самого товара
   else if(a==='mfix'){
-    S.medit[t.dataset.id]=true;paintSeller();
+    S.medit[t.dataset.id]=true;S.pxo[t.dataset.id]=true;paintSeller();
     const row=document.getElementById('prow-'+t.dataset.id);if(row)try{row.scrollIntoView({block:'center'})}catch(x){}
   }
   else if(a==='pnew'){
@@ -5023,7 +5093,7 @@ document.addEventListener('click',e=>{
     if(S.prod.items.length>=MAX_ITEMS){toast(L('Больше '+MAX_ITEMS+' товаров нельзя',MAX_ITEMS+' tadan ortiq mahsulot boʻlmaydi'));return}
     const cat=S.pfilter!=='all'?S.pfilter:S.prod.cats[0].id;
     const p={id:'p'+Math.random().toString(36).slice(2,9),cat,name:L('Новый товар','Yangi mahsulot'),uz:'Yangi mahsulot',desc:'',descUz:'',amount:0,unit:'g',price:0,on:true,tag:'',old:0,pv:'',tiers:[],blk:0,box:0};
-    S.prod.items.push(p);queueSave('prod');paintSeller();
+    S.prod.items.push(p);S.pxo[p.id]=true;queueSave('prod');paintSeller();
     const inp=document.getElementById('pname-'+p.id);
     if(inp){inp.focus();inp.select();try{inp.scrollIntoView({block:'center'})}catch(x){}}
   }
@@ -5031,7 +5101,7 @@ document.addEventListener('click',e=>{
     const id=t.dataset.id;
     if(S.cd===id){
       S.cd=null;
-      S.prod.items=S.prod.items.filter(p=>p.id!==id);delete S.cart[id];delete S.stk[id];saveCart();
+      S.prod.items=S.prod.items.filter(p=>p.id!==id);delete S.pxo[id];delete S.cart[id];delete S.stk[id];saveCart();
       queueSave('prod');paintSeller();
     }else{
       S.cd=id;t.textContent=L('Точно удалить?','Aniq oʻchirilsinmi?');
@@ -5262,6 +5332,7 @@ document.addEventListener('input',e=>{
     else if(k==='blk'||k==='box'){const v=Math.round(Number(t.value));p[k]=v>=2&&v<=500?v:0}
     else if(k==='tn'||k==='tp')syncTiers(p);
     else p[k]=t.value;
+    pxLive(p);
     queueSave('prod');
   }
   else if(t.dataset.cid!==undefined){

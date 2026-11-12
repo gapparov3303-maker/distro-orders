@@ -6447,6 +6447,26 @@ await t('акт сверки: запись об акте попадает в Exc
   assert.equal(x['Долги'][1][x['Долги'][0].indexOf('Долг, сум')], 1394000);
 });
 
+/* ---------- каталог продавца: сворачивание товаров ---------- */
+await t('каталог: товары сворачиваются, всё свёрнуто на старте, ▲▼ и удаление только в раскрытой карточке', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
+  assert.equal((html.match(/medit:\{\},pxo:\{\}/g) || []).length, 2, 'S.pxo есть в начальном состоянии и при сбросе');
+  const row = fn('prodRow'), sum = fn('pxSumInner'), body = fn('prodBody');
+  assert.ok(/open=!!S\.pxo\[p\.id\]/.test(row) && /\(open\?'<div class="pbody"/.test(row), 'форма рисуется только у раскрытого товара, по умолчанию свёрнут');
+  assert.ok(!/pmove|pdel/.test(row + sum), 'в свёрнутой строке нет ▲▼ и удаления');
+  assert.ok(/data-act="pmove"/.test(body) && /data-act="pdel"/.test(body) && /data-act="pfold"/.test(body), 'в раскрытой карточке есть ▲▼, удаление и «Свернуть»');
+  assert.ok(/aria-expanded="'\+open/.test(row), 'состояние читается и для экранных дикторов');
+  assert.ok(/a==='pfold'\)pxSet\(/.test(html) && /a==='pfoldall'\)pxAll\(/.test(html), 'обработчики одной карточки и «все»');
+  assert.ok(/data-act="pfoldall" data-v="0"/.test(html) && /data-act="pfoldall" data-v="1"/.test(html), 'кнопки «Свернуть все» и «Развернуть все»');
+  assert.ok(/S\.prod\.items\.push\(p\);S\.pxo\[p\.id\]=true/.test(html), 'новый товар открывается сам');
+  assert.ok(/bad\.forEach\(b=>\{S\.pxo\[b\.id\]=true\}\)/.test(html), 'товар, которому не хватает данных, открывается сам');
+  assert.ok(/S\.medit\[t\.dataset\.id\]=true;S\.pxo\[t\.dataset\.id\]=true/.test(html), '«Исправить» открывает форму');
+  assert.ok(/delete S\.pxo\[id\]/.test(html), 'при удалении товара состояние чистится');
+  assert.ok(/pxLive\(p\);\s*queueSave\('prod'\)/.test(html), 'заголовок обновляется при правке полей');
+  assert.ok(!/S\.pxo/.test(fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8')), 'раскрытость не уходит на сервер');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
