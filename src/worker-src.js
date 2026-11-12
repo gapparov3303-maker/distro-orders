@@ -401,7 +401,7 @@ const cbPrefix = did => (did && did !== MAIN ? did + ':' : '');
 function cbParse(data) {
   const parts = String(data || '').split(':');
   const kind = parts[0];
-  const withDid = kind === 's' ? parts.length >= 4 : kind === 'p' ? !/^Z-/.test(parts[1] || '') : parts.length >= 3;
+  const withDid = kind === 's' || kind === 'q' ? parts.length >= 4 : kind === 'p' ? !/^Z-/.test(parts[1] || '') : parts.length >= 3;
   const i = withDid ? 2 : 1;
   return { kind, did: withDid ? parts[1] : MAIN, id: parts[i], to: parts[i + 1], days: parts[i + 2] };
 }
@@ -1014,13 +1014,16 @@ function catalogSheets(prod) {
 const PAY_M = ['cash', 'card', 'bank'];
 const DEBT_ORD_MAX = 100, LG_MAX = 500, LG_FOLD = 100, LG_NOTE = 80, LG_SHOW = 100, MAX_PAY = 1e11, CREDIT_MAX_DAYS = 90, REMIND_GAP = 3600000;
 const PAY_RU = { cash: '💵 Наличные', card: '💳 Карта', bank: '🏦 Перечисление', credit: '📒 В долг' };
+/* Контроль денег: сколько ждём ответа магазина, сколько безналичных оплат доставщика ждут сверки, длина причины и комментария. */
+const CF_LATE = 24 * 3600000, NV_MAX = 100, WHY_MIN = 3, WHY_MAX = 80, RES_MAX = 120;
+const whoName = u => cleanStr([u && u.first_name, u && u.last_name].filter(Boolean).join(' ') || (u && u.username) || '', 40);
 
 /* ---------- доставка: доставщики и касса наличных ---------- */
 const MAX_COURIERS = 30, CC_KEEP = 200, CC_SHOW = 60, CINV_MS = 7 * 86400000;
 const validCid = c => typeof c === 'string' && /^k[a-z0-9]{3,9}$/.test(c);
 const validTok = t => typeof t === 'string' && /^[a-z0-9]{6,12}$/.test(t);
 /* Доставщик с телефоном и без секретов: ссылку-приглашение продавец получает отдельно. */
-const crPub = c => ({ id: c.id, name: c.name, phone: c.phone || '', joined: !!c.uid, on: c.on !== false, credit: c.credit !== false, cash: Number(c.cash) || 0, since: c.since });
+const crPub = c => ({ id: c.id, name: c.name, phone: c.phone || '', joined: !!c.uid, on: c.on !== false, credit: c.credit !== false, cash: Number(c.cash) || 0, lim: Number(c.lim) || 0, nvn: (c.nv || []).length, nva: (c.nv || []).reduce((t, x) => t + (Number(x.a) || 0), 0), since: c.since });
 const PAY_PLAIN = { cash: 'Наличные', card: 'Карта', bank: 'Перечисление', credit: 'В долг' };
 const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
 /* Как заплатил магазин при выдаче заказа. Не указано — наличные: так было, пока оплата при получении была единственной. null — данные неверны. */
@@ -1044,7 +1047,7 @@ function cleanPay(p, total, today) {
 /* Долг и непогашенные выдачи по журналу. all — все записи журнала (нужны, чтобы увидеть отмены, которые лежат в хвосте). */
 function lgState(rows, base, all) {
   const voided = new Set((all || rows).filter(r => r.k === 'rv').map(r => r.of));
-  const net = rows.filter(r => r.k !== 'rv' && !voided.has(r.n));
+  const net = rows.filter(r => r.k !== 'rv' && r.k !== 'rs' && !voided.has(r.n));
   let bal = base ? base.d : 0, paid = base && base.d < 0 ? -base.d : 0;
   const queue = [];
   if (base && base.d > 0) queue.push({ ref: '', due: base.due || '', r: base.d });
@@ -1065,13 +1068,33 @@ function lgDue(open, today) {
   return { due: dues[0] || '', over, days };
 }
 /* Когда записей больше LG_MAX, старые уходят в base: остаток долга по ним и самый ранний срок. */
+/* Записи, которым магазин ещё не ответил (cf «wait»), отметил «не так» («no») или которые до него не дошли («na»), и которые продавец не закрыл
+   и не отменил. Записи одного заказа (общий g) считаются за одну. fl — спорные, cwt — время каждой записи, ждущей ответа, first — позиция первой из них. */
+function lgPend(rows) {
+  const gone = new Set(), fl = new Set(), na = new Set(), cw = new Map();
+  rows.forEach(r => { if (r.k === 'rv' || r.k === 'rs') gone.add(r.of); });
+  let first = -1;
+  rows.forEach((r, i) => {
+    if ((r.k !== 'ch' && r.k !== 'pay') || !r.cf || r.cf === 'ok' || gone.has(r.n)) return;
+    if (first < 0) first = i;
+    const g = r.g || r.n;
+    if (r.cf === 'wait') { if (!cw.has(g) || r.t < cw.get(g)) cw.set(g, r.t); } else { fl.add(g); if (r.cf === 'na') na.add(g); }
+  });
+  return { fl: fl.size, na: na.size, cwt: [...cw.values()].sort().slice(0, 50), first };
+}
+/* Сколько записей магазина требуют внимания продавца сейчас: спорные и те, на которые магазин молчит дольше суток. */
+const lgFlags = (h, now) => (h.fl || 0) + (h.cwt || []).filter(t => now - Date.parse(t) > CF_LATE).length;
 function lgFold(rows, base) {
   if (rows.length <= LG_MAX) return { rows, base };
-  const cut = rows.length - LG_MAX + LG_FOLD;
+  let cut = rows.length - LG_MAX + LG_FOLD;
+  // спорные записи остаются в журнале, пока он не вырос в полтора раза
+  const pd = lgPend(rows);
+  if (pd.first >= 0 && pd.first < cut && rows.length <= LG_MAX * 1.6) cut = pd.first;
+  if (cut <= 0) return { rows, base };
   const s = lgState(rows.slice(0, cut), base, rows);
   return { rows: rows.slice(cut), base: { d: s.bal, due: s.open.map(q => q.due).filter(Boolean).sort()[0] || '' } };
 }
-const debtRow = (h, today) => Object.assign({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', addr: h.addr || '', bal: h.bal }, lgDue(h.open, today));
+const debtRow = (h, today) => Object.assign({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', addr: h.addr || '', bal: h.bal, fl: lgFlags(h, Date.now()), wt: (h.cwt || []).length }, lgDue(h.open, today));
 /* Оплата заказа простым текстом для Excel. */
 function payPlain(pay) {
   if (!pay) return '';
@@ -1101,6 +1124,26 @@ function debtPayText(h, a, m, shop) {
   const tail = bal > 0 ? L('\nОстаток долга: ', '\nQarz qoldigʻi: ') + money(bal)
     : L('\nДолг погашен, спасибо!', '\nQarz toʻlandi, rahmat!') + (bal < 0 ? L(' Переплата (аванс): ', ' Ortiqcha toʻlov (avans): ') + money(-bal) : '');
   return head + tail;
+}
+/* Что записано, одной строкой для продавца и доставщика. */
+function rowDesc(rows) {
+  const ch = rows.find(r => r.k === 'ch'), p = rows.find(r => r.k === 'pay');
+  if (ch) return 'заказ ' + ch.ref + ' в долг на ' + money(ch.a) + (ch.due ? ' до ' + dmy(ch.due) : '') + (p ? ', сразу оплачено ' + money(p.a) : '');
+  return p ? 'оплата долга ' + money(p.a) + (PAY_NAME2[p.m] ? ' (' + PAY_NAME2[p.m][0] + ')' : '') : '';
+}
+/* Сообщение магазину с просьбой подтвердить запись: выдачу в долг или принятую оплату. h — заголовок долга, rows — записи одного заказа или одна оплата. */
+function confirmText(h, rows, shop) {
+  const ch = rows.find(r => r.k === 'ch'), p = rows.find(r => r.k === 'pay'), who = (rows.find(r => r.bn) || {}).bn || '';
+  let text;
+  if (ch) {
+    setLang(h.lang === 'uz' ? 'uz' : 'ru');
+    const name = shop.name || DEFAULT.shop.name;
+    text = L('📒 ' + name + ': заказ ' + ch.ref + ' выдан вам в долг на ' + money(ch.a) + (ch.due ? ' до ' + dmy(ch.due) : '') + '.',
+      '📒 ' + name + ': ' + ch.ref + ' buyurtma sizga qarzga berildi: ' + money(ch.a) + (ch.due ? ', muddat ' + dmy(ch.due) : '') + '.');
+    if (p) text += '\n' + L('Сразу оплачено: ', 'Darhol toʻlandi: ') + money(p.a) + (PAY_NAME2[p.m] ? ' (' + L(PAY_NAME2[p.m][0], PAY_NAME2[p.m][1]) + ')' : '') + '.';
+  } else text = debtPayText(h, p.a, p.m, shop);
+  setLang(h.lang === 'uz' ? 'uz' : 'ru');
+  return text + (who ? '\n' + L('Принял: ', 'Qabul qildi: ') + who : '') + '\n\n' + L('Всё верно?', 'Hammasi toʻgʻrimi?');
 }
 function debtRemindText(h, shop, today, ords) {
   setLang(h.lang === 'uz' ? 'uz' : 'ru');
@@ -1820,6 +1863,20 @@ export class Shop {
       if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
       return json({ debt: await this.myDebt(uid, !!b.full) });
     }
+    if (path === '/__/my-confirm') {
+      const uid = Number(b.uid), n = Number(b.n);
+      if (!Number.isSafeInteger(uid) || !Number.isInteger(n)) return json({ error: 'bad_request' }, 400);
+      const res = await this.confirmRow(uid, n, !!b.ok);
+      if (res.err) return json({ error: res.err }, res.err === 'not_found' ? 404 : 409);
+      if (res.changed && !b.ok) await this.disputeNotify(uid, res.rows, res.hdr);
+      return json({ ok: true, debt: await this.myDebt(uid, true) });
+    }
+    if (path === '/__/disputes') return json({ items: await this.disputes() });
+    if (path === '/__/resolve') {
+      const uid = Number(b.uid);
+      if (!Number.isSafeInteger(uid) || !b.by || !Number.isSafeInteger(Number(b.by.id))) return json({ error: 'bad_request' }, 400);
+      return await this.debtAct(uid, 'resolve', { n: b.n, note: b.note }, { id: Number(b.by.id), first_name: String(b.by.first_name || ''), last_name: String(b.by.last_name || ''), username: String(b.by.username || '') });
+    }
     if (path === '/__/my-orders') {
       const uid = Number(b.uid);
       if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
@@ -1896,9 +1953,9 @@ export class Shop {
       if (path === '/api/admin/status' && method === 'POST') {
         const r = await this.readBody(request, 2000);
         if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
-        const res = await this.changeStatus(String(r.body.id || ''), String(r.body.to || ''), r.body.pay);
+        const res = await this.changeStatus(String(r.body.id || ''), String(r.body.to || ''), r.body.pay, null, { id: uid, name: whoName(u) });
         if (res.err) return json({ error: res.err, order: res.order ? adminOrder(res.order) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : 409);
-        if (res.changed) await this.afterChange(res.order, 'admin');
+        if (res.changed) { await this.afterChange(res.order, 'admin'); if (res.ask) await this.askConfirm(res.ask.uid, res.ask.n); }
         return json({ order: adminOrder(res.order), stats: res.stats || (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 } });
       }
       if (path === '/api/admin/config' && method === 'PUT') {
@@ -1947,23 +2004,24 @@ export class Shop {
         }
         if (method === 'DELETE') {
           const dh = await this.st.get('lh:' + cuid);
-          if (dh && dh.bal !== 0) return json({ error: 'has_debt' }, 409);
+          if (dh && (dh.bal !== 0 || (dh.fl || 0) > 0 || (dh.cwt || []).length)) return json({ error: 'has_debt' }, 409);
           const idx = await this.clientsIdx();
           await this.st.put('cx', idx.filter(x => x !== cuid));
           await this.st.delete('c:' + cuid);
           return json({ ok: true });
         }
       }
-      if (path === '/api/admin/couriers' || path.startsWith('/api/admin/couriers/')) return await this.adminCouriers(request, path, method, uid);
+      if (path === '/api/admin/couriers' || path.startsWith('/api/admin/couriers/')) return await this.adminCouriers(request, path, method, uid, u);
       if (path === '/api/admin/debts' && method === 'GET') return json(await this.debtList());
-      const dm = path.match(/^\/api\/admin\/debts\/(\d{1,15})(?:\/(pay|void|remind))?$/);
+      if (path === '/api/admin/disputes' && method === 'GET') return json({ items: await this.disputes() });
+      const dm = path.match(/^\/api\/admin\/debts\/(\d{1,15})(?:\/(pay|void|remind|resolve))?$/);
       if (dm) {
         const duid = Number(dm[1]);
         if (!dm[2] && method === 'GET') return await this.debtOne(duid);
         if (dm[2] && method === 'POST') {
           const r = await this.readBody(request, 2000);
           if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
-          return await this.debtAct(duid, dm[2], r.body, uid);
+          return await this.debtAct(duid, dm[2], r.body, u);
         }
       }
       if (path === '/api/admin/report' && method === 'GET') {
@@ -2441,7 +2499,7 @@ export class Shop {
   }
 
   /* Меняет статус без обращений к сети между чтением и записью. */
-  async changeStatus(id, to, pay, cour) {
+  async changeStatus(id, to, pay, cour, by) {
     await this.ensureClients();
     await this.ensureReports();
     const o = await this.st.get('o:' + id);
@@ -2456,7 +2514,7 @@ export class Shop {
     o.status = to;
     o.statusAt = nowIso;
     const upd = { ['o:' + id]: o };
-    let stats = null;
+    let stats = null, ask = null;
     if (!NEXT[to]) {
       const act = ((await this.st.get('act')) || []).filter(x => x !== id);
       const hist = ((await this.st.get('hist')) || []).filter(x => x !== id);
@@ -2485,21 +2543,33 @@ export class Shop {
         o.pay = payRec;
         const total = Number(o.total) || 0;
         if (payRec.m === 'credit' && o.uid && total > 0) {
-          const adds = [{ k: 'ch', d: total, a: total, ref: o.id, due: payRec.due }];
-          if (payRec.paid) adds.push({ k: 'pay', d: -payRec.paid, a: payRec.paid, m: payRec.pm, ref: o.id });
+          // кто записал; магазин подтверждает запись в Telegram (cf «wait»)
+          const mk = r => Object.assign(r, { by: by ? by.id : 0, bn: by ? by.name : '', cf: 'wait' }, cour ? { cid: cour.id } : {});
+          const adds = [mk({ k: 'ch', d: total, a: total, ref: o.id, due: payRec.due })];
+          if (payRec.paid) adds.push(mk({ k: 'pay', d: -payRec.paid, a: payRec.paid, m: payRec.pm, ref: o.id }));
+          if (cour && payRec.paid && payRec.pm !== 'cash') adds[1].vr = 'wait';
           const snap = {};
           if (o.name) snap.name = o.name;
           if (o.org) snap.org = o.org;
           if (o.phone) snap.phone = o.phone;
           if (o.mode === 'delivery' && o.address) snap.addr = o.address;
           if (o.lang) snap.lang = o.lang;
-          Object.assign(upd, (await this.lgAdd(o.uid, adds, snap)).put);
+          const lr = await this.lgAdd(o.uid, adds, snap);
+          Object.assign(upd, lr.put);
+          ask = { uid: o.uid, n: lr.ns[0], pn: payRec.paid && cour && payRec.pm !== 'cash' ? lr.ns[1] : 0 };
         }
         // наличные, которые доставщик принял у клиента, оседают в его кассе до сдачи продавцу
         if (cour) {
           const cashIn = payRec.m === 'cash' ? total : payRec.m === 'credit' && payRec.pm === 'cash' ? (payRec.paid || 0) : 0;
-          const c = cashIn > 0 ? await this.crGet(cour.id) : null;
-          if (c) Object.assign(upd, await this.crAdd(c, [{ k: 'in', d: cashIn, a: cashIn, o: o.id, nm: o.name || '' }]));
+          // карта и перечисление не попадают в наличные доставщика: они ждут сверки продавцом с банком
+          const nvIn = payRec.m === 'card' || payRec.m === 'bank' ? total : payRec.m === 'credit' && payRec.paid && payRec.pm !== 'cash' ? payRec.paid : 0;
+          const c = cashIn > 0 || nvIn > 0 ? await this.crGet(cour.id) : null;
+          if (c && cashIn > 0) Object.assign(upd, await this.crAdd(c, [{ k: 'in', d: cashIn, a: cashIn, o: o.id, nm: o.name || '' }]));
+          else if (c) {
+            const nm = payRec.m === 'credit' ? payRec.pm : payRec.m;
+            this.nvAdd(c, Object.assign({ k: 'o', a: nvIn, m: nm, o: o.id, nm: o.name || '' }, ask && ask.pn ? { uid: o.uid, n: ask.pn } : {}));
+            Object.assign(upd, await this.crAdd(c, [{ k: 'nv', d: 0, a: nvIn, m: nm, o: o.id, nm: o.name || '' }]));
+          }
         }
       }
       // счётчики клиента: выдача добавляет сумму, отмена убирает заказ из счёта
@@ -2527,7 +2597,7 @@ export class Shop {
       }
     }
     await this.st.put(upd);
-    return { order: o, changed: true, stats: stats || undefined };
+    return { order: o, changed: true, stats: stats || undefined, ask: ask || undefined };
   }
 
   /* --- доставка: доставщики, «Взял», касса наличных --- */
@@ -2563,7 +2633,7 @@ export class Shop {
   }
   async crDetail(c) {
     const lg = (await this.st.get('cc:' + c.id)) || { rows: [] };
-    return { courier: await this.crOut(c), rows: lg.rows.slice(-CC_SHOW).reverse() };
+    return { courier: await this.crOut(c), rows: lg.rows.slice(-CC_SHOW).reverse(), nv: (c.nv || []).slice().reverse() };
   }
   /* Дописывает строки в кассу доставщика и меняет остаток. Сам ничего не сохраняет: вызывающий кладёт put вместе со своими правками. */
   async crAdd(c, adds) {
@@ -2587,7 +2657,7 @@ export class Shop {
       if (h && h.bal > 0) { const d = lgDue(h.open, today); x.debt = { bal: h.bal, over: d.over, days: d.days, due: d.due, uid: o.uid }; }
       return x;
     });
-    return { orders, soon: del.filter(o => o.status === 'accepted').length, cash: Number(cour.cash) || 0 };
+    return { orders, soon: del.filter(o => o.status === 'accepted').length, cash: Number(cour.cash) || 0, lim: Number(cour.lim) || 0, nvn: (cour.nv || []).length };
   }
   cview(o, cour) { const x = adminOrder(o); x.mine = o.cr === cour.id; return x; }
   async courierTake(cour, id) {
@@ -2596,6 +2666,9 @@ export class Shop {
     if (o.mode !== 'delivery' || o.status !== 'ready') return { err: 'bad_transition', order: o };
     if (o.cr === cour.id) return { order: o, same: true };
     if (o.cr) return { err: 'taken', order: o };
+    // наличных на руках больше лимита или не сверено слишком много безнала: сначала сдать деньги
+    if (cour.lim > 0 && (Number(cour.cash) || 0) >= cour.lim) return { err: 'cash_limit', order: o, cash: Number(cour.cash) || 0, lim: cour.lim };
+    if ((cour.nv || []).length >= NV_MAX) return { err: 'nv_full', order: o };
     o.cr = cour.id; o.crn = cour.name; o.crAt = new Date().toISOString();
     if (cour.phone) o.crp = cour.phone;
     await this.st.put('o:' + id, o);
@@ -2654,6 +2727,8 @@ export class Shop {
       if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, res.order.crn));
       return answer('Заказ уже взял ' + res.order.crn, true);
     }
+    if (res.err === 'cash_limit') return answer('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', лимит ' + money(res.lim), true);
+    if (res.err === 'nv_full') return answer('Сначала покажите продавцу оплаты картой и переводом на сверку', true);
     if (res.err) return answer('Этот заказ уже не ждёт доставки', true);
     if (res.changed) await this.afterTake(res.order);
     else if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, 'mine'));
@@ -2665,7 +2740,7 @@ export class Shop {
     if (path === '/api/courier/orders' && method === 'GET') return json(await this.courierOrders(cour));
     if (path === '/api/courier/cash' && method === 'GET') {
       const lg = (await this.st.get('cc:' + cour.id)) || { rows: [] };
-      return json({ cash: Number(cour.cash) || 0, rows: lg.rows.slice(-CC_SHOW).reverse() });
+      return json({ cash: Number(cour.cash) || 0, lim: Number(cour.lim) || 0, rows: lg.rows.slice(-CC_SHOW).reverse(), nv: (cour.nv || []).slice().reverse() });
     }
     if (path === '/api/courier/debts' && method === 'GET') return json(await this.debtList());
     const dm = path.match(/^\/api\/courier\/debts\/(\d{1,15})(?:\/(pay|remind))?$/);
@@ -2675,7 +2750,7 @@ export class Shop {
       if (dm[2] && method === 'POST') {
         const r = await this.readBody(request, 2000);
         if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
-        return await this.debtAct(duid, dm[2], r.body, uid, cour);
+        return await this.debtAct(duid, dm[2], r.body, u, cour);
       }
     }
     const om = path.match(/^\/api\/courier\/(take|release|done)$/);
@@ -2685,7 +2760,7 @@ export class Shop {
       const id = String(r.body.id || '');
       if (om[1] === 'take') {
         const res = await this.courierTake(cour, id);
-        if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined }, res.err === 'not_found' ? 404 : 409);
+        if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined, cash: res.cash, lim: res.lim }, res.err === 'not_found' ? 404 : 409);
         if (res.changed) await this.afterTake(res.order);
         return json({ order: this.cview(res.order, cour) });
       }
@@ -2697,17 +2772,17 @@ export class Shop {
       }
       const pay = r.body.pay;
       if (pay && typeof pay === 'object' && pay.m === 'credit' && cour.credit === false) return json({ error: 'no_credit' }, 403);
-      const res = await this.changeStatus(id, 'done', pay, cour);
+      const res = await this.changeStatus(id, 'done', pay, cour, { id: uid, name: whoName(u) });
       if (!res.err && res.same && res.order.cr !== cour.id) res.err = 'not_yours';
       if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : res.err === 'not_yours' ? 403 : 409);
-      if (res.changed) await this.afterChange(res.order, 'admin');
+      if (res.changed) { await this.afterChange(res.order, 'admin'); if (res.ask) await this.askConfirm(res.ask.uid, res.ask.n); }
       const c = await this.crGet(cour.id);
       return json({ order: this.cview(res.order, cour), cash: c ? Number(c.cash) || 0 : 0 });
     }
     return json({ error: 'not_found' }, 404);
   }
   /* Управление доставщиками (продавец): список, приглашение ссылкой, правка, сдача денег, удаление. */
-  async adminCouriers(request, path, method, uid) {
+  async adminCouriers(request, path, method, uid, u) {
     if (path === '/api/admin/couriers') {
       if (method === 'GET') return json({ couriers: await Promise.all((await this.crList()).map(c => this.crOut(c))) });
       if (method === 'POST') {
@@ -2726,7 +2801,7 @@ export class Shop {
       }
       return json({ error: 'not_found' }, 404);
     }
-    const m = path.match(/^\/api\/admin\/couriers\/(k[a-z0-9]{3,9})(?:\/(link|handover))?$/);
+    const m = path.match(/^\/api\/admin\/couriers\/(k[a-z0-9]{3,9})(?:\/(link|handover|verify))?$/);
     if (!m) return json({ error: 'not_found' }, 404);
     const c = await this.crGet(m[1]), sub = m[2];
     if (!c) return json({ error: 'not_found' }, 404);
@@ -2739,11 +2814,17 @@ export class Shop {
       if (b.phone !== undefined) { c.phone = cleanStr(b.phone, 25); if (c.phone && !phoneOk(c.phone)) return json({ error: 'bad_phone' }, 400); }
       if (b.credit !== undefined) c.credit = b.credit !== false;
       if (b.on !== undefined) c.on = b.on !== false;
+      if (b.lim !== undefined) {
+        const lim = b.lim === null || b.lim === '' ? 0 : Number(b.lim);
+        if (!Number.isInteger(lim) || lim < 0 || lim > MAX_PAY) return json({ error: 'bad_lim' }, 400);
+        c.lim = lim;
+      }
       await this.st.put('cr:' + c.id, c);
       return json(await this.crDetail(c));
     }
     if (!sub && method === 'DELETE') {
       if ((Number(c.cash) || 0) !== 0) return json({ error: 'has_cash', cash: Number(c.cash) || 0 }, 409);
+      if ((c.nv || []).length) return json({ error: 'has_nv', n: c.nv.length }, 409);
       const upd = {}, del = ['cr:' + c.id, 'cc:' + c.id];
       if (c.uid) del.push('cru:' + c.uid);
       if (c.tok) del.push('ct:' + c.tok);
@@ -2761,6 +2842,21 @@ export class Shop {
       c.tok = randId(8).toLowerCase(); c.tokAt = Date.now();
       await this.st.put({ ['cr:' + c.id]: c, ['ct:' + c.tok]: c.id });
       return json({ courier: await this.crOut(c) });
+    }
+    // «Деньги пришли»: продавец сверил оплату картой или переводом, принятую доставщиком, с банком
+    if (sub === 'verify' && method === 'POST') {
+      const r = await this.readBody(request, 2000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const e = (c.nv || []).find(x => x.id === Number(r.body.id));
+      if (!e) return json({ error: 'not_found' }, 404);
+      c.nv = c.nv.filter(x => x !== e);
+      const put = await this.crAdd(c, [{ k: 'vr', d: 0, a: e.a, m: e.m, du: e.uid, o: e.o, nm: e.nm, by: uid }]);
+      if (e.uid && e.n) {
+        const { lg, lh } = await this.lgLoad(e.uid), row = lg.rows.find(x => x.n === e.n);
+        if (row && lh) { row.vr = 'ok'; row.vrt = new Date().toISOString(); row.vb = whoName(u); Object.assign(put, (await this.lgSave(e.uid, lg, lh)).put); }
+      }
+      await this.st.put(put);
+      return json(await this.crDetail(c));
     }
     if (sub === 'handover' && method === 'POST') {
       const r = await this.readBody(request, 2000);
@@ -2781,14 +2877,22 @@ export class Shop {
   /* Дописывает записи в журнал магазина и считает новый заголовок. Сам ничего не сохраняет: вызывающий кладёт put одной операцией вместе со своими правками. */
   async lgAdd(uid, adds, snap) {
     const { lg, lh } = await this.lgLoad(uid);
-    const now = new Date().toISOString();
-    adds.forEach(a => { lg.seq += 1; lg.rows.push(Object.assign({ n: lg.seq, t: now }, a)); });
+    const now = new Date().toISOString(), ns = [];
+    adds.forEach(a => { lg.seq += 1; ns.push(lg.seq); lg.rows.push(Object.assign({ n: lg.seq, t: now }, a)); });
+    // записи одного заказа подтверждаются магазином вместе
+    if (ns.length > 1) lg.rows.slice(-ns.length).forEach(r => { r.g = ns[0]; });
+    const res = await this.lgSave(uid, lg, lh, snap, now);
+    res.ns = ns;
+    return res;
+  }
+  /* Пересчитывает заголовок долга и список должников по журналу. now — время новой записи; без него заголовок только пересчитывается (подтверждение, закрытие спора). */
+  async lgSave(uid, lg, lh, snap, now) {
     const f = lgFold(lg.rows, lg.base);
     lg.rows = f.rows; lg.base = f.base;
-    const st = lgState(lg.rows, lg.base);
-    const hdr = Object.assign({ uid, name: '', org: '', phone: '', lang: '', rem: 0 }, lh || {}, snap || {}, { bal: st.bal, open: st.open, upd: now });
+    const st = lgState(lg.rows, lg.base), pd = lgPend(lg.rows);
+    const hdr = Object.assign({ uid, name: '', org: '', phone: '', lang: '', rem: 0 }, lh || {}, snap || {}, { bal: st.bal, open: st.open, fl: pd.fl, na: pd.na, cwt: pd.cwt, upd: now || (lh && lh.upd) || new Date().toISOString() });
     const idx = (await this.st.get('dbi')) || [];
-    const has = idx.includes(uid), need = st.bal !== 0;
+    const has = idx.includes(uid), need = st.bal !== 0 || pd.fl > 0 || pd.cwt.length > 0;
     const put = { ['lg:' + uid]: lg, ['lh:' + uid]: hdr };
     if (need && !has) put.dbi = idx.concat([uid]);
     else if (!need && has) put.dbi = idx.filter(x => x !== uid);
@@ -2799,10 +2903,10 @@ export class Shop {
     const idx = (await this.st.get('dbi')) || [];
     const map = await this.getMany(idx.map(u => 'lh:' + u));
     const today = dayOf(new Date().toISOString());
-    const list = idx.map(u => map.get('lh:' + u)).filter(h => h && h.bal !== 0).map(h => debtRow(h, today));
-    list.sort((a, b) => ((a.bal < 0) - (b.bal < 0)) || (b.days - a.days) || (a.due || '9').localeCompare(b.due || '9') || b.bal - a.bal);
+    const list = idx.map(u => map.get('lh:' + u)).filter(h => h && (h.bal !== 0 || lgFlags(h, Date.now()) > 0 || (h.cwt || []).length)).map(h => debtRow(h, today));
+    list.sort((a, b) => ((b.fl > 0) - (a.fl > 0)) || ((a.bal < 0) - (b.bal < 0)) || (b.days - a.days) || (a.due || '9').localeCompare(b.due || '9') || b.bal - a.bal);
     const owing = list.filter(x => x.bal > 0);
-    return { debtors: list, total: owing.reduce((t, x) => t + x.bal, 0), overdue: owing.reduce((t, x) => t + x.over, 0), n: owing.length, late: owing.filter(x => x.days > 0).length };
+    return { debtors: list, total: owing.reduce((t, x) => t + x.bal, 0), overdue: owing.reduce((t, x) => t + x.over, 0), n: owing.length, late: owing.filter(x => x.days > 0).length, fl: list.reduce((t, x) => t + x.fl, 0) };
   }
   /* Состав заказов, по которым числится долг. Берётся из самих заказов; если заказа уже нет, номер остаётся без состава. */
   async debtOrders(refs) {
@@ -2820,22 +2924,35 @@ export class Shop {
     const { lg, lh } = await this.lgLoad(uid);
     if (!lh) return json({ error: 'not_found' }, 404);
     const voided = new Set(lg.rows.filter(r => r.k === 'rv').map(r => r.of));
-    const rows = lg.rows.slice(-LG_SHOW).reverse().map(r => voided.has(r.n) ? Object.assign({}, r, { void: true }) : r);
+    const rsl = new Map(lg.rows.filter(r => r.k === 'rs').map(r => [r.of, r]));
+    const now = Date.now();
+    const rows = lg.rows.filter(r => r.k !== 'rs').slice(-LG_SHOW).reverse().map(r => {
+      const x = voided.has(r.n) ? Object.assign({}, r, { void: true }) : Object.assign({}, r);
+      const z = rsl.get(r.n);
+      if (z) x.rsl = { bn: z.bn || '', why: z.why || '', t: z.t };
+      else if (r.cf === 'wait' && !x.void && now - Date.parse(r.t) > CF_LATE) x.late = true;
+      return x;
+    });
     const ords = await this.debtOrders((lh.open || []).map(q => q.ref).concat(rows.filter(r => r.k === 'ch').map(r => r.ref)));
     return json({ debt: Object.assign(debtRow(lh, dayOf(new Date().toISOString())), { open: lh.open, rows, ords, more: lg.rows.length > LG_SHOW || !!lg.base, rem: lh.rem || 0 }) });
   }
   /* То, что видит сам магазин в «Мой долг»: без заметок продавца и служебных полей. Без full только суммы и сроки. Нет долга — null. */
   async myDebt(uid, full) {
     const { lg, lh } = await this.lgLoad(uid);
-    if (!lh || !(lh.bal > 0)) return null;
+    const ask = lh ? (lh.cwt || []).length + (lh.fl || 0) : 0;
+    if (!lh || (!(lh.bal > 0) && !ask)) return null;
     const d = debtRow(lh, dayOf(new Date().toISOString()));
-    const out = { bal: d.bal, due: d.due, over: d.over, days: d.days };
+    const out = { bal: Math.max(0, d.bal), due: d.due, over: d.over, days: d.days, ask: (lh.cwt || []).length + (lh.na || 0) };
     if (!full) return out;
-    const voided = new Set(lg.rows.filter(r => r.k === 'rv').map(r => r.of));
-    const rows = lg.rows.filter(r => r.k !== 'rv').slice(-LG_SHOW).reverse().map(r => {
-      const x = { n: r.n, t: r.t, k: r.k, a: r.a };
-      if (r.k === 'pay') { x.m = r.m; if (voided.has(r.n)) x.void = true; }
+    const voided = new Map(lg.rows.filter(r => r.k === 'rv').map(r => [r.of, r]));
+    const rsl = new Map(lg.rows.filter(r => r.k === 'rs').map(r => [r.of, r]));
+    const rows = lg.rows.filter(r => r.k !== 'rv' && r.k !== 'rs').slice(-LG_SHOW).reverse().map(r => {
+      const x = { n: r.n, g: r.g || r.n, t: r.t, k: r.k, a: r.a };
+      if (r.k === 'pay') { x.m = r.m; if (voided.has(r.n)) { x.void = true; x.vwhy = voided.get(r.n).why || ''; } }
       else { x.ref = r.ref || ''; x.due = r.due || ''; }
+      if (r.cf) { x.cf = r.cf; x.bn = r.bn || ''; }
+      const z = rsl.get(r.n);
+      if (z) x.rsl = { bn: z.bn || '', why: z.why || '' };
       return x;
     });
     const open = Array.isArray(lh.open) ? lh.open : [];
@@ -2846,19 +2963,125 @@ export class Shop {
       contact: { telegram: shop.telegram || '', phone: shop.phone || '' }
     });
   }
-  /* Магазину приходит короткое сообщение о принятой оплате. Если Telegram не ответил, запись об оплате всё равно остаётся. */
-  async debtPayNotify(uid, a, hdr) {
+  /* Все продавцы дистрибьютора получают короткое сообщение с кнопкой в приложение. */
+  async notifyAdmins(text) {
+    if (!this.env.BOT_TOKEN) return;
+    for (const aid of (await this.st.get('admins')) || []) {
+      try { await this.tg('sendMessage', { chat_id: aid, text, reply_markup: openBtn(this.origin, 'Долги', sellerUrl(this.origin, this.did)) }); }
+      catch (e) { console.error('admin notify failed', e && e.message || e); }
+    }
+  }
+  /* Магазин просят подтвердить запись: выдачу в долг или принятую оплату. n — номер записи (или первой записи заказа).
+     Не удалось отправить в Telegram — запись сразу помечается «магазин не получил», продавец видит её среди спорных. */
+  async askConfirm(uid, n) {
     if (!this.env.BOT_TOKEN) return;
     try {
-      const text = debtPayText(hdr, a.a, a.m, (await this.getCfg()).shop);
-      await this.tg('sendMessage', { chat_id: uid, text, reply_markup: openBtn(this.origin, hdr.lang === 'uz' ? 'Mening qarzim' : 'Мой долг', this.origin + '/?v=debt') });
-    } catch (e) { console.error('debt pay notify failed', e && e.message || e); }
+      const { lg, lh } = await this.lgLoad(uid);
+      const rows = lg.rows.filter(r => (r.g || r.n) === n && (r.k === 'ch' || r.k === 'pay'));
+      if (!rows.length || !lh) return;
+      const text = confirmText(lh, rows, (await this.getCfg()).shop), px = cbPrefix(this.did), uz = lh.lang === 'uz';
+      const kb = openBtn(this.origin, uz ? 'Mening qarzim' : 'Мой долг', this.origin + '/?v=debt').inline_keyboard;
+      const r = await this.tg('sendMessage', { chat_id: uid, text, reply_markup: { inline_keyboard: [[
+        { text: uz ? '✅ Toʻgʻri' : '✅ Верно', callback_data: 'q:' + px + n + ':y' }, { text: uz ? '❌ Notoʻgʻri' : '❌ Не так', callback_data: 'q:' + px + n + ':n' }
+      ]].concat(kb) } });
+      if (r && r.ok) return;
+      const cur = await this.lgLoad(uid), now = new Date().toISOString();
+      let hit = false;
+      cur.lg.rows.forEach(x => { if ((x.g || x.n) === n && x.cf === 'wait') { x.cf = 'na'; x.cft = now; hit = true; } });
+      if (hit) await this.st.put((await this.lgSave(uid, cur.lg, cur.lh)).put);
+    } catch (e) { console.error('confirm ask failed', e && e.message || e); }
   }
-  /* Приём оплаты, отмена записи об оплате и напоминание магазину. */
-  async debtAct(uid, act, body, by, cour) {
+  /* Магазин ответил на вопрос «Всё верно?». ok — «Верно», иначе «Не так». «Верно» окончательно; «Не так» магазин ещё может изменить на «Верно». */
+  async confirmRow(uid, n, ok) {
+    const { lg, lh } = await this.lgLoad(uid);
+    const grp = lh ? lg.rows.filter(r => (r.g || r.n) === n && (r.k === 'ch' || r.k === 'pay') && r.cf) : [];
+    if (!grp.length) return { err: 'not_found' };
+    const has = (k, r) => lg.rows.some(z => z.k === k && z.of === r.n);
+    const live = grp.filter(r => !has('rv', r));
+    if (!live.length) return { err: 'void', hdr: lh };
+    if (live.some(r => r.cf === 'ok')) return { err: 'final', hdr: lh, rows: live };
+    if (!ok && live.some(r => has('rs', r))) return { err: 'resolved', hdr: lh };
+    const to = ok ? 'ok' : 'no';
+    let hdr = lh;
+    const changed = live.some(r => r.cf !== to);
+    if (changed) {
+      const now = new Date().toISOString();
+      live.forEach(r => { r.cf = to; r.cft = now; });
+      const sv = await this.lgSave(uid, lg, lh);
+      await this.st.put(sv.put);
+      hdr = sv.hdr;
+    }
+    return { rows: live, hdr, changed };
+  }
+  /* Магазин отметил запись «Не так»: продавцы и доставщик, который её принял, узнают сразу. */
+  async disputeNotify(uid, rows, hdr) {
+    if (!this.env.BOT_TOKEN) return;
+    const who = hdr.name || hdr.org || 'Магазин', bn = (rows.find(r => r.bn) || {}).bn || '';
+    const text = '⚠️ ' + who + ' отметил запись «Не так»: ' + rowDesc(rows) + (bn ? '. Записал: ' + bn : '') + '.';
+    await this.notifyAdmins(text + '\nОткройте «Долги» и разберитесь с магазином.');
+    const cid = (rows.find(r => r.cid) || {}).cid, c = cid ? await this.crGet(cid) : null;
+    if (c && c.uid) {
+      try { await this.tg('sendMessage', { chat_id: c.uid, text }); } catch (e) { console.error('dispute courier notify failed', e && e.message || e); }
+    }
+  }
+  /* Что видит сам магазин при ответе «Верно» или «Не так»: текст сообщения и кнопки после ответа. */
+  confirmEdit(text, hdr, to, px, n) {
+    setLang(hdr.lang === 'uz' ? 'uz' : 'ru');
+    const base = String(text || '').replace(/\n\n(✅|❌) [^\n]*$/, '');
+    const kb = openBtn(this.origin, L('Мой долг', 'Mening qarzim'), this.origin + '/?v=debt').inline_keyboard;
+    if (to === 'ok') return { text: base + '\n\n' + L('✅ Вы подтвердили. Спасибо!', '✅ Tasdiqladingiz. Rahmat!'), reply_markup: { inline_keyboard: kb } };
+    return { text: base + '\n\n' + L('❌ Вы отметили «Не так». Продавец увидит это.', '❌ «Notoʻgʻri» deb belgiladingiz. Sotuvchi buni koʻradi.'),
+      reply_markup: { inline_keyboard: [[{ text: L('✅ Всё-таки верно', '✅ Baribir toʻgʻri'), callback_data: 'q:' + px + n + ':y' }]].concat(kb) } };
+  }
+  /* Нажатие «Верно» / «Не так» под сообщением магазину. Отвечать может только сам магазин. */
+  async onConfirmCb(cq, p, answer) {
+    const uid = cq.from && cq.from.id, n = Number(p.id);
+    if (!uid || !Number.isInteger(n) || (p.to !== 'y' && p.to !== 'n')) return answer('');
+    const ok = p.to === 'y';
+    const res = await this.confirmRow(uid, n, ok);
+    if (res.err === 'not_found') return answer('Запись не найдена', true);
+    const hdr = res.hdr || {};
+    setLang(hdr.lang === 'uz' ? 'uz' : 'ru');
+    const here = cq.message && cq.message.chat ? { chat_id: cq.message.chat.id, message_id: cq.message.message_id } : null;
+    const px = cbPrefix(this.did);
+    if (res.err === 'void') return answer(L('Эта запись уже отменена продавцом', 'Bu yozuv sotuvchi tomonidan bekor qilingan'), true);
+    if (res.err === 'resolved') return answer(L('Продавец уже закрыл этот вопрос. Если не согласны, напишите ему.', 'Sotuvchi bu masalani yopgan. Rozi boʻlmasangiz, unga yozing.'), true);
+    if (res.err === 'final') {
+      if (here) await this.editCard(here, this.confirmEdit(cq.message.text, hdr, 'ok', px, n));
+      return answer(L('Вы уже подтвердили эту запись', 'Bu yozuvni allaqachon tasdiqlagansiz'), true);
+    }
+    if (here) await this.editCard(here, this.confirmEdit(cq.message.text, hdr, ok ? 'ok' : 'no', px, n));
+    if (res.changed && !ok) await this.disputeNotify(uid, res.rows, hdr);
+    return answer(ok ? L('Спасибо, подтверждено', 'Rahmat, tasdiqlandi') : L('Отмечено «Не так». Продавец увидит.', '«Notoʻgʻri» deb belgilandi'));
+  }
+  /* Спорные записи: магазин ответил «Не так», сообщение не дошло или магазин молчит больше суток. Не закрытые и не отменённые. */
+  async disputes() {
+    const idx = (await this.st.get('dbi')) || [], now = Date.now();
+    const map = await this.getMany(idx.map(u => 'lh:' + u));
+    const cand = idx.map(u => map.get('lh:' + u)).filter(h => h && lgFlags(h, now) > 0).slice(0, 60);
+    const out = [];
+    for (const h of cand) {
+      const { lg } = await this.lgLoad(h.uid);
+      const gone = new Set(lg.rows.filter(r => r.k === 'rv' || r.k === 'rs').map(r => r.of)), seen = new Set();
+      for (const r of lg.rows) {
+        if ((r.k !== 'ch' && r.k !== 'pay') || !r.cf || r.cf === 'ok' || gone.has(r.n)) continue;
+        if (r.cf === 'wait' && now - Date.parse(r.t) <= CF_LATE) continue;
+        const g = r.g || r.n;
+        if (seen.has(g)) continue;
+        seen.add(g);
+        out.push({ uid: h.uid, name: h.name || '', org: h.org || '', phone: h.phone || '', n: r.n, k: r.k, a: r.a, m: r.m || '', ref: r.ref || '', t: r.t, bn: r.bn || '', cf: r.cf === 'wait' ? 'late' : r.cf, cft: r.cft || '' });
+      }
+    }
+    out.sort((a, b) => String(b.t).localeCompare(String(a.t)));
+    return out.slice(0, 100);
+  }
+  nvAdd(c, e) { c.nvs = (Number(c.nvs) || 0) + 1; c.nv = (c.nv || []).concat([Object.assign({ id: c.nvs, t: new Date().toISOString() }, e)]); }
+  /* Приём оплаты, отмена записи об оплате, закрытие спорной записи и напоминание магазину. u — пользователь Telegram, который это делает. */
+  async debtAct(uid, act, body, u, cour) {
+    const by = u.id, bn = whoName(u);
     const { lg, lh } = await this.lgLoad(uid);
     if (!lh) return json({ error: 'not_found' }, 404);
-    let adds;
+    const who = lh.name || lh.org || '';
     if (act === 'remind') {
       if (!(lh.bal > 0)) return json({ error: 'no_debt' }, 409);
       if (Date.now() - (Number(lh.rem) || 0) < REMIND_GAP) return json({ error: 'too_soon' }, 429);
@@ -2872,26 +3095,64 @@ export class Shop {
     if (act === 'pay') {
       const amount = Number(body.amount);
       if (!Number.isInteger(amount) || amount < 1 || amount > MAX_PAY || !PAY_M.includes(body.m)) return json({ error: 'bad_request' }, 400);
-      adds = [Object.assign({ k: 'pay', d: -amount, a: amount, m: body.m, by, note: cleanStr(body.note || '', LG_NOTE) }, cour ? { cid: cour.id } : {})];
-    } else {
-      // отменить можно только запись об оплате, и один раз; ошибочную выдачу в долг гасят оплатой
-      const n = Number(body.n), row = lg.rows.find(r => r.n === n);
-      if (!row || row.k !== 'pay') return json({ error: 'not_found' }, 404);
-      if (lg.rows.some(r => r.k === 'rv' && r.of === n)) return json({ error: 'already' }, 409);
-      adds = [{ k: 'rv', of: n, d: -row.d, a: row.a, by }];
+      if (cour) {
+        // доставщик с лимитом наличных не берёт новые наличные, пока не сдаст деньги; безналичные оплаты ждут сверки продавцом
+        if (body.m === 'cash' && cour.lim > 0 && (Number(cour.cash) || 0) >= cour.lim) return json({ error: 'cash_limit', cash: Number(cour.cash) || 0, lim: cour.lim }, 409);
+        if (body.m !== 'cash' && (cour.nv || []).length >= NV_MAX) return json({ error: 'nv_full' }, 409);
+      }
+      const row = { k: 'pay', d: -amount, a: amount, m: body.m, by, bn, note: cleanStr(body.note || '', LG_NOTE), cf: 'wait' };
+      if (cour) { row.cid = cour.id; if (body.m !== 'cash') row.vr = 'wait'; }
+      const res = await this.lgAdd(uid, [row]);
+      if (cour) {
+        if (body.m === 'cash') Object.assign(res.put, await this.crAdd(cour, [{ k: 'in', d: amount, a: amount, du: uid, nm: who }]));
+        else { this.nvAdd(cour, { k: 'd', a: amount, m: body.m, nm: who, uid, n: res.ns[0] }); Object.assign(res.put, await this.crAdd(cour, [{ k: 'nv', d: 0, a: amount, m: body.m, du: uid, nm: who }])); }
+      }
+      await this.st.put(res.put);
+      await this.askConfirm(uid, res.ns[0]);
+      if (cour) await this.notifyAdmins('💰 Доставщик ' + cour.name + ' принял оплату долга: ' + (who || 'магазин') + ', ' + money(amount) + ' (' + PAY_NAME2[body.m][0] + ').');
+      return await this.debtOne(uid);
     }
-    const res = await this.lgAdd(uid, adds);
-    // наличные, принятые доставщиком, идут в его кассу; отмена такой записи убирает их оттуда
-    const a0 = adds[0], who = lh.name || lh.org || '';
-    if (a0.k === 'pay' && a0.cid && a0.m === 'cash') {
-      const c = await this.crGet(a0.cid);
-      if (c) Object.assign(res.put, await this.crAdd(c, [{ k: 'in', d: a0.a, a: a0.a, du: uid, nm: who }]));
-    } else if (a0.k === 'rv') {
-      const row = lg.rows.find(r => r.n === a0.of), c = row && row.cid && row.m === 'cash' ? await this.crGet(row.cid) : null;
-      if (c) Object.assign(res.put, await this.crAdd(c, [{ k: 'rv', d: -row.a, a: row.a, du: uid, nm: who }]));
+    if (cour) return json({ error: 'forbidden' }, 403);
+    const n = Number(body.n), row = lg.rows.find(r => r.n === n);
+    if (act === 'resolve') {
+      const note = cleanStr(body.note || '', RES_MAX);
+      if (note.length < WHY_MIN) return json({ error: 'bad_note' }, 400);
+      if (!row || (row.k !== 'ch' && row.k !== 'pay') || !row.cf || row.cf === 'ok') return json({ error: 'not_found' }, 404);
+      const closed = r => lg.rows.some(z => (z.k === 'rv' || z.k === 'rs') && z.of === r.n);
+      if (closed(row)) return json({ error: 'already' }, 409);
+      if (row.cf === 'wait' && Date.now() - Date.parse(row.t) <= CF_LATE) return json({ error: 'not_flagged' }, 409);
+      const grp = lg.rows.filter(r => (r.g || r.n) === (row.g || row.n) && (r.k === 'ch' || r.k === 'pay') && r.cf && r.cf !== 'ok' && !closed(r));
+      const res = await this.lgAdd(uid, grp.map(r => ({ k: 'rs', of: r.n, d: 0, a: 0, by, bn, why: note })));
+      await this.st.put(res.put);
+      if (this.env.BOT_TOKEN) {
+        try {
+          setLang(lh.lang === 'uz' ? 'uz' : 'ru');
+          await this.tg('sendMessage', { chat_id: uid, text: L('ℹ️ Продавец закрыл вопрос по записи: ', 'ℹ️ Sotuvchi yozuv boʻyicha masalani yopdi: ') + rowDesc(grp) + '.\n' + L('Комментарий: ', 'Izoh: ') + note, reply_markup: openBtn(this.origin, L('Мой долг', 'Mening qarzim'), this.origin + '/?v=debt') });
+        } catch (e) { console.error('resolve notify failed', e && e.message || e); }
+      }
+      return await this.debtOne(uid);
+    }
+    // отменить можно только запись об оплате, и один раз, с причиной; ошибочную выдачу в долг гасят оплатой
+    if (!row || row.k !== 'pay') return json({ error: 'not_found' }, 404);
+    if (lg.rows.some(r => r.k === 'rv' && r.of === n)) return json({ error: 'already' }, 409);
+    const why = cleanStr(body.reason || '', WHY_MAX);
+    if (why.length < WHY_MIN) return json({ error: 'bad_reason' }, 400);
+    const res = await this.lgAdd(uid, [{ k: 'rv', of: n, d: -row.d, a: row.a, by, bn, why }]);
+    // наличные, принятые доставщиком, возвращаются из его кассы; неподтверждённый безнал уходит из списка сверки
+    const c = row.cid ? await this.crGet(row.cid) : null;
+    if (c && row.m === 'cash') Object.assign(res.put, await this.crAdd(c, [{ k: 'rv', d: -row.a, a: row.a, du: uid, nm: who }]));
+    else if (c && (c.nv || []).some(x => x.uid === uid && x.n === n)) {
+      c.nv = c.nv.filter(x => !(x.uid === uid && x.n === n));
+      Object.assign(res.put, await this.crAdd(c, [{ k: 'nx', d: 0, a: row.a, m: row.m, du: uid, nm: who }]));
     }
     await this.st.put(res.put);
-    if (a0.k === 'pay') await this.debtPayNotify(uid, a0, res.hdr);
+    if (this.env.BOT_TOKEN) {
+      try {
+        setLang(lh.lang === 'uz' ? 'uz' : 'ru');
+        await this.tg('sendMessage', { chat_id: uid, text: L('❌ Запись об оплате ' + money(row.a) + ' отменена продавцом.\nПричина: ' + why, '❌ ' + money(row.a) + ' toʻlov yozuvi sotuvchi tomonidan bekor qilindi.\nSabab: ' + why), reply_markup: openBtn(this.origin, L('Мой долг', 'Mening qarzim'), this.origin + '/?v=debt') });
+        if (c && c.uid) await this.tg('sendMessage', { chat_id: c.uid, text: '❌ Продавец отменил принятую вами оплату: ' + (who || 'магазин') + ', ' + money(row.a) + '.\nПричина: ' + why });
+      } catch (e) { console.error('void notify failed', e && e.message || e); }
+    }
     return await this.debtOne(uid);
   }
 
@@ -2938,6 +3199,7 @@ export class Shop {
     const answer = (text, alert) => this.tg('answerCallbackQuery', { callback_query_id: cq.id, text: text ? String(text).slice(0, 190) : undefined, show_alert: !!alert });
     const parsed = cbParse(cq.data);
     if (parsed.kind === 'k') return await this.onCourierCb(cq, parsed, answer);
+    if (parsed.kind === 'q') return await this.onConfirmCb(cq, parsed, answer);
     if (!cq.from || !(await this.isAdmin(cq.from.id))) return answer('Нет доступа', true);
     const { kind, id, to, days } = parsed;
     const o = id ? await this.st.get('o:' + id) : null;
@@ -2953,7 +3215,7 @@ export class Shop {
     if (kind === 'p' && to === 'credit' && !days && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'days')); return answer('На сколько дней в долг?'); }
     if (kind === 's' || kind === 'p') {
       const pay = kind === 'p' ? (to === 'credit' ? { m: 'credit', days: Number(days) } : { m: to }) : undefined;
-      const res = await this.changeStatus(id, kind === 'p' ? 'done' : to, pay);
+      const res = await this.changeStatus(id, kind === 'p' ? 'done' : to, pay, null, { id: cq.from.id, name: whoName(cq.from) });
       if (res.err === 'bad_pay') return answer('Не получилось: проверьте способ оплаты', true);
       if (res.err === 'bad_transition') {
         await edit(await this.card(res.order, cfg.shop, false));
@@ -2961,6 +3223,7 @@ export class Shop {
       }
       if (res.err) return answer('Не получилось', true);
       await this.afterChange(res.order, res.changed ? 'admin' : null, here);
+      if (res.changed && res.ask) await this.askConfirm(res.ask.uid, res.ask.n);
       return answer(stOf(res.order.status, res.order.mode).name);
     }
     return answer('');
@@ -3767,7 +4030,18 @@ export class Hub {
         return d ? Object.assign({}, d, { did, shopName: rec ? rec.name : did }) : null;
       }));
       const debts = got.filter(Boolean).sort((a, b) => (b.over > 0) - (a.over > 0) || b.bal - a.bal);
-      return json({ debts, n: debts.length, total: debts.reduce((t, d) => t + d.bal, 0), over: debts.reduce((t, d) => t + d.over, 0), late: debts.filter(d => d.days > 0).length });
+      return json({ debts, n: debts.length, total: debts.reduce((t, d) => t + d.bal, 0), over: debts.reduce((t, d) => t + d.over, 0), late: debts.filter(d => d.days > 0).length, ask: debts.reduce((t, d) => t + (d.ask || 0), 0) });
+    }
+
+    // магазин отвечает «Верно» / «Не так» на запись о выдаче в долг или оплате
+    if (path === '/api/hub/debts/confirm' && method === 'POST') {
+      const r = await this.readBody(request, 500);
+      const b = r.body && typeof r.body === 'object' ? r.body : null;
+      if (r.err || !b || !validDid(b.did) || !Number.isInteger(Number(b.n)) || typeof b.ok !== 'boolean') return json({ error: 'bad_request' }, 400);
+      if (!(await this.userShops(uid)).includes(b.did) || !(await this.getRec(b.did))) return json({ error: 'not_found' }, 404);
+      const sc = await shopCall(this.env, b.did, '/__/my-confirm', { uid, n: Number(b.n), ok: b.ok });
+      if (!sc.ok) return json({ error: (sc.data && sc.data.error) || 'server' }, sc.status || 500);
+      return json({ debt: sc.data.debt ? Object.assign({}, sc.data.debt, { did: b.did, shopName: (await this.getRec(b.did)).name }) : null });
     }
 
     // регион магазина: запоминается, чтобы на другом телефоне список был тем же
@@ -3824,6 +4098,23 @@ export class Hub {
       const t = cleanStr(r.body.title, 60) || HUB_TITLE;
       await this.st.put('title', t);
       return json({ title: t });
+    }
+    // спорные записи по всем дистрибьюторам: владелец видит, где магазин и продавец не сошлись
+    if (path === '/api/hub/admin/disputes' && method === 'GET') {
+      const recs = await this.allRecs();
+      const got = await Promise.all(recs.map(async rec => {
+        const r = await shopCall(this.env, rec.id, '/__/disputes', {});
+        return ((r.data && r.data.items) || []).map(x => Object.assign({}, x, { did: rec.id, shopName: rec.name }));
+      }));
+      return json({ items: [].concat(...got).sort((a, b) => String(b.t).localeCompare(String(a.t))).slice(0, 200) });
+    }
+    if (path === '/api/hub/admin/disputes/resolve' && method === 'POST') {
+      const r = await this.readBody(request, 1000);
+      const b = r.body && typeof r.body === 'object' ? r.body : null;
+      if (r.err || !b || !validDid(b.did) || !Number.isSafeInteger(Number(b.uid)) || !Number.isInteger(Number(b.n))) return json({ error: 'bad_request' }, 400);
+      if (!(await this.getRec(b.did))) return json({ error: 'not_found' }, 404);
+      const sc = await shopCall(this.env, b.did, '/__/resolve', { uid: Number(b.uid), n: Number(b.n), note: b.note, by: au.user });
+      return json(sc.data || { error: 'server' }, sc.status || 500);
     }
     if (path === '/api/hub/admin/analytics' && method === 'GET') return await this.adminAnalytics(new URL(request.url));
     if (path === '/api/hub/admin/stats' && method === 'GET') {

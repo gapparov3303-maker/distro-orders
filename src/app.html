@@ -204,6 +204,19 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .dvs.wait{background:var(--warn-soft);color:var(--warn)}
 .dvcash{font-size:14px;color:var(--ink-2)}
 .dvcash b{color:var(--ink);font-variant-numeric:tabular-nums}
+.cfl{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:0 0 10px}
+.cfs{display:flex;flex-wrap:wrap;gap:4px 6px;flex-basis:100%}
+.cfc{display:inline-block;font-size:12px;font-weight:700;line-height:1.35;padding:2px 9px;border-radius:999px;background:var(--mute-soft);color:var(--mute)}
+.cfc.ok{background:var(--ok-soft);color:var(--ok)}
+.cfc.warn{background:var(--warn-soft);color:var(--warn)}
+.cfc.bad{background:var(--bad-soft);color:var(--bad)}
+.cfl .payb{flex-basis:100%;margin-top:2px}
+.cfq{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%}
+.dsp{display:grid;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.dsp .dpw{font-size:14px;color:var(--ink-2)}
+.dsp .dpw b{color:var(--ink)}
+.dvnv{display:grid;gap:2px;padding:8px 0;border-top:1px solid var(--line)}
+.dvnv:first-child{border-top:0}
 .filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
 .ordlist{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
 @media (min-width:980px){.ordlist{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -749,7 +762,7 @@ const S={
   an:{days:30,sh:'',tab:'cats',sort:'sum',all:false,data:null,shops:[],err:false,seq:0},
   did:'',epoch:0,switching:false,off:false,otherCart:null,
   hub:{title:'',shops:[],me:null,terrs:[],loaded:false,err:false},
-  own:{sec:'dist',shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null},
+  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0}
 };
@@ -983,7 +996,7 @@ function switchLang(){
 /* меню: разделы по группам; у «Продавца» внутри раскрываются его пять разделов */
 const sellerSubs=()=>{
   const w=stockWarn(),rn=modRetN();
-  return [['orders',L('Заказы','Buyurtmalar')],['debts',L('Долги','Qarzlar'),S.dbt.late,'warn'],['dlv',L('Доставщики','Yetkazuvchilar')],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
+  return [['orders',L('Заказы','Buyurtmalar')],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar')],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
 };
 /* Роли человека берутся с площадки (S.hub.me): владелец, агент, продавец и доставщик у каких-то дистрибьюторов. Кроме этого он всегда магазин-клиент. */
 function myRoles(){
@@ -1012,7 +1025,7 @@ function roleLine(){
 function menuGroups(){
   const g=[];
   const shop=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
-  if(S.mdebt.ok&&S.mdebt.total>0)shop.push(['debt',L('Мой долг','Mening qarzim')]);
+  if(S.mdebt.ok&&(S.mdebt.total>0||S.mdebt.ask>0))shop.push(['debt',L('Мой долг','Mening qarzim'),S.mdebt.ask,'warn']);
   if(S.auth&&S.did)shop.push(['profile',L('Профиль','Profil')]);
   g.push([L('Магазин','Doʻkon'),shop]);
   const work=[];
@@ -1020,7 +1033,7 @@ function menuGroups(){
   if(S.courier&&S.did)work.push(['courier',L('Доставка','Yetkazib berish'),crFree(),'',crTabs(),'ctab']);
   if(canBase())work.push(['base',L('База','Baza')]);
   if(work.length)g.push([L('Работа','Ish'),work]);
-  if(isOwner())g.push([L('Владелец','Egasi'),ownSecs().map(o=>['o_'+o[0],o[1],0,'',o[2].map(x=>[x[0],x[1]]),'otab']).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
+  if(isOwner())g.push([L('Владелец','Egasi'),ownSecs().map(o=>['o_'+o[0],o[1],o[0]==='money'?S.own.dn:0,'bad',o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']),'otab']).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
   return g;
 }
 const badgeHTML=(n,c)=>n?' <span class="badge'+(c?' '+c:'')+'">'+n+'</span>':'';
@@ -1052,7 +1065,7 @@ function renderNav(){
   nav.scrollTop=st;
   if(fk){const f=[...nav.querySelectorAll('[data-act]')].find(x=>x.dataset.act===fk[0]&&(x.dataset.v||x.dataset.t||'')===fk[1]&&!x.closest('[hidden]'));if(f)f.focus({preventScroll:true})}
   // значок на кнопке ☰: что ждёт решения (новые заказы, товары на проверке или возвращённые)
-  const al=(S.admin&&S.did?newCount()+modRetN():0)+(isOwner()?modN():0)+(S.courier&&S.did?crFree():0),mb=$('#menubadge');
+  const al=(S.admin&&S.did?newCount()+modRetN()+(S.dbt.fl||0):0)+(isOwner()?modN()+(S.own.dn||0):0)+(S.courier&&S.did?crFree():0)+(S.auth?S.mdebt.ask||0:0),mb=$('#menubadge');
   mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
   const mr=$('#mrole'),rl=roleLine();
   if(mr){mr.hidden=!rl;mr.innerHTML=rl?esc(L('Вы: ','Siz: '))+'<b>'+esc(rl)+'</b>':''}
@@ -1722,33 +1735,86 @@ function payGo(){
 }
 
 /* ---------- «Мой долг»: что видит сам магазин ---------- */
-function newMyDebt(){return {ok:false,full:false,list:[],total:0,over:0,late:0,n:0,ex:{}}}
+function newMyDebt(){return {ok:false,full:false,list:[],total:0,over:0,late:0,n:0,ask:0,busy:false,ex:{}}}
 async function loadMyDebt(full){
   if(!S.auth)return;
   if(!full&&S.view==='debt')return;   // на самом экране нужны заказы и оплаты, краткий ответ их затёр бы
   const r=await api('GET','/api/hub/debts'+(full?'?full=1':''));
   if(!r.ok||!r.data||!Array.isArray(r.data.debts))return;
   const m=S.mdebt,d=r.data,f=!!full;
-  if(m.ok&&m.full===f&&JSON.stringify([d.debts,d.total,d.over])===JSON.stringify([m.list,m.total,m.over]))return;
-  Object.assign(m,{ok:true,full:f,list:d.debts,total:d.total,over:d.over,late:d.late,n:d.n});
+  if(m.ok&&m.full===f&&JSON.stringify([d.debts,d.total,d.over,d.ask])===JSON.stringify([m.list,m.total,m.over,m.ask]))return;
+  Object.assign(m,{ok:true,full:f,list:d.debts,total:d.total,over:d.over,late:d.late,n:d.n,ask:d.ask||0});
   renderNav();paintDebtBanner();
   if(S.view==='debt')renderMyDebt();
 }
 const debtBannerHTML=()=>{
   const m=S.mdebt;
-  if(!S.auth||!m.ok||!(m.total>0))return '';
-  return '<button type="button" class="dbn'+(m.over>0?' late':'')+'" data-act="nav" data-v="debt"><span><b>'+L('Ваш долг ','Sizning qarzingiz ')+money(m.total)+'</b><small>'+(m.over>0?L('Просрочено ','Muddati oʻtgan ')+money(m.over):L('Заказы и оплаты','Buyurtmalar va toʻlovlar'))+'</small></span><span class="lchev">'+ICO.chev+'</span></button>';
+  if(!S.auth||!m.ok||!(m.total>0||m.ask>0))return '';
+  const ask=m.ask>0?L('Подтвердите записей: '+m.ask,'Tasdiqlang: '+m.ask):'';
+  return '<button type="button" class="dbn'+(m.over>0?' late':'')+'" data-act="nav" data-v="debt"><span><b>'+(m.total>0?L('Ваш долг ','Sizning qarzingiz ')+money(m.total):L('Подтвердите записи','Yozuvlarni tasdiqlang'))+'</b><small>'+(m.total>0&&ask?ask:m.over>0?L('Просрочено ','Muddati oʻtgan ')+money(m.over):L('Заказы и оплаты','Buyurtmalar va toʻlovlar'))+'</small></span><span class="lchev">'+ICO.chev+'</span></button>';
 };
 const bannerSlot=()=>'<div id="mdbanner">'+debtBannerHTML()+'</div>';
 function paintDebtBanner(){const el=$('#mdbanner');if(el)el.innerHTML=debtBannerHTML()}
+/* Подписи под оплатой в «Моём долге»: подтверждена ли, отменена ли и почему, закрыл ли продавец вопрос. */
+function mdChips(r){
+  const c=(cls,t)=>'<span class="cfc'+(cls?' '+cls:'')+'">'+t+'</span>';
+  let h='';
+  if(r.void)h=r.vwhy?c('bad',L('Отменена. Причина: ','Bekor qilindi. Sabab: ')+esc(r.vwhy)):'';
+  else if(r.rsl)h=c('ok',L('Продавец закрыл вопрос: ','Sotuvchi masalani yopdi: ')+esc(r.rsl.why||''));
+  else if(r.cf==='ok')h=c('ok','✓ '+L('Вы подтвердили','Siz tasdiqladingiz'));
+  else if(r.cf==='no')h=c('bad',L('Вы отметили «Не так»','Siz «Notoʻgʻri» dedingiz'));
+  else if(r.cf==='wait'||r.cf==='na')h=c('warn',L('Ждёт вашего ответа','Javobingiz kutilmoqda'));
+  return h?'<div class="cfl"><span class="cfs">'+h+'</span></div>':'';
+}
+/* Записи, на которые магазин ещё не ответил или ответил «Не так» (их можно изменить на «Верно»). Записи одного заказа — одним блоком. */
+function mdAsks(x){
+  const rows=x.rows||[],seen=new Set(),out=[];
+  rows.forEach(r=>{
+    if((r.k!=='ch'&&r.k!=='pay')||!r.cf||r.cf==='ok'||r.void||r.rsl)return;
+    const g=r.g||r.n;
+    if(seen.has(g))return;
+    seen.add(g);
+    out.push({g,rows:rows.filter(z=>(z.g||z.n)===g&&(z.k==='ch'||z.k==='pay')&&z.cf)});
+  });
+  return out;
+}
+function mdAskHTML(x,a){
+  const ch=a.rows.find(r=>r.k==='ch'),p=a.rows.find(r=>r.k==='pay'),first=a.rows[0],no=a.rows.every(r=>r.cf==='no'),dis=S.mdebt.busy?' disabled':'';
+  const title=ch?L('Заказ '+esc(ch.ref)+' выдан вам в долг на '+money(ch.a)+(ch.due?', срок '+fDay(ch.due):''),esc(ch.ref)+' buyurtma sizga qarzga berildi: '+money(ch.a)+(ch.due?', muddat '+fDay(ch.due):''))
+    :L('Принята оплата долга: '+esc(payName(p.m))+' '+money(p.a),'Qarz toʻlovi qabul qilindi: '+esc(payName(p.m))+' '+money(p.a));
+  const btn=(ok,label,cls)=>'<button type="button" class="btn sm'+(cls?' '+cls:'')+'" data-act="mdcf" data-did="'+esc(x.did)+'" data-g="'+a.g+'" data-ok="'+ok+'"'+dis+'>'+label+'</button>';
+  return '<div class="dsp"><b>'+title+'</b>'
+    +(ch&&p?'<div class="dpw">'+L('Сразу оплачено: ','Darhol toʻlangan: ')+esc(payName(p.m))+' '+money(p.a)+'</div>':'')
+    +'<div class="dpw">'+esc(jrDate(first.t))+(first.bn?' · '+L('Принял: ','Qabul qildi: ')+'<b>'+esc(first.bn)+'</b>':'')+'</div>'
+    +(no?'<div class="note warnnote">'+L('Вы отметили «Не так», продавец это видит. Если ошиблись, подтвердите запись.','Siz «Notoʻgʻri» dedingiz, sotuvchi buni koʻradi. Adashgan boʻlsangiz, yozuvni tasdiqlang.')+'</div>':'')
+    +'<div class="cfq">'+btn(1,'✅ '+L(no?'Всё-таки верно':'Верно',no?'Baribir toʻgʻri':'Toʻgʻri'))+(no?'':btn(0,'❌ '+L('Не так','Notoʻgʻri'),'ghost dangerbtn'))+'</div></div>';
+}
+async function myDebtConfirm(did,g,ok){
+  const m=S.mdebt;
+  if(m.busy)return;
+  m.busy=true;renderMyDebt();
+  const r=await api('POST','/api/hub/debts/confirm',{did,n:g,ok});
+  m.busy=false;
+  if(!r.ok||!r.data||r.data.debt===undefined){
+    toast(r.status===409?L('Эту запись уже нельзя изменить','Bu yozuvni endi oʻzgartirib boʻlmaydi'):L('Не удалось отправить ответ. Проверьте соединение.','Javobni yuborib boʻlmadi. Ulanishni tekshiring.'));
+    await loadMyDebt(true);renderMyDebt();return;
+  }
+  const d=r.data.debt;
+  m.list=d?m.list.map(x=>x.did===did?d:x):m.list.filter(x=>x.did!==did);
+  Object.assign(m,{n:m.list.length,total:m.list.reduce((t,x)=>t+x.bal,0),over:m.list.reduce((t,x)=>t+x.over,0),late:m.list.filter(x=>x.days>0).length,ask:m.list.reduce((t,x)=>t+(x.ask||0),0)});
+  renderNav();paintDebtBanner();renderMyDebt();
+  toast(ok?L('Спасибо, подтверждено','Rahmat, tasdiqlandi'):L('Отмечено «Не так». Продавец увидит.','«Notoʻgʻri» deb belgilandi. Sotuvchi koʻradi.'));
+}
 function myDebtBlock(x){
   const ex=S.mdebt.ex,today=ymd(shopNow()),tg=String((x.contact&&x.contact.telegram)||'').replace(/^@/,'').trim(),ph=(x.contact&&x.contact.phone)||'';
   let h='<section class="mdd"><div class="mdh"><h2>'+esc(x.shopName||'')+'</h2><div class="mdsum"><b>'+money(x.bal)+'</b>'
     +(x.days>0?'<small class="bad">'+L('просрочка '+x.days+' дн.','kechikish '+x.days+' kun')+'</small>':x.due?'<small>'+L('срок ','muddat ')+fDay(x.due)+'</small>':'')+'</div></div>';
+  const asks=mdAsks(x);
+  if(asks.length)h+='<h3 class="dsub">'+L('Подтвердите записи','Yozuvlarni tasdiqlang')+'</h3>'+asks.map(a=>mdAskHTML(x,a)).join('');
   const open=(x.open||[]).filter(q=>q&&q.r>0);
   if(open.length)h+='<h3 class="dsub">'+L('Не оплачено','Toʻlanmagan')+'</h3><div class="lbox">'+open.map(q=>lgRowBox('o:'+x.did+':'+(q.ref||''),ordIn(x,q.ref),q.r,'<div class="lt"><b>'+(q.ref?esc(q.ref):L('Прежний долг','Oldingi qarz'))+'</b><small>'+(q.due?(q.due<today?L('срок вышел ','muddat oʻtdi ')+fDay(q.due):L('срок ','muddat ')+fDay(q.due)):L('без срока','muddatsiz'))+'</small></div><div class="lsum">'+money(q.r)+'</div>','',ex,'mdord')).join('')+'</div>';
   const pays=(x.rows||[]).filter(r=>r.k==='pay');
-  if(pays.length)h+='<h3 class="dsub">'+L('Оплаты','Toʻlovlar')+'</h3><div class="lbox">'+pays.slice(0,15).map(r=>'<div class="lrow'+(r.void?' void':'')+'"><div class="lt"><b>'+esc(payName(r.m))+'</b><small>'+esc(jrDate(r.t))+(r.void?' · '+L('отменена','bekor qilingan'):'')+'</small></div><div class="lsum pos">−'+money(r.a)+'</div></div>').join('')+'</div>'
+  if(pays.length)h+='<h3 class="dsub">'+L('Оплаты','Toʻlovlar')+'</h3><div class="lbox">'+pays.slice(0,15).map(r=>'<div class="lrow'+(r.void?' void':'')+'"><div class="lt"><b>'+esc(payName(r.m))+'</b><small>'+esc(jrDate(r.t))+(r.bn?' · '+L('Принял: ','Qabul qildi: ')+esc(r.bn):'')+(r.void?' · '+L('отменена','bekor qilingan'):'')+'</small></div><div class="lsum pos">−'+money(r.a)+'</div></div>'+mdChips(r)).join('')+'</div>'
     +(pays.length>15?'<p class="rnote">'+L('Показаны последние 15 оплат.','Oxirgi 15 ta toʻlov koʻrsatilgan.')+'</p>':'');
   const btns=(tg?'<a class="btn ghost sm" data-act="contact" href="https://t.me/'+encodeURIComponent(tg)+'?text='+encodeURIComponent(L('Здравствуйте! Вопрос по долгу.','Assalomu alaykum! Qarz boʻyicha savol.'))+'" target="_blank" rel="noopener">'+L('Написать дистрибьютору','Distribyutorga yozish')+'</a>':'')
     +(ph?'<a class="btn ghost sm" href="'+telHref(ph)+'">'+L('Позвонить','Qoʻngʻiroq')+'</a>':'');
@@ -1768,7 +1834,7 @@ function renderMyDebt(){
       +'<div class="stat"><small>'+L('Ближайший срок','Eng yaqin muddat')+'</small><b>'+(dues[0]?fDay(dues[0]):'—')+'</b></div></div>';
     if(m.over>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Есть просроченные платежи. Пожалуйста, свяжитесь с дистрибьютором и оплатите.','Muddati oʻtgan toʻlovlar bor. Iltimos, distribyutor bilan bogʻlanib, toʻlang.')+'</div>';
     h+=m.list.map(myDebtBlock).join('')
-      +'<p class="rnote">'+L('Оплату записывает дистрибьютор или доставщик, когда вы платите. Здесь можно только посмотреть.','Toʻlovni siz toʻlaganingizda distribyutor yoki yetkazuvchi yozadi. Bu yerda faqat koʻrish mumkin.')+'</p>';
+      +'<p class="rnote">'+L('Выдачу в долг и оплату записывает дистрибьютор или доставщик, а вы подтверждаете, что запись верна. Если нет, нажмите «Не так»: продавец увидит.','Qarzga berish va toʻlovni distribyutor yoki yetkazuvchi yozadi, siz esa yozuv toʻgʻriligini tasdiqlaysiz. Aks holda «Notoʻgʻri»ni bosing: sotuvchi koʻradi.')+'</p>';
   }
   view.innerHTML=h+'</div>';
 }
@@ -1778,13 +1844,14 @@ const DB=()=>S.view==='courier'?S.cr.dbt:S.dbt;
 const dPaint=()=>S.view==='courier'?paintCourier():paintSeller();
 const dApi=()=>S.view==='courier'?'/api/courier/debts':'/api/admin/debts';
 const dLoad=()=>S.view==='courier'?loadCrDebts():loadDebts();
-function newDebts(){return {ok:false,list:[],total:0,overdue:0,n:0,late:0,open:null,det:null,ex:{},amount:'',pm:'cash',note:'',busy:false}}
+function newDebts(){return {ok:false,list:[],total:0,overdue:0,n:0,late:0,fl:0,flt:'all',open:null,det:null,ex:{},amount:'',pm:'cash',note:'',busy:false,vn:0,vwhy:'',rn:0,rnote:''}}
 async function loadDebts(){
   if(!S.admin||!S.did)return;
   const r=await api('GET','/api/admin/debts');
   if(!r.ok||!r.data||!Array.isArray(r.data.debtors))return;
-  const d=S.dbt,same=d.ok&&JSON.stringify([r.data.debtors,r.data.total,r.data.late])===JSON.stringify([d.list,d.total,d.late]);
-  Object.assign(d,{ok:true,list:r.data.debtors,total:r.data.total,overdue:r.data.overdue,n:r.data.n,late:r.data.late});
+  const d=S.dbt,same=d.ok&&JSON.stringify([r.data.debtors,r.data.total,r.data.late,r.data.fl])===JSON.stringify([d.list,d.total,d.late,d.fl]);
+  Object.assign(d,{ok:true,list:r.data.debtors,total:r.data.total,overdue:r.data.overdue,n:r.data.n,late:r.data.late,fl:r.data.fl||0});
+  if(!same)renderNav();
   if(same||S.view!=='seller')return;
   paintTabs();
   if(S.sellerTab==='debts'&&d.open===null){
@@ -1800,11 +1867,13 @@ function debtsHTML(){
     +'<div class="stat"><small>'+L('Просрочено','Muddati oʻtgan')+'</small><b>'+money(d.overdue)+'</b></div>'
     +'<div class="stat"><small>'+L('Должников','Qarzdorlar')+'</small><b>'+d.n+'</b></div>'
     +'<div class="stat"><small>'+L('С просрочкой','Kechikkan')+'</small><b>'+d.late+'</b></div></div>';
+  if(d.fl>0)h+='<div class="note warnnote" style="margin-bottom:10px">'+L('Спорных записей: '+d.fl+'. Магазин ответил «Не так», не получил сообщение или молчит больше суток.','Bahsli yozuvlar: '+d.fl+'. Doʻkon «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim.')+'</div>'
+    +'<div class="filters">'+[['all',L('Все','Hammasi')],['fl',L('Спорные','Bahsli')]].map(f=>'<button type="button" class="chip" data-act="dflt" data-v="'+f[0]+'" aria-pressed="'+(d.flt===f[0])+'">'+f[1]+'</button>').join('')+'</div>';
   if(!d.list.length)return h+'<div class="empty"><b>'+L('Долгов пока нет','Qarzlar hozircha yoʻq')+'</b>'+L('Когда вы выдадите заказ «в долг», магазин появится здесь. Оплаты записываются в карточке магазина, в том числе частями.','Buyurtmani «qarzga» topshirganingizda, doʻkon shu yerda paydo boʻladi. Toʻlovlar doʻkon kartochkasida yoziladi, shu jumladan qism-qism.')+'</div>';
-  return h+'<div class="dlist">'+d.list.map(x=>{
+  return h+'<div class="dlist">'+d.list.filter(x=>d.flt!=='fl'||x.fl>0).map(x=>{
     const adv=x.bal<0;
-    return '<button type="button" class="drow'+(x.days&&!adv?' late':'')+'" data-act="dopen" data-uid="'+x.uid+'"><div class="dn"><b>'+esc(x.name||('ID '+x.uid))+'</b><small>'+esc([x.org,x.phone,x.addr].filter(Boolean).join(' · '))+'</small></div>'
-      +'<div class="da"><b>'+(adv?L('Аванс ','Avans ')+money(-x.bal):money(x.bal))+'</b>'+(adv?'':'<small class="'+(x.days?'bad':'')+'">'+esc(lateTxt(x))+'</small>')+'</div></button>';
+    return '<button type="button" class="drow'+(x.days&&!adv?' late':'')+'" data-act="dopen" data-uid="'+x.uid+'"><div class="dn"><b>'+esc(x.name||('ID '+x.uid))+'</b><small>'+esc([x.org,x.phone,x.addr].filter(Boolean).join(' · '))+'</small>'+(x.fl>0?'<small class="bad">'+L('Спорных записей: '+x.fl,'Bahsli yozuvlar: '+x.fl)+'</small>':x.wt>0?'<small>'+L('Ждёт ответа магазина: '+x.wt,'Doʻkon javobi kutilmoqda: '+x.wt)+'</small>':'')+'</div>'
+      +'<div class="da"><b>'+(adv?L('Аванс ','Avans ')+money(-x.bal):money(x.bal))+'</b>'+(adv||(x.bal===0&&(x.wt>0||x.fl>0))?'':'<small class="'+(x.days?'bad':'')+'">'+esc(lateTxt(x))+'</small>')+'</div></button>';
   }).join('')+'</div>';
 }
 /* Состав заказа, который лежит в основе долга: раскрывается по нажатию на строку. */
@@ -1827,18 +1896,54 @@ function lgRowBox(key,o,left,inner,cls,ex,act){
   const on=!!(ex||DB().ex)[key];
   return '<button type="button" class="lrow'+(cls||'')+'" data-act="'+(act||'dord')+'" data-k="'+esc(key)+'" aria-expanded="'+on+'">'+inner+'<span class="lchev">'+ICO.chev+'</span></button>'+(on?ordBodyHTML(o,left):'');
 }
-function lgRowHTML(r){
-  let t,sum,btn='';
-  if(r.k==='ch'){t=L('Выдан заказ ','Buyurtma berildi ')+esc(r.ref||'')+(r.due?' · '+L('срок ','muddat ')+fDay(r.due):'');sum='+'+money(r.a)}
-  else if(r.k==='pay'){
-    t=L('Оплата: ','Toʻlov: ')+esc(payName(r.m))+(r.ref?' · '+esc(r.ref):'')+(r.note?' · '+esc(r.note):'');sum='−'+money(r.a);
-    if(!r.void&&S.view!=='courier')btn='<button type="button" class="btn ghost sm" data-act="dvoid" data-n="'+r.n+'">'+L('Отменить запись','Yozuvni bekor qilish')+'</button>';
+/* Контроль денег: подписи под записью — ответил ли магазин, сверены ли деньги, закрыт ли спор. */
+const cfFlag=r=>!!(r.cf&&r.cf!=='ok'&&!r.void&&!r.rsl&&(r.cf!=='wait'||r.late));
+function cfLines(r){
+  if(r.k!=='ch'&&r.k!=='pay')return '';
+  const c=(cls,t)=>'<span class="cfc'+(cls?' '+cls:'')+'">'+t+'</span>';
+  let h='';
+  if(!r.void){
+    if(r.rsl)h+=c('ok',L('Спор закрыт: ','Bahs yopildi: ')+esc(r.rsl.bn||'')+' — '+esc(r.rsl.why||''));
+    else if(r.cf==='ok')h+=c('ok','✓ '+L('Магазин подтвердил','Doʻkon tasdiqladi'));
+    else if(r.cf==='wait')h+=r.late?c('bad',L('Магазин молчит больше суток','Doʻkon bir sutkadan ortiq jim')):c('',L('Ждём ответа магазина','Doʻkon javobi kutilmoqda'));
+    else if(r.cf==='no')h+=c('bad',L('Магазин: «Не так»','Doʻkon: «Notoʻgʻri»'));
+    else if(r.cf==='na')h+=c('bad',L('Магазин не получил сообщение','Doʻkon xabarni olmadi'));
+    if(r.vr==='wait')h+=c('warn',L('Деньги не сверены','Pul tekshirilmagan'));
+    else if(r.vr==='ok')h+=c('ok','✓ '+L('Деньги пришли','Pul tushdi'));
   }
-  else{t=L('Оплата отменена','Toʻlov bekor qilindi');sum='+'+money(r.a)}
-  const inner='<div class="lt"><b>'+t+'</b><small>'+esc(jrDate(r.t))+(r.void?' · '+L('отменена','bekor qilingan'):'')+'</small></div><div class="lsum'+(r.k==='pay'?' pos':'')+'">'+sum+'</div>';
-  const o=r.k==='ch'?ordOf(r.ref):null,x=DB().det,q=o&&((x.open||[]).find(z=>z.ref===r.ref)||null);
-  if(o)return lgRowBox('h:'+r.n,o,q?q.r:0,inner,r.void?' void':'')+btn;
-  return '<div class="lrow'+(r.void?' void':'')+'">'+inner+btn+'</div>';
+  return h?'<span class="cfs">'+h+'</span>':'';
+}
+function voidFormHTML(){
+  const d=DB(),dis=d.busy?' disabled':'';
+  return '<div class="payb"><div class="pt">'+L('Отмена записи об оплате','Toʻlov yozuvini bekor qilish')+'</div>'
+    +'<div class="pmute">'+L('Долг магазина вернётся. Магазин и доставщик получат сообщение с причиной.','Doʻkon qarzi qaytadi. Doʻkon va yetkazuvchi sabab bilan xabar oladi.')+'</div>'
+    +'<div class="pyrow"><input type="text" id="dx-why" maxlength="80" value="'+esc(d.vwhy)+'" placeholder="'+esc(L('Причина (обязательно)','Sabab (majburiy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><button type="button" class="btn sm dangerbtn" data-act="dvoidgo"'+dis+'>'+L('Отменить запись','Yozuvni bekor qilish')+'</button><button type="button" class="btn ghost sm" data-act="dvoidno">'+L('Не отменять','Bekor qilmaslik')+'</button></div></div>';
+}
+function resFormHTML(){
+  const d=DB(),dis=d.busy?' disabled':'';
+  return '<div class="payb"><div class="pt">'+L('Закрыть спорную запись','Bahsli yozuvni yopish')+'</div>'
+    +'<div class="pmute">'+L('Напишите, как вы разобрались с магазином. Запись останется в журнале с вашим именем и комментарием.','Doʻkon bilan qanday hal qilganingizni yozing. Yozuv jurnalda ismingiz va izohingiz bilan qoladi.')+'</div>'
+    +'<div class="pyrow"><input type="text" id="dx-note" maxlength="120" value="'+esc(d.rnote)+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><button type="button" class="btn sm" data-act="dresgo"'+dis+'>'+L('Закрыть','Yopish')+'</button><button type="button" class="btn ghost sm" data-act="dresno">'+L('Не сейчас','Hozir emas')+'</button></div></div>';
+}
+function lgRowHTML(r){
+  let t,sum,sub=esc(jrDate(r.t));
+  const by=r.bn?' · '+L('Принял: ','Qabul qildi: ')+esc(r.bn):'',d=DB();
+  if(r.k==='ch'){t=L('Выдан заказ ','Buyurtma berildi ')+esc(r.ref||'')+(r.due?' · '+L('срок ','muddat ')+fDay(r.due):'');sum='+'+money(r.a);sub+=by}
+  else if(r.k==='pay'){t=L('Оплата: ','Toʻlov: ')+esc(payName(r.m))+(r.ref?' · '+esc(r.ref):'')+(r.note?' · '+esc(r.note):'');sum='−'+money(r.a);sub+=by}
+  else{t=L('Оплата отменена','Toʻlov bekor qilindi');sum='+'+money(r.a);sub+=(r.bn?' · '+esc(r.bn):'')+(r.why?' · '+L('Причина: ','Sabab: ')+esc(r.why):'')}
+  if(r.void)sub+=' · '+L('отменена','bekor qilingan');
+  const inner='<div class="lt"><b>'+t+'</b><small>'+sub+'</small></div><div class="lsum'+(r.k==='pay'?' pos':'')+'">'+sum+'</div>';
+  const o=r.k==='ch'?ordOf(r.ref):null,x=d.det,q=o&&((x.open||[]).find(z=>z.ref===r.ref)||null);
+  const row=o?lgRowBox('h:'+r.n,o,q?q.r:0,inner,r.void?' void':''):'<div class="lrow'+(r.void?' void':'')+'">'+inner+'</div>';
+  let acts='';
+  if(S.view!=='courier'){
+    if(r.k==='pay'&&!r.void)acts+=d.vn===r.n?voidFormHTML():'<button type="button" class="btn ghost sm" data-act="dvoid" data-n="'+r.n+'">'+L('Отменить запись','Yozuvni bekor qilish')+'</button>';
+    if(r._res)acts+=d.rn===r.n?resFormHTML():'<button type="button" class="btn ghost sm" data-act="dres" data-n="'+r.n+'">'+L('Закрыть спор','Bahsni yopish')+'</button>';
+  }
+  const chips=cfLines(r);
+  return row+(chips||acts?'<div class="cfl">'+chips+acts+'</div>':'');
 }
 function debtorHTML(){
   const d=DB(),x=d.det;
@@ -1849,23 +1954,27 @@ function debtorHTML(){
     +'<div class="stats"><div class="stat'+(x.days?' hot':'')+'"><small>'+(adv?L('Аванс магазина','Doʻkon avansi'):L('Долг','Qarz'))+'</small><b>'+money(Math.abs(x.bal))+'</b></div>'
     +'<div class="stat"><small>'+L('Просрочено','Muddati oʻtgan')+'</small><b>'+money(x.over)+'</b></div>'
     +'<div class="stat"><small>'+L('Ближайший срок','Eng yaqin muddat')+'</small><b>'+(x.due?fDay(x.due):'—')+'</b></div></div>';
+  if(x.fl>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Спорных записей: '+x.fl+'. Магазин ответил «Не так», не получил сообщение или молчит больше суток. Разберитесь с ним и закройте запись с комментарием.','Bahsli yozuvlar: '+x.fl+'. Doʻkon «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim. U bilan hal qiling va yozuvni izoh bilan yoping.')+'</div>';
   if(x.days)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Просрочка: ','Kechikish: ')+x.days+L(' дн. Просрочено ',' kun. Muddati oʻtgan ')+money(x.over)+'</div>';
   h+='<div class="payb"><div class="pt">'+L('Принять оплату','Toʻlovni qabul qilish')+'</div>'
     +'<div class="pmute">'+L('Можно любую сумму, в том числе часть долга. Оплата закрывает самые старые долги первыми.','Istalgan summa mumkin, qarzning bir qismi ham. Toʻlov eng eski qarzlarni birinchi yopadi.')+'</div>'
     +'<div class="pyrow"><label for="dp-amount">'+L('Сумма','Summa')+'</label><input type="number" id="dp-amount" inputmode="numeric" min="1" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'>'
     +(x.bal>0?'<button type="button" class="chip" data-act="dfull">'+L('Весь долг','Butun qarz')+'</button>':'')+'</div>'
+    +(crLimHit()?'<div class="note warnnote">'+L('Лимит наличных достигнут: сдайте деньги продавцу. Наличные пока не принять, карту и перечисление можно.','Naqd limit tugadi: pulni sotuvchiga topshiring. Hozircha naqd olinmaydi, karta va oʻtkazma mumkin.')+'</div>':'')
     +'<div class="pyrow">'+['cash','card','bank'].map(k=>'<button type="button" class="chip" data-act="dpm" data-v="'+k+'" aria-pressed="'+(d.pm===k)+'">'+esc(payName(k))+'</button>').join('')+'</div>'
     +'<div class="pyrow"><input type="text" id="dp-note" maxlength="80" value="'+esc(d.note)+'" placeholder="'+esc(L('Заметка (необязательно)','Izoh (ixtiyoriy)'))+'"'+dis+'></div>'
     +'<div class="pyrow"><button type="button" class="btn sm" data-act="dpay"'+dis+'>'+L('Записать оплату','Toʻlovni yozish')+'</button>'
     +(x.bal>0?'<button type="button" class="btn ghost sm" data-act="dremind"'+dis+'>'+L('Напомнить в Telegram','Telegramda eslatish')+'</button>':'')+'</div></div>';
   if(x.open&&x.open.length)h+='<h3 class="dsub">'+L('Не оплачено','Toʻlanmagan')+'</h3><div class="lbox">'+x.open.map(q=>lgRowBox('o:'+(q.ref||''),ordOf(q.ref),q.r,'<div class="lt"><b>'+(q.ref?esc(q.ref):L('Прежний долг','Oldingi qarz'))+'</b><small>'+(q.due?(q.due<ymd(shopNow())?L('срок вышел ','muddat oʻtdi ')+fDay(q.due):L('срок ','muddat ')+fDay(q.due)):L('без срока','muddatsiz'))+'</small></div><div class="lsum">'+money(q.r)+'</div>')).join('')+'</div>';
+  const seenG=new Set();
+  x.rows.forEach(r=>{r._res=false;if(cfFlag(r)){const g=r.g||r.n;if(!seenG.has(g)){seenG.add(g);r._res=true}}});
   h+='<h3 class="dsub">'+L('История расчётов','Hisob-kitoblar tarixi')+'</h3>';
   h+=x.rows.length?'<div class="lbox">'+x.rows.map(lgRowHTML).join('')+'</div>'+(x.more?'<p class="rnote">'+L('Показаны последние '+x.rows.length+' записей.','Oxirgi '+x.rows.length+' ta yozuv koʻrsatilgan.')+'</p>':''):'<div class="empty">'+L('Записей нет.','Yozuvlar yoʻq.')+'</div>';
   return h;
 }
 async function debtOpen(uid){
   const d=DB();
-  Object.assign(d,{open:uid,det:null,ex:{},amount:'',pm:'cash',note:'',busy:false});
+  Object.assign(d,{open:uid,det:null,ex:{},amount:'',pm:'cash',note:'',busy:false,vn:0,vwhy:'',rn:0,rnote:''});
   dPaint();window.scrollTo(0,0);
   const r=await api('GET',dApi()+'/'+uid);
   if(d.open!==uid)return;
@@ -1875,9 +1984,11 @@ async function debtOpen(uid){
 }
 function debtClose(){DB().open=null;DB().det=null;dPaint();dLoad()}
 function debtSync(){   // перед перерисовкой формы не теряем то, что уже введено
-  const a=$('#dp-amount'),n=$('#dp-note');
+  const a=$('#dp-amount'),n=$('#dp-note'),w=$('#dx-why'),rn=$('#dx-note');
   if(a)DB().amount=a.value;
   if(n)DB().note=n.value;
+  if(w)DB().vwhy=w.value;
+  if(rn)DB().rnote=rn.value;
 }
 async function debtPay(){
   const d=DB(),x=d.det;
@@ -1889,7 +2000,7 @@ async function debtPay(){
     d.busy=true;dPaint();
     const r=await api('POST',dApi()+'/'+x.uid+'/pay',{amount,m:d.pm,note:d.note.trim()});
     d.busy=false;
-    if(!r.ok||!r.data||!r.data.debt){toast(L('Не удалось записать оплату','Toʻlovni yozib boʻlmadi'));dPaint();return}
+    if(!r.ok||!r.data||!r.data.debt){toast(crLimErr(r)||L('Не удалось записать оплату','Toʻlovni yozib boʻlmadi'));dPaint();if(crLimErr(r))loadCourier();return}
     d.det=r.data.debt;d.amount=d.det.bal>0?String(d.det.bal):'';d.note='';
     toast(L('Оплата записана','Toʻlov yozildi'));
     dPaint();dLoad();
@@ -1899,17 +2010,50 @@ async function debtPay(){
     :L('Долга нет. Записать оплату как аванс магазина?','Qarz yoʻq. Toʻlov doʻkon avansi sifatida yozilsinmi?'),go);
   else go();
 }
+/* «Отменить запись» и «Закрыть спор» открывают поле для причины или комментария прямо под записью. */
 function debtVoid(n){
+  const d=DB();
+  if(!d.det||d.busy)return;
+  debtSync();
+  d.vn=d.vn===n?0:n;d.rn=0;d.vwhy='';
+  dPaint();
+  const el=$('#dx-why');if(el)el.focus();
+}
+function debtRes(n){
+  const d=DB();
+  if(!d.det||d.busy)return;
+  debtSync();
+  d.rn=d.rn===n?0:n;d.vn=0;d.rnote='';
+  dPaint();
+  const el=$('#dx-note');if(el)el.focus();
+}
+async function debtVoidGo(){
   const d=DB(),x=d.det;
-  if(!x||d.busy)return;
-  askConfirm(L('Отменить эту запись об оплате? Долг магазина вернётся.','Bu toʻlov yozuvi bekor qilinsinmi? Doʻkon qarzi qaytadi.'),async()=>{
-    d.busy=true;dPaint();
-    const r=await api('POST',dApi()+'/'+x.uid+'/void',{n});
-    d.busy=false;
-    if(!r.ok||!r.data||!r.data.debt){toast(L('Не удалось отменить запись','Yozuvni bekor qilib boʻlmadi'));dPaint();return}
-    d.det=r.data.debt;d.amount=d.det.bal>0?String(d.det.bal):'';
-    dPaint();dLoad();
-  });
+  if(!x||d.busy||!d.vn)return;
+  debtSync();
+  const why=d.vwhy.trim();
+  if(why.length<3){toast(L('Напишите причину (от 3 букв)','Sababni yozing (kamida 3 ta harf)'));const el=$('#dx-why');if(el)el.focus();return}
+  d.busy=true;dPaint();
+  const r=await api('POST',dApi()+'/'+x.uid+'/void',{n:d.vn,reason:why});
+  d.busy=false;
+  if(!r.ok||!r.data||!r.data.debt){toast(L('Не удалось отменить запись','Yozuvni bekor qilib boʻlmadi'));dPaint();return}
+  d.det=r.data.debt;d.amount=d.det.bal>0?String(d.det.bal):'';d.vn=0;d.vwhy='';
+  toast(L('Запись отменена. Магазин получил причину.','Yozuv bekor qilindi. Doʻkon sababni oldi.'));
+  dPaint();dLoad();
+}
+async function debtResGo(){
+  const d=DB(),x=d.det;
+  if(!x||d.busy||!d.rn)return;
+  debtSync();
+  const note=d.rnote.trim();
+  if(note.length<3){toast(L('Напишите комментарий (от 3 букв)','Izoh yozing (kamida 3 ta harf)'));const el=$('#dx-note');if(el)el.focus();return}
+  d.busy=true;dPaint();
+  const r=await api('POST',dApi()+'/'+x.uid+'/resolve',{n:d.rn,note});
+  d.busy=false;
+  if(!r.ok||!r.data||!r.data.debt){toast(r.status===409?L('Эта запись уже закрыта или ещё не спорная','Bu yozuv allaqachon yopilgan yoki hali bahsli emas'):L('Не удалось закрыть запись','Yozuvni yopib boʻlmadi'));dPaint();dLoad();return}
+  d.det=r.data.debt;d.rn=0;d.rnote='';
+  toast(L('Спор закрыт. Магазин получил комментарий.','Bahs yopildi. Doʻkon izohni oldi.'));
+  dPaint();dLoad();
 }
 async function debtRemind(){
   const d=DB(),x=d.det;
@@ -1923,7 +2067,13 @@ async function debtRemind(){
     :L('Не удалось отправить напоминание','Eslatmani yuborib boʻlmadi'));
 }
 /* ---------- доставщик: заказы на доставку, должники, касса ---------- */
-function newCour(){return {tab:'today',ok:false,orders:[],soon:0,cash:0,rows:[],cashOk:false,dbt:newDebts(),pay:null,busy:''}}
+const crLimHit=()=>S.view==='courier'&&S.cr.lim>0&&S.cr.cash>=S.cr.lim;
+const crLimErr=r=>{
+  const e=r&&r.data&&r.data.error;
+  return e==='cash_limit'?L('Сначала сдайте деньги продавцу: на руках '+money(r.data.cash)+', лимит '+money(r.data.lim)+'. Карту и перечисление принять можно.','Avval pulni sotuvchiga topshiring: qoʻlingizda '+money(r.data.cash)+', limit '+money(r.data.lim)+'. Karta va oʻtkazmani qabul qilsa boʻladi.')
+    :e==='nv_full'?L('Слишком много оплат ждёт сверки. Покажите их продавцу: он отметит «Деньги пришли».','Tekshirilmagan toʻlovlar juda koʻp. Sotuvchiga koʻrsating: u «Pul tushdi» deb belgilaydi.'):'';
+};
+function newCour(){return {tab:'today',ok:false,orders:[],soon:0,cash:0,lim:0,nvn:0,nv:[],rows:[],cashOk:false,dbt:newDebts(),pay:null,busy:''}}
 const crFree=()=>S.cr.orders.filter(o=>o.status==='ready'&&!o.crn).length;
 const crTabs=()=>[['today',L('Сегодня','Bugun'),crFree()],['debts',L('Должники','Qarzdorlar'),S.cr.dbt.late,'warn'],['cash',L('Касса','Kassa')]];
 function courierOpen(tab){
@@ -1959,6 +2109,8 @@ function crTodayHTML(){
     +'<div class="stat"><small>'+L('Мои','Meniki')+'</small><b>'+mine.length+'</b></div>'
     +'<div class="stat"><small>'+L('Доставлено сегодня','Bugun yetkazilgan')+'</small><b>'+done.length+'</b></div>'
     +'<div class="stat"><small>'+L('Наличные у вас','Sizdagi naqd')+'</small><b>'+money(c.cash)+'</b></div></div>';
+  if(crLimHit())h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Лимит наличных достигнут ('+money(c.lim)+'). Сдайте деньги продавцу: пока не сдадите, новые заказы взять нельзя.','Naqd limiti tugadi ('+money(c.lim)+'). Pulni sotuvchiga topshiring: topshirmaguncha yangi buyurtma olib boʻlmaydi.')+'</div>';
+  if(c.nvn>0)h+='<div class="note" style="margin-bottom:12px">'+L('Оплат картой и переводом ждёт сверки продавцом: '+c.nvn+'. Смотрите вкладку «Касса».','Sotuvchi tekshirishini kutayotgan karta va oʻtkazma toʻlovlari: '+c.nvn+'. «Kassa» boʻlimiga qarang.')+'</div>';
   if(c.soon)h+='<div class="note" style="margin-bottom:12px">'+L('Собирается заказов: '+c.soon+'. Когда они будут готовы, придёт сообщение в Telegram.','Yigʻilayotgan buyurtmalar: '+c.soon+'. Tayyor boʻlsa, Telegramga xabar keladi.')+'</div>';
   const sec=(t,list)=>list.length?'<h3 class="dsub">'+t+'</h3><div class="ordlist">'+list.map(o=>orderCard(o,'courier')).join('')+'</div>':'';
   h+=sec(L('Мои заказы','Mening buyurtmalarim'),mine)+sec(L('Свободные заказы','Boʻsh buyurtmalar'),free)+sec(L('Уже взяли другие','Boshqalar olgan'),other)+sec(L('Доставлено сегодня','Bugun yetkazilgan'),done);
@@ -1975,10 +2127,19 @@ function courierActs(o){
   if(o.crn)return '';
   return '<button type="button" class="btn sm" data-act="crtake" data-id="'+esc(o.id)+'"'+(S.cr.busy?' disabled':'')+'>🚚 '+L('Взял','Oldim')+'</button>';
 }
+/* Оплата картой или переводом, принятая доставщиком и ещё не сверенная продавцом. cid — у продавца: с кнопкой «Деньги пришли». */
+function nvRowHTML(x,cid){
+  const what=x.k==='o'?L('Заказ ','Buyurtma ')+esc(x.o||''):L('Оплата долга','Qarz toʻlovi');
+  return '<div class="lrow"><div class="lt"><b>'+esc(payName(x.m))+' · '+what+(x.nm?' · '+esc(x.nm):'')+'</b><small>'+esc(jrDate(x.t))+'</small></div><div class="lsum">'+money(x.a)+'</div>'
+    +(cid?'<div class="cfq"><button type="button" class="btn sm" data-act="dvver" data-id="'+esc(cid)+'" data-nv="'+x.id+'"'+(S.dv.busy?' disabled':'')+'>'+L('Деньги пришли','Pul tushdi')+'</button></div>':'')+'</div>';
+}
 function crRowHTML(r){
   let t,sum,pos=false;
   if(r.k==='in'){t=r.o?L('Заказ ','Buyurtma ')+esc(r.o)+(r.nm?' · '+esc(r.nm):''):L('Оплата долга: ','Qarz toʻlovi: ')+esc(r.nm||'');sum='+'+money(r.a);pos=true}
   else if(r.k==='out'){t=L('Сдано продавцу','Sotuvchiga topshirildi');sum='−'+money(r.a)}
+  else if(r.k==='nv'){t=L('Принято без наличных: ','Naqdsiz qabul qilindi: ')+esc(payName(r.m))+' · '+(r.o?L('заказ ','buyurtma ')+esc(r.o):esc(r.nm||''));sum=money(r.a)}
+  else if(r.k==='vr'){t=L('Продавец подтвердил поступление: ','Sotuvchi tushganini tasdiqladi: ')+esc(payName(r.m))+' · '+(r.o?esc(r.o):esc(r.nm||''));sum=money(r.a)}
+  else if(r.k==='nx'){t=L('Продавец отменил запись: ','Sotuvchi yozuvni bekor qildi: ')+esc(payName(r.m))+' · '+esc(r.nm||'');sum=money(r.a)}
   else{t=L('Продавец отменил запись об оплате: ','Sotuvchi toʻlov yozuvini bekor qildi: ')+esc(r.nm||'');sum='−'+money(r.a)}
   return '<div class="lrow"><div class="lt"><b>'+t+'</b><small>'+esc(jrDate(r.t))+'</small></div><div class="lsum'+(pos?' pos':'')+'">'+sum+'</div></div>';
 }
@@ -1986,7 +2147,9 @@ function crCashHTML(){
   const c=S.cr;
   let h='<div class="stat hot" style="margin:14px 0"><small>'+L('На руках сейчас','Hozir qoʻlingizda')+'</small><b>'+money(c.cash)+'</b></div>'
     +'<p class="rnote">'+L('Это наличные, которые вы приняли от клиентов и должников. Передайте их продавцу: он отметит это у себя, и сумма здесь уменьшится. Карта и перечисление сюда не попадают.','Bu mijozlar va qarzdorlardan olgan naqd pullaringiz. Sotuvchiga topshiring: u oʻzida belgilaydi va bu yerda summa kamayadi. Karta va oʻtkazma bu yerga kirmaydi.')+'</p>';
+  if(c.lim>0)h+='<div class="note'+(c.cash>=c.lim?' warnnote':'')+'" style="margin-bottom:12px">'+L('Лимит наличных: ','Naqd limiti: ')+money(c.lim)+(c.cash>=c.lim?L('. Лимит достигнут: пока не сдадите деньги продавцу, новые заказы и наличные оплаты долга брать нельзя.','. Limit tugadi: pulni topshirmaguncha yangi buyurtma va qarzning naqd toʻlovini olib boʻlmaydi.'):'')+'</div>';
   if(!c.cashOk)return h+loadingHTML();
+  if(c.nv.length)h+='<h3 class="dsub">'+L('Не сверено · ','Tekshirilmagan · ')+c.nv.length+'</h3><p class="rnote">'+L('Оплаты картой и переводом, которые вы приняли. В вашу кассу они не входят: продавец проверит поступление в банке и отметит «Деньги пришли».','Siz qabul qilgan karta va oʻtkazma toʻlovlari. Ular kassangizga kirmaydi: sotuvchi bankda tushganini tekshirib, «Pul tushdi» deb belgilaydi.')+'</p><div class="lbox">'+c.nv.map(x=>nvRowHTML(x)).join('')+'</div>';
   h+='<h3 class="dsub">'+L('История','Tarix')+'</h3>';
   h+=c.rows.length?'<div class="lbox">'+c.rows.map(crRowHTML).join('')+'</div>':'<div class="empty">'+L('Записей пока нет.','Yozuvlar hozircha yoʻq.')+'</div>';
   return h;
@@ -1996,8 +2159,8 @@ async function loadCourier(){
   const r=await api('GET','/api/courier/orders');
   if(r.status===403){S.courier=null;renderNav();if(S.view==='courier')go('shop');return}   // доступ закрыт продавцом
   if(!r.ok||!r.data||!Array.isArray(r.data.orders))return;
-  const c=S.cr,same=c.ok&&JSON.stringify([r.data.orders,r.data.soon,r.data.cash])===JSON.stringify([c.orders,c.soon,c.cash]);
-  Object.assign(c,{ok:true,orders:r.data.orders,soon:r.data.soon,cash:r.data.cash});
+  const c=S.cr,same=c.ok&&JSON.stringify([r.data.orders,r.data.soon,r.data.cash,r.data.lim,r.data.nvn])===JSON.stringify([c.orders,c.soon,c.cash,c.lim,c.nvn]);
+  Object.assign(c,{ok:true,orders:r.data.orders,soon:r.data.soon,cash:r.data.cash,lim:r.data.lim||0,nvn:r.data.nvn||0});
   if(S.view==='courier'){loadCrDebts();if(c.tab==='cash')loadCrCash()}
   if(same||S.view!=='courier'){if(!same)renderNav();return}
   renderNav();
@@ -2008,8 +2171,8 @@ async function loadCrDebts(){
   if(!S.courier||!S.did)return;
   const r=await api('GET','/api/courier/debts');
   if(!r.ok||!r.data||!Array.isArray(r.data.debtors))return;
-  const d=S.cr.dbt,same=d.ok&&JSON.stringify([r.data.debtors,r.data.total,r.data.late])===JSON.stringify([d.list,d.total,d.late]);
-  Object.assign(d,{ok:true,list:r.data.debtors,total:r.data.total,overdue:r.data.overdue,n:r.data.n,late:r.data.late});
+  const d=S.cr.dbt,same=d.ok&&JSON.stringify([r.data.debtors,r.data.total,r.data.late,r.data.fl])===JSON.stringify([d.list,d.total,d.late,d.fl]);
+  Object.assign(d,{ok:true,list:r.data.debtors,total:r.data.total,overdue:r.data.overdue,n:r.data.n,late:r.data.late,fl:r.data.fl||0});
   if(same||S.view!=='courier')return;
   paintCrTabs();
   if(S.cr.tab==='debts'&&d.open===null){
@@ -2021,7 +2184,7 @@ async function loadCrCash(){
   if(!S.courier||!S.did)return;
   const r=await api('GET','/api/courier/cash');
   if(!r.ok||!r.data)return;
-  Object.assign(S.cr,{cash:r.data.cash,rows:r.data.rows||[],cashOk:true});
+  Object.assign(S.cr,{cash:r.data.cash,lim:r.data.lim||0,rows:r.data.rows||[],nv:r.data.nv||[],nvn:(r.data.nv||[]).length,cashOk:true});
   if(S.view==='courier'&&S.cr.tab==='cash')paintCourier();
 }
 async function crTake(id){
@@ -2031,7 +2194,7 @@ async function crTake(id){
   S.cr.busy='';
   if(r.ok)toast(L('Заказ ваш. Клиент получил сообщение.','Buyurtma sizniki. Mijozga xabar yuborildi.'));
   else if(r.data&&r.data.error==='taken'){const n=r.data.order&&r.data.order.crn||'';toast(L('Заказ уже взял '+(n||'другой доставщик'),'Buyurtmani allaqachon '+(n||'boshqa yetkazuvchi')+' oldi'))}
-  else toast(L('Не удалось взять заказ','Buyurtmani olib boʻlmadi'));
+  else toast(crLimErr(r)||L('Не удалось взять заказ','Buyurtmani olib boʻlmadi'));
   paintCourier();loadCourier();
 }
 function crRelease(id){
@@ -2086,7 +2249,8 @@ function dvCardHTML(c){
   const d=S.dv,st=dvState(c),open=d.open===c.id,dis=d.busy?' disabled':'';
   const btn=(act,label,cls,extra)=>'<button type="button" class="btn ghost sm'+(cls?' '+cls:'')+'" data-act="'+act+'" data-id="'+esc(c.id)+'"'+(extra||'')+dis+'>'+label+'</button>';
   let h='<div class="dvc"><div class="dvh"><div class="dn"><b>'+esc(c.name)+'</b><small>'+esc(c.phone||L('телефон не указан','telefon koʻrsatilmagan'))+'</small></div><span class="dvs '+st[0]+'">'+st[1]+'</span></div>'
-    +'<div class="dvcash">'+L('Наличные на руках: ','Qoʻldagi naqd pul: ')+'<b>'+money(c.cash)+'</b></div>';
+    +'<div class="dvcash">'+L('Наличные на руках: ','Qoʻldagi naqd pul: ')+'<b>'+money(c.cash)+'</b>'+(c.lim>0?' · '+L('лимит ','limit ')+money(c.lim)+(c.cash>=c.lim?' · <b class="bad">'+L('достигнут','yetdi')+'</b>':''):'')+'</div>'
+    +(c.nvn>0?'<div class="dvcash">'+L('Не сверено (карта, перечисление): ','Tekshirilmagan (karta, oʻtkazma): ')+'<b>'+c.nvn+' · '+money(c.nva)+'</b></div>':'');
   if(c.link){
     const msg=L('Ссылка для входа доставщиком. Нажмите её и откройте бота.','Yetkazuvchi sifatida kirish havolasi. Uni bosing va botni oching.');
     h+='<div class="note" style="word-break:break-all">'+L('Ссылка для входа (действует 7 дней, нажать можно один раз): ','Kirish havolasi (7 kun amal qiladi, bir marta bosiladi): ')+'<b>'+esc(c.link)+'</b></div>'
@@ -2095,6 +2259,8 @@ function dvCardHTML(c){
   }
   h+='<div class="pyrow">'
     +(c.cash>0?btn('dvhand',L('Принял деньги','Pulni qabul qildim'),'',open&&d.mode==='hand'?' aria-pressed="true"':''):'')
+    +(c.nvn>0?btn('dvnv',L('Не сверено · ','Tekshirilmagan · ')+c.nvn,'',open&&d.mode==='nv'?' aria-pressed="true"':''):'')
+    +(c.joined?btn('dvlim',L('Лимит наличных','Naqd limiti'),'',open&&d.mode==='lim'?' aria-pressed="true"':''):'')
     +btn('dvhist',L('История','Tarix'))
     +(c.joined?btn('dvflag',c.credit?L('Долг: разрешён','Qarz: ruxsat'):L('Долг: запрещён','Qarz: taqiqlangan'),'',' data-k="credit"'):'')
     +(c.joined?btn('dvflag',c.on?L('Отключить','Oʻchirish'):L('Включить','Yoqish'),'',' data-k="on"'):'')
@@ -2105,6 +2271,17 @@ function dvCardHTML(c){
       +'<div class="pyrow"><label for="dv-amount">'+L('Сумма','Summa')+'</label><input type="number" id="dv-amount" inputmode="numeric" min="1" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'><button type="button" class="chip" data-act="dvall">'+L('Всё','Hammasi')+'</button></div>'
       +'<div class="pyrow"><button type="button" class="btn sm" data-act="dvgo"'+dis+'>'+L('Записать','Yozish')+'</button><button type="button" class="btn ghost sm" data-act="dvclose">'+L('Закрыть','Yopish')+'</button></div></div>';
   }
+  if(open&&d.mode==='nv'){
+    h+='<h3 class="dsub">'+L('Не сверено','Tekshirilmagan')+'</h3><p class="rnote">'+L('Проверьте в банке, что деньги пришли, и нажмите «Деньги пришли». Пока вы не отметили, оплата числится за доставщиком.','Bankda pul tushganini tekshiring va «Pul tushdi»ni bosing. Belgilamaguncha toʻlov yetkazuvchi hisobida turadi.')+'</p>';
+    h+=!d.det?loadingHTML():d.det.nv&&d.det.nv.length?'<div class="lbox">'+d.det.nv.map(x=>nvRowHTML(x,c.id)).join('')+'</div>':'<div class="empty">'+L('Всё сверено.','Hammasi tekshirilgan.')+'</div>';
+    h+='<div class="pyrow" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="dvclose">'+L('Закрыть','Yopish')+'</button></div>';
+  }
+  if(open&&d.mode==='lim'){
+    h+='<div class="payb"><div class="pt">'+L('Лимит наличных','Naqd limiti')+'</div>'
+      +'<div class="pmute">'+L('Если у доставщика на руках столько наличных или больше, он не может взять новый заказ и принять наличные оплаты долга, пока не сдаст деньги вам. Ноль — без лимита.','Yetkazuvchining qoʻlida shuncha yoki undan koʻp naqd pul boʻlsa, pulni sizga topshirmaguncha yangi buyurtma ola olmaydi va qarzning naqd toʻlovini qabul qila olmaydi. Nol — limitsiz.')+'</div>'
+      +'<div class="pyrow"><label for="dv-lim">'+L('Сумма','Summa')+'</label><input type="number" id="dv-lim" inputmode="numeric" min="0" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'><button type="button" class="chip" data-act="dvlimoff">'+L('Без лимита','Limitsiz')+'</button></div>'
+      +'<div class="pyrow"><button type="button" class="btn sm" data-act="dvlimgo"'+dis+'>'+L('Сохранить','Saqlash')+'</button><button type="button" class="btn ghost sm" data-act="dvclose">'+L('Закрыть','Yopish')+'</button></div></div>';
+  }
   if(open&&d.mode==='hist'){
     h+='<h3 class="dsub">'+L('Касса доставщика','Yetkazuvchi kassasi')+'</h3>';
     h+=!d.det?loadingHTML():d.det.rows.length?'<div class="lbox">'+d.det.rows.map(crRowHTML).join('')+'</div>':'<div class="empty">'+L('Записей пока нет.','Yozuvlar hozircha yoʻq.')+'</div>';
@@ -2112,7 +2289,7 @@ function dvCardHTML(c){
   }
   return h+'</div>';
 }
-const dvErr=er=>({bad_name:L('Введите имя (от 2 букв)','Ismni kiriting (kamida 2 harf)'),bad_phone:L('Проверьте номер телефона','Telefon raqamini tekshiring'),too_many:L('Слишком много доставщиков','Yetkazuvchilar juda koʻp'),has_cash:L('У доставщика есть наличные. Сначала отметьте, что он их сдал.','Yetkazuvchida naqd pul bor. Avval uni topshirganini belgilang.'),bad_amount:L('Сумма больше, чем у доставщика на руках','Summa yetkazuvchi qoʻlidagidan katta')}[er]||L('Не получилось. Проверьте соединение.','Muvaffaqiyatsiz. Ulanishni tekshiring.'));
+const dvErr=er=>({has_nv:L('У доставщика есть неподтверждённые оплаты картой или переводом. Сначала сверьте их.','Yetkazuvchida tasdiqlanmagan karta yoki oʻtkazma toʻlovlari bor. Avval ularni tekshiring.'),bad_lim:L('Лимит — целое число сум, 0 — без лимита','Limit — butun son, 0 — limitsiz'),bad_name:L('Введите имя (от 2 букв)','Ismni kiriting (kamida 2 harf)'),bad_phone:L('Проверьте номер телефона','Telefon raqamini tekshiring'),too_many:L('Слишком много доставщиков','Yetkazuvchilar juda koʻp'),has_cash:L('У доставщика есть наличные. Сначала отметьте, что он их сдал.','Yetkazuvchida naqd pul bor. Avval uni topshirganini belgilang.'),bad_amount:L('Сумма больше, чем у доставщика на руках','Summa yetkazuvchi qoʻlidagidan katta')}[er]||L('Не получилось. Проверьте соединение.','Muvaffaqiyatsiz. Ulanishni tekshiring.'));
 async function dvAdd(){
   const d=S.dv;if(d.busy)return;
   const n=$('#dv-name'),p=$('#dv-phone');
@@ -2130,12 +2307,36 @@ async function dvOpen(id,mode){
   const d=S.dv;
   if(d.open===id&&d.mode===mode){d.open=null;d.det=null;paintSeller();return}
   const c=d.list.find(x=>x.id===id);
-  Object.assign(d,{open:id,mode,det:null,amount:mode==='hand'&&c?String(c.cash):''});
+  Object.assign(d,{open:id,mode,det:null,amount:mode==='hand'&&c?String(c.cash):mode==='lim'&&c&&c.lim?String(c.lim):''});
   paintSeller();
   const r=await api('GET','/api/admin/couriers/'+id);
   if(d.open!==id)return;
   if(r.ok&&r.data&&r.data.courier)d.det=r.data;
   paintSeller();
+}
+async function dvVerify(id,nv){
+  const d=S.dv;if(d.busy)return;
+  d.busy=true;paintSeller();
+  const r=await api('POST','/api/admin/couriers/'+id+'/verify',{id:nv});
+  d.busy=false;
+  if(!r.ok||!r.data||!r.data.courier){toast(r.status===404?L('Эта оплата уже сверена','Bu toʻlov allaqachon tekshirilgan'):dvErr(r.data&&r.data.error));await loadCouriers();paintSeller();return}
+  d.det=r.data;
+  toast(L('Отмечено: деньги пришли','Belgilandi: pul tushdi'));
+  await loadCouriers();paintSeller();
+}
+async function dvSetLim(v){
+  const d=S.dv,c=d.list.find(x=>x.id===d.open);
+  if(!c||d.busy)return;
+  const el=$('#dv-lim');
+  const raw=v===undefined?String(el?el.value:d.amount).trim():String(v),lim=raw===''?0:Number(raw);
+  if(!Number.isInteger(lim)||lim<0){toast(dvErr('bad_lim'));if(el)el.focus();return}
+  d.busy=true;paintSeller();
+  const r=await api('PUT','/api/admin/couriers/'+c.id,{lim});
+  d.busy=false;
+  if(!r.ok||!r.data||!r.data.courier){toast(dvErr(r.data&&r.data.error));paintSeller();return}
+  d.open=null;d.det=null;
+  toast(lim>0?L('Лимит наличных: '+money(lim),'Naqd limiti: '+money(lim)):L('Лимит снят','Limit olib tashlandi'));
+  await loadCouriers();paintSeller();
 }
 async function dvHand(){
   const d=S.dv,c=d.list.find(x=>x.id===d.open);
@@ -3996,8 +4197,54 @@ function ownRefresh(){
   if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&view.contains(ae))return;
   renderOwner();
 }
+/* Спорные записи по всем дистрибьюторам: магазин ответил «Не так», не получил сообщение или молчит больше суток. */
+async function loadDisputes(){
+  if(!isOwner())return;
+  const r=await api('GET','/api/hub/admin/disputes');
+  if(!r.ok||!r.data||!Array.isArray(r.data.items))return;
+  const D=S.own.disp,same=D.ok&&JSON.stringify(r.data.items)===JSON.stringify(D.items);
+  D.ok=true;D.items=r.data.items;
+  const cnt=r.data.items.length,chg=cnt!==S.own.dn;
+  S.own.dn=cnt;
+  if(chg)renderNav();
+  if(!same&&S.view==='owner'&&S.own.sec==='disp')ownRefresh();
+}
+const dispKey=x=>x.did+'-'+x.uid+'-'+x.n;
+function dispCardHTML(x){
+  const key=dispKey(x),D=S.own.disp;
+  const why=x.cf==='no'?L('Магазин: «Не так»','Doʻkon: «Notoʻgʻri»'):x.cf==='na'?L('Магазин не получил сообщение','Doʻkon xabarni olmadi'):L('Магазин молчит больше суток','Doʻkon bir sutkadan ortiq jim');
+  const what=x.k==='ch'?L('Выдача в долг '+esc(x.ref||'')+': ','Qarzga berildi '+esc(x.ref||'')+': ')+money(x.a):L('Оплата долга: ','Qarz toʻlovi: ')+esc(payName(x.m))+' '+money(x.a);
+  return '<div class="dsp"><div class="dn"><b>'+esc(x.name||('ID '+x.uid))+'</b><small>'+esc([x.org,x.phone].filter(Boolean).join(' · '))+'</small></div>'
+    +'<div class="dpw"><b>'+esc(x.shopName||x.did)+'</b> · '+what+'</div>'
+    +'<div class="dpw">'+esc(jrDate(x.t))+(x.bn?' · '+L('Записал: ','Yozgan: ')+esc(x.bn):'')+'</div>'
+    +'<span class="cfs"><span class="cfc bad">'+why+'</span></span>'
+    +'<div class="pyrow"><input type="text" id="dn-'+esc(key)+'" data-dnote="'+esc(key)+'" maxlength="120" value="'+esc(D.note[key]||'')+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+(D.busy===key?' disabled':'')+'>'
+    +'<button type="button" class="btn sm" data-act="dispres" data-did="'+esc(x.did)+'" data-uid="'+x.uid+'" data-n="'+x.n+'"'+(D.busy?' disabled':'')+'>'+L('Закрыть','Yopish')+'</button></div></div>';
+}
+function ownDispHTML(){
+  const D=S.own.disp;
+  if(!D.ok)return loadingHTML();
+  const lead='<p class="lead">'+L('Записи о долгах и оплатах, по которым магазин и продавец не сошлись: магазин ответил «Не так», не получил сообщение или молчит больше суток. Разберитесь и закройте запись с комментарием: он останется в журнале вместе с вашим именем.','Qarz va toʻlov yozuvlari, boʻyicha doʻkon va sotuvchi kelisha olmagan: doʻkon «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim. Hal qiling va yozuvni izoh bilan yoping: u ismingiz bilan jurnalda qoladi.')+'</p>';
+  if(!D.items.length)return lead+'<div class="empty"><b>'+L('Спорных записей нет','Bahsli yozuvlar yoʻq')+'</b>'+L('Все записи подтверждены магазинами или закрыты.','Hamma yozuvlar doʻkonlar tomonidan tasdiqlangan yoki yopilgan.')+'</div>';
+  return lead+'<div class="dlist">'+D.items.map(dispCardHTML).join('')+'</div>';
+}
+async function dispResolve(did,uid,n){
+  const D=S.own.disp,key=did+'-'+uid+'-'+n;
+  if(D.busy)return;
+  const el=document.getElementById('dn-'+key);
+  if(el)D.note[key]=el.value;
+  const note=String(D.note[key]||'').trim();
+  if(note.length<3){toast(L('Напишите комментарий (от 3 букв)','Izoh yozing (kamida 3 ta harf)'));if(el)el.focus();return}
+  D.busy=key;renderOwner();
+  const r=await api('POST','/api/hub/admin/disputes/resolve',{did,uid,n,note});
+  D.busy='';
+  if(!r.ok){toast(r.status===409?L('Эта запись уже закрыта или ещё не спорная','Bu yozuv allaqachon yopilgan yoki hali bahsli emas'):L('Не удалось закрыть запись','Yozuvni yopib boʻlmadi'))}
+  else{delete D.note[key];toast(L('Спор закрыт. Магазин получил комментарий.','Bahs yopildi. Doʻkon izohni oldi.'))}
+  renderOwner();loadDisputes();
+}
 async function loadOwner(){
   if(!isOwner())return;
+  loadDisputes();
   loadOwnerStats();
   loadOwnerPeople();
   const r=await api('GET','/api/hub/admin/shops');
@@ -4056,6 +4303,7 @@ async function ownPct(id){
 const ownSecs=()=>[
   ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')],['comm',L('Комиссия','Komissiya'),L('Заказы и комиссия','Buyurtmalar va komissiya')]]],
   ['team',L('Агенты и территории','Agentlar va hududlar'),[['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
+  ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
   ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['clients',L('База магазинов','Doʻkonlar bazasi'),L('База магазинов','Doʻkonlar bazasi')]]]
 ];
 function ownSecInfo(sec){
@@ -4127,6 +4375,7 @@ function renderOwner(){
     else if(sec==='add')h+=ownMadeHTML()+ownAddHTML();
     else if(sec==='comm')h+=ownStatsHTML();
     else if(sec==='title')h+=ownTitleHTML();
+    else if(sec==='disp')h+=ownDispHTML();
     else h+=ownPeopleHTML(sec);
   }
   view.innerHTML=h+'</div>';
@@ -4319,6 +4568,7 @@ document.addEventListener('click',e=>{
   else if(a==='owner')go('owner');
   else if(a==='hubreload'){S.hub.err=false;renderShops();loadHub()}
   else if(a==='showfar'){S.showFar=!S.showFar;renderShops()}
+  else if(a==='dispres')dispResolve(t.dataset.did,Number(t.dataset.uid),Number(t.dataset.n))
   else if(a==='ownreload'){S.own.loaded=false;S.own.err=false;renderOwner();loadOwner()}
   else if(a==='openshop')enterShop(t.dataset.id,'shop');
   else if(a==='opencartshop')enterShop(t.dataset.id,'shop',true);
@@ -4591,18 +4841,30 @@ document.addEventListener('click',e=>{
   else if(a==='dvdel')dvDel(t.dataset.id)
   else if(a==='dvflag')dvFlag(t.dataset.id,t.dataset.k)
   else if(a==='dvhist')dvOpen(t.dataset.id,'hist')
+  else if(a==='dvnv')dvOpen(t.dataset.id,'nv')
+  else if(a==='dvlim')dvOpen(t.dataset.id,'lim')
+  else if(a==='dvlimgo')dvSetLim()
+  else if(a==='dvlimoff')dvSetLim(0)
+  else if(a==='dvver')dvVerify(t.dataset.id,Number(t.dataset.nv))
   else if(a==='dvhand')dvOpen(t.dataset.id,'hand')
   else if(a==='dvclose'){S.dv.open=null;S.dv.det=null;paintSeller()}
   else if(a==='dvall'){const el=$('#dv-amount'),c=S.dv.det&&S.dv.det.courier;if(el&&c){el.value=String(c.cash);S.dv.amount=el.value}}
   else if(a==='dvgo')dvHand()
   else if(a==='dopen')debtOpen(Number(t.dataset.uid))
   else if(a==='dback')debtClose()
+  else if(a==='mdcf')myDebtConfirm(t.dataset.did,Number(t.dataset.g),t.dataset.ok==='1')
   else if(a==='mdord'){const m=S.mdebt;m.ex[t.dataset.k]=!m.ex[t.dataset.k];renderMyDebt()}
   else if(a==='dord'){const d=DB();d.ex[t.dataset.k]=!d.ex[t.dataset.k];debtSync();dPaint()}
   else if(a==='dfull'){const el=$('#dp-amount');if(el&&DB().det){el.value=String(DB().det.bal);DB().amount=el.value}}
   else if(a==='dpm'){DB().pm=t.dataset.v;document.querySelectorAll('[data-act="dpm"]').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.v===t.dataset.v)))}
   else if(a==='dpay')debtPay()
   else if(a==='dvoid')debtVoid(Number(t.dataset.n))
+  else if(a==='dvoidgo')debtVoidGo()
+  else if(a==='dvoidno'){const d=DB();d.vn=0;d.vwhy='';dPaint()}
+  else if(a==='dres')debtRes(Number(t.dataset.n))
+  else if(a==='dresgo')debtResGo()
+  else if(a==='dresno'){const d=DB();d.rn=0;d.rnote='';dPaint()}
+  else if(a==='dflt'){const d=DB();d.flt=t.dataset.v;dPaint()}
   else if(a==='dremind')debtRemind()
   else if(a==='contact'){try{if(S.tg&&S.initData&&S.tg.openTelegramLink){e.preventDefault();S.tg.openTelegramLink(t.href)}}catch(err){}}
   else if(a==='scancel'||a==='mycancel'){
@@ -4626,6 +4888,10 @@ document.addEventListener('input',e=>{
   else if(t.id==='dv-name')S.dv.name=t.value
   else if(t.id==='dv-phone')S.dv.phone=t.value
   else if(t.id==='dv-amount')S.dv.amount=t.value
+  else if(t.id==='dv-lim')S.dv.amount=t.value
+  else if(t.id==='dx-why')DB().vwhy=t.value
+  else if(t.id==='dx-note')DB().rnote=t.value
+  else if(t.dataset.dnote!==undefined)S.own.disp.note[t.dataset.dnote]=t.value
   else if(t.id==='pd-days'&&curPay()){curPay().days=t.value;document.querySelectorAll('[data-act="paydays"]').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.n===String(t.value).trim())))}
   else if(t.id==='pd-paid'&&curPay()){curPay().paid=t.value;const o=curOrder(curPay().id),el=$('#pd-rest');if(o&&el)el.textContent=payRestTxt(o)}
   else if(t.dataset.cf!==undefined&&t.dataset.cf!=='blocked'&&S.base.cf)S.base.cf[t.dataset.cf]=t.value;
@@ -4812,6 +5078,7 @@ function tick(){
   if(S.auth&&(S.view==='debt'||tickN%4===0))loadMyDebt(S.view==='debt');
   if((S.view==='shops'||S.view==='review')&&tickN%2===0)loadHub();
   else if(isOwner()&&tickN%4===0)loadHub();
+  if(isOwner()&&(tickN%4===0||(S.view==='owner'&&S.own.sec==='disp'&&tickN%2===0)))loadDisputes();
   if(S.view==='review'&&tickN%2===0&&!S.rv.ret&&!S.rv.edit&&!S.rv.busy)loadReview(true);
   if(S.admin&&S.did&&(S.view==='seller'||tickN%2===0))loadAdmin();
   if(S.courier&&S.did&&(S.view==='courier'||tickN%2===0))loadCourier();
@@ -4857,6 +5124,7 @@ function tick(){
   if(v==='review')loadReview();
   if(S.admin&&S.did)loadAdmin();
   if(S.courier&&S.did)loadCourier();
+  if(isOwner()&&v!=='owner')loadDisputes();
   loadMine();if(v!=='debt')loadMyDebt(false);
   setInterval(tick,15000);
   document.addEventListener('visibilitychange',()=>{
