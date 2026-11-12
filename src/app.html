@@ -262,6 +262,8 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .xmenu{display:flex;flex-wrap:wrap;gap:6px;width:100%}
 .xmenu .chip[disabled]{opacity:.45;cursor:default}
 .xtools .unit{width:100%;font-size:12px;color:var(--ink-2)}
+.dxb::after{content:" ▾"}
+.dxb[aria-expanded="true"]::after{content:" ▴"}
 .pov{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
 .pov[hidden]{display:none}
 .pbar{display:flex;align-items:center;gap:8px;padding:8px max(12px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
@@ -1907,12 +1909,22 @@ function debtsHTML(){
     +'<div class="stat"><small>'+L('С просрочкой','Kechikkan')+'</small><b>'+d.late+'</b></div></div>';
   if(d.fl>0)h+='<div class="note warnnote" style="margin-bottom:10px">'+L('Спорных записей: '+d.fl+'. Магазин ответил «Не так», не получил сообщение или молчит больше суток.','Bahsli yozuvlar: '+d.fl+'. Doʻkon «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim.')+'</div>'
     +'<div class="filters">'+[['all',L('Все','Hammasi')],['fl',L('Спорные','Bahsli')]].map(f=>'<button type="button" class="chip" data-act="dflt" data-v="'+f[0]+'" aria-pressed="'+(d.flt===f[0])+'">'+f[1]+'</button>').join('')+'</div>';
+  h+=dxHTML(d);
   if(!d.list.length)return h+'<div class="empty"><b>'+L('Долгов пока нет','Qarzlar hozircha yoʻq')+'</b>'+L('Когда вы выдадите заказ «в долг», магазин появится здесь. Оплаты записываются в карточке магазина, в том числе частями.','Buyurtmani «qarzga» topshirganingizda, doʻkon shu yerda paydo boʻladi. Toʻlovlar doʻkon kartochkasida yoziladi, shu jumladan qism-qism.')+'</div>';
   return h+'<div class="dlist">'+d.list.filter(x=>d.flt!=='fl'||x.fl>0).map(x=>{
     const adv=x.bal<0;
     return '<button type="button" class="drow'+(x.days&&!adv?' late':'')+'" data-act="dopen" data-uid="'+x.uid+'"><div class="dn"><b>'+esc(x.name||('ID '+x.uid))+'</b><small>'+esc([x.org,x.phone,x.addr].filter(Boolean).join(' · '))+'</small>'+(x.fl>0?'<small class="bad">'+L('Спорных записей: '+x.fl,'Bahsli yozuvlar: '+x.fl)+'</small>':x.wt>0?'<small>'+L('Ждёт ответа магазина: '+x.wt,'Doʻkon javobi kutilmoqda: '+x.wt)+'</small>':'')+'</div>'
       +'<div class="da"><b>'+(adv?L('Аванс ','Avans ')+money(-x.bal):money(x.bal))+'</b>'+(adv||(x.bal===0&&(x.wt>0||x.fl>0))?'':'<small class="'+(x.days?'bad':'')+'">'+esc(lateTxt(x))+'</small>')+'</div></button>';
   }).join('')+'</div>';
+}
+/* «Долги в Excel»: кнопка открывает выбор (все / просроченные / спорные), файл уходит продавцу в чат с ботом. Только у продавца. */
+function dxHTML(d){
+  if(S.view==='courier'||!S.admin||!d.list.length)return '';
+  const n={all:d.list.length,over:d.list.filter(x=>x.bal>0&&x.days>0).length,fl:d.list.filter(x=>x.fl>0).length};
+  const chip=(f,lab)=>'<button type="button" class="chip" data-act="dxport" data-f="'+f+'"'+(n[f]&&!S.xbusy?'':' disabled')+'>'+lab+' · '+n[f]+'</button>';
+  return '<div class="xtools"><button type="button" class="btn ghost sm dxb" data-act="dxmenu" data-xk="debts" aria-expanded="'+(S.dxm?'true':'false')+'"'+(S.xbusy?' disabled':'')+'>'+xlab('debts')+'</button>'
+    +(S.dxm?'<div class="xmenu">'+chip('all',L('Все','Hammasi'))+chip('over',L('Просроченные','Muddati oʻtgan'))+chip('fl',L('Спорные','Bahsli'))+'</div><div class="unit">'+L('Файл придёт вам в чат с ботом. Лист «Долги»: по магазинам, лист «История»: все выдачи и оплаты. В шапке есть стрелки фильтров: по ним можно отобрать магазин, статус, сумму и срок.','Fayl botdagi chatingizga yuboriladi. «Qarzlar» varagʻi: doʻkonlar boʻyicha, «Tarix» varagʻi: barcha berilganlar va toʻlovlar. Sarlavhadagi filtr strelkalari orqali doʻkon, holat, summa va muddat boʻyicha tanlash mumkin.')+'</div>':'')
+    +'</div>';
 }
 /* Состав заказа, который лежит в основе долга: раскрывается по нажатию на строку. */
 function ordIn(x,ref){const o=x&&x.ords&&ref?x.ords[ref]:null;return o&&Array.isArray(o.items)?o:null}
@@ -2547,7 +2559,7 @@ function dvDel(id){
 }
 
 /* ---------- сборочный лист и выгрузки ---------- */
-const XLAB={orders:['Заказы в Excel','Buyurtmalar Excelda'],clients:['Клиенты в Excel','Mijozlar Excelda'],backup:['Получить резервную копию','Zaxira nusxasini olish'],pick:['Файлом в чат','Chatga fayl sifatida'],catalog:['Каталог в Excel','Katalog Excelda'],report:['Отчёт в Excel','Hisobot Excelda']};
+const XLAB={orders:['Заказы в Excel','Buyurtmalar Excelda'],clients:['Клиенты в Excel','Mijozlar Excelda'],backup:['Получить резервную копию','Zaxira nusxasini olish'],pick:['Файлом в чат','Chatga fayl sifatida'],catalog:['Каталог в Excel','Katalog Excelda'],report:['Отчёт в Excel','Hisobot Excelda'],debts:['Долги в Excel','Qarzlar Excelda']};
 const xlab=k=>S.xbusy===k?L('Отправляем…','Yuborilmoqda…'):L(XLAB[k][0],XLAB[k][1]);
 const xbtn=(k,cls,act)=>'<button type="button" class="btn ghost sm'+(cls?' '+cls:'')+'" data-act="'+(act||(k==='pick'?'xpick':'xport'))+'" data-k="'+k+'" data-xk="'+k+'"'+(S.xbusy?' disabled':'')+'>'+xlab(k)+'</button>';
 function xtoolsHTML(){
@@ -2562,7 +2574,7 @@ function xtoolsHTML(){
 function paintX(){
   document.querySelectorAll('[data-xk]').forEach(b=>{b.disabled=!!S.xbusy;b.textContent=xlab(b.dataset.xk)});
 }
-const xErrText=er=>({
+const xErrText=(er,kind)=>er==='empty'&&kind==='debts'?L('Под этот фильтр долгов нет','Bu filtrga qarz topilmadi'):({
   empty:L('Нет заказов для сборки','Yigʻish uchun buyurtma yoʻq'),
   busy:L('Файл уже готовится. Подождите несколько секунд.','Fayl tayyorlanmoqda. Bir necha soniya kuting.'),
   send_failed:L('Telegram не принял файл. Откройте чат с ботом, нажмите «Старт» и повторите.','Telegram faylni qabul qilmadi. Bot chatini oching, «Start» tugmasini bosing va qayta urining.')
@@ -2574,7 +2586,7 @@ async function doExport(kind,extra,did){
   const r=await api('POST','/api/admin/export',Object.assign({kind},extra||{}),did);
   S.xbusy='';paintX();
   if(r.ok&&r.data&&r.data.ok){toast(L('Файл отправлен вам в чат с ботом. Закройте приложение, чтобы его увидеть.','Fayl botdagi chatingizga yuborildi. Koʻrish uchun ilovani yoping.'));return}
-  toast(xErrText(r.data&&r.data.error));
+  toast(xErrText(r.data&&r.data.error,kind));
 }
 async function openPick(body){
   if(S.pickBusy||!S.admin)return;
@@ -4990,6 +5002,8 @@ document.addEventListener('click',e=>{
   else if(a==='cgrp'){const el=document.getElementById('cf-grp');if(el&&S.base.cf){el.value=t.dataset.v;S.base.cf.grp=t.dataset.v;el.focus()}}
   else if(a==='bxport')doExport(t.dataset.k,undefined,baseShop());
   else if(a==='pmenu'){S.pm=!S.pm;paintSeller()}
+  else if(a==='dxmenu'){S.dxm=!S.dxm;dPaint()}
+  else if(a==='dxport'){S.dxm=false;dPaint();doExport('debts',{f:t.dataset.f})}
   else if(a==='impapply')impApply();
   else if(a==='impcancel'){S.imp=null;paintSeller()}
   else if(a==='pick')openPick(t.dataset.day?{day:t.dataset.day}:{});
