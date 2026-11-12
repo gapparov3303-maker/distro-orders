@@ -904,6 +904,7 @@ await t('клиент отменяет новый заказ сам: чужой 
   assert.equal(r.status, 200);
   assert.equal((await jsonOf(r)).order.status, 'cancelled');
   assert.ok(lastTg('sendMessage', p => p.chat_id === SELLER.id).payload.text.includes('Клиент отменил'));
+  assert.ok(lastTg('sendMessage', p => p.chat_id === SELLER.id).payload.text.startsWith('❌ Mijoz ' + o.id + ' buyurtmasini bekor qildi'), 'узбекский сверху');
   assert.ok(lastTg('editMessageText', p => p.chat_id === SELLER.id).payload.text.includes('Статус: Отменён'));
   assert.equal((await call('POST', '/api/cancel', { init: c.init(), body: { id: o.id } })).status, 409);   // повторно нельзя
 });
@@ -923,6 +924,7 @@ await t('большой заказ: 30 длинных позиций по 500 ш
   const m = lastTg('sendMessage', p => p.chat_id === SELLER.id && p.text.includes(d.order.id));
   assert.ok(m.payload.text.length <= 4096, 'длина ' + m.payload.text.length);
   assert.ok(m.payload.text.includes('и ещё') && m.payload.text.includes('Итого:'), 'список не сокращён');
+  assert.ok(m.payload.text.includes('va yana') && m.payload.text.includes('Jami:'), 'узбекская часть тоже сокращена, итог на месте');
   assert.ok(m.payload.reply_markup.inline_keyboard.flat().length >= 2);
   // полный список остаётся в заказе
   assert.equal((await W.storage.get('o:' + d.order.id)).items.length, 30);
@@ -1069,7 +1071,7 @@ const stockOp = (body, init) => call('POST', '/api/admin/stock', { init: init ||
 const getStock = async () => (await jsonOf(await call('GET', '/api/admin/stock', { init: iS() }))).stk;
 const getJr = async () => (await jsonOf(await call('GET', '/api/admin/journal', { init: iS() }))).jr;
 const pubItem = async id => (await getProd()).items.find(x => x.id === id);
-const stockAlerts = () => tgAll('sendMessage', p => String(p.text).startsWith('Остатки на складе:'));
+const stockAlerts = () => tgAll('sendMessage', p => String(p.text).startsWith('Ombordagi qoldiqlar:') && String(p.text).includes('\n\nОстатки на складе:'));
 const setSt = (id, n, low) => stockOp({ id, op: 'set', n, low });
 const adminOrdersOf = async () => (await jsonOf(await call('GET', '/api/admin/orders', { init: iS() }))).orders;
 const setStatus = (id, to) => call('POST', '/api/admin/status', { init: iS(), body: { id, to } });
@@ -3859,6 +3861,7 @@ const adm = (method, path, body, init) => call(method, '/api/hub/admin' + path, 
 const meHub = async u => (await jsonOf(await call('GET', '/api/shops', { init: u.init ? u.init() : initDataFor(u) }))).me;
 
 /* ---------- проверка товаров ---------- */
+const modMsg = (n, name) => (name || 'Навои Фуд') + ': tekshiruvda ' + n + ' ta mahsulot\n\n' + (name || 'Навои Фуд') + ': на проверке ' + ruTovarT(n);
 const ruTovarT = n => n + ' ' + (n % 100 > 10 && n % 100 < 15 ? 'товаров' : n % 10 === 1 ? 'товар' : n % 10 > 1 && n % 10 < 5 ? 'товара' : 'товаров');
 const NEWP = (id, over) => Object.assign({ id, cat: 'oil', name: 'Масло «Золотое»', uz: 'Oltin yogʻ', desc: '', descUz: '', amount: 1, unit: 'l', price: 30000, on: true }, over || {});
 /* дистрибьютор с одним проверенным товаром; продавец DIL добавляет новые */
@@ -3938,7 +3941,7 @@ await t('проверка: отправка на проверку — нужны
   const tgs = tgLog.filter(x => x.method === 'sendMessage');
   assert.equal(tgs.length, 1, 'одно сообщение владельцу на всю отправку');
   assert.equal(tgs[0].payload.chat_id, SELLER.id);
-  assert.equal(tgs[0].payload.text, 'Навои Фуд: на проверке 2 товара');
+  assert.equal(tgs[0].payload.text, modMsg(2), 'сначала узбекский, ниже русский');
   assert.equal(tgs[0].payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?v=review');
   // повторная отправка ничего нового не даёт
   tgLog = [];
@@ -3950,7 +3953,7 @@ await t('проверка: отправка на проверку — нужны
   r = await dMod(sid, { ids: ['n3', 'n4'] });
   d = await jsonOf(r);
   assert.deepEqual([d.sent, d.bad.map(b => b.id)], [1, ['n4']]);
-  assert.equal(tgLog.pop().payload.text, 'Навои Фуд: на проверке 1 товар');
+  assert.equal(tgLog.pop().payload.text, modMsg(1));
   // клиент и посторонние отправлять не могут
   assert.equal((await callS(sid, 'POST', '/api/admin/submit', { init: A.init(), body: {} })).status, 403);
   assert.equal((await callS(sid, 'POST', '/api/admin/submit', { body: {} })).status, 401);
@@ -4017,7 +4020,7 @@ await t('проверка: владелец видит товары всех д�
   const tg = tgLog.filter(x => x.method === 'sendMessage');
   assert.equal(tg.length, 1);
   assert.equal(tg[0].payload.chat_id, DIL.id, 'сообщение продавцу дистрибьютора, а не другому');
-  assert.ok(tg[0].payload.text.includes('«Масло «Золотое»»') && tg[0].payload.text.includes('возвращён') && tg[0].payload.text.includes(reason), tg[0].payload.text);
+  assert.ok(tg[0].payload.text.startsWith('↩️ «Oltin yogʻ» mahsuloti qayta ishlash uchun qaytarildi.') && tg[0].payload.text.includes('\n\n↩️ Товар «Масло «Золотое»» возвращён') && tg[0].payload.text.split(reason).length === 3, tg[0].payload.text);
   // у продавца: «нужно исправить» с причиной; в списке владельца — в «Возвращены»
   const mine = (await dSee(sid, iD())).items.find(i => i.id === 'n1');
   assert.deepEqual([mine.ms, mine.mc], ['ret', reason]);
@@ -4035,7 +4038,7 @@ await t('проверка: владелец видит товары всех д�
   assert.equal(re.sent, 1);
   const n1 = re.prod.items.find(i => i.id === 'n1');
   assert.deepEqual([n1.ms, n1.mc], ['wait', undefined]);
-  assert.equal(tgLog.filter(x => x.method === 'sendMessage').pop().payload.text, 'Навои Фуд: на проверке 1 товар');
+  assert.equal(tgLog.filter(x => x.method === 'sendMessage').pop().payload.text, modMsg(1));
   assert.deepEqual((await oMod('wait')).counts, { wait: 3, ret: 0, ok: 4 });
 });
 
@@ -4054,7 +4057,7 @@ await t('проверка: одобрение — товар появляетс�
   assert.deepEqual([r.ok, r.n], [true, 1]);
   let msgs = tgLog.filter(x => x.method === 'sendMessage');
   assert.equal(msgs.length, 1);
-  assert.deepEqual([msgs[0].payload.chat_id, msgs[0].payload.text], [DIL.id, '✅ Товар «Масло «Золотое»» одобрен и появился в каталоге.']);
+  assert.deepEqual([msgs[0].payload.chat_id, msgs[0].payload.text], [DIL.id, '✅ «Oltin yogʻ» mahsuloti tasdiqlandi va katalogda paydo boʻldi.\n\n✅ Товар «Масло «Золотое»» одобрен и появился в каталоге.']);
   const seen = (await dSee(sid, A.init())).items.find(i => i.id === 'n1');
   assert.deepEqual([seen.price, seen.ms, seen.ma === undefined], [30000, undefined, false]);
   // теперь его можно заказать
@@ -4067,7 +4070,8 @@ await t('проверка: одобрение — товар появляетс�
   assert.equal(r.n, 3);
   msgs = tgLog.filter(x => x.method === 'sendMessage');
   assert.deepEqual(msgs.map(m => m.payload.chat_id).sort(), [DIL.id, JAS2.id].sort(), 'каждому продавцу по одному сообщению');
-  assert.ok(msgs.find(m => m.payload.chat_id === DIL.id).payload.text.includes('Одобрено: 2 товара') && msgs.find(m => m.payload.chat_id === DIL.id).payload.text.includes('• Рис «Лазер»'));
+  const apT = msgs.find(m => m.payload.chat_id === DIL.id).payload.text;
+  assert.ok(apT.startsWith('✅ Tasdiqlandi: 2 ta mahsulot') && apT.includes('\n\n✅ Одобрено: 2 товара') && apT.includes('• Рис «Лазер»'), apT);
   assert.deepEqual((await oMod('wait')).counts, { wait: 0, ret: 0, ok: 8 });
   assert.deepEqual((await oMod('wait')).items, []);
   const okl = await oMod('ok');
@@ -4119,7 +4123,7 @@ await t('проверка: прайс из Excel у дистрибьютора �
   assert.ok(d.prod.items.filter(i => ['p1', 'p2', 'p3', 'p4'].includes(i.id)).every(i => !i.ms), 'обновлённые прежние товары остаются одобренными');
   const tgs = tgLog.filter(x => x.method === 'sendMessage');
   assert.equal(tgs.length, 1);
-  assert.equal(tgs[0].payload.text, 'Навои Фуд: на проверке ' + ruTovarT(added.length));
+  assert.equal(tgs[0].payload.text, modMsg(added.length));
   assert.equal((await dSee(sid)).items.filter(i => i.ms === 'wait').every(i => i.price === 0), true);
   assert.equal((await oMod('wait')).counts.wait, added.length);
 });
@@ -5065,7 +5069,7 @@ await t('доставка: готовый заказ на доставку пр�
   // чужой нажать «Взял» не может
   tgLog = [];
   await cb(ANNA, 'k:' + o.id, 900);
-  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Нет доступа');
+  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Ruxsat yoʻq\nНет доступа');
   // первый нажимает в чате
   tgLog = [];
   await cb(DRV, 'k:' + o.id, msgOf(DRV.id), DRV.id);
@@ -5720,7 +5724,7 @@ await t('сдача денег: доставщик подтверждает «В
   // чужой человек нажать не может
   tgLog = [];
   await cb(ANNA, 'h:' + h.rows[0].n + ':y', 900);
-  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Нет доступа');
+  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Ruxsat yoʻq\nНет доступа');
   assert.equal((await drvCash()).rows[0].cf, 'wait');
   // доставщик отвечает «Верно»
   tgLog = [];
@@ -5737,7 +5741,7 @@ await t('сдача денег: доставщик подтверждает «В
   // записи, которой нет, нажать нельзя
   tgLog = [];
   await cb(DRV, 'h:999:y', 902, DRV.id);
-  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Запись не найдена');
+  assert.equal(lastTg('answerCallbackQuery').payload.text, 'Yozuv topilmadi\nЗапись не найдена');
 });
 
 await t('сдача денег: «Не так» — продавцы узнают сразу, запись спорная; доставщик может передумать; продавец закрывает с комментарием', async () => {
@@ -6126,10 +6130,15 @@ await t('утреннее напоминание: продавцу список 
   assert.equal(m.length, 1, 'одно сообщение продавцу');
   const text = m[0].payload.text.replace(/[\u00a0\u202f]/g, ' ');
   assert.ok(text.includes('просрочка на сегодня') && text.includes('Магазинов: 2'), text);
-  const rows = text.split('\n').filter(x => /^\d+\. /.test(x));
+  const [uzT, ruT] = text.split('\n\n⏰');
+  assert.ok(uzT.startsWith('⏰ ') && uzT.includes('bugungi kechikishlar') && uzT.includes('Doʻkonlar: 2') && ruT.includes('просрочка на сегодня'), 'сверху узбекский, ниже русский: ' + text);
+  const rowsOf = x => x.split('\n').filter(y => /^\d+\. /.test(y));
+  const rows = rowsOf(ruT), rowsUz = rowsOf(uzT);
   assert.equal(rows.length, 2, 'в списке только просроченные: ' + text);
+  assert.equal(rowsUz.length, 2);
   assert.ok(rows[0].includes('10 дн.') && rows[0].includes('1 394 000') && rows[1].includes('4 дн.') && rows[1].includes('7 500'), rows.join(' | '));
-  assert.ok(text.includes('просрочено 1 401 500'), 'общая сумма: ' + text);
+  assert.ok(rowsUz[0].includes('10 kun') && rowsUz[0].includes('1 394 000') && rowsUz[1].includes('4 kun') && rowsUz[1].includes('7 500'), rowsUz.join(' | '));
+  assert.ok(ruT.includes('просрочено 1 401 500') && uzT.includes('muddati oʻtgan 1 401 500'), 'общая сумма: ' + text);
   assert.equal(m[0].payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=main&v=seller', 'кнопка в приложение');
   assert.equal(tgAll('sendMessage', p => p.chat_id === a.u.id || p.chat_id === b.u.id).filter(x => String(x.payload.text).startsWith('⏰')).length, 0, 'магазинам автоматически не пишем');
   tgLog = [];
@@ -6162,10 +6171,12 @@ await t('утреннее напоминание: длинный список с
   tgLog = [];
   await runMorning();
   const text = morningMsgs(SELLER.id)[0].payload.text.replace(/[\u00a0\u202f]/g, ' ');
-  assert.equal(text.split('\n').filter(x => /^\d+\. /.test(x)).length, 10);
-  assert.ok(text.includes('Магазинов: 12') && text.trimEnd().endsWith('и ещё 2'), text);
+  const [uzT, ruT] = text.split('\n\n⏰');
+  const rowsOf = x => x.split('\n').filter(y => /^\d+\. /.test(y));
+  assert.equal(rowsOf(uzT).length, 10); assert.equal(rowsOf(ruT).length, 10, 'в каждом языке по 10 строк');
+  assert.ok(text.includes('Магазинов: 12') && text.trimEnd().endsWith('и ещё 2') && uzT.trimEnd().endsWith('va yana 2'), text);
   assert.ok(text.length < 3000);
-  assert.ok(text.split('\n').filter(x => /^\d+\. /.test(x))[0].includes('13 дн.'), 'самый давний первым');
+  assert.ok(rowsOf(ruT)[0].includes('13 дн.') && rowsOf(uzT)[0].includes('13 kun'), 'самый давний первым');
 });
 
 await t('утреннее напоминание: у каждого дистрибьютора своё, чужие продавцы не получают, отключённые пропускаются', async () => {
@@ -6630,6 +6641,142 @@ await t('подсказки под полями: в каждой форме пр
   }
   assert.ok(/const hintD=\(ru,uz\)=>'<div class="hint">'\+esc\(L\(ru,uz\)\)\+'<\/div>'/.test(html), 'общий помощник hintD: текст экранируется и берётся на языке интерфейса');
   assert.ok(/\.payb>\.hint\{/.test(html), 'в блоках оплаты подсказка стоит вплотную к полю');
+});
+
+/* ---------- сообщения персоналу на двух языках ---------- */
+const splitBi = (text, mark) => { const i = text.indexOf('\n\n' + mark); assert.ok(i > 0, 'нет второй части «' + mark + '» в: ' + text); return [text.slice(0, i), text.slice(i + 2)]; };
+
+await t('сообщения продавцу: карточка заказа — узбекский сверху, русский ниже, кнопки «uz · ru», в данных клиента ничего не теряется', async () => {
+  await stockWorld();
+  const A = newUser();
+  tgLog = [];
+  const o = (await jsonOf(await place(A, CART, { form: formFor(S.DEFAULT, 'delivery', {}) }))).order;
+  const card = lastTg('sendMessage', p => p.chat_id === SELLER.id && String(p.text).includes(o.id)).payload;
+  const [uzB, ruB] = splitBi(card.text, '🆕 Заказ');
+  assert.ok(uzB.startsWith('🆕 Buyurtma ' + o.id) && uzB.includes('Mahsulotlar:') && uzB.includes('Jami:') && uzB.includes('Holat: Yangi') && !/Товары|Итого|Статус/.test(uzB), uzB);
+  assert.ok(ruB.startsWith('🆕 Заказ ' + o.id) && ruB.includes('Товары:') && ruB.includes('Итого:') && ruB.includes('Статус: Новый') && !/Mahsulotlar|Jami|Holat/.test(ruB), ruB);
+  for (const b of [uzB, ruB]) assert.ok(b.includes('ООО Ориент') && b.includes('Навои, ул. Галаба 12') && b.includes('Позвоните за час') && norm(b).includes('1 394 000'), 'имя, адрес и комментарий в обеих частях: ' + b);
+  assert.ok(card.text.length <= 4096);
+  const btns = card.reply_markup.inline_keyboard.flat().filter(b => b.callback_data || b.web_app);
+  assert.ok(btns.length >= 3 && btns.every(b => / · /.test(b.text)), btns.map(b => b.text).join(' | '));
+  assert.ok(btns.some(b => b.text === '✅ Ishga olish · Принять в работу') && btns.some(b => b.text === '❌ Bekor qilish · Отменить'));
+  // кнопка меняет карточку: статус и кнопки на двух языках
+  tgLog = [];
+  await cb(SELLER, 's:' + o.id + ':accepted', 555);
+  const ed = lastTg('editMessageText', p => p.message_id === 555).payload;
+  const [uz2, ru2] = splitBi(ed.text, '🛠 Заказ');
+  assert.ok(uz2.includes('Holat: Ishlanmoqda') && ru2.includes('Статус: В работе'), ed.text);
+  const kb2 = ed.reply_markup.inline_keyboard.flat();
+  assert.ok(kb2.some(b => b.text === '📦 Joʻnatishga tayyor · Готов к отправке'), kb2.map(b => b.text).join(' | '));
+  // выбор оплаты: способы и вопрос на двух языках
+  await cb(SELLER, 's:' + o.id + ':ready', 555);
+  tgLog = [];
+  await cb(SELLER, 's:' + o.id + ':done', 555);
+  const pay = lastTg('editMessageText', p => p.message_id === 555).payload;
+  assert.ok(pay.text.includes('Mijoz buyurtma uchun qanday toʻladi?') && pay.text.includes('Как клиент оплатил заказ?'), pay.text);
+  const pb = pay.reply_markup.inline_keyboard.flat().map(b => b.text);
+  assert.ok(pb.includes('💵 Naqd · Наличные') && pb.includes('💳 Karta · Карта') && pb.includes('📒 Qarzga · В долг'), pb.join(' | '));
+  await cb(SELLER, 'p:' + o.id + ':credit', 555);
+  const dy = lastTg('editMessageText', p => p.message_id === 555).payload;
+  assert.ok(dy.text.includes('Qarzni necha kunga yozamiz?') && dy.text.includes('На сколько дней записать долг?'));
+  assert.ok(dy.reply_markup.inline_keyboard[0].every(b => /^\d+ kun · дн\.$/.test(b.text)), dy.reply_markup.inline_keyboard[0].map(b => b.text).join('|'));
+});
+
+await t('ответы на кнопки: узбекский и русский на соседних строках, не длиннее 190 знаков', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = (await jsonOf(await place(A, ONE))).order;
+  tgLog = [];
+  await cb(ANNA, 's:' + o.id + ':accepted', 556);                       // чужой
+  await cb(SELLER, 's:' + o.id + ':accepted', 556);
+  await cb(SELLER, 's:' + o.id + ':accepted', 556);                     // повтор: статус уже стоит
+  await cb(SELLER, 's:' + o.id + ':ready', 556);
+  await cb(SELLER, 's:' + o.id + ':done', 556);
+  await cb(SELLER, 'p:' + o.id + ':cash', 556);
+  await cb(SELLER, 's:' + o.id + ':accepted', 556);                     // назад нельзя
+  const ans = tgAll('answerCallbackQuery').map(x => x.payload.text).filter(Boolean);
+  assert.ok(ans.length >= 3, JSON.stringify(ans));
+  ans.forEach(x => assert.ok(x.length <= 190, 'ответ длиннее лимита: ' + x));
+  assert.ok(ans.every(x => x.includes('\n')), 'каждый ответ с двумя языками: ' + JSON.stringify(ans));
+  assert.ok(ans[0] === 'Ruxsat yoʻq\nНет доступа', ans[0]);
+  ans.forEach(x => { const [uz, ru] = x.split('\n'); assert.ok(!/[А-Яа-яЁё]/.test(uz.replace(/«[^»]*»/g, '')), 'в первой строке русские слова: ' + uz); assert.ok(/[А-Яа-яЁё]/.test(ru), 'во второй строке нет русского: ' + ru); });
+});
+
+await t('сообщения доставщику: «Oldim · Взял», вход доставщика и карточка — узбекский сверху, русский ниже', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам');
+  const hi = lastTg('sendMessage', p => p.chat_id === DRV.id).payload;
+  assert.ok(hi.text.startsWith('Tayyor, siz «Оптовая база» yetkazib beruvchisisiz.') && hi.text.includes('\n\nГотово, вы доставщик «Оптовая база».') && hi.text.includes('«Oldim»') && hi.text.includes('«Взял»'), hi.text);
+  assert.equal(hi.reply_markup.inline_keyboard[0][0].text, 'Yetkazib berishni ochish · Открыть доставку');
+  const A = newUser();
+  tgLog = [];
+  const o = await readyDelivery(A, CART);
+  const m = lastTg('sendMessage', p => p.chat_id === DRV.id && String(p.text).includes(o.id)).payload;
+  const [uzB, ruB] = splitBi(m.text, '🚚 Готов к доставке');
+  assert.ok(uzB.startsWith('🚚 Yetkazishga tayyor: buyurtma ' + o.id) && uzB.includes('Manzil:') && uzB.includes('Summa:') && !/Адрес|Сумма/.test(uzB), uzB);
+  assert.ok(ruB.includes('Адрес:') && ruB.includes('Сумма:') && !/Manzil|Summa/.test(ruB), ruB);
+  const kb = m.reply_markup.inline_keyboard.flat();
+  assert.ok(kb.some(b => b.callback_data === 'k:' + o.id && b.text === '🚚 Oldim · Взял'), kb.map(b => b.text).join(' | '));
+  assert.ok(kb.some(b => b.web_app && b.text === 'Yetkazib berishni ochish · Открыть доставку'));
+  // после того как заказ взяли, второму доставщику карточка обновляется на обоих языках
+  await hire(DRV2, 'Азиз');
+  tgLog = [];
+  const o2 = await readyDelivery(A, ONE);
+  const mid2 = (await W.storage.get('o:' + o2.id)).cm.find(x => x.chat_id === DRV2.id).message_id;
+  tgLog = [];
+  await cb(DRV, 'k:' + o2.id, (await W.storage.get('o:' + o2.id)).cm.find(x => x.chat_id === DRV.id).message_id, DRV.id);
+  const upd = lastTg('editMessageText', p => p.message_id === mid2 && p.chat_id === DRV2.id).payload;
+  assert.ok(upd.text.startsWith('✔ Buyurtma ' + o2.id) && upd.text.includes('\n\n✔ Заказ ' + o2.id) && upd.text.includes('Рустам'), upd.text);
+  // повторное нажатие «Взял» у второго: ответ на двух языках
+  tgLog = [];
+  await cb(DRV2, 'k:' + o2.id, mid2, DRV2.id);
+  const an = lastTg('answerCallbackQuery').payload.text;
+  assert.ok(an.includes('\n') && an.length <= 190 && /[А-Яа-я]/.test(an.split('\n')[1]), an);
+});
+
+await t('команды /admin и /agent: ответы и сообщения владельцу — узбекский сверху, русский ниже', async () => {
+  await hubWorld();
+  const d = await addShop('Альфа Трейд');
+  tgLog = [];
+  await send(adminMsg(ANNA, 'wrong-wrong-wrong', 2));
+  assert.equal(lastTg('sendMessage', p => p.chat_id === ANNA.id).payload.text, 'Kod notoʻgʻri.\n\nНеверный код.');
+  await send({ update_id: 8801, message: { message_id: 3, from: ANNA, chat: { id: ANNA.id, type: 'private' }, text: '/agent' } });
+  const ag0 = lastTg('sendMessage', p => p.chat_id === ANNA.id).payload.text;
+  assert.ok(ag0.startsWith('«/agent KOD» yuboring.') && ag0.includes('\n\nОтправьте «/agent КОД».'), ag0);
+  tgLog = [];
+  await send(adminMsg(DIL, d.code, 4));
+  const ok = lastTg('sendMessage', p => p.chat_id === DIL.id).payload;
+  assert.ok(ok.text.startsWith('Tayyor, siz «Альфа Трейд» sotuvchisisiz.') && ok.text.includes('\n\nГотово, вы продавец «Альфа Трейд».') && ok.text.includes('«Qabul qilish»') && ok.text.includes('«Принять»'), ok.text);
+  assert.equal(ok.reply_markup.inline_keyboard[0][0].text, 'Ilovani ochish · Открыть приложение');
+  const note = loginMsgs()[0].payload.text;
+  assert.ok(note.startsWith('🔑 Kod bilan kirish:') && note.includes('«Альфа Трейд» sotuvchisi sifatida kirdi') && note.includes('\n\n🔑 Вход по коду:') && note.includes('продавец «Альфа Трейд»'), note);
+  const made = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [] }));
+  tgLog = [];
+  await send(agentMsg(AGT, made.code, 6));
+  const ag = lastTg('sendMessage', p => p.chat_id === AGT.id).payload;
+  assert.ok(ag.text.startsWith('Tayyor, siz «Азиз» agentisiz.') && ag.text.includes('\n\nГотово, вы агент «Азиз».'), ag.text);
+  assert.equal(ag.reply_markup.inline_keyboard[0][0].text, 'Bazani ochish · Открыть базу');
+  const an = loginMsgs()[0].payload.text;
+  assert.ok(an.startsWith('🔑 Kod bilan kirish:') && an.includes('«Азиз» agenti sifatida kirdi') && an.includes('\n\n🔑 Вход по коду:') && an.includes('вошёл как агент «Азиз»'), an);
+});
+
+await t('утро, остатки, проверка товаров и спорные записи: у продавца всегда узбекский блок сверху и русский ниже', async () => {
+  await stockWorld();
+  await overdueDebt(4);
+  tgLog = [];
+  await runMorning();
+  const mm = morningMsgs(SELLER.id)[0];
+  assert.equal(mm.payload.reply_markup.inline_keyboard[0][0].text, 'Qarzlar · Долги');
+  assert.ok(mm.payload.text.startsWith('⏰ ') && mm.payload.text.indexOf('kechikishlar') < mm.payload.text.indexOf('просрочка'), mm.payload.text);
+  // всё, что уходит продавцу в Telegram за этот тест, имеет обе части
+  await setSt('p2', 30, 10);
+  tgLog = [];
+  await place(newUser(), [{ id: 'p2', qty: 25 }]);
+  const sent = tgAll('sendMessage', p => p.chat_id === SELLER.id).map(x => x.payload);
+  assert.ok(sent.length >= 2, 'заказ и предупреждение об остатке');
+  sent.forEach(x => { assert.ok(/[A-Za-z]/.test(x.text.split('\n')[0]) && /[А-Яа-я]/.test(x.text) && x.text.includes('\n\n'), 'нет двух частей: ' + x.text); assert.ok(x.text.length <= 4096); });
+  const st = stockAlerts()[0].payload.text;
+  assert.ok(st.startsWith('Ombordagi qoldiqlar:') && st.includes('ta qoldi (chegara 10)') && st.includes('\n\nОстатки на складе:'), st);
 });
 
 /* ---------- итог ---------- */

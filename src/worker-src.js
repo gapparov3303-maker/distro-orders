@@ -260,6 +260,11 @@ function ruTitle(it) {
   const w = weightLabel(it);
   return String(it.name || '') + (w ? ', ' + w : '');
 }
+function uzTitle(it) {
+  setLang('uz');
+  const w = weightLabel(it);
+  return String(it.uz || it.name || '') + (w ? ', ' + w : '');
+}
 const intIn = (v, lo, hi) => (typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi) ? v : null;
 
 /* ---------- проверка заказа и пересчёт цены на сервере ---------- */
@@ -386,8 +391,8 @@ function cleanClient(b, admin) {
 function clientLines(cl) {
   if (!cl) return '';
   const p = [];
-  if (cl.grp) p.push('👥 Группа: ' + cl.grp);
-  if (cl.note) p.push('📝 Заметка: ' + cl.note);
+  if (cl.grp) p.push(L('👥 Группа: ', '👥 Guruh: ') + cl.grp);
+  if (cl.note) p.push(L('📝 Заметка: ', '📝 Eslatma: ') + cl.note);
   return p.join('\n');
 }
 
@@ -409,61 +414,83 @@ function cbParse(data) {
 const shopUrl = (origin, did) => origin + '/' + (did ? '?d=' + did : '');
 const sellerUrl = (origin, did) => origin + '/?d=' + (did || MAIN) + '&v=seller';
 const courierUrl = (origin, did) => origin + '/?d=' + (did || MAIN) + '&v=courier';
-function adminCard(o, shop, origin, confirm, cl, did, debt) {
+/* Сообщения персоналу (продавцу, доставщику, владельцу): сверху узбекский, ниже русский, как в приветствии.
+   biL(f): f собирает текст через L(ru, uz) и вызывается дважды, сначала для узбекского, потом для русского. */
+function biL(f, sep) {
+  setLang('uz');
+  const u = f();
   setLang('ru');
+  return u + (sep === undefined ? '\n\n' : sep) + f();
+}
+/* Две готовые строки: узбекская сверху, русская ниже. Порядок аргументов как в L(): biU(русский, узбекский). */
+const biU = (ru, uz, sep) => uz + (sep === undefined ? '\n\n' : sep) + ru;
+/* Подпись кнопки на двух языках в одну строку. Порядок аргументов как на экране: btn2(узбекский, русский). */
+const btn2 = (uz, ru) => { const e = uz.match(/^\S+/)[0]; return uz + ' · ' + (ru.startsWith(e + ' ') ? ru.slice(e.length + 1) : ru); };   // значок в начале не дублируется
+/* Ответ на нажатие кнопки: узбекский сверху, русский ниже (Telegram принимает до 200 знаков). Порядок аргументов как в L(): ans2(русский, узбекский). */
+const ans2 = (ru, uz) => uz + '\n' + ru;
+const PAY_UZ = { cash: '💵 Naqd', card: '💳 Karta', bank: '🏦 Oʻtkazma', credit: '📒 Qarzga' };
+const payBtn = k => btn2(PAY_UZ[k], PAY_RU[k].replace(/^\S+\s/, ''));
+function adminCard(o, shop, origin, confirm, cl, did, debt) {
   const px = cbPrefix(did);
-  const who = o.tg && o.tg.username ? '@' + o.tg.username : 'без username';
-  const cLines = clientLines(cl);
-  const dLine = o.status === 'cancelled' ? '' : debtLine(debt, dayOf(new Date().toISOString()));
-  const tail = '\n\n' + (cLines ? cLines + '\n' : '') + (dLine ? dLine + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
-    + '\nСтатус: ' + stOf(o.status, o.mode).name + (o.crn ? '\n🚚 Доставщик: ' + o.crn : '') + (o.pay ? '\n' + payLine(o.pay) : '');
-  const head = STATUS_ICON[o.status] + ' ';
-  // очень длинный заказ: показываем первые позиции, чтобы итог и кнопки не потерялись
-  const ask = confirm === 'pay' ? '\n\nКак клиент оплатил заказ? К оплате: ' + money(o.total) : confirm === 'days' ? '\n\nНа сколько дней записать долг?' : '';
-  let text = head + orderText(o, shop) + tail + ask;
-  for (let k = (o.items || []).length - 1; text.length > TEXT_MAX && k >= 1; k--) text = head + orderText(o, shop, k) + tail + ask;
+  const day = dayOf(new Date().toISOString());
+  // сначала текст на двух языках; очень длинный заказ: показываем первые позиции, чтобы итог и кнопки не потерялись
+  const part = k => biL(() => {
+    const who = o.tg && o.tg.username ? '@' + o.tg.username : L('без username', 'username yoʻq');
+    const cLines = clientLines(cl);
+    const dLine = o.status === 'cancelled' ? '' : debtLine(debt, day);
+    const st = stOf(o.status, o.mode);
+    const tail = '\n\n' + (cLines ? cLines + '\n' : '') + (dLine ? dLine + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
+      + '\n' + L('Статус: ', 'Holat: ') + L(st.name, st.uz) + (o.crn ? '\n' + L('🚚 Доставщик: ', '🚚 Yetkazuvchi: ') + o.crn : '') + (o.pay ? '\n' + payLine(o.pay) : '');
+    const ask = confirm === 'pay' ? '\n\n' + L('Как клиент оплатил заказ? К оплате: ', 'Mijoz buyurtma uchun qanday toʻladi? Toʻlanadi: ') + money(o.total)
+      : confirm === 'days' ? '\n\n' + L('На сколько дней записать долг?', 'Qarzni necha kunga yozamiz?') : '';
+    return STATUS_ICON[o.status] + ' ' + orderText(o, shop, k) + tail + ask;
+  });
+  let text = part();
+  for (let k = (o.items || []).length - 1; text.length > TEXT_MAX && k >= 1; k--) text = part(k);
   if (text.length > TEXT_MAX) text = text.slice(0, TEXT_MAX - 10) + '…';
   const rows = [];
   const btn = (t, d) => ({ text: t, callback_data: d });
   const del = o.mode === 'delivery';
+  const back = btn(btn2('Orqaga', 'Назад'), 'b:' + px + o.id);
   if (confirm === 'pay') {
-    rows.push([btn(PAY_RU.cash, 'p:' + px + o.id + ':cash'), btn(PAY_RU.card, 'p:' + px + o.id + ':card')]);
-    rows.push([btn(PAY_RU.bank, 'p:' + px + o.id + ':bank'), btn(PAY_RU.credit, 'p:' + px + o.id + ':credit')]);
-    rows.push([{ text: '✂️ Часть сразу, остальное в долг', web_app: { url: sellerUrl(origin, did) } }]);
-    rows.push([btn('Назад', 'b:' + px + o.id)]);
+    rows.push([btn(payBtn('cash'), 'p:' + px + o.id + ':cash'), btn(payBtn('card'), 'p:' + px + o.id + ':card')]);
+    rows.push([btn(payBtn('bank'), 'p:' + px + o.id + ':bank'), btn(payBtn('credit'), 'p:' + px + o.id + ':credit')]);
+    rows.push([{ text: btn2('✂️ Qisman darhol', '✂️ Часть сразу'), web_app: { url: sellerUrl(origin, did) } }]);
+    rows.push([back]);
   } else if (confirm === 'days') {
-    rows.push([3, 7, 14, 30].map(n => btn(n + ' дн.', 'p:' + px + o.id + ':credit:' + n)));
-    rows.push([btn('Назад', 's:' + px + o.id + ':done')]);
+    rows.push([3, 7, 14, 30].map(n => btn(n + ' kun · дн.', 'p:' + px + o.id + ':credit:' + n)));
+    rows.push([btn(btn2('Orqaga', 'Назад'), 's:' + px + o.id + ':done')]);
   } else if (confirm) {
-    rows.push([btn('Да, отменить заказ', 's:' + px + o.id + ':cancelled')]);
-    rows.push([btn('Назад', 'b:' + px + o.id)]);
+    rows.push([btn(btn2('Ha, bekor qilish', 'Да, отменить заказ'), 's:' + px + o.id + ':cancelled')]);
+    rows.push([back]);
   } else {
-    if (o.status === 'new') rows.push([btn('✅ Принять в работу', 's:' + px + o.id + ':accepted')]);
-    if (o.status === 'accepted') rows.push([btn(del ? '📦 Готов к отправке' : '📦 Готов к выдаче', 's:' + px + o.id + ':ready')]);
-    if (o.status === 'ready') rows.push([btn(del ? '🚚 Доставлен клиенту' : '🤝 Выдан клиенту', 's:' + px + o.id + ':done')]);
-    if (NEXT[o.status]) rows.push([btn('❌ Отменить', 'c:' + px + o.id)]);
+    if (o.status === 'new') rows.push([btn(btn2('✅ Ishga olish', '✅ Принять в работу'), 's:' + px + o.id + ':accepted')]);
+    if (o.status === 'accepted') rows.push([btn(del ? btn2('📦 Joʻnatishga tayyor', '📦 Готов к отправке') : btn2('📦 Topshirishga tayyor', '📦 Готов к выдаче'), 's:' + px + o.id + ':ready')]);
+    if (o.status === 'ready') rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен клиенту') : btn2('🤝 Topshirildi', '🤝 Выдан клиенту'), 's:' + px + o.id + ':done')]);
+    if (NEXT[o.status]) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
     if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
-    rows.push([{ text: 'Открыть панель продавца', web_app: { url: sellerUrl(origin, did) } }]);
+    rows.push([{ text: btn2('Sotuvchi paneli', 'Панель продавца'), web_app: { url: sellerUrl(origin, did) } }]);
   }
   return { text, reply_markup: { inline_keyboard: rows } };
 }
 
 /* Сообщение доставщику: заказ готов к доставке. state: null — свободен, 'mine' — взял этот доставщик, строка — имя того, кто уже взял. */
 function courierCard(o, shop, origin, did, state) {
-  setLang('ru');
   const px = cbPrefix(did);
-  const when = fmtWhen(o.pickupAt);
-  const head = state === 'mine' ? '🚚 Вы взяли заказ ' : state ? '✔ Заказ ' : '🚚 Готов к доставке: заказ ';
-  let text = head + o.id + (state && state !== 'mine' ? ' уже взял ' + state : '')
-    + '\n\n' + (o.org ? o.org + ' · ' : '') + o.name + '\nТелефон: ' + o.phone
-    + '\nАдрес: ' + (o.address || '—') + '\nКогда: ' + when
-    + '\nСумма: ' + money(o.total)
-    + (o.comment ? '\nКомментарий: ' + o.comment : '');
+  let text = biL(() => {
+    const when = fmtWhen(o.pickupAt);
+    const head = state === 'mine' ? L('🚚 Вы взяли заказ ', '🚚 Siz buyurtmani oldingiz: ') : state ? L('✔ Заказ ', '✔ Buyurtma ') : L('🚚 Готов к доставке: заказ ', '🚚 Yetkazishga tayyor: buyurtma ');
+    return head + o.id + (state && state !== 'mine' ? L(' уже взял ' + state, ' allaqachon olingan: ' + state) : '')
+      + '\n\n' + (o.org ? o.org + ' · ' : '') + o.name + '\n' + L('Телефон: ', 'Telefon: ') + o.phone
+      + '\n' + L('Адрес: ', 'Manzil: ') + (o.address || '—') + '\n' + L('Когда: ', 'Qachon: ') + when
+      + '\n' + L('Сумма: ', 'Summa: ') + money(o.total)
+      + (o.comment ? '\n' + L('Комментарий: ', 'Izoh: ') + o.comment : '');
+  });
   if (text.length > TEXT_MAX) text = text.slice(0, TEXT_MAX - 1) + '…';
   const rows = [];
-  if (!state) rows.push([{ text: '🚚 Взял', callback_data: 'k:' + px + o.id }]);
+  if (!state) rows.push([{ text: btn2('🚚 Oldim', '🚚 Взял'), callback_data: 'k:' + px + o.id }]);
   if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
-  rows.push([{ text: 'Открыть доставку', web_app: { url: courierUrl(origin, did) } }]);
+  rows.push([{ text: btn2('Yetkazib berishni ochish', 'Открыть доставку'), web_app: { url: courierUrl(origin, did) } }]);
   return { text, reply_markup: { inline_keyboard: rows } };
 }
 
@@ -1060,7 +1087,7 @@ const PAY_RU = { cash: '💵 Наличные', card: '💳 Карта', bank: '
 /* Контроль денег: сколько ждём ответа магазина, сколько безналичных оплат доставщика ждут сверки, длина причины и комментария. */
 const CF_LATE = 24 * 3600000, NV_MAX = 100, WHY_MIN = 3, WHY_MAX = 80, RES_MAX = 120;
 /* Как назвать человека в сообщении владельцу: имя, логин и номер, чтобы не перепутать тёзок. */
-const whoFull = u => (whoName(u) || 'Без имени') + (u && u.username ? ' (@' + u.username + ')' : '') + ', ID ' + (u && u.id);
+const whoFull = u => (whoName(u) || L('Без имени', 'Ismsiz')) + (u && u.username ? ' (@' + u.username + ')' : '') + ', ID ' + (u && u.id);
 const whoName = u => cleanStr([u && u.first_name, u && u.last_name].filter(Boolean).join(' ') || (u && u.username) || '', 40);
 
 /* ---------- доставка: доставщики и касса наличных ---------- */
@@ -1113,12 +1140,16 @@ function crSave(c, lg) {
 const crPub = c => ({ id: c.id, name: c.name, phone: c.phone || '', joined: !!c.uid, on: c.on !== false, credit: c.credit !== false, cash: Number(c.cash) || 0, lim: Number(c.lim) || 0, nvn: (c.nv || []).length, nva: (c.nv || []).reduce((t, x) => t + (Number(x.a) || 0), 0), dl: crDl(c), cs: c.cs || '', late: crLate(c, Date.now()), hf: crHf(c, Date.now()), hw: (c.hwt || []).length, since: c.since });
 /* Текст сообщения доставщику: продавец записал сдачу денег или отменил её. */
 function handText(r) {
-  const by = r.bn ? ' Записал: ' + r.bn + '.' : '';
-  return r.k === 'ox'
-    ? '↩️ Продавец отменил вашу сдачу ' + money(r.a) + '. Причина: ' + (r.why || '') + '.' + by + '\nНа руках теперь ' + money(r.left) + '.\n\nВсё верно?'
-    : '📥 Продавец записал: вы сдали ' + money(r.a) + '.' + by + '\nОстаток на руках: ' + money(r.left) + '.\n\nВсё верно?';
+  return biL(() => {
+    const by = r.bn ? L(' Записал: ', ' Yozgan: ') + r.bn + '.' : '';
+    return r.k === 'ox'
+      ? L('↩️ Продавец отменил вашу сдачу ' + money(r.a) + '. Причина: ' + (r.why || '') + '.' + by + '\nНа руках теперь ' + money(r.left) + '.\n\nВсё верно?',
+        '↩️ Sotuvchi ' + money(r.a) + ' topshirishingizni bekor qildi. Sabab: ' + (r.why || '') + '.' + by + '\nHozir qoʻlingizda ' + money(r.left) + '.\n\nHammasi toʻgʻrimi?')
+      : L('📥 Продавец записал: вы сдали ' + money(r.a) + '.' + by + '\nОстаток на руках: ' + money(r.left) + '.\n\nВсё верно?',
+        '📥 Sotuvchi yozdi: siz ' + money(r.a) + ' topshirdingiz.' + by + '\nQoʻlingizdagi qoldiq: ' + money(r.left) + '.\n\nHammasi toʻgʻrimi?');
+  });
 }
-const handDesc = r => (r.k === 'ox' ? 'отмена сдачи ' : 'сдача ') + money(r.a);
+const handDesc = r => (r.k === 'ox' ? L('отмена сдачи ', 'topshirishni bekor qilish ') : L('сдача ', 'topshirish ')) + money(r.a);
 const PAY_PLAIN = { cash: 'Наличные', card: 'Карта', bank: 'Перечисление', credit: 'В долг' };
 const dmy = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
 /* Как заплатил магазин при выдаче заказа. Не указано — наличные: так было, пока оплата при получении была единственной. null — данные неверны. */
@@ -1198,27 +1229,30 @@ function payPlain(pay) {
 }
 function payLine(pay) {
   if (!pay) return '';
-  if (pay.m !== 'credit') return 'Оплата: ' + PAY_RU[pay.m];
-  return 'Оплата: ' + (pay.paid ? PAY_RU[pay.pm] + ' ' + money(pay.paid) + ' + ' : '') + PAY_RU.credit + ' до ' + dmy(pay.due);
+  const pn = k => L(PAY_RU[k], PAY_UZ[k]);
+  if (pay.m !== 'credit') return L('Оплата: ', 'Toʻlov: ') + pn(pay.m);
+  return L('Оплата: ', 'Toʻlov: ') + (pay.paid ? pn(pay.pm) + ' ' + money(pay.paid) + ' + ' : '') + L(pn('credit') + ' до ' + dmy(pay.due), pn('credit') + ' ' + dmy(pay.due) + ' gacha');
 }
 /* Утреннее сообщение продавцу: у кого просрочен долг. late — строки debtRow только с просрочкой, самые давние первыми. */
 const MORNING_ROWS = 10;
 function morningText(shopName, late) {
-  setLang('ru');
-  const over = late.reduce((t, x) => t + (Number(x.over) || 0), 0);
-  const lines = late.slice(0, MORNING_ROWS).map((x, i) => (i + 1) + '. ' + cleanStr(x.name || x.org || ('ID ' + x.uid), 40) + ': ' + money(x.over) + ', ' + x.days + ' дн.');
-  return '⏰ ' + cleanStr(shopName || '', 60) + ': просрочка на сегодня\nМагазинов: ' + late.length + ', просрочено ' + money(over) + '\n\n' + lines.join('\n')
-    + (late.length > MORNING_ROWS ? '\nи ещё ' + (late.length - MORNING_ROWS) : '');
+  return biL(() => {
+    const over = late.reduce((t, x) => t + (Number(x.over) || 0), 0);
+    const lines = late.slice(0, MORNING_ROWS).map((x, i) => (i + 1) + '. ' + cleanStr(x.name || x.org || ('ID ' + x.uid), 40) + ': ' + money(x.over) + ', ' + x.days + L(' дн.', ' kun'));
+    return '⏰ ' + cleanStr(shopName || '', 60) + L(': просрочка на сегодня\nМагазинов: ', ': bugungi kechikishlar\nDoʻkonlar: ') + late.length + L(', просрочено ', ', muddati oʻtgan ') + money(over) + '\n\n' + lines.join('\n')
+      + (late.length > MORNING_ROWS ? L('\nи ещё ', '\nva yana ') + (late.length - MORNING_ROWS) : '');
+  });
 }
 function debtLine(h, today) {
   if (!h || !(h.bal > 0)) return '';
   const d = lgDue(h.open, today);
-  return '⚠️ Долг магазина: ' + money(h.bal) + (d.days ? ', просрочка ' + d.days + ' дн.' : d.due ? ', срок ' + dmy(d.due) : '');
+  return L('⚠️ Долг магазина: ', '⚠️ Doʻkon qarzi: ') + money(h.bal) + (d.days ? L(', просрочка ' + d.days + ' дн.', ', kechikish ' + d.days + ' kun') : d.due ? L(', срок ', ', muddat ') + dmy(d.due) : '');
 }
 /* Напоминание магазину. ords — состав заказов {номер: заказ}; по каждому неоплаченному заказу пишем дату, товары, сумму и остаток.
    Если текст не влезает в одно сообщение Telegram, заказов и позиций показываем меньше. */
 const REMIND_STEPS = [[5, 8], [3, 3], [3, 0], [1, 0]];
 const PAY_NAME2 = { cash: ['наличные', 'naqd'], card: ['карта', 'karta'], bank: ['перечисление', 'oʻtkazma'] };
+const payN2 = m => PAY_NAME2[m] ? L(PAY_NAME2[m][0], PAY_NAME2[m][1]) : '';
 /* Сообщение магазину, когда продавец или доставщик записал оплату долга. h — заголовок долга после записи, a — сумма, m — способ. */
 function debtPayText(h, a, m, shop) {
   setLang(h.lang === 'uz' ? 'uz' : 'ru');
@@ -1232,10 +1266,15 @@ function debtPayText(h, a, m, shop) {
 /* Что записано, одной строкой для продавца и доставщика. */
 function rowDesc(rows) {
   const ac = rows.find(r => r.k === 'ac');
-  if (ac) return 'акт сверки ' + (ac.f ? 'с ' + dmy(ac.f) + ' ' : '') + 'по ' + dmy(ac.e) + ', ' + ((Number(ac.cb) || 0) > 0 ? 'долг ' + money(ac.cb) : (Number(ac.cb) || 0) < 0 ? 'переплата ' + money(-ac.cb) : 'долга нет');
+  if (ac) {
+    const cb = Number(ac.cb) || 0;
+    return L('акт сверки ' + (ac.f ? 'с ' + dmy(ac.f) + ' ' : '') + 'по ' + dmy(ac.e) + ', ' + (cb > 0 ? 'долг ' + money(cb) : cb < 0 ? 'переплата ' + money(-cb) : 'долга нет'),
+      'solishtirma dalolatnoma ' + (ac.f ? dmy(ac.f) + ' dan ' : '') + dmy(ac.e) + ' gacha, ' + (cb > 0 ? 'qarz ' + money(cb) : cb < 0 ? 'ortiqcha toʻlov ' + money(-cb) : 'qarz yoʻq'));
+  }
   const ch = rows.find(r => r.k === 'ch'), p = rows.find(r => r.k === 'pay');
-  if (ch) return 'заказ ' + ch.ref + ' в долг на ' + money(ch.a) + (ch.due ? ' до ' + dmy(ch.due) : '') + (p ? ', сразу оплачено ' + money(p.a) : '');
-  return p ? 'оплата долга ' + money(p.a) + (PAY_NAME2[p.m] ? ' (' + PAY_NAME2[p.m][0] + ')' : '') : '';
+  if (ch) return L('заказ ' + ch.ref + ' в долг на ' + money(ch.a) + (ch.due ? ' до ' + dmy(ch.due) : '') + (p ? ', сразу оплачено ' + money(p.a) : ''),
+    'buyurtma ' + ch.ref + ' qarzga ' + money(ch.a) + (ch.due ? ', muddat ' + dmy(ch.due) : '') + (p ? ', darhol toʻlangan ' + money(p.a) : ''));
+  return p ? L('оплата долга ', 'qarz toʻlovi ') + money(p.a) + (PAY_NAME2[p.m] ? ' (' + payN2(p.m) + ')' : '') : '';
 }
 /* Сообщение магазину с просьбой подтвердить запись: выдачу в долг или принятую оплату. h — заголовок долга, rows — записи одного заказа или одна оплата. */
 function confirmText(h, rows, shop) {
@@ -1719,15 +1758,18 @@ export class Shop {
   }
   /* Предупреждение продавцам: товар закончился или стало меньше порога. rows: {title,before,after,low,q,r}. */
   async stockAlert(rows) {
-    setLang('ru');
-    const lines = [];
-    for (const x of rows) {
-      if (!(x.after < x.before)) continue;
-      if (x.after === 0) lines.push('🚫 ' + x.title + ': свободного остатка нет (на складе ' + x.q + ', в заказах ' + x.r + ').');
-      else if (x.low > 0 && x.after <= x.low && x.before > x.low) lines.push('⚠️ ' + x.title + ': осталось ' + x.after + ' (порог ' + x.low + ').');
-    }
-    if (!lines.length) return;
-    let text = 'Остатки на складе:\n' + lines.join('\n');
+    const hit = x => x.after < x.before && (x.after === 0 || (x.low > 0 && x.after <= x.low && x.before > x.low));
+    if (!rows.some(hit)) return;
+    let text = biL(() => {
+      const uz = LANG === 'uz', lines = [];
+      for (const x of rows) {
+        if (!hit(x)) continue;
+        const t = uz ? x.titleUz || x.title : x.title;
+        if (x.after === 0) lines.push(L('🚫 ' + t + ': свободного остатка нет (на складе ' + x.q + ', в заказах ' + x.r + ').', '🚫 ' + t + ': boʻsh qoldiq yoʻq (omborda ' + x.q + ', buyurtmalarda ' + x.r + ').'));
+        else lines.push(L('⚠️ ' + t + ': осталось ' + x.after + ' (порог ' + x.low + ').', '⚠️ ' + t + ': ' + x.after + ' ta qoldi (chegara ' + x.low + ').'));
+      }
+      return L('Остатки на складе:\n', 'Ombordagi qoldiqlar:\n') + lines.join('\n');
+    });
     if (text.length > TEXT_MAX) text = text.slice(0, TEXT_MAX - 1) + '…';
     for (const aid of (await this.st.get('admins')) || []) await this.tg('sendMessage', { chat_id: aid, text });
   }
@@ -2436,7 +2478,7 @@ export class Shop {
       const before = stkAvail(s);
       s.r += it.qty;
       (order.rs = order.rs || {})[it.id] = it.qty;
-      low.push({ title: ruTitle(it), before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
+      low.push({ title: ruTitle(it), titleUz: uzTitle(it), before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
     });
     if (order.rs) upd.stk = stk;
     // клиентская база: заказ создаёт клиента, а у существующего дополняет только пустые поля и добавляет новый адрес
@@ -2535,7 +2577,7 @@ export class Shop {
   async modTellSellers(text, origin) {
     const url = /^https:\/\/(?!internal)/.test(origin || '') ? origin : '';
     for (const aid of (await this.st.get('admins')) || []) {
-      try { await this.tg('sendMessage', Object.assign({ chat_id: aid, text }, url ? { reply_markup: openBtn(url, 'Открыть товары', sellerUrl(url, this.did)) } : {})); }
+      try { await this.tg('sendMessage', Object.assign({ chat_id: aid, text }, url ? { reply_markup: openBtn(url, btn2('Mahsulotlarni ochish', 'Открыть товары'), sellerUrl(url, this.did)) } : {})); }
       catch (e) { console.error('mod tell failed', e && e.message || e); }
     }
   }
@@ -2561,8 +2603,12 @@ export class Shop {
     if (done.length) {
       await this.st.put('prod', prod);
       await this.hubSync();
-      const names = done.slice(0, 8).map(i => '• ' + i.name).join('\n') + (done.length > 8 ? '\n… и ещё ' + (done.length - 8) : '');
-      await this.modTellSellers(done.length === 1 ? '✅ Товар «' + done[0].name + '» одобрен и появился в каталоге.' : '✅ Одобрено: ' + ruTovar(done.length) + '. Они появились в каталоге.\n' + names, b.origin);
+      await this.modTellSellers(biL(() => {
+        const nmOf = i => LANG === 'uz' ? i.uz || i.name : i.name;
+        const names = done.slice(0, 8).map(i => '• ' + nmOf(i)).join('\n') + (done.length > 8 ? L('\n… и ещё ', '\n… va yana ') + (done.length - 8) : '');
+        return done.length === 1 ? L('✅ Товар «' + nmOf(done[0]) + '» одобрен и появился в каталоге.', '✅ «' + nmOf(done[0]) + '» mahsuloti tasdiqlandi va katalogda paydo boʻldi.')
+          : L('✅ Одобрено: ' + ruTovar(done.length) + '. Они появились в каталоге.\n', '✅ Tasdiqlandi: ' + done.length + ' ta mahsulot. Ular katalogda paydo boʻldi.\n') + names;
+      }), b.origin);
     }
     return json({ ok: true, n: done.length });
   }
@@ -2575,7 +2621,8 @@ export class Shop {
     it.ms = 'ret'; it.mt = new Date().toISOString(); it.mc = reason; delete it.ma;
     await this.st.put('prod', prod);
     await this.hubSync();
-    await this.modTellSellers('↩️ Товар «' + it.name + '» возвращён на доработку.\nЧто исправить: ' + reason + '\nОткройте «Продавец» → «Каталог», исправьте и отправьте снова.', b.origin);
+    await this.modTellSellers(biL(() => L('↩️ Товар «' + it.name + '» возвращён на доработку.\nЧто исправить: ' + reason + '\nОткройте «Продавец» → «Каталог», исправьте и отправьте снова.',
+      '↩️ «' + (it.uz || it.name) + '» mahsuloti qayta ishlash uchun qaytarildi.\nNimani tuzatish kerak: ' + reason + '\n«Sotuvchi» → «Katalog» boʻlimini oching, tuzating va qayta yuboring.')), b.origin);
     return json({ ok: true });
   }
   /* Владелец правит товар сам (текст, цена, упаковка); статус проверки при этом не меняется. */
@@ -2659,7 +2706,7 @@ export class Shop {
       s.q = b.op === 'in' ? Math.min(MAX_STOCK, s.q + n) : n;
       if (lw !== null) s.low = lw;
       rows.push(row(!s0 ? 'start' : b.op === 'in' ? 'in' : 'fix', s.q - q0, s.q));
-      if (s0) low.push({ title: ruTitle(it), before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
+      if (s0) low.push({ title: ruTitle(it), titleUz: uzTitle(it), before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
     } else return json({ error: 'bad_request' }, 400);
     const upd = { stk };
     if (rows.length) upd.jr = await this.jrWith(rows);
@@ -2956,22 +3003,22 @@ export class Shop {
   /* Нажатие «Взял» под сообщением в чате доставщика. */
   async onCourierCb(cq, p, answer) {
     const cour = cq.from ? await this.courierOf(cq.from.id) : null;
-    if (!cour) return answer('Нет доступа', true);
+    if (!cour) return answer(ans2('Нет доступа', 'Ruxsat yoʻq'), true);
     const cfg = await this.getCfg();
     const here = cq.message && cq.message.chat ? { chat_id: cq.message.chat.id, message_id: cq.message.message_id } : null;
     const res = await this.courierTake(cour, p.id);
-    if (res.err === 'not_found') return answer('Заказ не найден', true);
+    if (res.err === 'not_found') return answer(ans2('Заказ не найден', 'Buyurtma topilmadi'), true);
     if (res.err === 'taken') {
       if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, res.order.crn));
-      return answer('Заказ уже взял ' + res.order.crn, true);
+      return answer(ans2('Заказ уже взял ' + res.order.crn, 'Buyurtmani allaqachon ' + res.order.crn + ' olgan'), true);
     }
-    if (res.err === 'cash_limit') return answer('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', лимит ' + money(res.lim), true);
-    if (res.err === 'nv_full') return answer('Сначала покажите продавцу оплаты картой и переводом на сверку', true);
-    if (res.err === 'cash_late') return answer('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', просрочка ' + res.late + ' дн.', true);
-    if (res.err) return answer('Этот заказ уже не ждёт доставки', true);
+    if (res.err === 'cash_limit') return answer(biL(() => L('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', лимит ' + money(res.lim), 'Avval pulni sotuvchiga topshiring: qoʻlingizda ' + money(res.cash) + ', limit ' + money(res.lim)), '\n'), true);
+    if (res.err === 'nv_full') return answer(ans2('Сначала покажите продавцу оплаты картой и переводом на сверку', 'Avval karta va oʻtkazma toʻlovlarini sotuvchiga solishtirish uchun koʻrsating'), true);
+    if (res.err === 'cash_late') return answer(biL(() => L('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', просрочка ' + res.late + ' дн.', 'Avval pulni sotuvchiga topshiring: qoʻlingizda ' + money(res.cash) + ', kechikish ' + res.late + ' kun'), '\n'), true);
+    if (res.err) return answer(ans2('Этот заказ уже не ждёт доставки', 'Bu buyurtma endi yetkazishni kutmayapti'), true);
     if (res.changed) await this.afterTake(res.order);
     else if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, 'mine'));
-    return answer('Вы взяли заказ ' + p.id);
+    return answer(ans2('Вы взяли заказ ' + p.id, 'Siz buyurtmani oldingiz: ' + p.id));
   }
   /* API доставщика: заказы, «Взял», выдача с оплатой, должники, касса. */
   async courierApi(request, path, method, u, cour) {
@@ -3180,7 +3227,7 @@ export class Shop {
     if (!late.length) return { sent: 0, why: 'none' };
     await this.st.put('mrd', day);      // отметка до отправки: повторный запуск в тот же день не задвоит сообщения
     const text = morningText((await this.getCfg()).shop.name, late);
-    const markup = this.origin ? openBtn(this.origin, 'Долги', sellerUrl(this.origin, this.did)) : undefined;
+    const markup = this.origin ? openBtn(this.origin, btn2('Qarzlar', 'Долги'), sellerUrl(this.origin, this.did)) : undefined;
     let sent = 0;
     for (const aid of (await this.st.get('admins')) || []) {
       try { const r = await this.tg('sendMessage', Object.assign({ chat_id: aid, text }, markup ? { reply_markup: markup } : {})); if (r && r.ok) sent++; }
@@ -3248,7 +3295,7 @@ export class Shop {
   async notifyAdmins(text, label) {
     if (!this.env.BOT_TOKEN) return;
     for (const aid of (await this.st.get('admins')) || []) {
-      try { await this.tg('sendMessage', { chat_id: aid, text, reply_markup: openBtn(this.origin, label || 'Долги', sellerUrl(this.origin, this.did)) }); }
+      try { await this.tg('sendMessage', { chat_id: aid, text, reply_markup: openBtn(this.origin, label || btn2('Qarzlar', 'Долги'), sellerUrl(this.origin, this.did)) }); }
       catch (e) { console.error('admin notify failed', e && e.message || e); }
     }
   }
@@ -3297,12 +3344,13 @@ export class Shop {
   /* Магазин отметил запись «Не так»: продавцы и доставщик, который её принял, узнают сразу. */
   async disputeNotify(uid, rows, hdr) {
     if (!this.env.BOT_TOKEN) return;
-    const who = hdr.name || hdr.org || 'Магазин', bn = (rows.find(r => r.bn) || {}).bn || '';
-    const text = '⚠️ ' + who + ' отметил запись «Не так»: ' + rowDesc(rows) + (bn ? '. Записал: ' + bn : '') + '.';
-    await this.notifyAdmins(text + '\nОткройте «Долги» и разберитесь с магазином.');
+    const who = hdr.name || hdr.org || '', bn = (rows.find(r => r.bn) || {}).bn || '';
+    const text = tail => biL(() => '⚠️ ' + (who || L('Магазин', 'Doʻkon')) + L(' отметил запись «Не так»: ', ' yozuvni «Notoʻgʻri» deb belgiladi: ') + rowDesc(rows) + (bn ? L('. Записал: ', '. Yozgan: ') + bn : '') + '.'
+      + (tail ? '\n' + L('Откройте «Долги» и разберитесь с магазином.', '«Qarzlar» boʻlimini oching va doʻkon bilan hal qiling.') : ''));
+    await this.notifyAdmins(text(true));
     const cid = (rows.find(r => r.cid) || {}).cid, c = cid ? await this.crGet(cid) : null;
     if (c && c.uid) {
-      try { await this.tg('sendMessage', { chat_id: c.uid, text }); } catch (e) { console.error('dispute courier notify failed', e && e.message || e); }
+      try { await this.tg('sendMessage', { chat_id: c.uid, text: text(false) }); } catch (e) { console.error('dispute courier notify failed', e && e.message || e); }
     }
   }
   /* Что видит сам магазин при ответе «Верно» или «Не так»: текст сообщения и кнопки после ответа. */
@@ -3320,7 +3368,7 @@ export class Shop {
     if (!uid || !Number.isInteger(n) || (p.to !== 'y' && p.to !== 'n')) return answer('');
     const ok = p.to === 'y';
     const res = await this.confirmRow(uid, n, ok);
-    if (res.err === 'not_found') return answer('Запись не найдена', true);
+    if (res.err === 'not_found') return answer(ans2('Запись не найдена', 'Yozuv topilmadi'), true);
     const hdr = res.hdr || {};
     setLang(hdr.lang === 'uz' ? 'uz' : 'ru');
     const here = cq.message && cq.message.chat ? { chat_id: cq.message.chat.id, message_id: cq.message.message_id } : null;
@@ -3376,8 +3424,8 @@ export class Shop {
       if (!c || !c.uid || !row || row.cf !== 'wait') return;
       const px = cbPrefix(this.did);
       const r = await this.tg('sendMessage', { chat_id: c.uid, text: handText(row), reply_markup: { inline_keyboard: [[
-        { text: '✅ Верно', callback_data: 'h:' + px + n + ':y' }, { text: '❌ Не так', callback_data: 'h:' + px + n + ':n' }
-      ]].concat(openBtn(this.origin, 'Моя касса', courierUrl(this.origin, this.did)).inline_keyboard) } });
+        { text: btn2('✅ Toʻgʻri', '✅ Верно'), callback_data: 'h:' + px + n + ':y' }, { text: btn2('❌ Notoʻgʻri', '❌ Не так'), callback_data: 'h:' + px + n + ':n' }
+      ]].concat(openBtn(this.origin, btn2('Mening kassam', 'Моя касса'), courierUrl(this.origin, this.did)).inline_keyboard) } });
       if (r && r.ok) return;
       row.cf = 'na'; row.cft = new Date().toISOString();
       await this.st.put(crSave(c, lg));
@@ -3396,34 +3444,36 @@ export class Shop {
   }
   /* Что видит сам доставщик после ответа: текст сообщения и кнопки. */
   handEdit(text, to, px, n) {
-    const base = String(text || '').replace(/\n\n(✅|❌) [^\n]*$/, '');
-    const kb = openBtn(this.origin, 'Моя касса', courierUrl(this.origin, this.did)).inline_keyboard;
-    if (to === 'ok') return { text: base + '\n\n✅ Вы подтвердили. Спасибо!', reply_markup: { inline_keyboard: kb } };
-    return { text: base + '\n\n❌ Вы отметили «Не так». Продавец увидит это.', reply_markup: { inline_keyboard: [[{ text: '✅ Всё-таки верно', callback_data: 'h:' + px + n + ':y' }]].concat(kb) } };
+    const base = String(text || '').replace(/\n\n(✅|❌) [^\n]*(\n(✅|❌) [^\n]*)?$/, '');
+    const kb = openBtn(this.origin, btn2('Mening kassam', 'Моя касса'), courierUrl(this.origin, this.did)).inline_keyboard;
+    if (to === 'ok') return { text: base + '\n\n' + biU('✅ Вы подтвердили. Спасибо!', '✅ Tasdiqladingiz. Rahmat!', '\n'), reply_markup: { inline_keyboard: kb } };
+    return { text: base + '\n\n' + biU('❌ Вы отметили «Не так». Продавец увидит это.', '❌ «Notoʻgʻri» deb belgiladingiz. Sotuvchi buni koʻradi.', '\n'),
+      reply_markup: { inline_keyboard: [[{ text: btn2('✅ Baribir toʻgʻri', '✅ Всё-таки верно'), callback_data: 'h:' + px + n + ':y' }]].concat(kb) } };
   }
   /* Доставщик отметил сдачу «Не так»: продавцы узнают сразу. */
   async handDisputeNotify(c, row) {
-    await this.notifyAdmins('⚠️ Доставщик ' + c.name + ' отметил «Не так»: ' + handDesc(row) + (row.bn ? '. Записал: ' + row.bn : '') + '.\nОткройте «Доставка» и разберитесь с доставщиком.', 'Доставка');
+    await this.notifyAdmins(biL(() => L('⚠️ Доставщик ' + c.name + ' отметил «Не так»: ' + handDesc(row) + (row.bn ? '. Записал: ' + row.bn : '') + '.\nОткройте «Доставка» и разберитесь с доставщиком.',
+      '⚠️ Yetkazuvchi ' + c.name + ' «Notoʻgʻri» deb belgiladi: ' + handDesc(row) + (row.bn ? '. Yozgan: ' + row.bn : '') + '.\n«Yetkazib berish» boʻlimini oching va yetkazuvchi bilan hal qiling.')), btn2('Yetkazib berish', 'Доставка'));
   }
   /* Нажатие «Верно» / «Не так» под сообщением доставщику. Отвечать может только сам доставщик. */
   async onHandCb(cq, p, answer) {
     const uid = cq.from && cq.from.id, n = Number(p.id);
     if (!uid || !Number.isInteger(n) || (p.to !== 'y' && p.to !== 'n')) return answer('');
     const id = await this.st.get('cru:' + uid), c = id ? await this.crGet(id) : null;
-    if (!c || c.uid !== uid) return answer('Нет доступа', true);
+    if (!c || c.uid !== uid) return answer(ans2('Нет доступа', 'Ruxsat yoʻq'), true);
     const ok = p.to === 'y', res = await this.handConfirm(c, n, ok);
-    if (res.err === 'not_found') return answer('Запись не найдена', true);
-    if (res.err === 'void') return answer('Эта запись уже отменена продавцом', true);
-    if (res.err === 'resolved') return answer('Продавец уже закрыл этот вопрос. Если не согласны, напишите ему.', true);
+    if (res.err === 'not_found') return answer(ans2('Запись не найдена', 'Yozuv topilmadi'), true);
+    if (res.err === 'void') return answer(ans2('Эта запись уже отменена продавцом', 'Bu yozuv sotuvchi tomonidan bekor qilingan'), true);
+    if (res.err === 'resolved') return answer(ans2('Продавец уже закрыл этот вопрос. Если не согласны, напишите ему.', 'Sotuvchi bu masalani yopgan. Rozi boʻlmasangiz, unga yozing.'), true);
     const here = cq.message && cq.message.chat ? { chat_id: cq.message.chat.id, message_id: cq.message.message_id } : null;
     const px = cbPrefix(this.did);
     if (res.err === 'final') {
       if (here) await this.editCard(here, this.handEdit(cq.message.text, 'ok', px, n));
-      return answer('Вы уже подтвердили эту запись', true);
+      return answer(ans2('Вы уже подтвердили эту запись', 'Bu yozuvni allaqachon tasdiqlagansiz'), true);
     }
     if (here) await this.editCard(here, this.handEdit(cq.message.text, ok ? 'ok' : 'no', px, n));
     if (res.changed && !ok) await this.handDisputeNotify(c, res.row);
-    return answer(ok ? 'Спасибо, подтверждено' : 'Отмечено «Не так». Продавец увидит.');
+    return answer(ok ? ans2('Спасибо, подтверждено', 'Rahmat, tasdiqlandi') : ans2('Отмечено «Не так». Продавец увидит.', '«Notoʻgʻri» deb belgilandi. Sotuvchi koʻradi.'));
   }
   /* Сдача денег доставщиком: закрыть спорную запись с комментарием или отменить запись о сдаче с причиной. u — Telegram-пользователь продавца или владельца. */
   async handAct(c, act, body, u) {
@@ -3441,7 +3491,7 @@ export class Shop {
       lg.rows.push({ n: lg.seq, t: now, k: 'hr', d: 0, a: 0, of: n, by, bn, why: note });
       await this.st.put(crSave(c, lg));
       if (c.uid && this.env.BOT_TOKEN) {
-        try { await this.tg('sendMessage', { chat_id: c.uid, text: 'ℹ️ Продавец закрыл вопрос по записи: ' + handDesc(row) + '.\nКомментарий: ' + note, reply_markup: openBtn(this.origin, 'Моя касса', courierUrl(this.origin, this.did)) }); }
+        try { await this.tg('sendMessage', { chat_id: c.uid, text: biL(() => L('ℹ️ Продавец закрыл вопрос по записи: ' + handDesc(row) + '.\nКомментарий: ' + note, 'ℹ️ Sotuvchi yozuv boʻyicha masalani yopdi: ' + handDesc(row) + '.\nIzoh: ' + note)), reply_markup: openBtn(this.origin, btn2('Mening kassam', 'Моя касса'), courierUrl(this.origin, this.did)) }); }
         catch (e) { console.error('hand resolve notify failed', e && e.message || e); }
       }
       return json(await this.crDetail(await this.crGet(c.id)));
@@ -3531,7 +3581,8 @@ export class Shop {
       }
       await this.st.put(res.put);
       await this.askConfirm(uid, res.ns[0]);
-      if (cour) await this.notifyAdmins('💰 Доставщик ' + cour.name + ' принял оплату долга: ' + (who || 'магазин') + ', ' + money(amount) + ' (' + PAY_NAME2[body.m][0] + ').');
+      if (cour) await this.notifyAdmins(biL(() => L('💰 Доставщик ' + cour.name + ' принял оплату долга: ' + (who || 'магазин') + ', ' + money(amount) + ' (' + payN2(body.m) + ').',
+        '💰 Yetkazuvchi ' + cour.name + ' qarz toʻlovini qabul qildi: ' + (who || 'doʻkon') + ', ' + money(amount) + ' (' + payN2(body.m) + ').')));
       return await this.debtOne(uid);
     }
     if (cour) return json({ error: 'forbidden' }, 403);
@@ -3572,7 +3623,7 @@ export class Shop {
       try {
         setLang(lh.lang === 'uz' ? 'uz' : 'ru');
         await this.tg('sendMessage', { chat_id: uid, text: L('❌ Запись об оплате ' + money(row.a) + ' отменена продавцом.\nПричина: ' + why, '❌ ' + money(row.a) + ' toʻlov yozuvi sotuvchi tomonidan bekor qilindi.\nSabab: ' + why), reply_markup: openBtn(this.origin, L('Мой долг', 'Mening qarzim'), this.origin + '/?v=debt') });
-        if (c && c.uid) await this.tg('sendMessage', { chat_id: c.uid, text: '❌ Продавец отменил принятую вами оплату: ' + (who || 'магазин') + ', ' + money(row.a) + '.\nПричина: ' + why });
+        if (c && c.uid) await this.tg('sendMessage', { chat_id: c.uid, text: biL(() => L('❌ Продавец отменил принятую вами оплату: ' + (who || 'магазин') + ', ' + money(row.a) + '.\nПричина: ' + why, '❌ Sotuvchi siz qabul qilgan toʻlovni bekor qildi: ' + (who || 'doʻkon') + ', ' + money(row.a) + '.\nSabab: ' + why)) });
       } catch (e) { console.error('void notify failed', e && e.message || e); }
     }
     return await this.debtOne(uid);
@@ -3596,7 +3647,7 @@ export class Shop {
       if (o.status === 'ready' && o.mode === 'delivery' && !o.cr) await this.notifyCouriers(o, cfg);
     } else if (by === 'customer') {
       for (const aid of (await this.st.get('admins')) || []) {
-        await this.tg('sendMessage', { chat_id: aid, text: '❌ Клиент отменил заказ ' + o.id + ' (' + o.name + ').' });
+        await this.tg('sendMessage', { chat_id: aid, text: biL(() => L('❌ Клиент отменил заказ ' + o.id + ' (' + o.name + ').', '❌ Mijoz ' + o.id + ' buyurtmasini bekor qildi (' + o.name + ').')) });
       }
     }
   }
@@ -3623,31 +3674,33 @@ export class Shop {
     if (parsed.kind === 'k') return await this.onCourierCb(cq, parsed, answer);
     if (parsed.kind === 'q') return await this.onConfirmCb(cq, parsed, answer);
     if (parsed.kind === 'h') return await this.onHandCb(cq, parsed, answer);
-    if (!cq.from || !(await this.isAdmin(cq.from.id))) return answer('Нет доступа', true);
+    if (!cq.from || !(await this.isAdmin(cq.from.id))) return answer(ans2('Нет доступа', 'Ruxsat yoʻq'), true);
     const { kind, id, to, days } = parsed;
     const o = id ? await this.st.get('o:' + id) : null;
-    if (!o) return answer('Заказ не найден', true);
+    if (!o) return answer(ans2('Заказ не найден', 'Buyurtma topilmadi'), true);
     const cfg = await this.getCfg();
     const here = cq.message && cq.message.chat ? { chat_id: cq.message.chat.id, message_id: cq.message.message_id } : null;
     const edit = card => here ? this.editCard(here, card) : null;
 
-    if (kind === 'c') { await edit(await this.card(o, cfg.shop, true)); return answer('Отменить заказ ' + id + '?'); }
+    if (kind === 'c') { await edit(await this.card(o, cfg.shop, true)); return answer(ans2('Отменить заказ ' + id + '?', 'Buyurtma ' + id + ' bekor qilinsinmi?')); }
     if (kind === 'b') { await edit(await this.card(o, cfg.shop, false)); return answer(''); }
     // «Выдан клиенту» сначала спрашивает, как оплатил клиент (нажатия в старых сообщениях тоже придут сюда)
-    if (kind === 's' && to === 'done' && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'pay')); return answer('Как оплатил клиент?'); }
-    if (kind === 'p' && to === 'credit' && !days && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'days')); return answer('На сколько дней в долг?'); }
+    if (kind === 's' && to === 'done' && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'pay')); return answer(ans2('Как оплатил клиент?', 'Mijoz qanday toʻladi?')); }
+    if (kind === 'p' && to === 'credit' && !days && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'days')); return answer(ans2('На сколько дней в долг?', 'Necha kunga qarzga?')); }
     if (kind === 's' || kind === 'p') {
       const pay = kind === 'p' ? (to === 'credit' ? { m: 'credit', days: Number(days) } : { m: to }) : undefined;
       const res = await this.changeStatus(id, kind === 'p' ? 'done' : to, pay, null, { id: cq.from.id, name: whoName(cq.from) });
-      if (res.err === 'bad_pay') return answer('Не получилось: проверьте способ оплаты', true);
+      if (res.err === 'bad_pay') return answer(ans2('Не получилось: проверьте способ оплаты', 'Boʻlmadi: toʻlov usulini tekshiring'), true);
       if (res.err === 'bad_transition') {
         await edit(await this.card(res.order, cfg.shop, false));
-        return answer('Статус уже другой: ' + stOf(res.order.status, res.order.mode).name, true);
+        const st0 = stOf(res.order.status, res.order.mode);
+        return answer(ans2('Статус уже другой: ' + st0.name, 'Holat allaqachon boshqa: ' + st0.uz), true);
       }
-      if (res.err) return answer('Не получилось', true);
+      if (res.err) return answer(ans2('Не получилось', 'Boʻlmadi'), true);
       await this.afterChange(res.order, res.changed ? 'admin' : null, here);
       if (res.changed && res.ask) await this.askConfirm(res.ask.uid, res.ask.n);
-      return answer(stOf(res.order.status, res.order.mode).name);
+      const st1 = stOf(res.order.status, res.order.mode);
+      return answer(ans2(st1.name, st1.uz));
     }
     return answer('');
   }
@@ -3885,9 +3938,9 @@ export class Hub {
       const n = Math.round(Number(b.n));
       if (!validDid(b.did) || !(n > 0)) return json({ ok: false });
       const rec = await this.getRec(b.did), origin = /^https:\/\/(?!internal)/.test(b.origin || '') ? b.origin : '';
-      const text = (rec ? rec.name : b.did) + ': на проверке ' + ruTovar(n);
+      const text = biL(() => (rec ? rec.name : b.did) + L(': на проверке ' + ruTovar(n), ': tekshiruvda ' + n + ' ta mahsulot'));
       for (const oid of await this.owners()) {
-        try { await this.tg('sendMessage', Object.assign({ chat_id: oid, text }, origin ? { reply_markup: openBtn(origin, 'Проверить', origin + '/?v=review') } : {})); }
+        try { await this.tg('sendMessage', Object.assign({ chat_id: oid, text }, origin ? { reply_markup: openBtn(origin, btn2('Tekshirish', 'Проверить'), origin + '/?v=review') } : {})); }
         catch (e) { console.error('mod notify send failed', e && e.message || e); }
       }
       return json({ ok: true });
@@ -4851,7 +4904,7 @@ export class Hub {
       const code = text.replace(/^\S+\s*/, '');
       if (!code) {
         const adm = await isSeller();
-        await this.tg('sendMessage', { chat_id: chat, text: adm ? bilingual(lang, 'Вы подключены как продавец. Новые заказы приходят в этот чат.', 'Siz sotuvchi sifatida ulangansiz. Yangi buyurtmalar shu chatga keladi.') : await this.welcome(lang, false, ''), reply_markup: openBtn(this.origin, openText) });
+        await this.tg('sendMessage', { chat_id: chat, text: adm ? biU('Вы подключены как продавец. Новые заказы приходят в этот чат.', 'Siz sotuvchi sifatida ulangansiz. Yangi buyurtmalar shu chatga keladi.') : await this.welcome(lang, false, ''), reply_markup: openBtn(this.origin, openText) });
         return;
       }
       const res = await this.tryCode(code, uid);
@@ -4859,22 +4912,26 @@ export class Hub {
       await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });
       if (res.r === 'ok') {
         const rec = await this.getRec(res.did);
-        if (res.fresh) await this.notifyOwners('🔑 Вход по коду: ' + whoFull(msg.from) + ' вошёл как ' + (res.owner ? 'владелец площадки' : 'продавец «' + (rec ? rec.name : res.did) + '»') + '.', uid);
-        const who = res.did === MAIN && res.owner ? 'Готово, вы продавец.' : 'Готово, вы продавец «' + (rec ? rec.name : res.did) + '».';
+        const sname = rec ? rec.name : res.did;
+        if (res.fresh) await this.notifyOwners(biL(() => L('🔑 Вход по коду: ' + whoFull(msg.from) + ' вошёл как ' + (res.owner ? 'владелец площадки' : 'продавец «' + sname + '»') + '.',
+          '🔑 Kod bilan kirish: ' + whoFull(msg.from) + (res.owner ? ' platforma egasi sifatida kirdi.' : ' «' + sname + '» sotuvchisi sifatida kirdi.'))), uid);
         await this.tg('sendMessage', {
           chat_id: chat,
-          text: who + ' Новые заказы будут приходить сюда с кнопками «Принять», «Готов», «Выдан». Каталог, цены и настройки меняются в приложении, вкладка «Продавец».'
-            + (res.owner ? '\n\nВы также владелец площадки: дистрибьюторов можно добавлять в приложении: кнопка ☰ → «Дистрибьюторы» → «Добавить».' : ''),
-          reply_markup: openBtn(this.origin, 'Открыть приложение', sellerUrl(this.origin, res.did))
+          text: biL(() => (res.did === MAIN && res.owner ? L('Готово, вы продавец.', 'Tayyor, siz sotuvchisiz.') : L('Готово, вы продавец «' + sname + '».', 'Tayyor, siz «' + sname + '» sotuvchisisiz.'))
+            + L(' Новые заказы будут приходить сюда с кнопками «Принять», «Готов», «Выдан». Каталог, цены и настройки меняются в приложении, вкладка «Продавец».',
+              ' Yangi buyurtmalar bu yerga «Qabul qilish», «Tayyor», «Topshirildi» tugmalari bilan keladi. Katalog, narxlar va sozlamalar ilovada, «Sotuvchi» boʻlimida oʻzgartiriladi.')
+            + (res.owner ? L('\n\nВы также владелец площадки: дистрибьюторов можно добавлять в приложении: кнопка ☰ → «Дистрибьюторы» → «Добавить».',
+              '\n\nSiz platforma egasisiz ham: distribyutorlarni ilovada qoʻshish mumkin: ☰ tugmasi → «Distribyutorlar» → «Qoʻshish».') : '')),
+          reply_markup: openBtn(this.origin, btn2('Ilovani ochish', 'Открыть приложение'), sellerUrl(this.origin, res.did))
         });
       } else if (res.r === 'locked') {
-        await this.tg('sendMessage', { chat_id: chat, text: 'Слишком много неверных попыток. Попробуйте через час.' });
+        await this.tg('sendMessage', { chat_id: chat, text: biU('Слишком много неверных попыток. Попробуйте через час.', 'Juda koʻp notoʻgʻri urinish. Bir soatdan keyin urinib koʻring.') });
       } else if (res.r === 'nocode') {
-        await this.tg('sendMessage', { chat_id: chat, text: 'На сервере не задан ADMIN_CODE.' });
+        await this.tg('sendMessage', { chat_id: chat, text: biU('На сервере не задан ADMIN_CODE.', 'Serverda ADMIN_CODE belgilanmagan.') });
       } else if (res.r === 'error') {
-        await this.tg('sendMessage', { chat_id: chat, text: 'Не получилось подключить. Попробуйте ещё раз.' });
+        await this.tg('sendMessage', { chat_id: chat, text: biU('Не получилось подключить. Попробуйте ещё раз.', 'Ulab boʻlmadi. Qayta urinib koʻring.') });
       } else {
-        await this.tg('sendMessage', { chat_id: chat, text: 'Неверный код.' });
+        await this.tg('sendMessage', { chat_id: chat, text: biU('Неверный код.', 'Kod notoʻgʻri.') });
       }
       return;
     }
@@ -4882,22 +4939,25 @@ export class Hub {
     if (cmd === '/agent') {
       const code = text.replace(/^\S+\s*/, '');
       if (!code) {
-        await this.tg('sendMessage', { chat_id: chat, text: 'Отправьте «/agent КОД». Код агента выдаёт владелец площадки.' });
+        await this.tg('sendMessage', { chat_id: chat, text: biU('Отправьте «/agent КОД». Код агента выдаёт владелец площадки.', '«/agent KOD» yuboring. Agent kodini platforma egasi beradi.') });
         return;
       }
       const res = await this.tryAgentCode(code, uid);
       await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });   // код не должен оставаться в переписке
       if (res.r === 'ok') {
-        if (res.fresh) await this.notifyOwners('🔑 Вход по коду: ' + whoFull(msg.from) + ' вошёл как агент «' + res.ag.name + '».' + (res.prev ? ' Этот код раньше был у другого Telegram-аккаунта (ID ' + res.prev + '), тот аккаунт отключён.' : ''), uid);
+        if (res.fresh) await this.notifyOwners(biL(() => L('🔑 Вход по коду: ' + whoFull(msg.from) + ' вошёл как агент «' + res.ag.name + '».' + (res.prev ? ' Этот код раньше был у другого Telegram-аккаунта (ID ' + res.prev + '), тот аккаунт отключён.' : ''),
+          '🔑 Kod bilan kirish: ' + whoFull(msg.from) + ' «' + res.ag.name + '» agenti sifatida kirdi.' + (res.prev ? ' Bu kod avval boshqa Telegram hisobida edi (ID ' + res.prev + '), u hisob oʻchirildi.' : ''))), uid);
         const names = (await this.terrs()).filter(t => (res.ag.terr || []).includes(t.id)).map(t => t.name);
         await this.tg('sendMessage', {
           chat_id: chat,
-          text: 'Готово, вы агент «' + res.ag.name + '».' + (names.length ? ' Территории: ' + names.join(', ') + '.' : '')
+          text: biL(() => L('Готово, вы агент «' + res.ag.name + '».' + (names.length ? ' Территории: ' + names.join(', ') + '.' : '')
             + '\n\nВ приложении откройте вкладку «База»: там можно проверять данные магазинов после визита, исправлять ошибки и добавлять тех, кого ещё нет. Свою ссылку для магазинов вы найдёте там же.',
-          reply_markup: openBtn(this.origin, 'Открыть базу', this.origin + '/?v=base')
+            'Tayyor, siz «' + res.ag.name + '» agentisiz.' + (names.length ? ' Hududlar: ' + names.join(', ') + '.' : '')
+            + '\n\nIlovada «Baza» boʻlimini oching: u yerda tashrifdan keyin doʻkon maʼlumotlarini tekshirish, xatolarni tuzatish va hali yoʻqlarini qoʻshish mumkin. Doʻkonlar uchun oʻz havolangizni ham shu yerdan topasiz.')),
+          reply_markup: openBtn(this.origin, btn2('Bazani ochish', 'Открыть базу'), this.origin + '/?v=base')
         });
-      } else if (res.r === 'locked') await this.tg('sendMessage', { chat_id: chat, text: 'Слишком много неверных попыток. Попробуйте через час.' });
-      else await this.tg('sendMessage', { chat_id: chat, text: 'Неверный код.' });
+      } else if (res.r === 'locked') await this.tg('sendMessage', { chat_id: chat, text: biU('Слишком много неверных попыток. Попробуйте через час.', 'Juda koʻp notoʻgʻri urinish. Bir soatdan keyin urinib koʻring.') });
+      else await this.tg('sendMessage', { chat_id: chat, text: biU('Неверный код.', 'Kod notoʻgʻri.') });
       return;
     }
 
@@ -4920,7 +4980,7 @@ export class Hub {
   }
   /* Доставщик нажал ссылку-приглашение: хранилище дистрибьютора проверяет ключ и записывает его, площадка запоминает, где он доставщик. */
   async courierJoin(uid, chat, lang, did, tok, from) {
-    const say = (ru, uz, markup) => this.tg('sendMessage', { chat_id: chat, text: bilingual(lang, ru, uz), reply_markup: markup });
+    const say = (ru, uz, markup) => this.tg('sendMessage', { chat_id: chat, text: biU(ru, uz), reply_markup: markup });
     const rec = await this.getRec(did);
     const r = rec ? await shopCall(this.env, did, '/__/courier-join', { uid, token: tok }) : null;
     if (!r || !r.ok || !r.data || !r.data.ok) {
@@ -4930,10 +4990,10 @@ export class Hub {
     }
     const dl = (await this.st.get('dls:' + uid)) || [];
     if (!dl.includes(did)) await this.st.put('dls:' + uid, dl.concat([did]));
-    await this.notifyOwners('🔑 Вход по приглашению: ' + whoFull(from || { id: uid }) + ' стал доставщиком «' + rec.name + '».', uid);
+    await this.notifyOwners(biL(() => L('🔑 Вход по приглашению: ' + whoFull(from || { id: uid }) + ' стал доставщиком «' + rec.name + '».', '🔑 Taklif bilan kirish: ' + whoFull(from || { id: uid }) + ' «' + rec.name + '» yetkazuvchisi boʻldi.')), uid);
     await say('Готово, вы доставщик «' + rec.name + '». Когда продавец отметит заказ готовым к доставке, он придёт сюда с кнопкой «Взял». Заказы, должников и кассу смотрите в приложении.',
-      'Tayyor, siz «' + rec.name + '» yetkazib beruvchisisiz. Sotuvchi buyurtmani yetkazishga tayyor deb belgilasa, u shu yerga «Взял» tugmasi bilan keladi. Buyurtmalar, qarzdorlar va kassa ilovada.',
-      openBtn(this.origin, lang === 'uz' ? 'Yetkazib berishni ochish' : 'Открыть доставку', courierUrl(this.origin, did)));
+      'Tayyor, siz «' + rec.name + '» yetkazib beruvchisisiz. Sotuvchi buyurtmani yetkazishga tayyor deb belgilasa, u shu yerga «Oldim» tugmasi bilan keladi. Buyurtmalar, qarzdorlar va kassa ilovada.',
+      openBtn(this.origin, btn2('Yetkazib berishni ochish', 'Открыть доставку'), courierUrl(this.origin, did)));
   }
   /* Приветствие: если дистрибьютор один (или клиент пришёл по ссылке на него), говорим от его имени, иначе от имени площадки. */
   async welcome(lang, isAdmin, shopName) {
