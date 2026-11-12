@@ -1392,7 +1392,7 @@ function reportSheets(r) {
 /* ---------- страница настройки ---------- */
 function setupPage(inner) {
   return html('<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Настройка бота</title>'
-    + '<style>body{font:16px/1.5 system-ui,sans-serif;max-width:560px;margin:32px auto;padding:0 16px;color:#14231F}input,button{font:inherit;padding:10px 12px;border-radius:10px;border:1.5px solid #ccc}button{background:#0F766E;color:#fff;border:0;cursor:pointer}li{margin:6px 0}.ok{color:#1F7A4D}.bad{color:#B3261E}code{background:#E7EFED;padding:2px 6px;border-radius:6px}</style></head><body>'
+    + '<style>body{font:16px/1.5 system-ui,sans-serif;max-width:560px;margin:32px auto;padding:0 16px;color:#1A1A1E}input,button{font:inherit;padding:10px 12px;border-radius:10px;border:1.5px solid #ccc}button{background:#139A78;color:#fff;border:0;cursor:pointer}li{margin:6px 0}.ok{color:#1F7A4D}.bad{color:#D63A1F}code{background:#EFEEEC;padding:2px 6px;border-radius:6px}</style></head><body>'
     + '<h1>Настройка бота</h1>' + inner + '</body></html>');
 }
 
