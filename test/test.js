@@ -6221,6 +6221,252 @@ await t('вид: рамка --edge задана во всех темах, пол
   assert.ok(/\.pf>div:not\(\.full\)\{display:flex;flex-direction:column;justify-content:flex-end\}/.test(html), 'пары полей формы товара выровнены по нижнему краю');
 });
 
+/* ---------- акт сверки ---------- */
+const actMsgs = to => tgAll('sendMessage', p => p.chat_id === to && /^📄/.test(String(p.text)));
+const flat = x => String(x).replace(/[  ]/g, ' ');
+const actReq = (uid, period, init) => debtAct(uid, 'act', { period }, init);
+const dmyOf = d => d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4);
+/* акт магазину можно слать раз в час: тест сдвигает время прошлых актов назад */
+async function ageActs(uid) {
+  const lg = await W.storage.get('lg:' + uid);
+  lg.rows.forEach(r => { if (r.k === 'ac') r.t = new Date(Date.now() - 2 * 3600000).toISOString(); });
+  await W.storage.put('lg:' + uid, lg);
+}
+const acRows = async uid => (await W.storage.get('lg:' + uid)).rows.filter(r => r.k === 'ac');
+
+await t('акт сверки: магазин получает выписку с составом заказов и кнопками, долг не меняется, запись видна в истории', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 14 });
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 100000, m: 'cash' })).status, 200);
+  await confirmAll(A.u.id);
+  const before = await debtOf(A.u.id);
+  assert.equal(before.bal, 1294000);
+  assert.equal((await actReq(A.u.id, 'all', iA())).status, 403, 'клиент не может');
+  assert.equal((await call('POST', '/api/admin/debts/' + A.u.id + '/act', { body: { period: 'all' } })).status, 401);
+  for (const bad of [{}, { period: 'week' }, { period: 1 }]) assert.equal((await debtAct(A.u.id, 'act', bad)).status, 400, JSON.stringify(bad));
+  assert.equal((await actReq(777000111, 'all')).status, 404, 'магазина без долговой истории нет');
+  assert.notEqual((await call('POST', '/api/courier/debts/' + A.u.id + '/act', { init: iR(), body: { period: 'all' } })).status, 200, 'доставщик акт не шлёт');
+  assert.equal((await acRows(A.u.id)).length, 0);
+  tgLog = [];
+  const r = await actReq(A.u.id, 'all');
+  assert.equal(r.status, 200, JSON.stringify(await jsonOf(r)));
+  const m = actMsgs(A.u.id);
+  assert.equal(m.length, 1, 'одно сообщение');
+  const text = flat(m[0].payload.text);
+  assert.ok(text.startsWith('📄 Акт сверки — '), text);
+  assert.ok(text.includes('Период: с начала записей – ' + dmyOf(shopDay())), text);
+  assert.ok(text.includes('Остаток на начало: 0 сум'), text);
+  assert.ok(text.includes('Заказ ' + o.id), text);
+  for (const it of o.items) assert.ok(text.includes('• ' + it.name) && text.includes(' × ' + it.qty), 'товар в акте: ' + it.name + '\n' + text);
+  assert.ok(text.includes('В долг: +1 394 000 сум (срок ' + dmyOf(plusDays(shopDay(), 14)) + ')'), text);
+  assert.ok(text.includes('Оплата (наличные)\n−100 000 сум'), text);
+  assert.ok(text.includes('Итого за период: в долг +1 394 000 сум, оплачено −100 000 сум'), text);
+  assert.ok(text.includes('Долг на ' + dmyOf(shopDay()) + ': 1 294 000 сум'), text);
+  assert.ok(text.trimEnd().endsWith('Всё верно?'), text);
+  const ac = (await acRows(A.u.id))[0];
+  assert.ok(ac && ac.cf === 'wait' && ac.d === 0 && ac.a === 0 && ac.f === '' && ac.e === shopDay() && ac.ob === 0 && ac.cb === 1294000 && ac.pr === 'all', JSON.stringify(ac));
+  assert.deepEqual(m[0].payload.reply_markup.inline_keyboard[0].map(b => b.callback_data), ['q:' + ac.n + ':y', 'q:' + ac.n + ':n']);
+  const after = await debtOf(A.u.id);
+  assert.equal(after.bal, 1294000, 'акт долг не меняет');
+  assert.deepEqual(after.open, before.open);
+  assert.ok(after.rows.some(x => x.k === 'ac' && x.cb === 1294000 && x.cf === 'wait'), 'акт в истории расчётов');
+  assert.equal((await actReq(A.u.id, 'all')).status, 429, 'чаще раза в час нельзя');
+  // магазин видит акт среди записей, на которые нужно ответить
+  const full = (await jsonOf(await call('GET', '/api/hub/debts?full=1', { init: A.init() }))).debts.find(d => d.did === 'main');
+  assert.equal(full.ask, 1);
+  assert.ok(full.rows.some(x => x.k === 'ac' && x.e === shopDay() && x.cb === 1294000 && x.cf === 'wait'), JSON.stringify(full.rows));
+});
+
+await t('акт сверки: «этот месяц», «прошлый месяц», «всё время»; остаток на начало считается по записям до периода', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 30 });
+  assert.equal((await debtAct(A.u.id, 'pay', { amount: 400000, m: 'card' })).status, 200);
+  const [y, mo] = shopDay().split('-').map(Number), iso = (yy, mm, dd) => new Date(Date.UTC(yy, mm, dd)).toISOString().slice(0, 10);
+  const pFirst = iso(y, mo - 2, 1), pLast = iso(y, mo - 1, 0), cFirst = iso(y, mo - 1, 1);
+  const setT = async (chAt, payAt) => {
+    const lg = await W.storage.get('lg:' + A.u.id);
+    lg.rows.forEach(r => { if (r.k === 'ch') r.t = chAt.toISOString(); if (r.k === 'pay') r.t = payAt.toISOString(); });
+    await W.storage.put('lg:' + A.u.id, lg);
+  };
+  await setT(new Date(Date.UTC(y, mo - 2, 10, 7)), new Date(Date.UTC(y, mo - 1, 1, 7)));      // заказ в прошлом месяце, оплата в этом
+  const run = async per => {
+    await ageActs(A.u.id); tgLog = [];
+    const r = await actReq(A.u.id, per);
+    assert.equal(r.status, 200, per + ' ' + JSON.stringify(await jsonOf(r)));
+    return flat(actMsgs(A.u.id).map(x => x.payload.text).join('\n'));
+  };
+  const prev = await run('prev');
+  assert.ok(prev.includes('Период: ' + dmyOf(pFirst) + ' – ' + dmyOf(pLast)), prev);
+  assert.ok(prev.includes('Остаток на ' + dmyOf(pFirst) + ': 0 сум') && prev.includes('Заказ ' + o.id) && !prev.includes('Оплата'), prev);
+  assert.ok(prev.includes('Долг на ' + dmyOf(pLast) + ': 1 394 000 сум'), prev);
+  const cur = await run('this');
+  assert.ok(cur.includes('Период: ' + dmyOf(cFirst) + ' – ' + dmyOf(shopDay())), cur);
+  assert.ok(cur.includes('Остаток на ' + dmyOf(cFirst) + ': 1 394 000 сум') && !cur.includes('Заказ ' + o.id) && cur.includes('Оплата (карта)\n−400 000 сум'), cur);
+  assert.ok(cur.includes('Долг на ' + dmyOf(shopDay()) + ': 994 000 сум'), cur);
+  const all = await run('all');
+  assert.ok(all.includes('Остаток на начало: 0 сум') && all.includes('Заказ ' + o.id) && all.includes('Оплата (карта)') && all.includes('Долг на ' + dmyOf(shopDay()) + ': 994 000 сум'), all);
+  assert.equal((await acRows(A.u.id)).length, 1, 'акт без ответа заменяется новым, а не копится');
+  assert.equal((await debtOf(A.u.id)).bal, 994000);
+  // в периоде движений нет, но остаток есть: выписка всё равно имеет смысл
+  await setT(new Date(Date.UTC(y, mo - 3, 10, 7)), new Date(Date.UTC(y, mo - 3, 12, 7)));
+  const quiet = await run('prev');
+  assert.ok(quiet.includes('Остаток на ' + dmyOf(pFirst) + ': 994 000 сум') && quiet.includes('За период записей нет.') && quiet.includes('Долг на ' + dmyOf(pLast) + ': 994 000 сум'), quiet);
+  // нет ни остатка, ни движений: акт слать не о чем
+  const B = newUser(), ob = await readyOrder(B, ONE);
+  await doneWith(ob.id, { m: 'credit', days: 5 });
+  assert.equal((await actReq(B.u.id, 'prev')).status, 404);
+  assert.equal((await acRows(B.u.id)).length, 0);
+});
+
+await t('акт сверки: «Не так» делает долг спорным и сообщает продавцу, продавец закрывает с комментарием, «Верно» окончательно', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 5 });
+  await confirmAll(A.u.id);
+  assert.equal((await actReq(A.u.id, 'all')).status, 200);
+  const n = (await acRows(A.u.id))[0].n;
+  tgLog = [];
+  await cb({ id: A.u.id, first_name: 'Магазин' }, 'q:' + n + ':n', 4242);
+  assert.equal((await acRows(A.u.id))[0].cf, 'no');
+  const warn = tgAll('sendMessage', p => p.chat_id === SELLER.id && String(p.text).includes('«Не так»'));
+  assert.equal(warn.length, 1, 'продавцу пришло предупреждение');
+  assert.ok(flat(warn[0].payload.text).includes('акт сверки по ' + dmyOf(shopDay()) + ', долг 1 394 000 сум'), flat(warn[0].payload.text));
+  assert.ok(tgLog.some(x => /edit/i.test(x.method) && String(x.payload.text).includes('Не так')), 'сообщение магазина обновилось');
+  assert.equal((await debtOf(A.u.id)).fl, 1, 'долг спорный');
+  assert.equal((await debtsOf()).fl, 1);
+  const disp = (await jsonOf(await call('GET', '/api/admin/disputes', { init: iS() }))).items.find(x => x.k === 'ac');
+  assert.ok(disp && disp.cf === 'no' && disp.cb === 1394000 && disp.e === shopDay() && disp.n === n && disp.uid === A.u.id, JSON.stringify(disp));
+  assert.equal((await debtAct(A.u.id, 'resolve', { n, note: '' })).status, 400, 'комментарий обязателен');
+  tgLog = [];
+  assert.equal((await debtAct(A.u.id, 'resolve', { n, note: 'сверили по телефону' })).status, 200);
+  assert.ok(flat(tgAll('sendMessage', p => p.chat_id === A.u.id)[0].payload.text).includes('Продавец закрыл вопрос по записи: акт сверки'), 'магазин узнал, что вопрос закрыт');
+  assert.equal((await debtOf(A.u.id)).fl, 0, 'спор закрыт');
+  // новый акт, «Верно»: ответ окончательный
+  await ageActs(A.u.id);
+  assert.equal((await actReq(A.u.id, 'all')).status, 200);
+  const n2 = (await acRows(A.u.id)).pop().n;
+  assert.notEqual(n2, n);
+  await cb({ id: A.u.id, first_name: 'Магазин' }, 'q:' + n2 + ':y', 4243);
+  assert.equal((await acRows(A.u.id)).find(r => r.n === n2).cf, 'ok');
+  assert.equal((await debtOf(A.u.id)).fl, 0);
+  tgLog = [];
+  await cb({ id: A.u.id, first_name: 'Магазин' }, 'q:' + n2 + ':n', 4243);
+  assert.equal((await acRows(A.u.id)).find(r => r.n === n2).cf, 'ok', 'после «Верно» передумать нельзя');
+  assert.equal(tgAll('sendMessage', p => p.chat_id === SELLER.id && String(p.text).includes('«Не так»')).length, 0);
+  assert.equal((await debtOf(A.u.id)).bal, 1394000, 'долг за всё время не менялся');
+});
+
+await t('акт сверки: длинная выписка делится на сообщения, кнопки только под последним; слишком длинная отклоняется', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, ONE);
+  await doneWith(o.id, { m: 'credit', days: 5 });
+  const fill = async count => {
+    const lg = await W.storage.get('lg:' + A.u.id);
+    lg.rows = []; lg.seq = 0;
+    for (let i = 0; i < count; i++) { lg.seq++; lg.rows.push({ n: lg.seq, t: new Date().toISOString(), k: 'ch', d: 7500, a: 7500, ref: 'Z-T' + (1000 + i), due: '2099-01-01', cf: 'ok' }); }
+    await W.storage.put('lg:' + A.u.id, lg);
+  };
+  await fill(120);
+  tgLog = [];
+  assert.equal((await actReq(A.u.id, 'all')).status, 200);
+  const m = actMsgs(A.u.id), texts = m.map(x => flat(x.payload.text));
+  assert.ok(m.length >= 2 && m.length <= 6, 'сообщений: ' + m.length);
+  texts.forEach((x, i) => assert.ok(x.length <= 4096, 'сообщение ' + (i + 1) + ' длиной ' + x.length));
+  assert.ok(texts[0].split('\n')[0].endsWith('(1/' + m.length + ')'), texts[0].split('\n')[0]);
+  texts.slice(1).forEach((x, i) => assert.ok(x.startsWith('📄 Акт сверки · ' + (i + 2) + '/' + m.length + '\n'), x.slice(0, 40)));
+  assert.deepEqual(m.map(x => !!x.payload.reply_markup), m.map((x, i) => i === m.length - 1), 'кнопки только под последним');
+  const all = texts.join('\n');
+  assert.equal((all.match(/Заказ Z-T/g) || []).length, 120, 'все записи на месте');
+  assert.equal((all.match(/В долг: \+/g) || []).length, 120, 'ни одна запись не разорвана между сообщениями');
+  assert.ok(texts[m.length - 1].trimEnd().endsWith('Всё верно?'));
+  assert.ok(all.includes('Долг на ' + dmyOf(shopDay()) + ': 900 000 сум'), 'итог верный: 120 × 7 500');
+  await fill(500);
+  tgLog = [];
+  const r = await actReq(A.u.id, 'all');
+  assert.equal(r.status, 413);
+  assert.equal(actMsgs(A.u.id).length, 0, 'слишком длинное не отправляется');
+  assert.equal((await acRows(A.u.id)).length, 0);
+});
+
+await t('акт сверки: если Telegram не принял сообщение, записи в журнале нет и продавец получает ошибку', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 5 });
+  tgFail = true;
+  let r;
+  try { r = await actReq(A.u.id, 'all'); } finally { tgFail = false; }
+  assert.equal(r.status, 502);
+  assert.equal((await acRows(A.u.id)).length, 0, 'неотправленный акт в журнале не остаётся');
+  assert.equal((await debtOf(A.u.id)).bal, 1394000);
+  assert.equal((await actReq(A.u.id, 'all')).status, 200, 'после ошибки повторить можно сразу');
+});
+
+await t('акт сверки: узбекский магазин получает текст по-узбекски; у второго дистрибьютора кнопки несут его номер', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  const V = newUser();
+  const o2 = await readyDelivery(V, CART, sid);
+  assert.equal((await crq(sid, 'POST', '/api/admin/status', iD(), { id: o2.id, to: 'done', pay: { m: 'credit', days: 3 } })).status, 200);
+  const sh = W.getShop(sid).storage;
+  const lh = await sh.get('lh:' + V.u.id); lh.lang = 'uz'; await sh.put('lh:' + V.u.id, lh);
+  tgLog = [];
+  const r = await callS(sid, 'POST', '/api/admin/debts/' + V.u.id + '/act', { init: iD(), body: { period: 'all' } });
+  assert.equal(r.status, 200, JSON.stringify(await jsonOf(r)));
+  const mm = actMsgs(V.u.id)[0], text = flat(mm.payload.text);
+  assert.ok(text.startsWith('📄 Hisob-kitoblarni solishtirish dalolatnomasi — Альфа Трейд'), text);
+  assert.ok(text.includes('Davr: yozuvlar boshidan – ') && text.includes('Qarzga: +1 394 000 soʻm') && text.includes('Qarz ' + dmyOf(shopDay()) + ': 1 394 000 soʻm') && text.trimEnd().endsWith('Hammasi toʻgʻrimi?'), text);
+  assert.deepEqual(mm.payload.reply_markup.inline_keyboard[0].map(b => b.text), ['✅ Toʻgʻri', '❌ Notoʻgʻri']);
+  const data = mm.payload.reply_markup.inline_keyboard[0].map(b => b.callback_data);
+  assert.ok(data.every(x => x.startsWith('q:' + sid + ':')), 'кнопки несут номер второго дистрибьютора: ' + data.join(' '));
+  assert.equal((await sh.get('lg:' + V.u.id)).rows.filter(x => x.k === 'ac').length, 1);
+  await cb({ id: V.u.id, first_name: 'Магазин' }, data[1], 5151);
+  assert.equal((await sh.get('lg:' + V.u.id)).rows.find(x => x.k === 'ac').cf, 'no', '«Не так» дошло до хранилища второго дистрибьютора');
+  assert.equal(tgAll('sendMessage', p => p.chat_id === DIL.id && String(p.text).includes('акт сверки')).length, 1, 'его продавец получил предупреждение');
+});
+
+await t('акт сверки: запись об акте попадает в Excel «История» и не ломает подсчёт долга', async () => {
+  await stockWorld();
+  const A = newUser();
+  const o = await readyOrder(A, CART);
+  await doneWith(o.id, { m: 'credit', days: 5 });
+  await confirmAll(A.u.id);
+  assert.equal((await actReq(A.u.id, 'all')).status, 200);
+  tgLog = [];
+  assert.equal((await exportReq('debts', { f: 'all' })).status, 200);
+  const x = readXlsx(lastDoc().file.bytes), hist = x['История'], hc = n => hist[0].indexOf(n);
+  const row = hist.slice(1).find(r => String(r[hc('Запись')]).startsWith('Акт сверки'));
+  assert.ok(row, 'строка акта в истории: ' + JSON.stringify(hist));
+  assert.equal(row[hc('Сумма, сум')], 1394000, 'в сумме — долг на конец периода');
+  assert.equal(row[hc('Ответ магазина')], 'ждём ответа');
+  assert.equal(x['Долги'][1][x['Долги'][0].indexOf('Долг, сум')], 1394000);
+});
+
+/* ---------- каталог продавца: сворачивание товаров ---------- */
+await t('каталог: товары сворачиваются, всё свёрнуто на старте, ▲▼ и удаление только в раскрытой карточке', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
+  assert.equal((html.match(/medit:\{\},pxo:\{\}/g) || []).length, 2, 'S.pxo есть в начальном состоянии и при сбросе');
+  const row = fn('prodRow'), sum = fn('pxSumInner'), body = fn('prodBody');
+  assert.ok(/open=!!S\.pxo\[p\.id\]/.test(row) && /\(open\?'<div class="pbody"/.test(row), 'форма рисуется только у раскрытого товара, по умолчанию свёрнут');
+  assert.ok(!/pmove|pdel/.test(row + sum), 'в свёрнутой строке нет ▲▼ и удаления');
+  assert.ok(/data-act="pmove"/.test(body) && /data-act="pdel"/.test(body) && /data-act="pfold"/.test(body), 'в раскрытой карточке есть ▲▼, удаление и «Свернуть»');
+  assert.ok(/aria-expanded="'\+open/.test(row), 'состояние читается и для экранных дикторов');
+  assert.ok(/a==='pfold'\)pxSet\(/.test(html) && /a==='pfoldall'\)pxAll\(/.test(html), 'обработчики одной карточки и «все»');
+  assert.ok(/data-act="pfoldall" data-v="0"/.test(html) && /data-act="pfoldall" data-v="1"/.test(html), 'кнопки «Свернуть все» и «Развернуть все»');
+  assert.ok(/S\.prod\.items\.push\(p\);S\.pxo\[p\.id\]=true/.test(html), 'новый товар открывается сам');
+  assert.ok(/bad\.forEach\(b=>\{S\.pxo\[b\.id\]=true\}\)/.test(html), 'товар, которому не хватает данных, открывается сам');
+  assert.ok(/S\.medit\[t\.dataset\.id\]=true;S\.pxo\[t\.dataset\.id\]=true/.test(html), '«Исправить» открывает форму');
+  assert.ok(/delete S\.pxo\[id\]/.test(html), 'при удалении товара состояние чистится');
+  assert.ok(/pxLive\(p\);\s*queueSave\('prod'\)/.test(html), 'заголовок обновляется при правке полей');
+  assert.ok(!/S\.pxo/.test(fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8')), 'раскрытость не уходит на сервер');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
