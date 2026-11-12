@@ -1035,6 +1035,8 @@ function crLate(c, now) {
 }
 /* Открытый вопрос по сдаче: продавец записал сдачу (или её отмену), доставщик ещё не сказал «Верно» и вопрос не закрыт. */
 const hOpen = r => (r.k === 'out' || r.k === 'ox') && (r.cf === 'wait' || r.cf === 'no' || r.cf === 'na') && !r.hr && !r.ox;
+/* Сколько записей о сдаче ждут ответа самого доставщика: ещё не ответил или сообщение не дошло. */
+const crAsk = c => ((c && c.hwt) || []).length + (Number(c && c.hna) || 0);
 /* Сколько записей о сдаче требуют внимания: «Не так», не дошло, или нет ответа больше суток. */
 const crHf = (c, now) => (Number(c && c.hfl) || 0) + ((c && c.hwt) || []).filter(t => now - Date.parse(t) > CF_LATE).length;
 /* С какого времени деньги на руках: сданные деньги закрывают самые старые поступления, поэтому остаток набирается из самых новых.
@@ -1060,6 +1062,7 @@ function crSave(c, lg) {
   c.cs = cashSince(lg.rows, Number(c.cash) || 0);
   c.hfl = lg.rows.filter(r => hOpen(r) && r.cf !== 'wait').length;
   c.hwt = lg.rows.filter(r => hOpen(r) && r.cf === 'wait').map(r => r.t);
+  c.hna = lg.rows.filter(r => hOpen(r) && r.cf === 'na').length;
   return { ['cc:' + c.id]: lg, ['cr:' + c.id]: c };
 }
 const crPub = c => ({ id: c.id, name: c.name, phone: c.phone || '', joined: !!c.uid, on: c.on !== false, credit: c.credit !== false, cash: Number(c.cash) || 0, lim: Number(c.lim) || 0, nvn: (c.nv || []).length, nva: (c.nv || []).reduce((t, x) => t + (Number(x.a) || 0), 0), dl: crDl(c), cs: c.cs || '', late: crLate(c, Date.now()), hf: crHf(c, Date.now()), hw: (c.hwt || []).length, since: c.since });
@@ -2705,7 +2708,7 @@ export class Shop {
   /* Касса доставщика целиком: то, что видит он сам. */
   async courierCash(c) {
     const lg = (await this.st.get('cc:' + c.id)) || { rows: [] };
-    return { cash: Number(c.cash) || 0, lim: Number(c.lim) || 0, dl: crDl(c), cs: c.cs || '', late: crLate(c, Date.now()), hf: crHf(c, Date.now()), rows: this.crRows(lg), nv: (c.nv || []).slice().reverse() };
+    return { cash: Number(c.cash) || 0, lim: Number(c.lim) || 0, dl: crDl(c), cs: c.cs || '', late: crLate(c, Date.now()), hf: crHf(c, Date.now()), ask: crAsk(c), rows: this.crRows(lg), nv: (c.nv || []).slice().reverse() };
   }
   /* Дописывает строки в кассу доставщика и меняет остаток. Сам ничего не сохраняет: вызывающий кладёт put вместе со своими правками. */
   async crAdd(c, adds) {
@@ -2728,7 +2731,7 @@ export class Shop {
       if (h && h.bal > 0) { const d = lgDue(h.open, today); x.debt = { bal: h.bal, over: d.over, days: d.days, due: d.due, uid: o.uid }; }
       return x;
     });
-    return { orders, soon: del.filter(o => o.status === 'accepted').length, cash: Number(cour.cash) || 0, lim: Number(cour.lim) || 0, nvn: (cour.nv || []).length, dl: crDl(cour), late: crLate(cour, Date.now()), hf: crHf(cour, Date.now()) };
+    return { orders, soon: del.filter(o => o.status === 'accepted').length, cash: Number(cour.cash) || 0, lim: Number(cour.lim) || 0, nvn: (cour.nv || []).length, dl: crDl(cour), late: crLate(cour, Date.now()), hf: crHf(cour, Date.now()), ask: crAsk(cour) };
   }
   cview(o, cour) { const x = adminOrder(o); x.mine = o.cr === cour.id; return x; }
   async courierTake(cour, id) {

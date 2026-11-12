@@ -996,7 +996,7 @@ function switchLang(){
 /* меню: разделы по группам; у «Продавца» внутри раскрываются его пять разделов */
 const sellerSubs=()=>{
   const w=stockWarn(),rn=modRetN();
-  return [['orders',L('Заказы','Buyurtmalar')],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar')],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
+  return [['orders',L('Заказы','Buyurtmalar')],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar'),dvAlerts(),'warn'],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
 };
 /* Роли человека берутся с площадки (S.hub.me): владелец, агент, продавец и доставщик у каких-то дистрибьюторов. Кроме этого он всегда магазин-клиент. */
 function myRoles(){
@@ -1065,7 +1065,7 @@ function renderNav(){
   nav.scrollTop=st;
   if(fk){const f=[...nav.querySelectorAll('[data-act]')].find(x=>x.dataset.act===fk[0]&&(x.dataset.v||x.dataset.t||'')===fk[1]&&!x.closest('[hidden]'));if(f)f.focus({preventScroll:true})}
   // значок на кнопке ☰: что ждёт решения (новые заказы, товары на проверке или возвращённые)
-  const al=(S.admin&&S.did?newCount()+modRetN()+(S.dbt.fl||0):0)+(isOwner()?modN()+(S.own.dn||0):0)+(S.courier&&S.did?crFree():0)+(S.auth?S.mdebt.ask||0:0),mb=$('#menubadge');
+  const al=(S.admin&&S.did?newCount()+modRetN()+(S.dbt.fl||0)+dvAlerts():0)+(isOwner()?modN()+(S.own.dn||0):0)+(S.courier&&S.did?crFree()+(S.cr.ask||0)+(S.cr.late>0?1:0):0)+(S.auth?S.mdebt.ask||0:0),mb=$('#menubadge');
   mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
   const mr=$('#mrole'),rl=roleLine();
   if(mr){mr.hidden=!rl;mr.innerHTML=rl?esc(L('Вы: ','Siz: '))+'<b>'+esc(rl)+'</b>':''}
@@ -2071,11 +2071,16 @@ const crLimHit=()=>S.view==='courier'&&S.cr.lim>0&&S.cr.cash>=S.cr.lim;
 const crLimErr=r=>{
   const e=r&&r.data&&r.data.error;
   return e==='cash_limit'?L('Сначала сдайте деньги продавцу: на руках '+money(r.data.cash)+', лимит '+money(r.data.lim)+'. Карту и перечисление принять можно.','Avval pulni sotuvchiga topshiring: qoʻlingizda '+money(r.data.cash)+', limit '+money(r.data.lim)+'. Karta va oʻtkazmani qabul qilsa boʻladi.')
+    :e==='cash_late'?L('Сначала сдайте деньги продавцу: просрочка '+r.data.late+' дн. Карту и перечисление принять можно.','Avval pulni sotuvchiga topshiring: '+r.data.late+' kun kechikish. Karta va oʻtkazmani qabul qilsa boʻladi.')
     :e==='nv_full'?L('Слишком много оплат ждёт сверки. Покажите их продавцу: он отметит «Деньги пришли».','Tekshirilmagan toʻlovlar juda koʻp. Sotuvchiga koʻrsating: u «Pul tushdi» deb belgilaydi.'):'';
 };
-function newCour(){return {tab:'today',ok:false,orders:[],soon:0,cash:0,lim:0,nvn:0,nv:[],rows:[],cashOk:false,dbt:newDebts(),pay:null,busy:''}}
+/* Срок сдачи наличных: подпись и тексты про просрочку и вопросы по сдаче. */
+const dlName=dl=>dl<0?L('без срока','muddatsiz'):dl===0?L('в тот же день','shu kuni'):dl+L(' дн.',' kun');
+const crLateTxt=c=>L('Деньги не сданы в срок: просрочка '+c.late+' дн.'+(c.cs?' Самые старые деньги на руках с '+jrDate(c.cs)+'.':'')+' Сдайте их продавцу: пока не сдадите, новые заказы и наличные оплаты долга брать нельзя. Карту и перечисление принять можно.',
+  'Pul muddatida topshirilmadi: '+c.late+' kun kechikish.'+(c.cs?' Eng eski pul '+jrDate(c.cs)+' dan beri qoʻlingizda.':'')+' Uni sotuvchiga topshiring: topshirmaguncha yangi buyurtma va qarzning naqd toʻlovini olib boʻlmaydi. Karta va oʻtkazmani qabul qilsa boʻladi.');
+function newCour(){return {tab:'today',ok:false,orders:[],soon:0,cash:0,lim:0,dl:0,late:0,ask:0,cs:'',nvn:0,nv:[],rows:[],cashOk:false,dbt:newDebts(),pay:null,busy:''}}
 const crFree=()=>S.cr.orders.filter(o=>o.status==='ready'&&!o.crn).length;
-const crTabs=()=>[['today',L('Сегодня','Bugun'),crFree()],['debts',L('Должники','Qarzdorlar'),S.cr.dbt.late,'warn'],['cash',L('Касса','Kassa')]];
+const crTabs=()=>[['today',L('Сегодня','Bugun'),crFree()],['debts',L('Должники','Qarzdorlar'),S.cr.dbt.late,'warn'],['cash',L('Касса','Kassa'),(S.cr.ask||0)+(S.cr.late>0?1:0),'warn']];
 function courierOpen(tab){
   S.cr.tab=tab;S.cr.pay=null;S.cr.dbt.open=null;S.cr.dbt.det=null;
   if(S.view!=='courier')go('courier');
@@ -2110,6 +2115,8 @@ function crTodayHTML(){
     +'<div class="stat"><small>'+L('Доставлено сегодня','Bugun yetkazilgan')+'</small><b>'+done.length+'</b></div>'
     +'<div class="stat"><small>'+L('Наличные у вас','Sizdagi naqd')+'</small><b>'+money(c.cash)+'</b></div></div>';
   if(crLimHit())h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Лимит наличных достигнут ('+money(c.lim)+'). Сдайте деньги продавцу: пока не сдадите, новые заказы взять нельзя.','Naqd limiti tugadi ('+money(c.lim)+'). Pulni sotuvchiga topshiring: topshirmaguncha yangi buyurtma olib boʻlmaydi.')+'</div>';
+  if(c.late>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+crLateTxt(c)+'</div>';
+  if(c.ask>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Продавец записал сдачу денег: подтвердите «Верно» или «Не так» ('+c.ask+'). Смотрите вкладку «Касса».','Sotuvchi pul topshirishni yozdi: «Toʻgʻri» yoki «Notoʻgʻri»ni tasdiqlang ('+c.ask+'). «Kassa» boʻlimiga qarang.')+'</div>';
   if(c.nvn>0)h+='<div class="note" style="margin-bottom:12px">'+L('Оплат картой и переводом ждёт сверки продавцом: '+c.nvn+'. Смотрите вкладку «Касса».','Sotuvchi tekshirishini kutayotgan karta va oʻtkazma toʻlovlari: '+c.nvn+'. «Kassa» boʻlimiga qarang.')+'</div>';
   if(c.soon)h+='<div class="note" style="margin-bottom:12px">'+L('Собирается заказов: '+c.soon+'. Когда они будут готовы, придёт сообщение в Telegram.','Yigʻilayotgan buyurtmalar: '+c.soon+'. Tayyor boʻlsa, Telegramga xabar keladi.')+'</div>';
   const sec=(t,list)=>list.length?'<h3 class="dsub">'+t+'</h3><div class="ordlist">'+list.map(o=>orderCard(o,'courier')).join('')+'</div>':'';
@@ -2133,25 +2140,77 @@ function nvRowHTML(x,cid){
   return '<div class="lrow"><div class="lt"><b>'+esc(payName(x.m))+' · '+what+(x.nm?' · '+esc(x.nm):'')+'</b><small>'+esc(jrDate(x.t))+'</small></div><div class="lsum">'+money(x.a)+'</div>'
     +(cid?'<div class="cfq"><button type="button" class="btn sm" data-act="dvver" data-id="'+esc(cid)+'" data-nv="'+x.id+'"'+(S.dv.busy?' disabled':'')+'>'+L('Деньги пришли','Pul tushdi')+'</button></div>':'')+'</div>';
 }
-function crRowHTML(r){
+/* Сдача денег: ответ доставщика. Подписи для продавца (seller) и для самого доставщика. */
+const hdFlag=r=>!!(r.cf&&r.cf!=='ok'&&r.vwhy===undefined&&!r.rsl&&(r.cf!=='wait'||r.late));
+function hdLines(r,seller){
+  if((r.k!=='out'&&r.k!=='ox')||r.vwhy!==undefined)return '';
+  const c=(cls,t)=>'<span class="cfc'+(cls?' '+cls:'')+'">'+t+'</span>';
+  let h='';
+  if(r.rsl)h+=c('ok',L('Спор закрыт: ','Bahs yopildi: ')+esc(r.rsl.bn||'')+' — '+esc(r.rsl.why||''));
+  else if(r.cf==='ok')h+=c('ok','✓ '+(seller?L('Доставщик подтвердил','Yetkazuvchi tasdiqladi'):L('Вы подтвердили','Siz tasdiqladingiz')));
+  else if(r.cf==='wait')h+=r.late?c('bad',seller?L('Доставщик молчит больше суток','Yetkazuvchi bir sutkadan ortiq jim'):L('Ответа нет больше суток','Bir sutkadan ortiq javob yoʻq')):c('warn',seller?L('Ждём ответа доставщика','Yetkazuvchi javobi kutilmoqda'):L('Подтвердите: всё верно?','Tasdiqlang: hammasi toʻgʻrimi?'));
+  else if(r.cf==='no')h+=c('bad',seller?L('Доставщик: «Не так»','Yetkazuvchi: «Notoʻgʻri»'):L('Вы отметили «Не так»','Siz «Notoʻgʻri» deb belgiladingiz'));
+  else if(r.cf==='na')h+=c('bad',seller?L('Доставщик не получил сообщение','Yetkazuvchi xabarni olmadi'):L('Сообщение не дошло: ответьте здесь','Xabar kelmadi: shu yerda javob bering'));
+  return h?'<span class="cfs">'+h+'</span>':'';
+}
+function hdVoidForm(){
+  const d=S.dv,dis=d.busy?' disabled':'';
+  return '<div class="payb"><div class="pt">'+L('Отмена записи о сдаче','Topshirish yozuvini bekor qilish')+'</div>'
+    +'<div class="pmute">'+L('Деньги снова будут числиться на руках у доставщика. Он получит сообщение с причиной и подтвердит или оспорит.','Pul yana yetkazuvchi qoʻlida hisoblanadi. U sabab bilan xabar oladi va tasdiqlaydi yoki e’tiroz bildiradi.')+'</div>'
+    +'<div class="pyrow"><input type="text" id="dh-why" maxlength="80" value="'+esc(d.why)+'" placeholder="'+esc(L('Причина (обязательно)','Sabab (majburiy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><button type="button" class="btn sm dangerbtn" data-act="dhvgo"'+dis+'>'+L('Отменить сдачу','Topshirishni bekor qilish')+'</button><button type="button" class="btn ghost sm" data-act="dhvno">'+L('Не отменять','Bekor qilmaslik')+'</button></div></div>';
+}
+function hdResForm(){
+  const d=S.dv,dis=d.busy?' disabled':'';
+  return '<div class="payb"><div class="pt">'+L('Закрыть спорную запись','Bahsli yozuvni yopish')+'</div>'
+    +'<div class="pmute">'+L('Напишите, как вы разобрались с доставщиком. Запись останется в журнале с вашим именем и комментарием.','Yetkazuvchi bilan qanday hal qilganingizni yozing. Yozuv jurnalda ismingiz va izohingiz bilan qoladi.')+'</div>'
+    +'<div class="pyrow"><input type="text" id="dh-note" maxlength="120" value="'+esc(d.note)+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+dis+'></div>'
+    +'<div class="pyrow"><button type="button" class="btn sm" data-act="dhrgo"'+dis+'>'+L('Закрыть','Yopish')+'</button><button type="button" class="btn ghost sm" data-act="dhrno">'+L('Не сейчас','Hozir emas')+'</button></div></div>';
+}
+/* Кнопки под записью о сдаче: у продавца (cid) отмена и закрытие спора, у самого доставщика ответ «Верно» / «Не так». */
+function hdActs(r,cid){
+  if(r.k!=='out'&&r.k!=='ox')return '';
+  if(cid){
+    const d=S.dv;let h='';
+    if(r.k==='out'&&r.vwhy===undefined)h+=d.hv===r.n?hdVoidForm():'<button type="button" class="btn ghost sm" data-act="dhvoid" data-n="'+r.n+'">'+L('Отменить сдачу','Topshirishni bekor qilish')+'</button>';
+    if(hdFlag(r))h+=d.hr===r.n?hdResForm():'<button type="button" class="btn ghost sm" data-act="dhres" data-n="'+r.n+'">'+L('Закрыть спор','Bahsni yopish')+'</button>';
+    return h;
+  }
+  if(r.vwhy!==undefined||r.rsl)return '';
+  const dis=S.cr.busy?' disabled':'';
+  if(r.cf==='wait'||r.cf==='na')return '<span class="cfq"><button type="button" class="btn sm" data-act="chans" data-n="'+r.n+'" data-ok="1"'+dis+'>✅ '+L('Верно','Toʻgʻri')+'</button><button type="button" class="btn ghost sm" data-act="chans" data-n="'+r.n+'" data-ok="0"'+dis+'>❌ '+L('Не так','Notoʻgʻri')+'</button></span>';
+  if(r.cf==='no')return '<span class="cfq"><button type="button" class="btn ghost sm" data-act="chans" data-n="'+r.n+'" data-ok="1"'+dis+'>✅ '+L('Всё-таки верно','Baribir toʻgʻri')+'</button></span>';
+  return '';
+}
+function crRowHTML(r,cid){
   let t,sum,pos=false;
   if(r.k==='in'){t=r.o?L('Заказ ','Buyurtma ')+esc(r.o)+(r.nm?' · '+esc(r.nm):''):L('Оплата долга: ','Qarz toʻlovi: ')+esc(r.nm||'');sum='+'+money(r.a);pos=true}
   else if(r.k==='out'){t=L('Сдано продавцу','Sotuvchiga topshirildi');sum='−'+money(r.a)}
+  else if(r.k==='ox'){t=L('Сдача отменена продавцом','Topshirish sotuvchi tomonidan bekor qilindi');sum='+'+money(r.a)}
   else if(r.k==='nv'){t=L('Принято без наличных: ','Naqdsiz qabul qilindi: ')+esc(payName(r.m))+' · '+(r.o?L('заказ ','buyurtma ')+esc(r.o):esc(r.nm||''));sum=money(r.a)}
   else if(r.k==='vr'){t=L('Продавец подтвердил поступление: ','Sotuvchi tushganini tasdiqladi: ')+esc(payName(r.m))+' · '+(r.o?esc(r.o):esc(r.nm||''));sum=money(r.a)}
   else if(r.k==='nx'){t=L('Продавец отменил запись: ','Sotuvchi yozuvni bekor qildi: ')+esc(payName(r.m))+' · '+esc(r.nm||'');sum=money(r.a)}
   else{t=L('Продавец отменил запись об оплате: ','Sotuvchi toʻlov yozuvini bekor qildi: ')+esc(r.nm||'');sum='−'+money(r.a)}
-  return '<div class="lrow"><div class="lt"><b>'+t+'</b><small>'+esc(jrDate(r.t))+'</small></div><div class="lsum'+(pos?' pos':'')+'">'+sum+'</div></div>';
+  let sub=esc(jrDate(r.t));
+  if((r.k==='out'||r.k==='ox')&&r.bn)sub+=' · '+L('Записал: ','Yozgan: ')+esc(r.bn);
+  if(r.k==='ox'&&r.why)sub+=' · '+L('Причина: ','Sabab: ')+esc(r.why);
+  const gone=r.k==='out'&&r.vwhy!==undefined;
+  if(gone)sub+=' · '+L('отменена: ','bekor qilingan: ')+esc(r.vwhy);
+  const ex=(r.k==='out'||r.k==='ox')?hdLines(r,!!cid)+hdActs(r,cid):'';
+  return '<div class="lrow'+(gone?' void':'')+'"><div class="lt"><b>'+t+'</b><small>'+sub+'</small></div><div class="lsum'+(pos?' pos':'')+'">'+sum+'</div></div>'+(ex?'<div class="cfl">'+ex+'</div>':'');
 }
 function crCashHTML(){
   const c=S.cr;
   let h='<div class="stat hot" style="margin:14px 0"><small>'+L('На руках сейчас','Hozir qoʻlingizda')+'</small><b>'+money(c.cash)+'</b></div>'
     +'<p class="rnote">'+L('Это наличные, которые вы приняли от клиентов и должников. Передайте их продавцу: он отметит это у себя, и сумма здесь уменьшится. Карта и перечисление сюда не попадают.','Bu mijozlar va qarzdorlardan olgan naqd pullaringiz. Sotuvchiga topshiring: u oʻzida belgilaydi va bu yerda summa kamayadi. Karta va oʻtkazma bu yerga kirmaydi.')+'</p>';
+  h+='<div class="note'+(c.late>0?' warnnote':'')+'" style="margin-bottom:12px">'+L('Срок сдачи наличных: ','Naqd pulni topshirish muddati: ')+'<b>'+dlName(c.dl)+'</b>'+(c.cash>0&&c.cs?' · '+L('самые старые деньги на руках с ','eng eski pul qoʻlingizda: ')+esc(jrDate(c.cs)):'')+'</div>';
+  if(c.late>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+crLateTxt(c)+'</div>';
+  if(c.ask>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Продавец записал сдачу денег: подтвердите ниже «Верно» или «Не так» ('+c.ask+').','Sotuvchi pul topshirishni yozdi: quyida «Toʻgʻri» yoki «Notoʻgʻri»ni tasdiqlang ('+c.ask+').')+'</div>';
   if(c.lim>0)h+='<div class="note'+(c.cash>=c.lim?' warnnote':'')+'" style="margin-bottom:12px">'+L('Лимит наличных: ','Naqd limiti: ')+money(c.lim)+(c.cash>=c.lim?L('. Лимит достигнут: пока не сдадите деньги продавцу, новые заказы и наличные оплаты долга брать нельзя.','. Limit tugadi: pulni topshirmaguncha yangi buyurtma va qarzning naqd toʻlovini olib boʻlmaydi.'):'')+'</div>';
   if(!c.cashOk)return h+loadingHTML();
   if(c.nv.length)h+='<h3 class="dsub">'+L('Не сверено · ','Tekshirilmagan · ')+c.nv.length+'</h3><p class="rnote">'+L('Оплаты картой и переводом, которые вы приняли. В вашу кассу они не входят: продавец проверит поступление в банке и отметит «Деньги пришли».','Siz qabul qilgan karta va oʻtkazma toʻlovlari. Ular kassangizga kirmaydi: sotuvchi bankda tushganini tekshirib, «Pul tushdi» deb belgilaydi.')+'</p><div class="lbox">'+c.nv.map(x=>nvRowHTML(x)).join('')+'</div>';
   h+='<h3 class="dsub">'+L('История','Tarix')+'</h3>';
-  h+=c.rows.length?'<div class="lbox">'+c.rows.map(crRowHTML).join('')+'</div>':'<div class="empty">'+L('Записей пока нет.','Yozuvlar hozircha yoʻq.')+'</div>';
+  h+=c.rows.length?'<div class="lbox">'+c.rows.map(r=>crRowHTML(r)).join('')+'</div>':'<div class="empty">'+L('Записей пока нет.','Yozuvlar hozircha yoʻq.')+'</div>';
   return h;
 }
 async function loadCourier(){
@@ -2159,8 +2218,8 @@ async function loadCourier(){
   const r=await api('GET','/api/courier/orders');
   if(r.status===403){S.courier=null;renderNav();if(S.view==='courier')go('shop');return}   // доступ закрыт продавцом
   if(!r.ok||!r.data||!Array.isArray(r.data.orders))return;
-  const c=S.cr,same=c.ok&&JSON.stringify([r.data.orders,r.data.soon,r.data.cash,r.data.lim,r.data.nvn])===JSON.stringify([c.orders,c.soon,c.cash,c.lim,c.nvn]);
-  Object.assign(c,{ok:true,orders:r.data.orders,soon:r.data.soon,cash:r.data.cash,lim:r.data.lim||0,nvn:r.data.nvn||0});
+  const c=S.cr,same=c.ok&&JSON.stringify([r.data.orders,r.data.soon,r.data.cash,r.data.lim,r.data.nvn,r.data.late,r.data.dl,r.data.ask])===JSON.stringify([c.orders,c.soon,c.cash,c.lim,c.nvn,c.late,c.dl,c.ask]);
+  Object.assign(c,{ok:true,orders:r.data.orders,soon:r.data.soon,cash:r.data.cash,lim:r.data.lim||0,nvn:r.data.nvn||0,late:r.data.late||0,dl:r.data.dl||0,ask:r.data.ask||0});
   if(S.view==='courier'){loadCrDebts();if(c.tab==='cash')loadCrCash()}
   if(same||S.view!=='courier'){if(!same)renderNav();return}
   renderNav();
@@ -2184,8 +2243,26 @@ async function loadCrCash(){
   if(!S.courier||!S.did)return;
   const r=await api('GET','/api/courier/cash');
   if(!r.ok||!r.data)return;
-  Object.assign(S.cr,{cash:r.data.cash,lim:r.data.lim||0,rows:r.data.rows||[],nv:r.data.nv||[],nvn:(r.data.nv||[]).length,cashOk:true});
+  crApplyCash(r.data);
   if(S.view==='courier'&&S.cr.tab==='cash')paintCourier();
+}
+function crApplyCash(d){
+  Object.assign(S.cr,{cash:d.cash,lim:d.lim||0,dl:d.dl||0,late:d.late||0,cs:d.cs||'',ask:d.ask||0,rows:d.rows||[],nv:d.nv||[],nvn:(d.nv||[]).length,cashOk:true});
+}
+/* Доставщик отвечает на «Продавец записал сдачу»: «Верно» или «Не так». То же, что кнопки в Telegram. */
+async function crHandAns(n,ok){
+  if(S.cr.busy)return;
+  S.cr.busy='h'+n;paintCourier();
+  const r=await api('POST','/api/courier/confirm',{n,ok});
+  S.cr.busy='';
+  if(r.ok&&r.data&&Array.isArray(r.data.rows)){
+    crApplyCash(r.data);
+    toast(ok?L('Спасибо, подтверждено','Rahmat, tasdiqlandi'):L('Отмечено «Не так». Продавец увидит.','«Notoʻgʻri» deb belgilandi. Sotuvchi koʻradi.'));
+  }else{
+    const e=r.data&&r.data.error;
+    toast(e==='final'?L('Вы уже подтвердили эту запись','Bu yozuvni allaqachon tasdiqlagansiz'):e==='resolved'?L('Продавец уже закрыл этот вопрос. Если не согласны, напишите ему.','Sotuvchi bu masalani yopgan. Rozi boʻlmasangiz, unga yozing.'):e==='void'?L('Эта запись уже отменена продавцом','Bu yozuv sotuvchi tomonidan bekor qilingan'):L('Не удалось отправить ответ. Проверьте соединение.','Javobni yuborib boʻlmadi. Ulanishni tekshiring.'));
+  }
+  paintCrTabs();paintCourier();loadCourier();loadCrCash();
 }
 async function crTake(id){
   if(S.cr.busy)return;
@@ -2221,17 +2298,20 @@ async function crDone(id,pay){
 }
 
 /* ---------- продавец: доставщики ---------- */
-function newDv(){return {ok:false,list:[],name:'',phone:'',busy:false,open:null,mode:'',det:null,amount:''}}
+function newDv(){return {ok:false,list:[],name:'',phone:'',busy:false,open:null,mode:'',det:null,amount:'',hv:0,hr:0,why:'',note:''}}
 async function loadCouriers(){
   if(!S.admin||!S.did)return;
   const r=await api('GET','/api/admin/couriers');
   if(!r.ok||!r.data||!Array.isArray(r.data.couriers))return;
-  const d=S.dv,same=d.ok&&JSON.stringify(r.data.couriers)===JSON.stringify(d.list);
+  const d=S.dv,same=d.ok&&JSON.stringify(r.data.couriers)===JSON.stringify(d.list),was=dvAlerts();
   d.ok=true;d.list=r.data.couriers;
+  if(dvAlerts()!==was){renderNav();if(S.view==='seller')paintTabs()}
   if(same||S.view!=='seller'||S.sellerTab!=='dlv')return;
   const ae=document.activeElement;
   if(!(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)))paintSeller();
 }
+/* Сколько доставщиков требуют внимания: просрочили сдачу или есть сдачи без ответа или спорные. */
+const dvAlerts=()=>S.dv.list.filter(c=>c.late>0||c.hf>0).length;
 function dvState(c){return !c.joined?['wait',L('Ждёт входа по ссылке','Havola orqali kirishni kutmoqda')]:c.on?['ok',L('Работает','Ishlayapti')]:['off',L('Отключён','Oʻchirilgan')]}
 function couriersHTML(){
   const d=S.dv;
@@ -2243,6 +2323,8 @@ function couriersHTML(){
   if(!d.list.length)return h+'<div class="empty"><b>'+L('Доставщиков пока нет','Yetkazuvchilar hozircha yoʻq')+'</b>'+L('Если возите заказы сами, этот раздел не нужен.','Buyurtmalarni oʻzingiz olib borsangiz, bu boʻlim kerak emas.')+'</div>';
   const total=d.list.reduce((t,c)=>t+(c.cash||0),0);
   if(total>0)h+='<div class="note warnnote" style="margin-top:12px">'+L('Наличные у доставщиков: ','Yetkazuvchilardagi naqd pul: ')+money(total)+'</div>';
+  const lateN=d.list.filter(c=>c.late>0).length;
+  if(lateN>0)h+='<div class="note warnnote" style="margin-top:12px">'+L('Не сдали деньги в срок: '+lateN+'. Они выделены ниже.','Pulni muddatida topshirmaganlar: '+lateN+'. Ular quyida belgilangan.')+'</div>';
   return h+'<div class="dlist" style="margin-top:12px">'+d.list.map(dvCardHTML).join('')+'</div>';
 }
 function dvCardHTML(c){
@@ -2250,6 +2332,10 @@ function dvCardHTML(c){
   const btn=(act,label,cls,extra)=>'<button type="button" class="btn ghost sm'+(cls?' '+cls:'')+'" data-act="'+act+'" data-id="'+esc(c.id)+'"'+(extra||'')+dis+'>'+label+'</button>';
   let h='<div class="dvc"><div class="dvh"><div class="dn"><b>'+esc(c.name)+'</b><small>'+esc(c.phone||L('телефон не указан','telefon koʻrsatilmagan'))+'</small></div><span class="dvs '+st[0]+'">'+st[1]+'</span></div>'
     +'<div class="dvcash">'+L('Наличные на руках: ','Qoʻldagi naqd pul: ')+'<b>'+money(c.cash)+'</b>'+(c.lim>0?' · '+L('лимит ','limit ')+money(c.lim)+(c.cash>=c.lim?' · <b class="bad">'+L('достигнут','yetdi')+'</b>':''):'')+'</div>'
+    +'<div class="dvcash">'+L('Срок сдачи: ','Topshirish muddati: ')+'<b>'+dlName(c.dl)+'</b>'+(c.cash>0&&c.cs?' · '+L('самые старые деньги с ','eng eski pul ')+esc(jrDate(c.cs)):'')+(c.late>0?' · <b class="bad">'+L('просрочка '+c.late+' дн.','kechikish '+c.late+' kun')+'</b>':'')+'</div>'
+    +(c.late>0?'<div class="note warnnote">'+L('Доставщик не сдал деньги в срок. Новые заказы и наличные оплаты долга ему закрыты, пока не сдаст. Безналичные оплаты принимать может.','Yetkazuvchi pulni muddatida topshirmadi. Topshirmaguncha unga yangi buyurtma va qarzning naqd toʻlovi yopiq. Naqdsiz toʻlovlarni qabul qila oladi.')+'</div>':'')
+    +(c.hf>0?'<div class="note warnnote">'+L('Сдач без подтверждения: '+c.hf+'. Доставщик ответил «Не так», не получил сообщение или молчит больше суток. Откройте «История» и закройте вопрос с комментарием.','Tasdiqlanmagan topshirishlar: '+c.hf+'. Yetkazuvchi «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim. «Tarix»ni oching va savolni izoh bilan yoping.')+'</div>':'')
+    +(c.hw>0?'<div class="dvcash">'+L('Ждём ответа доставщика на сдачу: ','Yetkazuvchining topshirishga javobi kutilmoqda: ')+'<b>'+c.hw+'</b></div>':'')
     +(c.nvn>0?'<div class="dvcash">'+L('Не сверено (карта, перечисление): ','Tekshirilmagan (karta, oʻtkazma): ')+'<b>'+c.nvn+' · '+money(c.nva)+'</b></div>':'');
   if(c.link){
     const msg=L('Ссылка для входа доставщиком. Нажмите её и откройте бота.','Yetkazuvchi sifatida kirish havolasi. Uni bosing va botni oching.');
@@ -2261,6 +2347,7 @@ function dvCardHTML(c){
     +(c.cash>0?btn('dvhand',L('Принял деньги','Pulni qabul qildim'),'',open&&d.mode==='hand'?' aria-pressed="true"':''):'')
     +(c.nvn>0?btn('dvnv',L('Не сверено · ','Tekshirilmagan · ')+c.nvn,'',open&&d.mode==='nv'?' aria-pressed="true"':''):'')
     +(c.joined?btn('dvlim',L('Лимит наличных','Naqd limiti'),'',open&&d.mode==='lim'?' aria-pressed="true"':''):'')
+    +btn('dvdl',L('Срок сдачи','Topshirish muddati'),'',open&&d.mode==='dl'?' aria-pressed="true"':'')
     +btn('dvhist',L('История','Tarix'))
     +(c.joined?btn('dvflag',c.credit?L('Долг: разрешён','Qarz: ruxsat'):L('Долг: запрещён','Qarz: taqiqlangan'),'',' data-k="credit"'):'')
     +(c.joined?btn('dvflag',c.on?L('Отключить','Oʻchirish'):L('Включить','Yoqish'),'',' data-k="on"'):'')
@@ -2282,14 +2369,22 @@ function dvCardHTML(c){
       +'<div class="pyrow"><label for="dv-lim">'+L('Сумма','Summa')+'</label><input type="number" id="dv-lim" inputmode="numeric" min="0" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'><button type="button" class="chip" data-act="dvlimoff">'+L('Без лимита','Limitsiz')+'</button></div>'
       +'<div class="pyrow"><button type="button" class="btn sm" data-act="dvlimgo"'+dis+'>'+L('Сохранить','Saqlash')+'</button><button type="button" class="btn ghost sm" data-act="dvclose">'+L('Закрыть','Yopish')+'</button></div></div>';
   }
+  if(open&&d.mode==='dl'){
+    const opts=[[0,L('В тот же день','Shu kuni')],[1,L('1 день','1 kun')],[3,L('3 дня','3 kun')],[-1,L('Без срока','Muddatsiz')]];
+    if(!opts.some(x=>x[0]===c.dl))opts.splice(1,0,[c.dl,dlName(c.dl)]);
+    h+='<div class="payb"><div class="pt">'+L('Срок сдачи наличных','Naqd pulni topshirish muddati')+'</div>'
+      +'<div class="pmute">'+L('Сколько доставщик может держать наличные, не сдав их вам. Если срок прошёл, он не может взять новый заказ и принять наличные оплаты долга, пока не сдаст деньги. Безналичные оплаты принимать может.','Yetkazuvchi naqd pulni sizga topshirmay qancha ushlab turishi mumkin. Muddat oʻtsa, u pulni topshirmaguncha yangi buyurtma ola olmaydi va qarzning naqd toʻlovini qabul qila olmaydi. Naqdsiz toʻlovlarni qabul qila oladi.')+'</div>'
+      +'<div class="pyrow">'+opts.map(x=>'<button type="button" class="chip" data-act="dvdlgo" data-v="'+x[0]+'" aria-pressed="'+(c.dl===x[0])+'"'+dis+'>'+x[1]+'</button>').join('')+'</div>'
+      +'<div class="pyrow"><button type="button" class="btn ghost sm" data-act="dvclose">'+L('Закрыть','Yopish')+'</button></div></div>';
+  }
   if(open&&d.mode==='hist'){
     h+='<h3 class="dsub">'+L('Касса доставщика','Yetkazuvchi kassasi')+'</h3>';
-    h+=!d.det?loadingHTML():d.det.rows.length?'<div class="lbox">'+d.det.rows.map(crRowHTML).join('')+'</div>':'<div class="empty">'+L('Записей пока нет.','Yozuvlar hozircha yoʻq.')+'</div>';
+    h+=!d.det?loadingHTML():d.det.rows.length?'<div class="lbox">'+d.det.rows.map(r=>crRowHTML(r,c.id)).join('')+'</div>':'<div class="empty">'+L('Записей пока нет.','Yozuvlar hozircha yoʻq.')+'</div>';
     h+='<div class="pyrow" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="dvclose">'+L('Закрыть','Yopish')+'</button></div>';
   }
   return h+'</div>';
 }
-const dvErr=er=>({has_nv:L('У доставщика есть неподтверждённые оплаты картой или переводом. Сначала сверьте их.','Yetkazuvchida tasdiqlanmagan karta yoki oʻtkazma toʻlovlari bor. Avval ularni tekshiring.'),bad_lim:L('Лимит — целое число сум, 0 — без лимита','Limit — butun son, 0 — limitsiz'),bad_name:L('Введите имя (от 2 букв)','Ismni kiriting (kamida 2 harf)'),bad_phone:L('Проверьте номер телефона','Telefon raqamini tekshiring'),too_many:L('Слишком много доставщиков','Yetkazuvchilar juda koʻp'),has_cash:L('У доставщика есть наличные. Сначала отметьте, что он их сдал.','Yetkazuvchida naqd pul bor. Avval uni topshirganini belgilang.'),bad_amount:L('Сумма больше, чем у доставщика на руках','Summa yetkazuvchi qoʻlidagidan katta')}[er]||L('Не получилось. Проверьте соединение.','Muvaffaqiyatsiz. Ulanishni tekshiring.'));
+const dvErr=er=>({bad_dl:L('Срок — от 0 до 30 дней или «без срока»','Muddat — 0 dan 30 kungacha yoki «muddatsiz»'),has_hq:L('У доставщика есть сдачи без ответа или спорные. Сначала закройте их.','Yetkazuvchida javobsiz yoki bahsli topshirishlar bor. Avval ularni yoping.'),bad_reason:L('Напишите причину (от 3 букв)','Sababni yozing (kamida 3 ta harf)'),bad_note:L('Напишите комментарий (от 3 букв)','Izoh yozing (kamida 3 ta harf)'),already:L('Эта запись уже обработана','Bu yozuv allaqachon qayta ishlangan'),not_flagged:L('Эта запись ещё не спорная','Bu yozuv hali bahsli emas'),has_nv:L('У доставщика есть неподтверждённые оплаты картой или переводом. Сначала сверьте их.','Yetkazuvchida tasdiqlanmagan karta yoki oʻtkazma toʻlovlari bor. Avval ularni tekshiring.'),bad_lim:L('Лимит — целое число сум, 0 — без лимита','Limit — butun son, 0 — limitsiz'),bad_name:L('Введите имя (от 2 букв)','Ismni kiriting (kamida 2 harf)'),bad_phone:L('Проверьте номер телефона','Telefon raqamini tekshiring'),too_many:L('Слишком много доставщиков','Yetkazuvchilar juda koʻp'),has_cash:L('У доставщика есть наличные. Сначала отметьте, что он их сдал.','Yetkazuvchida naqd pul bor. Avval uni topshirganini belgilang.'),bad_amount:L('Сумма больше, чем у доставщика на руках','Summa yetkazuvchi qoʻlidagidan katta')}[er]||L('Не получилось. Проверьте соединение.','Muvaffaqiyatsiz. Ulanishni tekshiring.'));
 async function dvAdd(){
   const d=S.dv;if(d.busy)return;
   const n=$('#dv-name'),p=$('#dv-phone');
@@ -2307,7 +2402,7 @@ async function dvOpen(id,mode){
   const d=S.dv;
   if(d.open===id&&d.mode===mode){d.open=null;d.det=null;paintSeller();return}
   const c=d.list.find(x=>x.id===id);
-  Object.assign(d,{open:id,mode,det:null,amount:mode==='hand'&&c?String(c.cash):mode==='lim'&&c&&c.lim?String(c.lim):''});
+  Object.assign(d,{open:id,mode,det:null,hv:0,hr:0,why:'',note:'',amount:mode==='hand'&&c?String(c.cash):mode==='lim'&&c&&c.lim?String(c.lim):''});
   paintSeller();
   const r=await api('GET','/api/admin/couriers/'+id);
   if(d.open!==id)return;
@@ -2322,6 +2417,43 @@ async function dvVerify(id,nv){
   if(!r.ok||!r.data||!r.data.courier){toast(r.status===404?L('Эта оплата уже сверена','Bu toʻlov allaqachon tekshirilgan'):dvErr(r.data&&r.data.error));await loadCouriers();paintSeller();return}
   d.det=r.data;
   toast(L('Отмечено: деньги пришли','Belgilandi: pul tushdi'));
+  await loadCouriers();paintSeller();
+}
+async function dvSetDl(v){
+  const d=S.dv,c=d.list.find(x=>x.id===d.open);
+  if(!c||d.busy||!Number.isInteger(v))return;
+  d.busy=true;paintSeller();
+  const r=await api('PUT','/api/admin/couriers/'+c.id,{dl:v});
+  d.busy=false;
+  if(!r.ok||!r.data||!r.data.courier){toast(dvErr(r.data&&r.data.error));paintSeller();return}
+  d.open=null;d.det=null;
+  toast(L('Срок сдачи: '+dlName(v),'Topshirish muddati: '+dlName(v)));
+  await loadCouriers();paintSeller();
+}
+function dvHSync(){const w=$('#dh-why'),n=$('#dh-note');if(w)S.dv.why=w.value;if(n)S.dv.note=n.value}
+function dvHVoid(n){
+  const d=S.dv;if(d.busy)return;
+  dvHSync();d.hv=d.hv===n?0:n;d.hr=0;d.why='';paintSeller();
+  const el=$('#dh-why');if(el)el.focus();
+}
+function dvHRes(n){
+  const d=S.dv;if(d.busy)return;
+  dvHSync();d.hr=d.hr===n?0:n;d.hv=0;d.note='';paintSeller();
+  const el=$('#dh-note');if(el)el.focus();
+}
+/* Отмена записи о сдаче и закрытие спора по сдаче: обе с обязательным текстом. */
+async function dvHGo(kind){
+  const d=S.dv,id=d.open,n=kind==='void'?d.hv:d.hr;
+  if(!id||!n||d.busy)return;
+  dvHSync();
+  const txt=(kind==='void'?d.why:d.note).trim();
+  if(txt.length<3){toast(dvErr(kind==='void'?'bad_reason':'bad_note'));const el=$(kind==='void'?'#dh-why':'#dh-note');if(el)el.focus();return}
+  d.busy=true;paintSeller();
+  const r=await api('POST','/api/admin/couriers/'+id+(kind==='void'?'/hvoid':'/hresolve'),kind==='void'?{n,reason:txt}:{n,note:txt});
+  d.busy=false;
+  if(!r.ok||!r.data||!r.data.courier){toast(dvErr(r.data&&r.data.error));paintSeller();await loadCouriers();return}
+  d.det=r.data;d.hv=0;d.hr=0;d.why='';d.note='';
+  toast(kind==='void'?L('Сдача отменена. Доставщик получил причину.','Topshirish bekor qilindi. Yetkazuvchi sababni oldi.'):L('Спор закрыт. Доставщик получил комментарий.','Bahs yopildi. Yetkazuvchi izohni oldi.'));
   await loadCouriers();paintSeller();
 }
 async function dvSetLim(v){
@@ -4209,8 +4341,25 @@ async function loadDisputes(){
   if(chg)renderNav();
   if(!same&&S.view==='owner'&&S.own.sec==='disp')ownRefresh();
 }
-const dispKey=x=>x.did+'-'+x.uid+'-'+x.n;
+const dispKey=x=>x.did+'-'+(x.h?x.cid:x.uid)+'-'+x.n;
+/* Сдача денег доставщиком: спорная запись (h=1) или просрочка (h=2, закрывать нечем: нужно, чтобы доставщик сдал деньги). */
+function dispHandHTML(x){
+  const key=dispKey(x),D=S.own.disp;
+  if(x.h===2)return '<div class="dsp"><div class="dn"><b>'+L('Доставщик ','Yetkazuvchi ')+esc(x.cn||'')+'</b></div>'
+    +'<div class="dpw"><b>'+esc(x.shopName||x.did)+'</b> · '+L('не сдал деньги: на руках ','pulni topshirmadi: qoʻlida ')+money(x.a)+'</div>'
+    +'<div class="dpw">'+(x.t?L('Самые старые деньги с ','Eng eski pul ')+esc(jrDate(x.t)):'')+'</div>'
+    +'<span class="cfs"><span class="cfc bad">'+L('Просрочка сдачи: '+x.late+' дн.','Topshirish kechikishi: '+x.late+' kun')+'</span></span></div>';
+  const why=x.cf==='no'?L('Доставщик: «Не так»','Yetkazuvchi: «Notoʻgʻri»'):x.cf==='na'?L('Доставщик не получил сообщение','Yetkazuvchi xabarni olmadi'):L('Доставщик молчит больше суток','Yetkazuvchi bir sutkadan ortiq jim');
+  const what=x.k==='ox'?L('Отмена сдачи: ','Topshirish bekor qilindi: ')+money(x.a)+(x.why?' · '+esc(x.why):''):L('Сдача денег: ','Pul topshirish: ')+money(x.a);
+  return '<div class="dsp"><div class="dn"><b>'+L('Доставщик ','Yetkazuvchi ')+esc(x.cn||'')+'</b></div>'
+    +'<div class="dpw"><b>'+esc(x.shopName||x.did)+'</b> · '+what+'</div>'
+    +'<div class="dpw">'+esc(jrDate(x.t))+(x.bn?' · '+L('Записал: ','Yozgan: ')+esc(x.bn):'')+'</div>'
+    +'<span class="cfs"><span class="cfc bad">'+why+'</span></span>'
+    +'<div class="pyrow"><input type="text" id="dn-'+esc(key)+'" data-dnote="'+esc(key)+'" maxlength="120" value="'+esc(D.note[key]||'')+'" placeholder="'+esc(L('Комментарий (обязательно)','Izoh (majburiy)'))+'"'+(D.busy===key?' disabled':'')+'>'
+    +'<button type="button" class="btn sm" data-act="dispres" data-did="'+esc(x.did)+'" data-cid="'+esc(x.cid)+'" data-n="'+x.n+'"'+(D.busy?' disabled':'')+'>'+L('Закрыть','Yopish')+'</button></div></div>';
+}
 function dispCardHTML(x){
+  if(x.h)return dispHandHTML(x);
   const key=dispKey(x),D=S.own.disp;
   const why=x.cf==='no'?L('Магазин: «Не так»','Doʻkon: «Notoʻgʻri»'):x.cf==='na'?L('Магазин не получил сообщение','Doʻkon xabarni olmadi'):L('Магазин молчит больше суток','Doʻkon bir sutkadan ortiq jim');
   const what=x.k==='ch'?L('Выдача в долг '+esc(x.ref||'')+': ','Qarzga berildi '+esc(x.ref||'')+': ')+money(x.a):L('Оплата долга: ','Qarz toʻlovi: ')+esc(payName(x.m))+' '+money(x.a);
@@ -4224,22 +4373,22 @@ function dispCardHTML(x){
 function ownDispHTML(){
   const D=S.own.disp;
   if(!D.ok)return loadingHTML();
-  const lead='<p class="lead">'+L('Записи о долгах и оплатах, по которым магазин и продавец не сошлись: магазин ответил «Не так», не получил сообщение или молчит больше суток. Разберитесь и закройте запись с комментарием: он останется в журнале вместе с вашим именем.','Qarz va toʻlov yozuvlari, boʻyicha doʻkon va sotuvchi kelisha olmagan: doʻkon «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim. Hal qiling va yozuvni izoh bilan yoping: u ismingiz bilan jurnalda qoladi.')+'</p>';
-  if(!D.items.length)return lead+'<div class="empty"><b>'+L('Спорных записей нет','Bahsli yozuvlar yoʻq')+'</b>'+L('Все записи подтверждены магазинами или закрыты.','Hamma yozuvlar doʻkonlar tomonidan tasdiqlangan yoki yopilgan.')+'</div>';
+  const lead='<p class="lead">'+L('Записи о долгах, оплатах и сдаче денег доставщиками, по которым стороны не сошлись: магазин или доставщик ответил «Не так», не получил сообщение или молчит больше суток. Здесь же доставщики, которые не сдали деньги в срок. Разберитесь и закройте запись с комментарием: он останется в журнале вместе с вашим именем.','Qarz, toʻlov va yetkazuvchilar pul topshirishi yozuvlari, boʻyicha tomonlar kelisha olmagan: doʻkon yoki yetkazuvchi «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim. Shu yerda pulni muddatida topshirmagan yetkazuvchilar ham koʻrinadi. Hal qiling va yozuvni izoh bilan yoping: u ismingiz bilan jurnalda qoladi.')+'</p>';
+  if(!D.items.length)return lead+'<div class="empty"><b>'+L('Спорных записей нет','Bahsli yozuvlar yoʻq')+'</b>'+L('Все записи подтверждены или закрыты, деньги сданы в срок.','Hamma yozuvlar tasdiqlangan yoki yopilgan, pul muddatida topshirilgan.')+'</div>';
   return lead+'<div class="dlist">'+D.items.map(dispCardHTML).join('')+'</div>';
 }
-async function dispResolve(did,uid,n){
-  const D=S.own.disp,key=did+'-'+uid+'-'+n;
+async function dispResolve(did,uid,n,cid){
+  const D=S.own.disp,key=did+'-'+(cid||uid)+'-'+n;
   if(D.busy)return;
   const el=document.getElementById('dn-'+key);
   if(el)D.note[key]=el.value;
   const note=String(D.note[key]||'').trim();
   if(note.length<3){toast(L('Напишите комментарий (от 3 букв)','Izoh yozing (kamida 3 ta harf)'));if(el)el.focus();return}
   D.busy=key;renderOwner();
-  const r=await api('POST','/api/hub/admin/disputes/resolve',{did,uid,n,note});
+  const r=await api('POST','/api/hub/admin/disputes/resolve',cid?{did,cid,n,note}:{did,uid,n,note});
   D.busy='';
   if(!r.ok){toast(r.status===409?L('Эта запись уже закрыта или ещё не спорная','Bu yozuv allaqachon yopilgan yoki hali bahsli emas'):L('Не удалось закрыть запись','Yozuvni yopib boʻlmadi'))}
-  else{delete D.note[key];toast(L('Спор закрыт. Магазин получил комментарий.','Bahs yopildi. Doʻkon izohni oldi.'))}
+  else{delete D.note[key];toast(cid?L('Спор закрыт. Доставщик получил комментарий.','Bahs yopildi. Yetkazuvchi izohni oldi.'):L('Спор закрыт. Магазин получил комментарий.','Bahs yopildi. Doʻkon izohni oldi.'))}
   renderOwner();loadDisputes();
 }
 async function loadOwner(){
@@ -4568,7 +4717,7 @@ document.addEventListener('click',e=>{
   else if(a==='owner')go('owner');
   else if(a==='hubreload'){S.hub.err=false;renderShops();loadHub()}
   else if(a==='showfar'){S.showFar=!S.showFar;renderShops()}
-  else if(a==='dispres')dispResolve(t.dataset.did,Number(t.dataset.uid),Number(t.dataset.n))
+  else if(a==='dispres')dispResolve(t.dataset.did,Number(t.dataset.uid),Number(t.dataset.n),t.dataset.cid||'')
   else if(a==='ownreload'){S.own.loaded=false;S.own.err=false;renderOwner();loadOwner()}
   else if(a==='openshop')enterShop(t.dataset.id,'shop');
   else if(a==='opencartshop')enterShop(t.dataset.id,'shop',true);
@@ -4845,6 +4994,15 @@ document.addEventListener('click',e=>{
   else if(a==='dvlim')dvOpen(t.dataset.id,'lim')
   else if(a==='dvlimgo')dvSetLim()
   else if(a==='dvlimoff')dvSetLim(0)
+  else if(a==='dvdl')dvOpen(t.dataset.id,'dl')
+  else if(a==='dvdlgo')dvSetDl(Number(t.dataset.v))
+  else if(a==='dhvoid')dvHVoid(Number(t.dataset.n))
+  else if(a==='dhvgo')dvHGo('void')
+  else if(a==='dhvno'){S.dv.hv=0;S.dv.why='';paintSeller()}
+  else if(a==='dhres')dvHRes(Number(t.dataset.n))
+  else if(a==='dhrgo')dvHGo('res')
+  else if(a==='dhrno'){S.dv.hr=0;S.dv.note='';paintSeller()}
+  else if(a==='chans')crHandAns(Number(t.dataset.n),t.dataset.ok==='1')
   else if(a==='dvver')dvVerify(t.dataset.id,Number(t.dataset.nv))
   else if(a==='dvhand')dvOpen(t.dataset.id,'hand')
   else if(a==='dvclose'){S.dv.open=null;S.dv.det=null;paintSeller()}
@@ -4889,6 +5047,8 @@ document.addEventListener('input',e=>{
   else if(t.id==='dv-phone')S.dv.phone=t.value
   else if(t.id==='dv-amount')S.dv.amount=t.value
   else if(t.id==='dv-lim')S.dv.amount=t.value
+  else if(t.id==='dh-why')S.dv.why=t.value
+  else if(t.id==='dh-note')S.dv.note=t.value
   else if(t.id==='dx-why')DB().vwhy=t.value
   else if(t.id==='dx-note')DB().rnote=t.value
   else if(t.dataset.dnote!==undefined)S.own.disp.note[t.dataset.dnote]=t.value
@@ -5032,7 +5192,7 @@ async function loadMine(){
 async function loadAdmin(){
   if(!S.admin||!S.did)return;
   loadStock();loadDebts();
-  if(S.sellerTab==='dlv'&&S.view==='seller')loadCouriers();
+  if((S.sellerTab==='dlv'&&S.view==='seller')||!S.dv.ok||S.dv.list.length)loadCouriers();
   const r=await api('GET','/api/admin/orders');
   if(!r.ok||!r.data)return;
   if(JSON.stringify(r.data.orders)===JSON.stringify(S.allOrders)&&JSON.stringify(r.data.stats)===JSON.stringify(S.stats))return;
