@@ -6926,6 +6926,245 @@ await t('сборочный лист и резервная копия по-уз�
   assert.ok(new TextDecoder().decode(unzip(lastDoc().file.bytes)['README.txt']).startsWith('Резервная копия магазина'));
 });
 
+/* ---------- оплата комиссии: дистрибьютор отмечает платёж, владелец подтверждает ---------- */
+/* дистрибьютор с процентом 5 и двумя выданными заказами: начислено 139 400 */
+async function commWorld() {
+  const { sid } = await shopWorld();
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { pct: 5 } })).status, 200);
+  const A = newUser();
+  for (let i = 0; i < 2; i++) {
+    const o = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) }))).order;
+    for (const to of ['accepted', 'ready', 'done']) assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id: o.id, to } })).status, 200);
+  }
+  tgLog = [];
+  return { sid, A };
+}
+const cGet = (sid, init, q) => callS(sid, 'GET', '/api/admin/comm' + (q || ''), { init: init || iD() });
+const cPay = (sid, body, init) => callS(sid, 'POST', '/api/admin/comm', { init: init || iD(), body });
+const cOwn = (body, init) => call('POST', '/api/hub/admin/comm', { init: init || iS(), body });
+const cState = async sid => (await jsonOf(await cGet(sid))).comm;
+const sentTo = (id, from) => tgLog.slice(from || 0).filter(x => x.method === 'sendMessage' && x.payload.chat_id === id);
+
+await t('комиссия: «К оплате» — начислено минус подтверждённое; платёж ждёт, пока владелец не нажмёт «Получил»', async () => {
+  const { sid, A } = await commWorld();
+  let c = await cState(sid);
+  assert.deepEqual([c.pct, c.acc, c.paid, c.due, c.nw, c.ws, c.bad, c.pays.length], [5, 139400, 0, 139400, 0, 0, 0, 0]);
+  // платёж отмечает продавец дистрибьютора; сумма и комментарий сохраняются
+  let r = await cPay(sid, { a: 40000, note: '  Click, чек 123  ' });
+  assert.equal(r.status, 200);
+  const id = (await jsonOf(r)).id;
+  c = await cState(sid);
+  assert.deepEqual([c.acc, c.paid, c.due, c.nw, c.ws], [139400, 0, 139400, 1, 40000], 'пока не подтверждён, «К оплате» не меняется');
+  assert.deepEqual([c.pays[0].a, c.pays[0].st, c.pays[0].note, c.pays[0].src, c.pays[0].bn], [40000, 'wait', 'Click, чек 123', 's', 'Dilshod']);
+  assert.equal(JSON.stringify(c).includes('"ms"'), false, 'номера сообщений наружу не уходят');
+  // владельцу пришло сообщение с кнопками (узбекский сверху, русский ниже) и кнопкой открытия экрана
+  const m = sentTo(SELLER.id)[0];
+  assert.ok(m, 'владельцу ушло сообщение');
+  const [uzT, ruT] = norm(m.payload.text).split('\n\n');
+  assert.ok(uzT.startsWith('💰 Альфа Трейд: komissiya toʻlovi\nDilshod toʻlovni belgiladi: 40 000 soʻm\nIzoh: Click, чек 123\nTasdiqlashdan oldin toʻlanishi kerak: 139 400 soʻm'), uzT);
+  assert.ok(ruT.startsWith('💰 Альфа Трейд: оплата комиссии\nDilshod отметил оплату: 40 000 сум\nКомментарий: Click, чек 123\nК оплате до подтверждения: 139 400 сум'), ruT);
+  const kb = m.payload.reply_markup.inline_keyboard;
+  assert.deepEqual(kb[0].map(b => [b.text, b.callback_data]), [['✅ Qabul qildim · Получил', 'cp:' + sid + ':' + id + ':ok'], ['❌ Kelmadi · Не получил', 'cp:' + sid + ':' + id + ':no']]);
+  assert.equal(kb[1][0].web_app.url, HOST + '/?v=comm');
+  assert.ok(Buffer.byteLength(kb[0][0].callback_data) <= 64);
+  // владелец нажимает «Получил»
+  tgLog = [];
+  await cb(SELLER, 'cp:' + sid + ':' + id + ':ok', 777, SELLER.id);
+  const ans = lastTg('answerCallbackQuery').payload.text;
+  assert.equal(norm(ans), 'Tasdiqlandi: 40 000 soʻm\nПодтверждено: 40 000 сум');
+  c = await cState(sid);
+  assert.deepEqual([c.paid, c.due, c.nw, c.pays[0].st, c.pays[0].dn], [40000, 99400, 0, 'ok', 'Jasur']);
+  // сообщение владельцу получило итог и потеряло кнопки подтверждения
+  const ed = lastTg('editMessageText').payload;
+  assert.ok(ed.text.includes('✅ Tasdiqlandi (Jasur)') && ed.text.includes('✅ Подтверждено (Jasur)'), ed.text);
+  assert.ok(norm(ed.text).includes('Endi toʻlanishi kerak: 99 400 soʻm') && norm(ed.text).includes('К оплате теперь: 99 400 сум'));
+  assert.deepEqual((await W.shops.get(sid).storage.get('cpay'))[0].ms, [{ chat_id: SELLER.id, message_id: ed.message_id }], 'правится то самое сообщение');
+  assert.equal(ed.chat_id, SELLER.id);
+  assert.equal(ed.reply_markup.inline_keyboard.length, 1);
+  assert.equal(ed.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?v=comm');
+  // продавцу — сообщение о подтверждении и новая сумма
+  const toD = sentTo(DIL.id);
+  assert.equal(toD.length, 1);
+  assert.ok(norm(toD[0].payload.text).startsWith('✅ Komissiya toʻlovi tasdiqlandi: 40 000 soʻm.\nHozir toʻlanishi kerak: 99 400 soʻm\n\n✅ Оплата комиссии подтверждена: 40 000 сум.\nК оплате сейчас: 99 400 сум'));
+  assert.equal(toD[0].payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=' + sid + '&v=comm');
+  // повторное нажатие ничего не меняет и не шлёт сообщений заново
+  tgLog = [];
+  await cb(SELLER, 'cp:' + sid + ':' + id + ':ok', 777, SELLER.id);
+  assert.ok(norm(lastTg('answerCallbackQuery').payload.text).startsWith('Allaqachon tasdiqlangan: 40 000 soʻm\nУже подтверждено: 40 000 сум'));
+  await cb(SELLER, 'cp:' + sid + ':' + id + ':no', 777, SELLER.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('Этот платёж уже обработан'));
+  assert.equal(tgLog.filter(x => x.method === 'sendMessage' || x.method === 'editMessageText').length, 0);
+  c = await cState(sid);
+  assert.deepEqual([c.paid, c.due], [40000, 99400]);
+  // жать кнопки может только владелец; чужой платёж и выдуманный номер не находятся
+  tgLog = [];
+  await cb(DIL, 'cp:' + sid + ':' + id + ':no', 777, DIL.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('Нет доступа'));
+  await cb(A.u, 'cp:' + sid + ':' + id + ':no', 777, A.u.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('Нет доступа'));
+  await cb(SELLER, 'cp:' + sid + ':NOPE1234:ok', 777, SELLER.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('Платёж не найден'));
+  assert.deepEqual((({ paid, due }) => [paid, due])(await cState(sid)), [40000, 99400]);
+});
+
+await t('комиссия: «Не получил» не меняет «К оплате»; продавец видит отклонённый платёж, пока не откроет экран', async () => {
+  const { sid } = await commWorld();
+  const id = (await jsonOf(await cPay(sid, { a: 500000 }))).id;
+  tgLog = [];
+  await cb(SELLER, 'cp:' + sid + ':' + id + ':no', 777, SELLER.id);
+  assert.equal(norm(lastTg('answerCallbackQuery').payload.text), 'Belgilandi: olinmadi\nОтмечено: не получено');
+  let c = await cState(sid);
+  assert.deepEqual([c.paid, c.due, c.nw, c.pays[0].st, c.bad], [0, 139400, 0, 'no', 1]);
+  const ed = lastTg('editMessageText').payload;
+  assert.ok(ed.text.includes('❌ Olinmadi (Jasur)') && ed.text.includes('❌ Не получено (Jasur)'));
+  const toD = sentTo(DIL.id)[0].payload.text;
+  assert.ok(norm(toD).includes('❌ Komissiya toʻlovi tasdiqlanmadi: 500 000 soʻm') && norm(toD).includes('❌ Оплата комиссии не подтверждена: 500 000 сум. Владелец не получил эти деньги. Проверьте и введите сумму заново.'));
+  // открытие экрана (seen=1) снимает отметку «новое»; обычное чтение её не трогает
+  assert.equal((await cState(sid)).bad, 1);
+  c = (await jsonOf(await cGet(sid, iD(), '?seen=1'))).comm;
+  assert.equal((await cState(sid)).bad, 0);
+  // продавец может ввести сумму заново
+  assert.equal((await cPay(sid, { a: 50000 })).status, 200);
+  assert.equal((await cState(sid)).nw, 1);
+});
+
+await t('комиссия: переплата — «аванс»; владелец решает и из приложения, отменяет подтверждённый платёж и записывает полученное сам', async () => {
+  const { sid } = await commWorld();
+  const id1 = (await jsonOf(await cPay(sid, { a: 200000, note: 'вперёд' }))).id;
+  // из приложения: тот же результат, что и кнопка в Telegram, сообщение владельцу получает итог
+  tgLog = [];
+  let r = await cOwn({ did: sid, act: 'ok', id: id1 });
+  assert.equal(r.status, 200);
+  let c = await cState(sid);
+  assert.deepEqual([c.paid, c.due], [200000, -60600], 'переплата — отрицательная сумма к оплате (аванс)');
+  assert.ok(lastTg('editMessageText').payload.text.includes('✅ Подтверждено (Jasur)'));
+  assert.ok(norm(sentTo(DIL.id)[0].payload.text).includes('Avans: 60 600 soʻm') && norm(sentTo(DIL.id)[0].payload.text).includes('Аванс: 60 600 сум'));
+  // повтор из приложения — без повторных сообщений
+  tgLog = [];
+  r = await cOwn({ did: sid, act: 'ok', id: id1 });
+  assert.equal(r.status, 200); assert.equal((await jsonOf(r)).same, true);
+  assert.equal(tgLog.length, 0);
+  // отмена подтверждённого платежа: «К оплате» возвращается, запись остаётся со статусом «Отменён»
+  r = await cOwn({ did: sid, act: 'void', id: id1 });
+  assert.equal(r.status, 200);
+  c = await cState(sid);
+  assert.deepEqual([c.paid, c.due, c.pays[0].st, c.pays[0].vo, c.bad], [0, 139400, 'void', 1, 1]);
+  assert.ok(lastTg('editMessageText').payload.text.includes('↩️ Egasi bekor qildi (Jasur)'));
+  assert.ok(norm(sentTo(DIL.id).pop().payload.text).includes('↩️ Владелец отменил подтверждённую оплату: 200 000 сум.'));
+  assert.equal((await cOwn({ did: sid, act: 'void', id: id1 })).status, 200, 'повторная отмена — не ошибка');
+  assert.equal((await cOwn({ did: sid, act: 'ok', id: id1 })).status, 409, 'отменённый платёж подтвердить нельзя');
+  // владелец записывает оплату, полученную мимо приложения
+  tgLog = [];
+  r = await cOwn({ did: sid, act: 'add', a: 100000, note: 'наличными' });
+  assert.equal(r.status, 200);
+  c = await cState(sid);
+  assert.deepEqual([c.paid, c.due, c.pays[0].st, c.pays[0].src, c.pays[0].note, c.pays[0].dn], [100000, 39400, 'ok', 'o', 'наличными', 'Jasur']);
+  assert.equal(sentTo(SELLER.id).length, 0, 'владельцу о его же записи не пишем');
+  assert.ok(norm(sentTo(DIL.id)[0].payload.text).includes('💰 Владелец записал полученную оплату комиссии: 100 000 сум.') && norm(sentTo(DIL.id)[0].payload.text).includes('К оплате сейчас: 39 400 сум'));
+  // неверные суммы, номера и действия
+  for (const a of [0, -1, 1.5, '100', null, 1e12]) assert.equal((await cOwn({ did: sid, act: 'add', a })).status, 400, 'сумма ' + a);
+  assert.equal((await cOwn({ did: sid, act: 'ok', id: 'NOPE1234' })).status, 404);
+  assert.equal((await cOwn({ did: sid, act: 'boom', id: id1 })).status, 400);
+  assert.equal((await cOwn({ did: 'zz', act: 'ok', id: id1 })).status, 404);
+  assert.equal((await cOwn({ act: 'ok', id: id1 })).status, 400);
+});
+
+await t('комиссия: продавец отзывает свой ждущий платёж; не больше пяти ждущих; неверные суммы отклоняются', async () => {
+  const { sid } = await commWorld();
+  for (const a of [0, -5, 1.5, '100', null, 1e12, undefined]) {
+    const r = await cPay(sid, a === undefined ? {} : { a });
+    assert.equal(r.status, 400, 'сумма ' + a);
+    assert.equal((await jsonOf(r)).error, 'bad_amount');
+  }
+  assert.equal((await cPay(sid, { a: 100000000000 })).status, 200, 'верхняя граница 1e11 допустима');
+  const ids = [];
+  for (let i = 0; i < 4; i++) ids.push((await jsonOf(await cPay(sid, { a: 1000 + i, note: 'x'.repeat(300) }))).id);
+  assert.equal((await cState(sid)).pays[0].note.length, 120, 'комментарий обрезается');
+  const r6 = await cPay(sid, { a: 1 });
+  assert.equal(r6.status, 429); assert.equal((await jsonOf(r6)).error, 'too_many');
+  // отзыв: платёж «Отменён», владельцу сообщение с итогом, о своём отзыве продавцу не пишем
+  tgLog = [];
+  let r = await callS(sid, 'POST', '/api/admin/comm/cancel', { init: iD(), body: { id: ids[0] } });
+  assert.equal(r.status, 200);
+  const c = await cState(sid);
+  assert.deepEqual([c.nw, c.bad, c.pays.find(p => p.id === ids[0]).st, c.pays.find(p => p.id === ids[0]).vo], [4, 0, 'void', 0]);
+  assert.ok(lastTg('editMessageText').payload.text.includes('↩️ Distribyutor toʻlovni qaytarib oldi') && lastTg('editMessageText').payload.text.includes('↩️ Дистрибьютор отозвал платёж'));
+  assert.equal(sentTo(DIL.id).length, 0);
+  assert.equal((await callS(sid, 'POST', '/api/admin/comm/cancel', { init: iD(), body: { id: ids[0] } })).status, 200, 'повтор — не ошибка');
+  assert.equal((await cPay(sid, { a: 2000 })).status, 200, 'место освободилось');
+  // отозванный платёж владелец уже подтвердить не может; подтверждённый продавец отозвать не может
+  await cb(SELLER, 'cp:' + sid + ':' + ids[0] + ':ok', 777, SELLER.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('уже обработан'));
+  await cOwn({ did: sid, act: 'ok', id: ids[1] });
+  assert.equal((await callS(sid, 'POST', '/api/admin/comm/cancel', { init: iD(), body: { id: ids[1] } })).status, 409);
+  assert.equal((await callS(sid, 'POST', '/api/admin/comm/cancel', { init: iD(), body: { id: 'NOPE1234' } })).status, 404);
+});
+
+await t('комиссия: список для владельца по всем дистрибьюторам; права доступа', async () => {
+  const { sid, A } = await commWorld();
+  const id = (await jsonOf(await cPay(sid, { a: 30000 }))).id;
+  await cOwn({ did: sid, act: 'add', a: 10000 });
+  let d = await jsonOf(await call('GET', '/api/hub/admin/comm', { init: iS() }));
+  const row = d.rows.find(x => x.id === sid), main = d.rows.find(x => x.id === 'main');
+  assert.deepEqual([row.name, row.pct, row.acc, row.paid, row.due, row.nw, row.ws, row.err], ['Альфа Трейд', 5, 139400, 10000, 129400, 1, 30000, false]);
+  assert.deepEqual(row.pays.map(p => [p.st, p.a]), [['ok', 10000], ['wait', 30000]]);
+  assert.deepEqual([main.pct, main.acc, main.due, main.pays.length], [0, 0, 0, 0]);
+  assert.deepEqual(d.total, { acc: 139400, paid: 10000, due: 129400, nw: 1, ws: 30000 });
+  assert.equal(JSON.stringify(d).includes('"ms"'), false);
+  // чужие: владелец — только владелец площадки; продавец дистрибьютора и клиент отвечают отказом
+  assert.equal((await call('GET', '/api/hub/admin/comm', { init: iD() })).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/comm', { init: A.init() })).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/comm')).status, 401);
+  assert.equal((await cOwn({ did: sid, act: 'ok', id }, iD())).status, 403);
+  assert.equal((await cOwn({ did: sid, act: 'add', a: 1 }, A.init())).status, 403);
+  assert.equal((await call('POST', '/api/hub/admin/comm', { body: { did: sid, act: 'ok', id } })).status, 401);
+  // экран продавца: только продавцы этого дистрибьютора
+  assert.equal((await cGet(sid, A.init())).status, 403);
+  assert.equal((await callS(sid, 'GET', '/api/admin/comm')).status, 401);
+  assert.equal((await cPay(sid, { a: 1 }, A.init())).status, 403);
+  assert.equal((await callS(sid, 'POST', '/api/admin/comm/cancel', { init: A.init(), body: { id } })).status, 403);
+  // у дистрибьютора без процента (первый) начисленного нет
+  const mc = (await jsonOf(await call('GET', '/api/admin/comm', { init: iS() }))).comm;
+  assert.deepEqual([mc.pct, mc.acc, mc.due], [0, 0, 0]);
+});
+
+await t('комиссия: начисленное за вытесненные старые дни не теряется — сворачивается в cold', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { pct: 5 } })).status, 200);
+  const st = W.shops.get(sid).storage, days = [], put = {};
+  for (let i = 0; i < 400; i++) {
+    const d = new Date(Date.UTC(2023, 0, 1) + i * 86400000).toISOString().slice(0, 10);
+    days.push(d); put['rp:' + d] = { n: 1, sum: 21000, disc: 0, fee: 1000, cb: 20000, cm: 1000, items: [], cl: [] };
+  }
+  put.rpx = days; put.rp0 = days[0];
+  await st.put(put);
+  assert.deepEqual([(await cState(sid)).acc, await st.get('cold')], [400000, undefined]);
+  // новый день вытесняет самый старый, его комиссия остаётся в начисленном
+  const A = newUser();
+  const o = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) }))).order;
+  for (const to of ['accepted', 'ready', 'done']) assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id: o.id, to } })).status, 200);
+  assert.equal((await st.get('rpx')).length, 400);
+  assert.equal(await st.get('rp:' + days[0]), undefined);
+  assert.equal(await st.get('cold'), 1000);
+  assert.equal((await cState(sid)).acc, 469700, '400 000 прежних + 69 700 нового заказа');
+  assert.equal((await cState(sid)).due, 469700);
+});
+
+await t('комиссия: больше 500 платежей — самые старые подтверждённые сворачиваются, «К оплате» не меняется', async () => {
+  const { sid } = await commWorld();
+  const st = W.shops.get(sid).storage, now = new Date().toISOString();
+  const rows = [];
+  for (let i = 0; i < 500; i++) rows.push({ id: 'P' + String(i).padStart(7, '0'), a: 100, note: '', st: 'ok', at: now, dt: now, bn: '', dn: '', src: 'o' });
+  await st.put('cpay', rows);
+  let c = await cState(sid);
+  assert.deepEqual([c.paid, c.due, c.pays.length], [50000, 89400, 100], 'на экране не больше 100 последних');
+  await cOwn({ did: sid, act: 'add', a: 400 });
+  c = await cState(sid);
+  assert.deepEqual([c.paid, c.due], [50400, 89000]);
+  assert.equal((await st.get('cpay')).length, 500);
+  assert.equal(await st.get('cpo'), 100, 'самый старый платёж свернулся в сумму');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
