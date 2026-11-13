@@ -7371,6 +7371,29 @@ await t('выбор доставщика: карточка заказа в Teleg
   assert.ok(lastTg('answerCallbackQuery').payload.text.includes('уже взял Азиз'));
 });
 
+/* ---------- карточка товара: отправка на проверку внизу, значок вместо «Свернуть» ---------- */
+await t('карточка товара: «Отправить на проверку» внизу карточки, а не вверху; вместо слова «Свернуть» значок', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
+  const head = fn('modHeadInner'), foot = fn('modFootInner'), body = fn('prodBody'), bits = fn('paintModBits');
+  assert.ok(!/msub1/.test(head), 'вверху карточки кнопки отправки больше нет');
+  assert.ok(/modTag\(p\)/.test(head) && /modReasonHTML\(p\)/.test(head), 'вверху остались метка и причина возврата');
+  assert.ok(/«Отправить на проверку» внизу/.test(head) && /«Tekshiruvga yuborish»/.test(head), 'подсказка вверху говорит, где кнопка, на двух языках');
+  assert.ok(/data-act="msub1"/.test(foot) && /Отправить на проверку/.test(foot) && /Tekshiruvga yuborish/.test(foot) && /Отправить снова/.test(foot) && /Qayta yuborish/.test(foot), 'внизу кнопка «Отправить на проверку» и «Отправить снова»');
+  assert.ok(/p\.ms!=='draft'&&p\.ms!=='ret'\)return ''/.test(foot), 'у одобренных и ждущих проверки кнопки нет');
+  assert.ok(/S\.msubBusy\?' disabled'/.test(foot), 'при отправке кнопка блокируется');
+  // порядок в карточке: поля → ▲▼ и удаление → кнопка отправки последней
+  assert.ok(body.indexOf('data-act="pmove"') < body.indexOf('id="mf-') && body.indexOf('data-act="pdel"') < body.indexOf('id="mf-') && body.indexOf('data-act="pfold"') < body.indexOf('id="mf-'), 'кнопка отправки под рядом ▲ ▼ Удалить');
+  assert.ok(/^id="mf-'\+id\+'">'\+modFootInner\(p\)\+'<\/div>'\s*\+'<\/div>';\s*\}/.test(body.slice(body.indexOf('id="mf-'))), 'кнопка отправки последняя в форме');
+  assert.ok(/mf-'\+p\.id/.test(bits) && /modFootInner\(p\)/.test(bits), 'нижняя кнопка обновляется вместе с верхней меткой');
+  // значок вместо слова
+  const fold = body.slice(body.indexOf('pfoldbtn') - 80, body.indexOf('pfoldbtn') + 520);
+  assert.ok(/data-act="pfold"/.test(fold) && /<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"\/><\/svg>/.test(fold), 'значок-шеврон');
+  assert.ok(/aria-label="'\+esc\(L\('Свернуть','Yigʻish'\)\)/.test(fold) && /title="'\+esc\(L\('Свернуть','Yigʻish'\)\)/.test(fold), 'подпись для экранных дикторов и подсказка на двух языках');
+  assert.ok(!/>'\+L\('Свернуть','Yigʻish'\)\+'<\/button>/.test(body), 'слова на кнопке нет');
+  assert.ok(/data-act="pfoldall" data-v="0"/.test(html), '«Свернуть все» над списком остаётся словами');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {

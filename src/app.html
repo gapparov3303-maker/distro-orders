@@ -693,7 +693,10 @@ div.lgd{cursor:default}
 .mtag{display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--mute-soft);color:var(--mute);white-space:nowrap;width:max-content}
 .mtag.wait{background:var(--info-soft);color:var(--info)}
 .mtag.ret{background:var(--bad-soft);color:var(--bad)}
-.mh:empty{display:none}
+.mh:empty,.mf:empty{display:none}
+.mf .btn{width:100%;justify-content:center}
+.pfi{padding:7px 16px}
+.pfi svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .mhead{border-radius:12px;padding:10px 12px;background:var(--mute-soft)}
 .mhead.ret{background:var(--bad-soft)}
 .mrow{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
@@ -2799,9 +2802,14 @@ const modReasonHTML=p=>'<div class="mreason"><small>'+L('Причина возв
 /* шапка товара в редакторе: черновик и возвращённый показывают состояние и кнопку отправки */
 function modHeadInner(p){
   if(p.ms!=='draft'&&p.ms!=='ret')return '';
-  const id=esc(p.id),ret=p.ms==='ret';
-  return '<div class="mhead '+p.ms+'"><div class="mrow">'+modTag(p)+'<button type="button" class="btn sm" data-act="msub1" data-id="'+id+'"'+(S.msubBusy?' disabled':'')+'>'+(ret?L('Отправить снова','Qayta yuborish'):L('Отправить на проверку','Tekshiruvga yuborish'))+'</button></div>'
-    +(ret?modReasonHTML(p):'<div class="unit" style="margin:6px 0 0">'+L('Клиенты пока не видят этот товар. Укажите название, цену и категорию и отправьте на проверку.','Mijozlar bu mahsulotni hozircha koʻrmaydi. Nomi, narxi va kategoriyasini koʻrsatib, tekshiruvga yuboring.')+'</div>')+'</div>';
+  const ret=p.ms==='ret';
+  return '<div class="mhead '+p.ms+'"><div class="mrow">'+modTag(p)+'</div>'
+    +(ret?modReasonHTML(p):'<div class="unit" style="margin:6px 0 0">'+L('Клиенты пока не видят этот товар. Укажите название, цену и категорию и нажмите «Отправить на проверку» внизу карточки.','Mijozlar bu mahsulotni hozircha koʻrmaydi. Nomi, narxi va kategoriyasini koʻrsating va karta pastidagi «Tekshiruvga yuborish» tugmasini bosing.')+'</div>')+'</div>';
+}
+/* кнопка отправки внизу карточки: её нажимают, когда поля заполнены */
+function modFootInner(p){
+  if(p.ms!=='draft'&&p.ms!=='ret')return '';
+  return '<button type="button" class="btn" data-act="msub1" data-id="'+esc(p.id)+'"'+(S.msubBusy?' disabled':'')+'>'+(p.ms==='ret'?L('Отправить снова','Qayta yuborish'):L('Отправить на проверку','Tekshiruvga yuborish'))+'</button>';
 }
 function modBanInner(){
   const n=S.prod.items.filter(p=>p.ms==='draft').length;
@@ -2836,7 +2844,7 @@ function mergeMod(prod){
   else paintModBits();
 }
 function paintModBits(){
-  S.prod.items.forEach(p=>{const el=document.getElementById('mh-'+p.id);if(el)el.innerHTML=modHeadInner(p);pxLive(p)});
+  S.prod.items.forEach(p=>{const el=document.getElementById('mh-'+p.id);if(el)el.innerHTML=modHeadInner(p);const ef=document.getElementById('mf-'+p.id);if(ef)ef.innerHTML=modFootInner(p);pxLive(p)});
   const b=document.getElementById('mban');if(b)b.innerHTML=modBanInner();
 }
 const MOD_WHY={name:['название','nomi'],price:['цену','narxi'],cat:['категорию','kategoriyasi']};
@@ -2959,7 +2967,8 @@ function prodBody(p){
     +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' шт. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' dona. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
     +'<div class="full pact"><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="-1" aria-label="'+esc(L('Выше','Yuqoriga'))+'">▲</button><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="1" aria-label="'+esc(L('Ниже','Pastga'))+'">▼</button>'
     +'<button type="button" class="btn ghost sm" data-act="pdel" data-id="'+id+'">'+(S.cd===p.id?L('Точно удалить?','Aniq oʻchirilsinmi?'):L('Удалить товар','Mahsulotni oʻchirish'))+'</button>'
-    +'<button type="button" class="btn ghost sm pfoldbtn" data-act="pfold" data-id="'+id+'">'+L('Свернуть','Yigʻish')+'</button></div>'
+    +'<button type="button" class="btn ghost sm pfi pfoldbtn" data-act="pfold" data-id="'+id+'" title="'+esc(L('Свернуть','Yigʻish'))+'" aria-label="'+esc(L('Свернуть','Yigʻish'))+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button></div>'
+    +'<div class="full mf" id="mf-'+id+'">'+modFootInner(p)+'</div>'
     +'</div>';
 }
 /* ---------- прайс из Excel ---------- */
