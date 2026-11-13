@@ -410,6 +410,23 @@ function cbParse(data) {
   const i = withDid ? 2 : 1;
   return { kind, did: withDid ? parts[1] : MAIN, id: parts[i], to: parts[i + 1], days: parts[i + 2] };
 }
+/* Сообщение владельцу об оплате комиссии (узбекский сверху, русский ниже). act: '' — платёж ждёт решения, иначе итог: ok, no, void, cancel. */
+function commOwnerText(name, p, due, act, by) {
+  return biL(() => {
+    const L1 = [L('💰 ' + name + ': оплата комиссии', '💰 ' + name + ': komissiya toʻlovi')];
+    L1.push(L((p.bn || 'Продавец') + ' отметил оплату: ' + money(p.a), (p.bn || 'Sotuvchi') + ' toʻlovni belgiladi: ' + money(p.a)));
+    if (p.note) L1.push(L('Комментарий: ', 'Izoh: ') + p.note);
+    const d = due >= 0 ? money(due) : L('аванс ', 'avans ') + money(-due);
+    L1.push((act ? L('К оплате теперь: ', 'Endi toʻlanishi kerak: ') : L('К оплате до подтверждения: ', 'Tasdiqlashdan oldin toʻlanishi kerak: ')) + d);
+    const who = by ? ' (' + by + ')' : '';
+    if (!act) L1.push(L('Нажмите «Получил», когда деньги пришли.', 'Pul kelgach, «Qabul qildim» tugmasini bosing.'));
+    else if (act === 'ok') L1.push(L('✅ Подтверждено', '✅ Tasdiqlandi') + who);
+    else if (act === 'no') L1.push(L('❌ Не получено', '❌ Olinmadi') + who);
+    else if (act === 'void') L1.push(L('↩️ Отменено владельцем', '↩️ Egasi bekor qildi') + who);
+    else L1.push(L('↩️ Дистрибьютор отозвал платёж', '↩️ Distribyutor toʻlovni qaytarib oldi'));
+    return L1.join('\n');
+  });
+}
 /* Адреса, которые открывает кнопка в Telegram: каталог дистрибьютора и его панель продавца. */
 const shopUrl = (origin, did) => origin + '/' + (did ? '?d=' + did : '');
 const sellerUrl = (origin, did) => origin + '/?d=' + (did || MAIN) + '&v=seller';
@@ -1425,6 +1442,13 @@ const newRp = () => ({ n: 0, sum: 0, disc: 0, fee: 0, cb: 0, cm: 0, items: [], c
 const COMM_DEFAULT = 2, COMM_MAX = 50;
 const cleanPct = v => { const n = Number(String(v).replace(',', '.')); return Number.isFinite(n) && n >= 0 && n <= COMM_MAX ? Math.round(n * 100) / 100 : null; };
 const commBase = r => r.cb !== undefined ? r.cb : Math.max(0, (Number(r.sum) || 0) - (Number(r.fee) || 0));
+/* Оплата комиссии. Дистрибьютор отмечает, сколько перевёл владельцу, владелец подтверждает. Платежи лежат в cpay (новые сверху):
+   id, a — сумма, note, st — wait / ok / no / void, at, dt (когда решили), bn / dn (кто отметил / кто решил), src — s (дистрибьютор) или o (владелец записал сам),
+   vo — отменил владелец, ms — сообщения владельцам в Telegram. «К оплате» = начислено (ctot) минус подтверждённое (cpo + платежи ok).
+   Когда платежей больше CP_CAP, самые старые подтверждённые сворачиваются в cpo. */
+const CP_CAP = 500, CP_WAIT_MAX = 5, CP_NOTE = 120, CP_SHOW = 100;
+const cpPub = p => ({ id: p.id, a: p.a, note: p.note || '', st: p.st, at: p.at, dt: p.dt || '', bn: p.bn || '', dn: p.dn || '', src: p.src || 's', vo: p.vo ? 1 : 0 });
+const commUrl = (origin, did) => origin + '/?d=' + (did || MAIN) + '&v=comm';
 function statRange(period) {
   const today = dayOf(new Date().toISOString());
   const first = today.slice(0, 7) + '-01';
@@ -1765,6 +1789,125 @@ export class Shop {
     const pick = (m, x) => ({ m, n: x.n, base: x.base, cm: x.cm });
     return { pct: cur.pct, cur: pick(first.slice(0, 7), cur), prev: pick(last.slice(0, 7), prev) };
   }
+  /* --- оплата комиссии владельцу --- */
+  /* Начислено за всё время. Число ctot растёт с каждым выданным заказом и не зависит от того, что записи старых дней удаляются;
+     при первом обращении оно считается по записям дней, которые есть. */
+  async commAccrued() {
+    const t = await this.st.get('ctot');
+    if (typeof t === 'number') return t;
+    const t0 = (await this.commRange('', '9999-12-31')).cm;
+    await this.st.put('ctot', t0);
+    return t0;
+  }
+  async cpays() { const a = await this.st.get('cpay'); return Array.isArray(a) ? a : []; }
+  /* Для экрана «Комиссия»: сколько начислено, подтверждено, что к оплате, платежи. bad — отклонённые и отменённые владельцем платежи, которых продавец ещё не видел. */
+  async commState() {
+    const pays = await this.cpays(), seen = String((await this.st.get('cseen')) || '');
+    let paid = Number(await this.st.get('cpo')) || 0, nw = 0, ws = 0, bad = 0;
+    for (const p of pays) {
+      if (p.st === 'ok') paid += p.a;
+      else if (p.st === 'wait') { nw++; ws += p.a; }
+      else if ((p.st === 'no' || (p.st === 'void' && p.vo)) && String(p.dt || '') > seen) bad++;
+    }
+    const acc = await this.commAccrued();
+    return { pct: await this.getPct(), acc, paid, due: acc - paid, nw, ws, bad, pays: pays.slice(0, CP_SHOW).map(cpPub) };
+  }
+  /* Сохраняет платежи; сверх CP_CAP самые старые (не ждущие) уходят, подтверждённые сворачиваются в cpo. */
+  async cpSave(pays) {
+    let cpo = Number(await this.st.get('cpo')) || 0;
+    while (pays.length > CP_CAP) {
+      let i = pays.length - 1;
+      while (i >= 0 && pays[i].st === 'wait') i--;
+      if (i < 0) break;
+      const d = pays.splice(i, 1)[0];
+      if (d.st === 'ok') cpo += d.a;
+    }
+    await this.st.put({ cpay: pays, cpo });
+  }
+  /* Продавец отметил оплату: платёж ждёт подтверждения, владельцам уходит сообщение с кнопками. */
+  async commPay(b, u) {
+    const a = typeof b.a === 'number' ? intIn(b.a, 1, MAX_PAY) : null;
+    if (a === null) return json({ error: 'bad_amount' }, 400);
+    const pays = await this.cpays();
+    if (pays.filter(p => p.st === 'wait').length >= CP_WAIT_MAX) return json({ error: 'too_many' }, 429);
+    const p = { id: randId(8), a, note: cleanStr(b.note, CP_NOTE), st: 'wait', at: new Date().toISOString(), by: u.id, bn: whoName(u), src: 's' };
+    pays.unshift(p);
+    await this.cpSave(pays);
+    if (this.env.HUB) {
+      try {
+        const st = await this.commState();
+        const r = await hubCall(this.env, '/__/comm-notify', { ev: 'new', did: this.did, p: cpPub(p), due: st.due, origin: this.origin });
+        const ms = r && Array.isArray(r.ms) ? r.ms : [];
+        if (ms.length) {
+          const cur = await this.cpays(), mine = cur.find(x => x.id === p.id);
+          if (mine) { mine.ms = ms; await this.st.put('cpay', cur); }
+        }
+      } catch (e) { console.error('comm notify failed', e && e.message || e); }
+    }
+    return json({ comm: await this.commState(), id: p.id });
+  }
+  /* Решение по платежу. act: ok / no (платёж ждёт), void (владелец отменяет подтверждённый), cancel (продавец отзывает свой ждущий),
+     add (владелец записывает полученную оплату). by — кто решил. Повторное нажатие ничего не меняет и не шлёт сообщений заново. */
+  async commAct(b) {
+    const act = String(b.act || '');
+    const by = b.by && typeof b.by === 'object' ? { id: Number(b.by.id) || 0, name: whoName(b.by) } : { id: 0, name: '' };
+    const pays = await this.cpays(), now = new Date().toISOString();
+    let p;
+    if (act === 'add') {
+      const a = typeof b.a === 'number' ? intIn(b.a, 1, MAX_PAY) : null;
+      if (a === null) return { status: 400, error: 'bad_amount' };
+      p = { id: randId(8), a, note: cleanStr(b.note, CP_NOTE), st: 'ok', at: now, dt: now, by: by.id, bn: by.name, dn: by.name, src: 'o' };
+      pays.unshift(p);
+    } else {
+      const to = { ok: 'ok', no: 'no', void: 'void', cancel: 'void' }[act];
+      if (!to) return { status: 400, error: 'bad_request' };
+      p = pays.find(x => x.id === String(b.id || ''));
+      if (!p) return { status: 404, error: 'not_found' };
+      if (p.st === to && (act !== 'void' || p.vo) && (act !== 'cancel' || !p.vo)) return { status: 200, same: true, p: cpPub(p) };
+      if (p.st !== (act === 'void' ? 'ok' : 'wait')) return { status: 409, error: 'state', p: cpPub(p) };
+      p.st = to; p.dt = now; p.dn = by.name;
+      if (act === 'void') p.vo = 1;
+    }
+    await this.cpSave(pays);
+    const st = await this.commState();
+    // владельцам: сообщения под платежом теряют кнопки и получают итог
+    if (this.env.HUB && p.ms && p.ms.length) {
+      try { await hubCall(this.env, '/__/comm-notify', { ev: 'done', did: this.did, p: cpPub(p), ms: p.ms, act, by: by.name, due: st.due, origin: this.origin }); }
+      catch (e) { console.error('comm notify failed', e && e.message || e); }
+    }
+    // продавцам: что решил владелец (кроме самого решившего и случая, когда продавец сам отозвал платёж)
+    if (act !== 'cancel') await this.commTell(p, act, st.due, by.id);
+    return { status: 200, p: cpPub(p), comm: st };
+  }
+  async commTell(p, act, due, skip) {
+    const text = biL(() => {
+      const d = due >= 0 ? L('К оплате сейчас: ', 'Hozir toʻlanishi kerak: ') + money(due) : L('Аванс: ', 'Avans: ') + money(-due);
+      if (act === 'ok') return L('✅ Оплата комиссии подтверждена: ' + money(p.a) + '.\n', '✅ Komissiya toʻlovi tasdiqlandi: ' + money(p.a) + '.\n') + d;
+      if (act === 'no') return L('❌ Оплата комиссии не подтверждена: ' + money(p.a) + '. Владелец не получил эти деньги. Проверьте и введите сумму заново.\n',
+        '❌ Komissiya toʻlovi tasdiqlanmadi: ' + money(p.a) + '. Egasi bu pulni olmadi. Tekshirib, summani qaytadan kiriting.\n') + d;
+      if (act === 'void') return L('↩️ Владелец отменил подтверждённую оплату: ' + money(p.a) + '.\n', '↩️ Egasi tasdiqlangan toʻlovni bekor qildi: ' + money(p.a) + '.\n') + d;
+      return L('💰 Владелец записал полученную оплату комиссии: ' + money(p.a) + '.\n', '💰 Egasi olingan komissiya toʻlovini yozdi: ' + money(p.a) + '.\n') + d;
+    });
+    const url = /^https:\/\/(?!internal)/.test(this.origin || '') ? this.origin : '';
+    for (const aid of (await this.st.get('admins')) || []) {
+      if (aid === skip) continue;
+      try { await this.tg('sendMessage', Object.assign({ chat_id: aid, text }, url ? { reply_markup: openBtn(url, btn2('Komissiya', 'Комиссия'), commUrl(url, this.did)) } : {})); }
+      catch (e) { console.error('comm tell failed', e && e.message || e); }
+    }
+  }
+  /* Кнопки владельца под сообщением: «Получил» и «Не получил». */
+  async onCommCb(cq, parsed, answer) {
+    const uid = cq.from && cq.from.id;
+    if (!uid || !this.env.HUB || !(await this.isOwnerUid(uid))) return answer(ans2('Нет доступа', 'Ruxsat yoʻq'), true);
+    const act = parsed.to === 'ok' ? 'ok' : parsed.to === 'no' ? 'no' : '';
+    if (!act) return answer('');
+    const r = await this.commAct({ act, id: parsed.id, by: cq.from });
+    if (r.error === 'not_found') return answer(ans2('Платёж не найден', 'Toʻlov topilmadi'), true);
+    if (r.error) return answer(ans2('Этот платёж уже обработан', 'Bu toʻlov allaqachon koʻrib chiqilgan'), true);
+    const a = r.p.a;
+    if (r.same) return answer(act === 'ok' ? ans2('Уже подтверждено: ' + num(a) + ' сум', 'Allaqachon tasdiqlangan: ' + num(a) + ' soʻm') : ans2('Уже отмечено: не получено', 'Allaqachon belgilangan: olinmadi'));
+    return answer(act === 'ok' ? ans2('Подтверждено: ' + num(a) + ' сум', 'Tasdiqlandi: ' + num(a) + ' soʻm') : ans2('Отмечено: не получено', 'Belgilandi: olinmadi'));
+  }
   async getProd() { return normProd(await this.st.get('prod')); }
   async getStk() { const s = await this.st.get('stk'); return s && typeof s === 'object' ? s : {}; }
   async pubProd(admin) { return publicProd(await this.getProd(), await this.getStk(), !!admin); }
@@ -2090,6 +2233,13 @@ export class Shop {
       await this.st.put('cpct', pct);
       return json({ ok: true, pct });
     }
+    if (path === '/__/comm') return json(await this.commState());
+    if (path === '/__/comm-act') {
+      if (/^https:\/\/(?!internal)/.test(b.origin || '')) this.origin = b.origin;
+      const r = await this.commAct(b);
+      const { status, ...rest } = r;
+      return json(rest, status);
+    }
     if (path === '/__/mod-list') return json(await this.modList(b.seg === 'ret' || b.seg === 'ok' ? b.seg : 'wait'));
     if (path === '/__/mod-approve') return await this.modApprove(b);
     if (path === '/__/mod-return') return await this.modReturn(b);
@@ -2311,6 +2461,24 @@ export class Shop {
           if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
           return await this.debtAct(duid, dm[2], r.body, u);
         }
+      }
+      if (path === '/api/admin/comm' && method === 'GET') {
+        // seen=1: продавец открыл экран. В этом ответе отклонённые платежи ещё «новые», дальше (в значке меню) уже нет
+        const st = await this.commState();
+        if (new URL(request.url).searchParams.get('seen') === '1' && st.bad) await this.st.put('cseen', new Date().toISOString());
+        return json({ comm: st });
+      }
+      if (path === '/api/admin/comm' && method === 'POST') {
+        const r = await this.readBody(request, 1000);
+        if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+        return await this.commPay(r.body, u);
+      }
+      if (path === '/api/admin/comm/cancel' && method === 'POST') {
+        const r = await this.readBody(request, 500);
+        if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+        const x = await this.commAct({ act: 'cancel', id: r.body.id, by: u });
+        const { status, ...rest } = x;
+        return json(rest, status);
       }
       if (path === '/api/admin/report' && method === 'GET') {
         return json({ report: await this.report(Number(new URL(request.url).searchParams.get('days'))) });
@@ -2821,8 +2989,10 @@ export class Shop {
       if (to === 'done') {
         const day = dayOf(o.statusAt);
         const rp = (await this.st.get('rp:' + day)) || newRp();
+        const cm0 = Number(rp.cm) || 0, tot0 = await this.commAccrued();   // итог «начислено» берётся до записи этого заказа
         rpAdd(rp, o, await this.getPct(), await this.catOf());
         upd['rp:' + day] = rp;
+        upd.ctot = tot0 + (Number(rp.cm) || 0) - cm0;
         const idx = (await this.st.get('rpx')) || [];
         if (!idx.includes(day)) {
           idx.push(day); idx.sort();
@@ -3704,6 +3874,7 @@ export class Shop {
     if (parsed.kind === 'k') return await this.onCourierCb(cq, parsed, answer);
     if (parsed.kind === 'q') return await this.onConfirmCb(cq, parsed, answer);
     if (parsed.kind === 'h') return await this.onHandCb(cq, parsed, answer);
+    if (parsed.kind === 'cp') return await this.onCommCb(cq, parsed, answer);
     if (!cq.from || !(await this.isAdmin(cq.from.id))) return answer(ans2('Нет доступа', 'Ruxsat yoʻq'), true);
     const { kind, id, to, days } = parsed;
     const o = id ? await this.st.get('o:' + id) : null;
@@ -3974,6 +4145,36 @@ export class Hub {
         catch (e) { console.error('mod notify send failed', e && e.message || e); }
       }
       return json({ ok: true });
+    }
+    if (path === '/__/comm-notify') {
+      // оплата комиссии: ev «new» — владельцам уходит сообщение с кнопками, ev «done» — те же сообщения получают итог и теряют кнопки
+      if (!validDid(b.did) || !b.p || typeof b.p !== 'object' || !validId(b.p.id)) return json({ ok: false });
+      const rec = await this.getRec(b.did), origin = /^https:\/\/(?!internal)/.test(b.origin || '') ? b.origin : '';
+      const name = rec ? rec.name : b.did, due = Number(b.due) || 0;
+      const open = origin ? openBtn(origin, btn2('Komissiya', 'Комиссия'), origin + '/?v=comm').inline_keyboard : [];
+      if (b.ev === 'new') {
+        const text = commOwnerText(name, b.p, due, '', '');
+        const cb = to => 'cp:' + b.did + ':' + b.p.id + ':' + to;
+        const kb = { inline_keyboard: [[{ text: btn2('✅ Qabul qildim', '✅ Получил'), callback_data: cb('ok') }, { text: btn2('❌ Kelmadi', '❌ Не получил'), callback_data: cb('no') }]].concat(open) };
+        const ms = [];
+        for (const oid of await this.owners()) {
+          try {
+            const r = await this.tg('sendMessage', { chat_id: oid, text, reply_markup: kb });
+            if (r && r.ok && r.result) ms.push({ chat_id: oid, message_id: r.result.message_id });
+          } catch (e) { console.error('comm notify send failed', e && e.message || e); }
+        }
+        return json({ ok: true, ms });
+      }
+      if (b.ev === 'done' && Array.isArray(b.ms)) {
+        const text = commOwnerText(name, b.p, due, String(b.act || ''), cleanStr(b.by, 40));
+        for (const m of b.ms.slice(0, 20)) {
+          if (!m || !Number.isSafeInteger(Number(m.chat_id)) || !Number.isSafeInteger(Number(m.message_id))) continue;
+          try { await this.tg('editMessageText', { chat_id: m.chat_id, message_id: m.message_id, text, reply_markup: { inline_keyboard: open } }); }
+          catch (e) { console.error('comm notify edit failed', e && e.message || e); }
+        }
+        return json({ ok: true });
+      }
+      return json({ ok: false });
     }
     if (path === '/__/ordered') {
       const uid = Number(b.uid);
@@ -4699,6 +4900,25 @@ export class Hub {
       }));
       const total = rows.reduce((t, x) => ({ n: t.n + x.n, base: t.base + x.base, cm: t.cm + x.cm, active: t.active + x.active }), { n: 0, base: 0, cm: 0, active: 0 });
       return json({ period: rg.period, from: rg.from, to: rg.to, rows, total });
+    }
+    // оплата комиссии: по каждому дистрибьютору начислено, оплачено, что к оплате и платежи; владелец подтверждает, отклоняет, отменяет и записывает полученное
+    if (path === '/api/hub/admin/comm' && method === 'GET') {
+      const recs = await this.allRecs();
+      const rows = await Promise.all(recs.map(async rec => {
+        const r = await shopCall(this.env, rec.id, '/__/comm', {});
+        const d = r.ok && r.data ? r.data : null;
+        return { id: rec.id, name: rec.name, on: rec.on, err: !d, pct: d ? d.pct : 0, acc: d ? d.acc : 0, paid: d ? d.paid : 0, due: d ? d.due : 0, nw: d ? d.nw : 0, ws: d ? d.ws : 0, pays: d ? d.pays : [] };
+      }));
+      const total = rows.reduce((t, x) => ({ acc: t.acc + x.acc, paid: t.paid + x.paid, due: t.due + x.due, nw: t.nw + x.nw, ws: t.ws + x.ws }), { acc: 0, paid: 0, due: 0, nw: 0, ws: 0 });
+      return json({ rows, total });
+    }
+    if (path === '/api/hub/admin/comm' && method === 'POST') {
+      const r = await this.readBody(request, 1000);
+      const b = r.body && typeof r.body === 'object' ? r.body : null;
+      if (r.err || !b || !validDid(b.did) || !['ok', 'no', 'void', 'add'].includes(b.act)) return json({ error: 'bad_request' }, 400);
+      if (!(await this.getRec(b.did))) return json({ error: 'not_found' }, 404);
+      const sc = await shopCall(this.env, b.did, '/__/comm-act', { act: b.act, id: b.id, a: b.a, note: b.note, by: au.user, origin: this.origin });
+      return json(sc.data || { error: 'server' }, sc.status || 500);
     }
     const m = path.match(/^\/api\/hub\/admin\/shops\/([a-z0-9]{2,12})(\/code)?$/);
     if (m) {
