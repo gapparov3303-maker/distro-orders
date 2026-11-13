@@ -447,7 +447,7 @@ const btn2 = (uz, ru) => { const e = uz.match(/^\S+/)[0]; return uz + ' · ' + (
 const ans2 = (ru, uz) => uz + '\n' + ru;
 const PAY_UZ = { cash: '💵 Naqd', card: '💳 Karta', bank: '🏦 Oʻtkazma', credit: '📒 Qarzga' };
 const payBtn = k => btn2(PAY_UZ[k], PAY_RU[k].replace(/^\S+\s/, ''));
-function adminCard(o, shop, origin, confirm, cl, did, debt) {
+function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
   const px = cbPrefix(did);
   const day = dayOf(new Date().toISOString());
   // сначала текст на двух языках; очень длинный заказ: показываем первые позиции, чтобы итог и кнопки не потерялись
@@ -457,7 +457,7 @@ function adminCard(o, shop, origin, confirm, cl, did, debt) {
     const dLine = o.status === 'cancelled' ? '' : debtLine(debt, day);
     const st = stOf(o.status, o.mode);
     const tail = '\n\n' + (cLines ? cLines + '\n' : '') + (dLine ? dLine + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
-      + '\n' + L('Статус: ', 'Holat: ') + L(st.name, st.uz) + (o.crn ? '\n' + L('🚚 Доставщик: ', '🚚 Yetkazuvchi: ') + o.crn : '') + (o.pay ? '\n' + payLine(o.pay) : '');
+      + '\n' + L('Статус: ', 'Holat: ') + L(st.name, st.uz) + (o.crn ? '\n' + L('🚚 Доставщик: ', '🚚 Yetkazuvchi: ') + o.crn : o.mode === 'delivery' && o.status === 'ready' && hasCr ? '\n' + L('🚚 Ждёт доставщика', '🚚 Yetkazuvchi kutilmoqda') : '') + (o.pay ? '\n' + payLine(o.pay) : '');
     const ask = confirm === 'pay' ? '\n\n' + L('Как клиент оплатил заказ? К оплате: ', 'Mijoz buyurtma uchun qanday toʻladi? Toʻlanadi: ') + money(o.total)
       : confirm === 'days' ? '\n\n' + L('На сколько дней записать долг?', 'Qarzni necha kunga yozamiz?') : '';
     return STATUS_ICON[o.status] + ' ' + orderText(o, shop, k) + tail + ask;
@@ -483,7 +483,8 @@ function adminCard(o, shop, origin, confirm, cl, did, debt) {
   } else {
     if (o.status === 'new') rows.push([btn(btn2('✅ Ishga olish', '✅ Принять в работу'), 's:' + px + o.id + ':accepted')]);
     if (o.status === 'accepted') rows.push([btn(del ? btn2('📦 Joʻnatishga tayyor', '📦 Готов к отправке') : btn2('📦 Topshirishga tayyor', '📦 Готов к выдаче'), 's:' + px + o.id + ':ready')]);
-    if (o.status === 'ready') rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен клиенту') : btn2('🤝 Topshirildi', '🤝 Выдан клиенту'), 's:' + px + o.id + ':done')]);
+    // доставку закрывает доставщик; продавцу кнопка нужна, только если доставщиков нет (или самовывоз)
+    if (o.status === 'ready' && !(del && hasCr)) rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен клиенту') : btn2('🤝 Topshirildi', '🤝 Выдан клиенту'), 's:' + px + o.id + ':done')]);
     if (NEXT[o.status]) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
     if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
     rows.push([{ text: btn2('Sotuvchi paneli', 'Панель продавца'), web_app: { url: sellerUrl(origin, did) } }]);
@@ -491,13 +492,13 @@ function adminCard(o, shop, origin, confirm, cl, did, debt) {
   return { text, reply_markup: { inline_keyboard: rows } };
 }
 
-/* Сообщение доставщику: заказ готов к доставке. state: null — свободен, 'mine' — взял этот доставщик, строка — имя того, кто уже взял. */
+/* Сообщение доставщику: заказ готов к доставке. state: null — свободен, 'mine' — взял этот доставщик, 'given' — назначил продавец, строка — имя того, кто уже взял. */
 function courierCard(o, shop, origin, did, state) {
   const px = cbPrefix(did);
   let text = biL(() => {
     const when = fmtWhen(o.pickupAt);
-    const head = state === 'mine' ? L('🚚 Вы взяли заказ ', '🚚 Siz buyurtmani oldingiz: ') : state ? L('✔ Заказ ', '✔ Buyurtma ') : L('🚚 Готов к доставке: заказ ', '🚚 Yetkazishga tayyor: buyurtma ');
-    return head + o.id + (state && state !== 'mine' ? L(' уже взял ' + state, ' allaqachon olingan: ' + state) : '')
+    const head = state === 'given' ? L('🚚 Вам назначен заказ ', '🚚 Sizga buyurtma tayinlandi: ') : state === 'mine' ? L('🚚 Вы взяли заказ ', '🚚 Siz buyurtmani oldingiz: ') : state ? L('✔ Заказ ', '✔ Buyurtma ') : L('🚚 Готов к доставке: заказ ', '🚚 Yetkazishga tayyor: buyurtma ');
+    return head + o.id + (state && state !== 'mine' && state !== 'given' ? L(' уже взял ' + state, ' allaqachon olingan: ' + state) : '')
       + '\n\n' + (o.org ? o.org + ' · ' : '') + o.name + '\n' + L('Телефон: ', 'Telefon: ') + o.phone
       + '\n' + L('Адрес: ', 'Manzil: ') + (o.address || '—') + '\n' + L('Когда: ', 'Qachon: ') + when
       + '\n' + L('Сумма: ', 'Summa: ') + money(o.total)
@@ -1704,7 +1705,10 @@ export class Shop {
   async getClient(uid) { const c = await this.st.get('c:' + uid); return c && typeof c === 'object' ? c : null; }
   async clientsIdx() { const x = await this.st.get('cx'); return Array.isArray(x) ? x : []; }
   /* Карточка заказа для продавца вместе с группой и заметкой клиента. */
-  async card(o, shop, confirm) { return adminCard(o, shop, this.origin, confirm, o.uid ? await this.getClient(o.uid) : null, this.did, o.uid ? await this.st.get('lh:' + o.uid) : null); }
+  async card(o, shop, confirm) {
+    const hasCr = o.mode === 'delivery' && o.status === 'ready' ? (await this.crActive()).length > 0 : false;
+    return adminCard(o, shop, this.origin, confirm, o.uid ? await this.getClient(o.uid) : null, this.did, o.uid ? await this.st.get('lh:' + o.uid) : null, hasCr);
+  }
   /* Один раз собирает базу клиентов из уже оформленных заказов (активных и в истории). Дальше база живёт сама. */
   async ensureClients() {
     if (await this.st.get('cxb')) return;
@@ -2380,15 +2384,33 @@ export class Shop {
           });
         }
         const stats = (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 };
-        return json({ orders, stats });
+        // доставщики, которым можно передать заказ; пока они есть, продавец не закрывает доставку сам
+        const crs = (await this.crActive()).map(c => ({ id: c.id, name: c.name, phone: c.phone || '' }));
+        return json({ orders, stats, crs });
       }
       if (path === '/api/admin/status' && method === 'POST') {
         const r = await this.readBody(request, 2000);
         if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
-        const res = await this.changeStatus(String(r.body.id || ''), String(r.body.to || ''), r.body.pay, null, { id: uid, name: whoName(u) });
+        // «Готов к отправке» можно сразу отдать выбранному доставщику (cid); без cid заказ уходит всем доставщикам
+        let assign = null;
+        const cid = r.body.cid ? String(r.body.cid) : '';
+        if (cid) {
+          assign = validCid(cid) ? await this.crGet(cid) : null;
+          if (!assign || !assign.uid || assign.on === false) return json({ error: 'no_courier' }, 409);
+        }
+        const res = await this.changeStatus(String(r.body.id || ''), String(r.body.to || ''), r.body.pay, null, { id: uid, name: whoName(u) }, assign);
         if (res.err) return json({ error: res.err, order: res.order ? adminOrder(res.order) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : 409);
         if (res.changed) { await this.afterChange(res.order, 'admin'); if (res.ask) await this.askConfirm(res.ask.uid, res.ask.n); }
         return json({ order: adminOrder(res.order), stats: res.stats || (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 } });
+      }
+      // продавец назначает или меняет доставщика у готового заказа на доставку; пустой cid — вернуть заказ всем доставщикам
+      if (path === '/api/admin/order-courier' && method === 'POST') {
+        const r = await this.readBody(request, 1000);
+        if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
+        const res = await this.setCourier(String(r.body.id || ''), r.body.cid ? String(r.body.cid) : '');
+        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(res.order) : undefined }, res.err === 'not_found' ? 404 : 409);
+        if (res.changed) await this.afterAssign(res.order, res.prev, false);
+        return json({ order: adminOrder(res.order) });
       }
       if (path === '/api/admin/config' && method === 'PUT') {
         const r = await this.readBody(request, 100000);
@@ -2960,7 +2982,7 @@ export class Shop {
   }
 
   /* Меняет статус без обращений к сети между чтением и записью. */
-  async changeStatus(id, to, pay, cour, by) {
+  async changeStatus(id, to, pay, cour, by, assign) {
     await this.ensureClients();
     await this.ensureReports();
     const o = await this.st.get('o:' + id);
@@ -2969,11 +2991,18 @@ export class Shop {
     if (!(NEXT[o.status] || []).includes(to)) return { err: 'bad_transition', order: o };
     // доставщик закрывает только свой заказ на доставку
     if (cour && (o.mode !== 'delivery' || o.cr !== cour.id || to !== 'done')) return { err: 'not_yours', order: o };
+    // продавец не закрывает доставку, если есть доставщики: «Доставлен клиенту» нажимает доставщик
+    if (!cour && to === 'done' && o.mode === 'delivery' && (await this.crActive()).length) return { err: 'use_courier', order: o };
     const nowIso = new Date().toISOString();
     const payRec = to === 'done' ? cleanPay(pay, Number(o.total) || 0, dayOf(nowIso)) : null;
     if (to === 'done' && !payRec) return { err: 'bad_pay', order: o };
     o.status = to;
     o.statusAt = nowIso;
+    // «Готов к отправке» с выбранным доставщиком: заказ сразу закреплён за ним
+    if (assign && to === 'ready' && o.mode === 'delivery') {
+      o.cr = assign.id; o.crn = assign.name; o.crAt = nowIso;
+      if (assign.phone) o.crp = assign.phone; else delete o.crp;
+    }
     const upd = { ['o:' + id]: o };
     let stats = null, ask = null;
     if (!NEXT[to]) {
@@ -3069,6 +3098,8 @@ export class Shop {
     const map = await this.getMany(idx.map(i => 'cr:' + i));
     return idx.map(i => map.get('cr:' + i)).filter(Boolean);
   }
+  /* Доставщики, которым можно передать заказ: вошли по ссылке и не отключены. Пока такие есть, доставку закрывает только доставщик. */
+  async crActive() { return (await this.crList()).filter(c => c.uid && c.on !== false); }
   async crGet(id) { const c = validCid(id) ? await this.st.get('cr:' + id) : null; return c && typeof c === 'object' ? c : null; }
   /* Доставщик по номеру в Telegram: только тот, кто вошёл по ссылке и не отключён. */
   async courierOf(uid) {
@@ -3167,6 +3198,53 @@ export class Shop {
     await this.st.put('o:' + id, o);
     return { order: o, changed: true };
   }
+  /* Продавец назначает доставщика (или возвращает заказ всем, если cid пустой). Лимиты кассы здесь не проверяются: решение за продавцом. */
+  async setCourier(id, cid) {
+    const o = await this.st.get('o:' + id);
+    if (!o) return { err: 'not_found' };
+    if (o.mode !== 'delivery' || o.status !== 'ready') return { err: 'bad_transition', order: o };
+    let c = null;
+    if (cid) {
+      c = validCid(cid) ? await this.crGet(cid) : null;
+      if (!c || !c.uid || c.on === false) return { err: 'no_courier', order: o };
+    }
+    if ((o.cr || '') === (c ? c.id : '')) return { order: o, same: true };
+    const prev = o.cr ? { id: o.cr, name: o.crn || '' } : null;
+    if (c) {
+      o.cr = c.id; o.crn = c.name; o.crAt = new Date().toISOString();
+      if (c.phone) o.crp = c.phone; else delete o.crp;
+    } else { delete o.cr; delete o.crn; delete o.crAt; delete o.crp; }
+    await this.st.put('o:' + id, o);
+    return { order: o, changed: true, prev };
+  }
+  /* Заказ закреплён продавцом за доставщиком: карточка уходит только ему, у остальных сообщения обновляются, прежний доставщик узнаёт, что заказ снят.
+     fresh: заказ только что стал «готов» (карточки продавцов и клиент уже обработаны в afterChange). Без доставщика заказ уходит всем, как «Готов к отправке» из Telegram. */
+  async afterAssign(o, prev, fresh) {
+    const cfg = await this.getCfg();
+    if (!fresh) {
+      await this.afterChange(o, null);
+      if (o.cr && o.uid) await this.tg('sendMessage', { chat_id: o.uid, text: customerText(o, 'taken', cfg.shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
+    }
+    if (o.cr) {
+      for (const m of o.cm || []) await this.editCard(m, courierCard(o, cfg.shop, this.origin, this.did, m.cid === o.cr ? 'given' : o.crn));
+      const c = await this.crGet(o.cr);
+      if (c && c.uid) {
+        const card = courierCard(o, cfg.shop, this.origin, this.did, 'given');
+        const t = await this.tg('sendMessage', { chat_id: c.uid, text: card.text, reply_markup: card.reply_markup });
+        if (t.ok && t.result) {
+          const cur = await this.st.get('o:' + o.id);
+          if (cur) { cur.cm = (cur.cm || []).concat([{ chat_id: c.uid, message_id: t.result.message_id, cid: c.id }]); await this.st.put('o:' + o.id, cur); }
+        }
+      }
+    } else {
+      for (const m of o.cm || []) await this.editCard(m, courierCard(o, cfg.shop, this.origin, this.did, null));
+      await this.notifyCouriers(o, cfg, null, true);
+    }
+    if (prev && prev.id !== o.cr) {
+      const pc = await this.crGet(prev.id);
+      if (pc && pc.uid) await this.tg('sendMessage', { chat_id: pc.uid, text: biL(() => L('↩️ Продавец снял с вас заказ ' + o.id + (o.cr ? ': теперь его везёт ' + o.crn + '.' : '.'), '↩️ Sotuvchi ' + o.id + ' buyurtmasini sizdan oldi' + (o.cr ? ': endi uni ' + o.crn + ' olib boradi.' : '.'))) });
+    }
+  }
   /* Заказ взяли: карточки продавцов и сообщения других доставщиков обновляются, клиент узнаёт, кто везёт. */
   async afterTake(o) {
     const cfg = await this.getCfg();
@@ -3186,7 +3264,7 @@ export class Shop {
   }
   /* Готовый заказ на доставку приходит всем доставщикам с кнопкой «Взял»; номера сообщений запоминаются, чтобы потом обновить. */
   async notifyCouriers(o, cfg, except, again) {
-    const list = (await this.crList()).filter(c => c.uid && c.on !== false && c.id !== except);
+    const list = (await this.crActive()).filter(c => c.id !== except);
     if (!list.length) return;
     const sent = [];
     for (const c of list) {
@@ -3842,9 +3920,11 @@ export class Shop {
       await this.editCard(m, card);
     }
     if (by === 'admin') {
-      const text = customerText(o, o.status, cfg.shop);
+      // заказ сразу ушёл выбранному доставщику: клиенту вместо «собран» сразу пишем, кто везёт
+      const toCr = o.status === 'ready' && o.mode === 'delivery';
+      const text = customerText(o, toCr && o.cr ? 'taken' : o.status, cfg.shop);
       if (text) await this.tg('sendMessage', { chat_id: o.uid, text, reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
-      if (o.status === 'ready' && o.mode === 'delivery' && !o.cr) await this.notifyCouriers(o, cfg);
+      if (toCr) { if (o.cr) await this.afterAssign(o, null, true); else await this.notifyCouriers(o, cfg); }
     } else if (by === 'customer') {
       for (const aid of (await this.st.get('admins')) || []) {
         await this.tg('sendMessage', { chat_id: aid, text: biL(() => L('❌ Клиент отменил заказ ' + o.id + ' (' + o.name + ').', '❌ Mijoz ' + o.id + ' buyurtmasini bekor qildi (' + o.name + ').')) });
@@ -3885,6 +3965,11 @@ export class Shop {
 
     if (kind === 'c') { await edit(await this.card(o, cfg.shop, true)); return answer(ans2('Отменить заказ ' + id + '?', 'Buyurtma ' + id + ' bekor qilinsinmi?')); }
     if (kind === 'b') { await edit(await this.card(o, cfg.shop, false)); return answer(''); }
+    // доставку закрывает доставщик: в старых сообщениях кнопка «Доставлен» остаётся, но продавцу она не подходит
+    if ((kind === 's' && to === 'done' || kind === 'p') && o.mode === 'delivery' && o.status === 'ready' && (await this.crActive()).length) {
+      await edit(await this.card(o, cfg.shop, false));
+      return answer(ans2('Доставленным заказ отмечает доставщик', 'Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'), true);
+    }
     // «Выдан клиенту» сначала спрашивает, как оплатил клиент (нажатия в старых сообщениях тоже придут сюда)
     if (kind === 's' && to === 'done' && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'pay')); return answer(ans2('Как оплатил клиент?', 'Mijoz qanday toʻladi?')); }
     if (kind === 'p' && to === 'credit' && !days && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'days')); return answer(ans2('На сколько дней в долг?', 'Necha kunga qarzga?')); }
@@ -3892,6 +3977,10 @@ export class Shop {
       const pay = kind === 'p' ? (to === 'credit' ? { m: 'credit', days: Number(days) } : { m: to }) : undefined;
       const res = await this.changeStatus(id, kind === 'p' ? 'done' : to, pay, null, { id: cq.from.id, name: whoName(cq.from) });
       if (res.err === 'bad_pay') return answer(ans2('Не получилось: проверьте способ оплаты', 'Boʻlmadi: toʻlov usulini tekshiring'), true);
+      if (res.err === 'use_courier') {
+        await edit(await this.card(res.order, cfg.shop, false));
+        return answer(ans2('Доставленным заказ отмечает доставщик', 'Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'), true);
+      }
       if (res.err === 'bad_transition') {
         await edit(await this.card(res.order, cfg.shop, false));
         const st0 = stOf(res.order.status, res.order.mode);

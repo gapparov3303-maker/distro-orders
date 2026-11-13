@@ -6616,7 +6616,7 @@ await t('подсказки под полями: в каждой форме пр
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
   // сколько подсказок минимум должно быть в каждой форме (по числу полей)
-  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 7, ownAddHTML: 2, cmShopHTML: 3, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
+  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, crPickHTML: 1, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 7, ownAddHTML: 2, cmShopHTML: 3, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
   for (const [name, n] of Object.entries(need)) {
     const body = fn(name);
     const k = (body.match(/hintD\(/g) || []).length;
@@ -7170,6 +7170,205 @@ await t('комиссия: больше 500 платежей — самые ст
   assert.deepEqual([c.paid, c.due], [50400, 89000]);
   assert.equal((await st.get('cpay')).length, 500);
   assert.equal(await st.get('cpo'), 100, 'самый старый платёж свернулся в сумму');
+});
+
+/* ---------- доставка: продавец выбирает доставщика ---------- */
+const placeAccepted = async (c, cart, mode) => {
+  const r = await call('POST', '/api/order', { init: c.init(), body: ob(cart, {}, mode) });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const o = (await jsonOf(r)).order;
+  assert.equal((await call('POST', '/api/admin/status', { init: iS(), body: { id: o.id, to: 'accepted' } })).status, 200);
+  return o;
+};
+const sellerStatus = (id, to, extra) => call('POST', '/api/admin/status', { init: iS(), body: Object.assign({ id, to }, extra || {}) });
+const setCr = (id, cid, init) => call('POST', '/api/admin/order-courier', { init: init || iS(), body: { id, cid } });
+const kbOf = p => p.reply_markup.inline_keyboard.flat();
+
+await t('выбор доставщика: «Готов к отправке» с выбранным доставщиком — заказ сразу за ним, остальным ничего не приходит, клиент узнаёт имя', async () => {
+  await stockWorld();
+  const c1 = await hire(DRV, 'Рустам'), c2 = await hire(DRV2, 'Азиз');
+  // для списка выбора сервер отдаёт только имена и номера, без касс и ссылок
+  const lst = (await jsonOf(await call('GET', '/api/admin/orders', { init: iS() }))).crs;
+  assert.deepEqual(lst.map(x => [x.id, x.name, x.phone]), [[c1, 'Рустам', PH], [c2, 'Азиз', PH]]);
+  assert.deepEqual(Object.keys(lst[0]).sort(), ['id', 'name', 'phone']);
+  const A = newUser();
+  const o = await placeAccepted(A, CART, 'delivery');
+  // выбрать можно только настоящего включённого доставщика
+  assert.deepEqual([(await sellerStatus(o.id, 'ready', { cid: 'kzzzzzz' })).status, (await jsonOf(await sellerStatus(o.id, 'ready', { cid: 'kzzzzzz' }))).error], [409, 'no_courier']);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'accepted', 'неверный доставщик ничего не меняет');
+  tgLog = [];
+  const r = await sellerStatus(o.id, 'ready', { cid: c1 });
+  assert.equal(r.status, 200);
+  const ord = (await jsonOf(r)).order;
+  assert.deepEqual([ord.status, ord.cr, ord.crn, ord.crp], ['ready', c1, 'Рустам', PH]);
+  // доставщику приходит карточка «назначен», без кнопки «Взял», но с «Открыть доставку»
+  const m1 = lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes(o.id)).payload;
+  assert.ok(m1.text.includes('Вам назначен заказ') && m1.text.includes('Sizga buyurtma tayinlandi') && m1.text.includes('Навои, ул. Галаба 12'), m1.text);
+  assert.ok(!kbOf(m1).some(b => b.callback_data), 'кнопки «Взял» нет: заказ уже его');
+  assert.ok(kbOf(m1).some(b => b.web_app && b.web_app.url.endsWith('&v=courier')));
+  assert.equal(tgAll('sendMessage', p => p.chat_id === DRV2.id).length, 0, 'второй доставщик ничего не получил');
+  // клиент сразу узнаёт, кто везёт, а не «собран»
+  const toClient = tgAll('sendMessage', p => p.chat_id === A.u.id).map(x => x.payload.text);
+  assert.equal(toClient.length, 1, toClient.join(' | '));
+  assert.ok(toClient[0].includes('Рустам') && toClient[0].includes(PH) && !toClient[0].includes('собран'), toClient[0]);
+  // карточка продавца: кто везёт, кнопки «Доставлен» нет
+  const card = lastTg('editMessageText', p => p.chat_id === SELLER.id && p.text.includes('Доставщик: Рустам')).payload;
+  assert.ok(card.text.includes('🚚 Доставщик: Рустам'));
+  assert.ok(!kbOf(card).some(b => /:done$/.test(b.callback_data || '')), 'продавец не закрывает доставку');
+  assert.ok(kbOf(card).some(b => /^c:/.test(b.callback_data || '')), 'отменить заказ можно');
+  // у доставщиков в приложении: свой заказ помечен, у второго он занят
+  const l1 = (await jsonOf(await call('GET', '/api/courier/orders', { init: iR() }))).orders.find(x => x.id === o.id);
+  const l2 = (await jsonOf(await call('GET', '/api/courier/orders', { init: iR2() }))).orders.find(x => x.id === o.id);
+  assert.deepEqual([l1.mine, l2.mine, l2.crn], [true, false, 'Рустам']);
+  assert.equal((await drvTake(o.id, iR2())).status, 409);
+  // доставщик закрывает доставку с оплатой, наличные идут в его кассу
+  const done = await drvDone(o.id, { m: 'cash' });
+  assert.equal(done.status, 200, JSON.stringify(await done.clone().json()));
+  assert.equal((await drvCash()).cash, 1394000);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'done');
+});
+
+await t('выбор доставщика: «Всем, кто первый» работает как раньше, самовывоз и заказ без доставщиков не меняются', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам'); await hire(DRV2, 'Азиз');
+  const A = newUser();
+  const o = await placeAccepted(A, CART, 'delivery');
+  tgLog = [];
+  assert.equal((await sellerStatus(o.id, 'ready')).status, 200);       // без cid: всем
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes('Готов к доставке')), 'первый получил');
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV2.id && p.text.includes('Готов к доставке')), 'второй получил');
+  assert.ok(kbOf(lastTg('sendMessage', p => p.chat_id === DRV.id).payload).some(b => b.callback_data === 'k:' + o.id));
+  assert.ok(tgAll('sendMessage', p => p.chat_id === A.u.id).some(x => x.payload.text.includes('собран')), 'клиенту «собран и скоро будет доставлен»');
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).cr, undefined);
+  // карточка продавца: «Ждёт доставщика»
+  const card = lastTg('editMessageText', p => p.chat_id === SELLER.id && p.text.includes(o.id)).payload;
+  assert.ok(card.text.includes('Ждёт доставщика') && card.text.includes('Yetkazuvchi kutilmoqda'), card.text);
+  // самовывоз: cid игнорируется, никто из доставщиков не получает заказ
+  const pk = await placeAccepted(A, ONE, 'pickup');
+  tgLog = [];
+  const rp = await sellerStatus(pk.id, 'ready', { cid: (await crList())[0].id });
+  assert.equal(rp.status, 200);
+  assert.equal((await jsonOf(rp)).order.cr, undefined);
+  assert.equal(tgAll('sendMessage', p => p.chat_id === DRV.id || p.chat_id === DRV2.id).length, 0);
+  assert.equal((await sellerStatus(pk.id, 'done', { pay: { m: 'cash' } })).status, 200, 'самовывоз продавец выдаёт сам');
+  // нет доставщиков: cid не принимается, а доставку продавец закрывает сам
+  await stockWorld();
+  const B = newUser();
+  const o2 = await placeAccepted(B, CART, 'delivery');
+  assert.equal((await jsonOf(await call('GET', '/api/admin/orders', { init: iS() }))).crs.length, 0);
+  assert.equal((await sellerStatus(o2.id, 'ready', { cid: 'kabcdefg' })).status, 409);
+  assert.equal((await sellerStatus(o2.id, 'ready')).status, 200);
+  assert.equal((await sellerStatus(o2.id, 'done', { pay: { m: 'cash' } })).status, 200, 'без доставщиков продавец доставляет сам');
+});
+
+await t('выбор доставщика: продавец меняет доставщика — прежний узнаёт, новый получает карточку, у остальных сообщения обновляются; «Вернуть всем»', async () => {
+  await stockWorld();
+  const c1 = await hire(DRV, 'Рустам'), c2 = await hire(DRV2, 'Азиз');
+  const A = newUser();
+  const o = await placeAccepted(A, CART, 'delivery');
+  assert.equal((await sellerStatus(o.id, 'ready', { cid: c1 })).status, 200);
+  const cm1 = (await W.storage.get('o:' + o.id)).cm;
+  assert.equal(cm1.length, 1);
+  // смена на второго
+  tgLog = [];
+  const r = await setCr(o.id, c2);
+  assert.equal(r.status, 200);
+  const ord = (await jsonOf(r)).order;
+  assert.deepEqual([ord.cr, ord.crn, ord.cm], [c2, 'Азиз', undefined]);
+  const nw = lastTg('sendMessage', p => p.chat_id === DRV2.id && p.text.includes(o.id)).payload;
+  assert.ok(nw.text.includes('Вам назначен заказ'), nw.text);
+  const gone = lastTg('sendMessage', p => p.chat_id === DRV.id).payload.text;
+  assert.ok(gone.includes('Sotuvchi') && gone.includes('Продавец снял с вас заказ ' + o.id) && gone.includes('Азиз'), gone);
+  assert.ok(lastTg('editMessageText', p => p.chat_id === DRV.id && p.message_id === cm1[0].message_id).payload.text.includes('уже взял Азиз'), 'старая карточка прежнего доставщика обновилась');
+  assert.ok(tgAll('sendMessage', p => p.chat_id === A.u.id).some(x => x.payload.text.includes('Азиз')), 'клиент узнал нового доставщика');
+  assert.ok(lastTg('editMessageText', p => p.chat_id === SELLER.id && p.text.includes('Доставщик: Азиз')), 'карточка продавца');
+  // тот же доставщик повторно: ничего не рассылается
+  tgLog = [];
+  const same = await setCr(o.id, c2);
+  assert.equal(same.status, 200);
+  assert.equal(tgAll('sendMessage').length, 0);
+  // прежний доставщик больше не может закрыть заказ
+  assert.equal((await drvDone(o.id, { m: 'cash' }, iR())).status, 403);
+  // неверные запросы
+  assert.deepEqual([(await setCr(o.id, 'kzzzzzz')).status, (await jsonOf(await setCr(o.id, 'kzzzzzz'))).error], [409, 'no_courier']);
+  assert.equal((await setCr('Z-NOPE1', c1)).status, 404);
+  assert.equal((await setCr(o.id, c1, iA())).status, 403, 'меняет только продавец');
+  assert.equal((await call('PUT', '/api/admin/couriers/' + c1, { init: iS(), body: { on: false } })).status, 200);
+  assert.equal((await jsonOf(await setCr(o.id, c1))).error, 'no_courier', 'отключённому доставщику заказ не передать');
+  assert.equal((await call('PUT', '/api/admin/couriers/' + c1, { init: iS(), body: { on: true } })).status, 200);
+  const pk = await placeAccepted(A, ONE, 'pickup');
+  await sellerStatus(pk.id, 'ready');
+  assert.equal((await setCr(pk.id, c1)).status, 409, 'самовывоз доставщику не передать');
+  const nw0 = await placeAccepted(A, CART, 'delivery');
+  assert.equal((await setCr(nw0.id, c1)).status, 409, 'пока заказ не готов, назначить нельзя');
+  // «Вернуть всем»: заказ снова свободный и у обоих с кнопкой «Взял»
+  tgLog = [];
+  const back = await setCr(o.id, '');
+  assert.equal(back.status, 200);
+  const backOrd = (await jsonOf(back)).order;
+  assert.deepEqual([backOrd.cr, backOrd.crn], [undefined, undefined]);
+  const free = lastTg('editMessageText', p => p.chat_id === DRV2.id && p.text.includes('Готов к доставке')).payload;
+  assert.ok(kbOf(free).some(b => b.callback_data === 'k:' + o.id), 'у второго снова «Взял»');
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV2.id && p.text.includes('Продавец снял с вас заказ')), 'второй узнал, что заказ с него снят');
+  assert.ok(lastTg('editMessageText', p => p.chat_id === SELLER.id && p.text.includes('Ждёт доставщика')));
+  // после этого любой доставщик берёт «Взял» как обычно
+  assert.equal((await drvTake(o.id)).status, 200);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).crn, 'Рустам');
+});
+
+await t('выбор доставщика: пока есть доставщики, продавец не отмечает доставку выданной ни в приложении, ни в Telegram; без них и при самовывозе может', async () => {
+  await stockWorld();
+  const c1 = await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o = await readyDelivery(A, CART);                              // без выбора: всем
+  // приложение
+  const r = await sellerStatus(o.id, 'done', { pay: { m: 'cash' } });
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'use_courier']);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'ready');
+  // Telegram: кнопка «Доставлен» в старом сообщении, оплата, оплата в долг
+  for (const data of ['s:' + o.id + ':done', 'p:' + o.id + ':cash', 'p:' + o.id + ':credit:7']) {
+    tgLog = [];
+    await cb(SELLER, data, 800, SELLER.id);
+    const ans = lastTg('answerCallbackQuery').payload;
+    assert.ok(ans.text.includes('Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi') && ans.text.includes('Доставленным заказ отмечает доставщик'), data + ': ' + ans.text);
+    assert.equal(ans.show_alert, true);
+    const ed = lastTg('editMessageText', p => p.chat_id === SELLER.id && p.message_id === 800).payload;
+    assert.ok(!kbOf(ed).some(b => /^p:|:done$/.test(b.callback_data || '')), 'карточка обновилась без кнопки «Доставлен»: ' + data);
+    assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'ready');
+  }
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).pay, undefined);
+  // доставщика отключили: доставщиков нет, продавец закрывает сам
+  assert.equal((await call('PUT', '/api/admin/couriers/' + c1, { init: iS(), body: { on: false } })).status, 200);
+  assert.equal((await jsonOf(await call('GET', '/api/admin/orders', { init: iS() }))).crs.length, 0);
+  tgLog = [];
+  await cb(SELLER, 's:' + o.id + ':done', 801, SELLER.id);
+  assert.ok(lastTg('editMessageText', p => p.chat_id === SELLER.id && p.message_id === 801).payload.text.includes('Как клиент оплатил заказ'), 'без доставщиков вопрос об оплате как раньше');
+  await cb(SELLER, 'p:' + o.id + ':cash', 801, SELLER.id);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).status, 'done');
+});
+
+await t('выбор доставщика: карточка заказа в Telegram — без «Доставлен» при доставщиках, «Готов к отправке» из Telegram уходит всем', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам'); await hire(DRV2, 'Азиз');
+  const A = newUser();
+  const o = await placeAccepted(A, CART, 'delivery');
+  tgLog = [];
+  await cb(SELLER, 's:' + o.id + ':ready', 810, SELLER.id);
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes('Готов к доставке')));
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DRV2.id && p.text.includes('Готов к доставке')));
+  const ed = lastTg('editMessageText', p => p.chat_id === SELLER.id && p.message_id === 810).payload;
+  assert.ok(ed.text.includes('Ждёт доставщика'), ed.text);
+  assert.ok(!kbOf(ed).some(b => /:done$/.test(b.callback_data || '')));
+  assert.ok(kbOf(ed).some(b => b.web_app), 'панель продавца для смены доставщика');
+  // самовывоз: кнопка «Выдан клиенту» на месте
+  const pk = await placeAccepted(A, ONE, 'pickup');
+  await cb(SELLER, 's:' + pk.id + ':ready', 811, SELLER.id);
+  assert.ok(kbOf(lastTg('editMessageText', p => p.message_id === 811).payload).some(b => /:done$/.test(b.callback_data || '')));
+  // «Взял» после выбора доставщика недоступен другим, а у выбранного кнопки нет — но старое сообщение с «Взял» безвредно
+  assert.equal((await setCr(o.id, (await crList())[1].id)).status, 200);
+  tgLog = [];
+  await cb(DRV, 'k:' + o.id, 812, DRV.id);
+  assert.ok(lastTg('answerCallbackQuery').payload.text.includes('уже взял Азиз'));
 });
 
 /* ---------- итог ---------- */
