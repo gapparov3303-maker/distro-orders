@@ -6616,7 +6616,7 @@ await t('подсказки под полями: в каждой форме пр
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
   // сколько подсказок минимум должно быть в каждой форме (по числу полей)
-  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 7, ownAddHTML: 2, ownShopStatsHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
+  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 7, ownAddHTML: 2, cmShopHTML: 3, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
   for (const [name, n] of Object.entries(need)) {
     const body = fn(name);
     const k = (body.match(/hintD\(/g) || []).length;
@@ -7022,6 +7022,7 @@ await t('комиссия: «Не получил» не меняет «К опл
   // открытие экрана (seen=1) снимает отметку «новое»; обычное чтение её не трогает
   assert.equal((await cState(sid)).bad, 1);
   c = (await jsonOf(await cGet(sid, iD(), '?seen=1'))).comm;
+  assert.equal(c.bad, 1, 'при открытии экрана продавец ещё видит, что есть новое');
   assert.equal((await cState(sid)).bad, 0);
   // продавец может ввести сумму заново
   assert.equal((await cPay(sid, { a: 50000 })).status, 200);
@@ -7128,7 +7129,7 @@ await t('комиссия: список для владельца по всем 
   assert.deepEqual([mc.pct, mc.acc, mc.due], [0, 0, 0]);
 });
 
-await t('комиссия: начисленное за вытесненные старые дни не теряется — сворачивается в cold', async () => {
+await t('комиссия: начисленное считается один раз по записям дней и дальше растёт с заказами; удаление старых дней его не уменьшает', async () => {
   const { sid } = await shopWorld();
   assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid, { init: iS(), body: { pct: 5 } })).status, 200);
   const st = W.shops.get(sid).storage, days = [], put = {};
@@ -7138,16 +7139,22 @@ await t('комиссия: начисленное за вытесненные с
   }
   put.rpx = days; put.rp0 = days[0];
   await st.put(put);
-  assert.deepEqual([(await cState(sid)).acc, await st.get('cold')], [400000, undefined]);
-  // новый день вытесняет самый старый, его комиссия остаётся в начисленном
+  // первый же заказ после обновления: прежнее начисленное берётся из записей дней, заказ не считается дважды
   const A = newUser();
   const o = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) }))).order;
   for (const to of ['accepted', 'ready', 'done']) assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id: o.id, to } })).status, 200);
+  assert.equal(await st.get('ctot'), 469700, '400 000 прежних + 69 700 нового заказа');
+  // индекс держит 400 дней: самый старый день вытеснен, а начисленное осталось
   assert.equal((await st.get('rpx')).length, 400);
   assert.equal(await st.get('rp:' + days[0]), undefined);
-  assert.equal(await st.get('cold'), 1000);
-  assert.equal((await cState(sid)).acc, 469700, '400 000 прежних + 69 700 нового заказа');
-  assert.equal((await cState(sid)).due, 469700);
+  const c = await cState(sid);
+  assert.deepEqual([c.acc, c.due], [469700, 469700]);
+  // дальше число растёт с каждым выданным заказом
+  const o2 = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: A.init(), body: ob(CART) }))).order;
+  for (const to of ['accepted', 'ready', 'done']) assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id: o2.id, to } })).status, 200);
+  assert.equal((await cState(sid)).acc, 539400);
+  // первое обращение без заказов тоже считает по записям: у первого дистрибьютора с нулевым процентом начислено 0
+  assert.equal((await jsonOf(await call('GET', '/api/admin/comm', { init: iS() }))).comm.acc, 0);
 });
 
 await t('комиссия: больше 500 платежей — самые старые подтверждённые сворачиваются, «К оплате» не меняется', async () => {

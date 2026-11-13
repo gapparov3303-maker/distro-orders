@@ -224,6 +224,8 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .cfc.bad{background:var(--bad-soft);color:var(--bad)}
 .cfl .payb{flex-basis:100%;margin-top:2px}
 .cfq{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%}
+.cpl{display:grid;gap:4px;padding:10px 0;border-bottom:1px dashed var(--line)}.cpl:last-child{border-bottom:0}.cph{display:flex;justify-content:space-between;align-items:center;gap:8px}.cph b{font:700 16px var(--f-display);font-variant-numeric:tabular-nums}
+.cmw+.cmw{border-top:1.5px solid var(--edge);margin-top:6px;padding-top:6px}.cmwn{font-size:13px;font-weight:600;color:var(--ink-2)}.cmh{font-size:14px;margin:14px 0 2px}
 .dsp{display:grid;gap:8px;background:var(--surface);border:1.5px solid var(--edge);border-radius:14px;padding:12px 14px}
 .dsp .dpw{font-size:14px;color:var(--ink-2)}
 .dsp .dpw b{color:var(--ink)}
@@ -827,6 +829,7 @@ const S={
   did:'',epoch:0,switching:false,off:false,otherCart:null,
   hub:{title:'',shops:[],me:null,terrs:[],loaded:false,err:false},
   own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
+  cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0}
 };
@@ -869,6 +872,7 @@ function resetShopState(){
     rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
   });
   S.form.region='';
+  Object.assign(S.cm,{d:null,err:false,a:'',note:'',busy:'',nb:0});
 }
 /* способ получения: доставка доступна, только если продавец её включил */
 const mode=()=>S.cfg.shop.delivery!==false&&S.form.mode==='delivery'?'delivery':'pickup';
@@ -1096,6 +1100,7 @@ function menuGroups(){
   if(S.admin&&S.did)work.push(['seller',L('Продавец','Sotuvchi'),newCount(),'',sellerSubs(),'stab']);
   if(S.courier&&S.did)work.push(['courier',L('Доставка','Yetkazib berish'),crFree(),'',crTabs(),'ctab']);
   if(canBase())work.push(['base',L('База','Baza')]);
+  if(commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
   if(work.length)g.push([L('Работа','Ish'),work]);
   if(isOwner())g.push([L('Владелец','Egasi'),ownSecs().map(o=>['o_'+o[0],o[1],o[0]==='money'?S.own.dn:0,'bad',o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']),'otab']).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
   return g;
@@ -1129,7 +1134,7 @@ function renderNav(){
   nav.scrollTop=st;
   if(fk){const f=[...nav.querySelectorAll('[data-act]')].find(x=>x.dataset.act===fk[0]&&(x.dataset.v||x.dataset.t||'')===fk[1]&&!x.closest('[hidden]'));if(f)f.focus({preventScroll:true})}
   // значок на кнопке ☰: что ждёт решения (новые заказы, товары на проверке или возвращённые)
-  const al=(S.admin&&S.did?newCount()+modRetN()+(S.dbt.fl||0)+dvAlerts():0)+(isOwner()?modN()+(S.own.dn||0):0)+(S.courier&&S.did?crFree()+(S.cr.ask||0)+(S.cr.late>0?1:0):0)+(S.auth?S.mdebt.ask||0:0),mb=$('#menubadge');
+  const al=(S.admin&&S.did?newCount()+modRetN()+(S.dbt.fl||0)+dvAlerts():0)+(isOwner()?modN()+(S.own.dn||0):0)+(S.courier&&S.did?crFree()+(S.cr.ask||0)+(S.cr.late>0?1:0):0)+(S.auth?S.mdebt.ask||0:0)+(commOn()?commBadge():0),mb=$('#menubadge');
   mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
   const mr=$('#mrole'),rl=roleLine();
   if(mr){mr.hidden=!rl;mr.innerHTML=rl?esc(L('Вы: ','Siz: '))+'<b>'+esc(rl)+'</b>':''}
@@ -1137,7 +1142,7 @@ function renderNav(){
   mbt.setAttribute('aria-label',L('Меню','Menyu')+(al?': '+al:''));
   $('#mclose').setAttribute('aria-label',L('Закрыть меню','Menyuni yopish'));
   // внутри дистрибьютора в шапке его название, на общих экранах название площадки
-  const inShop=S.did&&(S.view==='shop'||S.view==='seller'||S.view==='profile'||S.view==='courier');
+  const inShop=S.did&&(S.view==='shop'||S.view==='seller'||S.view==='profile'||S.view==='courier'||(S.view==='comm'&&!isOwner()));
   const name=inShop?(S.cfg.shop.name||DEFAULT.shop.name):hubTitle();
   $('#brandName').textContent=name;
   $('#mbrand').textContent=name;
@@ -3257,15 +3262,6 @@ function buyHTML(r){
   }).join('')+'</div></div>';
   return h;
 }
-/* Комиссия площадки в отчётах дистрибьютора: сколько он должен площадке за этот и прошлый месяц (видна, если процент больше нуля) */
-function commHTML(r){
-  const c=r.comm;
-  if(!c||!(c.pct>0||c.cur.cm>0||c.prev.cm>0))return '';
-  const row=(lab,x)=>'<div class="r"><span>'+esc(lab+' ('+mFull(x.m)+')')+'<small class="sub">'+esc(ordTxt(x.n)+' · '+L('товаров на ','mahsulotlar: ')+money(x.base))+'</small></span><span>'+esc(money(x.cm))+'</span></div>';
-  return '<div class="card"><h3>'+L('Комиссия площадки','Platforma komissiyasi')+'</h3><div class="unit">'
-    +L('Площадка берёт '+fmtPct(c.pct)+'% от суммы товаров (после скидки, без доставки) по выданным заказам. Это сумма, которую вы платите площадке за месяц.','Platforma topshirilgan buyurtmalarda mahsulotlar summasidan (chegirmadan keyin, yetkazib berishsiz) '+fmtPct(c.pct)+'% oladi. Bu siz platformaga oylik toʻlaydigan summa.')
-    +'</div><div class="sum">'+row(L('Этот месяц','Shu oy'),c.cur)+row(L('Прошлый месяц','Oʻtgan oy'),c.prev)+'</div></div>';
-}
 function repHTML(){
   const R=S.rep,r=R.data;
   let h='<div class="filters">'+RP_DAYS.map(d=>'<button type="button" class="chip" data-act="rdays" data-v="'+d+'" aria-pressed="'+(R.days===d)+'">'+esc(rpRange(d))+'</button>').join('')+'</div>';
@@ -3273,7 +3269,6 @@ function repHTML(){
     if(R.err)return h+'<div class="empty"><b>'+L('Не удалось загрузить отчёт','Hisobotni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение.','Ulanishni tekshiring.')+'<div style="margin-top:10px"><button type="button" class="btn sm" data-act="rretry">'+L('Повторить','Qayta urinish')+'</button></div></div>';
     return h+'<div class="empty"><b>'+L('Считаем отчёт','Hisobot tayyorlanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   }
-  h+=commHTML(r);
   h+='<div class="xtools">'+xbtn('report')+'</div>'
     +'<p class="rnote" style="margin:0 0 4px">'+L('Период: '+fDay(r.from)+' — '+fDay(r.to)+'. В отчёт попадают заказы со статусом «Выдан» или «Доставлен», по дню завершения.','Davr: '+fDay(r.from)+' — '+fDay(r.to)+'. Hisobotga «Topshirildi» yoki «Yetkazildi» holatidagi buyurtmalar kiradi, yakunlangan kun boʻyicha.')+'</p>';
   if(r.since>r.from)h+='<p class="rnote">'+L('Отчёт ведётся с '+fDay(r.since)+', раньше данных нет.','Hisobot '+fDay(r.since)+' dan yuritiladi, undan oldin maʼlumot yoʻq.')+'</p>';
@@ -4162,6 +4157,7 @@ function render(){
   else if(S.view==='base')renderBase();
   else if(S.view==='review')renderReview();
   else if(S.view==='analytics')renderAnalytics();
+  else if(S.view==='comm')renderComm();
   else if(S.view==='courier')renderCourier();
   else renderSeller();
 }
@@ -4173,7 +4169,9 @@ function go(v){
   if(v==='base'&&!canBase())v='shops';
   if(v==='review'&&!isOwner())v='shops';
   if(v==='analytics'&&!isOwner())v='shops';
+  if(v==='comm'&&!(isOwner()||(S.admin&&S.did)))v='shops';
   const was=S.view;
+  if(was==='comm'&&v!=='comm')S.cm.nb=0;
   if(v==='base'&&was!=='base')baseResetUI();
   S.view=v;S.cc=null;S.msub=null;setScrollLock();
   render();window.scrollTo(0,0);
@@ -4186,6 +4184,7 @@ function go(v){
   if(v==='owner')loadOwner();
   if(v==='base')loadBase(true);
   if(v==='analytics')loadAnalytics();
+  if(v==='comm')loadComm();
   if(v==='review'){S.rv.ret=null;S.rv.edit=null;loadReview()}
 }
 /* ---------- дистрибьюторы: список, переход, раздел владельца ---------- */
@@ -4536,11 +4535,12 @@ const ownErr=e=>({
   forbidden:L('Раздел только для владельца','Boʻlim faqat egasi uchun')
 }[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
 /* перерисовывает раздел владельца, но не сбивает того, кто сейчас печатает в поле */
+const ownRender=()=>S.view==='comm'?renderComm():renderOwner();
 function ownRefresh(){
-  if(S.view!=='owner')return;
+  if(S.view!=='owner'&&S.view!=='comm')return;
   const ae=document.activeElement;
   if(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&view.contains(ae))return;
-  renderOwner();
+  ownRender();
 }
 /* Спорные записи по всем дистрибьюторам: магазин ответил «Не так», не получил сообщение или молчит больше суток. */
 async function loadDisputes(){
@@ -4634,7 +4634,7 @@ function ownStatsHTML(){
   let h='<div class="card"><h3>'+L('Заказы и комиссия','Buyurtmalar va komissiya')+'</h3>'
     +'<div class="filters" style="margin:8px 0">'+per.map(p=>'<button type="button" class="chip" data-act="ownper" data-v="'+p[0]+'" aria-pressed="'+(o.period===p[0])+'">'+esc(p[1])+'</button>').join('')+'</div>';
   if(!st||st.period!==o.period){
-    h+=o.serr?'<div class="note">'+L('Не удалось загрузить сводку. Проверьте соединение.','Hisobotni yuklab boʻlmadi. Ulanishni tekshiring.')+' <button type="button" class="btn ghost sm" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>'
+    h+=o.serr?'<div class="note">'+L('Не удалось загрузить сводку. Проверьте соединение.','Hisobotni yuklab boʻlmadi. Ulanishni tekshiring.')+' <button type="button" class="btn ghost sm" data-act="ownsreload">'+L('Повторить','Qayta urinish')+'</button></div>'
       :'<div class="unit">'+L('Считаем…','Hisoblanmoqda…')+'</div>';
     return h+'</div>';
   }
@@ -4644,28 +4644,210 @@ function ownStatsHTML(){
     +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(t.base))+'</span></div>'
     +(t.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(t.active)+'</span></div>':'')
     +'<div class="r t"><span>'+L('Комиссия к получению','Olinadigan komissiya')+'</span><span>'+esc(money(t.cm))+'</span></div></div>'
-    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого дистрибьютора свой, его можно менять ниже. Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: клиенты платят дистрибьютору при получении, а комиссию вы получаете с него сами.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir distribyutorning foizi alohida, uni quyida oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: mijozlar distribyutorga olganda toʻlaydi, komissiyani esa siz undan oʻzingiz olasiz.')+'</div></div>';
+    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого дистрибьютора свой, его можно менять в его карточке выше. Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: клиенты платят дистрибьютору при получении, дистрибьютор платит вам комиссию сам любым способом, а вы подтверждаете получение выше.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir distribyutorning foizi alohida, uni yuqoridagi uning kartochkasida oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: mijozlar distribyutorga olganda toʻlaydi, distribyutor komissiyani sizga oʻzi istalgan usulda toʻlaydi, siz esa olinganini yuqorida tasdiqlaysiz.')+'</div></div>';
   return h;
 }
 async function ownPct(id){
   const o=S.own;if(o.busy)return;
-  const row=o.stats&&o.stats.rows.find(x=>x.id===id);
+  const row=S.cm.o&&S.cm.o.rows.find(x=>x.id===id);
   const raw=String(o.pcts[id]!==undefined?o.pcts[id]:(row?row.pct:'')).trim().replace(',','.');
   const v=Number(raw);
   if(raw===''||!isFinite(v)||v<0||v>50){toast(ownErr('bad_pct'));return}
-  o.busy='pct';renderOwner();
+  o.busy='pct';ownRender();
   const r=await api('PUT','/api/hub/admin/shops/'+encodeURIComponent(id),{pct:v});
   o.busy='';
   if(r.ok&&r.data&&typeof r.data.pct==='number'){
     delete o.pcts[id];
     toast(L('Процент сохранён: '+fmtPct(r.data.pct)+'%. Он действует на заказы, которые выдаются с этого момента.','Foiz saqlandi: '+fmtPct(r.data.pct)+'%. U shu paytdan topshiriladigan buyurtmalarga amal qiladi.'));
   }else toast(ownErr(r.data&&r.data.error));
-  renderOwner();
-  loadOwnerStats();
+  ownRender();
+  loadCommOwner();loadOwnerStats();
+}
+/* ---------- комиссия: дистрибьютор отмечает оплату, владелец подтверждает ---------- */
+/* Пункт меню «Комиссия»: у владельца всегда, у продавца — если у его дистрибьютора есть процент, начисления или платежи. */
+const commOn=()=>isOwner()||!!(S.admin&&S.did&&S.cm.d&&(S.cm.d.pct>0||S.cm.d.acc>0||S.cm.d.pays.length>0));
+/* Красный значок: у владельца — сколько платежей ждут подтверждения, у продавца — сколько платежей владелец не подтвердил или отменил (пока экран не открыт). */
+const commBadge=()=>isOwner()?(S.cm.o?S.cm.o.total.nw:0):(S.cm.d?S.cm.d.bad:0);
+const CM_ST=()=>({wait:[L('Ждёт подтверждения','Tasdiqlash kutilmoqda'),'warn'],ok:[L('Подтверждён','Tasdiqlangan'),'ok'],no:[L('Не подтверждён','Tasdiqlanmagan'),'bad'],void:[L('Отменён','Bekor qilingan'),'']});
+const commErr=e=>({
+  bad_amount:L('Введите сумму цифрами, например 400000 (не больше 100 000 000 000)','Summani raqamlar bilan kiriting, masalan 400000 (100 000 000 000 dan oshmasin)'),
+  too_many:L('Уже 5 платежей ждут подтверждения. Дождитесь ответа владельца или отзовите лишний.','Allaqachon 5 ta toʻlov tasdiqlanishini kutmoqda. Egasining javobini kuting yoki ortiqchasini qaytarib oling.'),
+  state:L('Платёж уже обработан. Список обновлён.','Toʻlov allaqachon koʻrib chiqilgan. Roʻyxat yangilandi.'),
+  not_found:L('Платёж не найден. Список обновлён.','Toʻlov topilmadi. Roʻyxat yangilandi.'),
+  forbidden:L('Нет доступа','Ruxsat yoʻq')
+}[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
+/* Сумма из поля: цифры, можно с пробелами или точками как разделителями тысяч (400000, 400 000, 400.000). 0 — неверно. */
+function cmAmount(v){
+  const t=String(v||'').trim().replace(/[  ]/g,' ');
+  if(!(/^\d{1,12}$/.test(t)||/^\d{1,3}([ .,]\d{3})+$/.test(t)))return 0;
+  const n=Number(t.replace(/[ .,]/g,''));
+  return n>=1&&n<=1e11?n:0;
+}
+const cmDueLab=due=>due<0?L('Аванс (переплата)','Avans (ortiqcha toʻlov)'):L('К оплате','Toʻlanishi kerak');
+async function loadCommSeller(){
+  if(!S.admin||!S.did||isOwner())return;
+  const did=S.did,c=S.cm,r=await api('GET','/api/admin/comm'+(S.view==='comm'?'?seen=1':''));
+  if(did!==S.did)return;
+  if(!r.ok||!r.data||!r.data.comm){if(!c.d){c.err=true;if(S.view==='comm')ownRefresh()}return}
+  const d=r.data.comm,same=!!c.d&&JSON.stringify(c.d)===JSON.stringify(d);
+  c.err=false;
+  if(S.view==='comm'&&d.bad>c.nb)c.nb=d.bad;
+  c.d=d;
+  if(same)return;
+  renderNav();
+  if(S.view==='comm')ownRefresh();
+}
+async function loadCommOwner(){
+  if(!isOwner())return;
+  const c=S.cm,r=await api('GET','/api/hub/admin/comm');
+  if(!r.ok||!r.data||!Array.isArray(r.data.rows)){if(!c.o){c.err=true;if(S.view==='comm')ownRefresh()}return}
+  const same=!!c.o&&JSON.stringify(c.o)===JSON.stringify(r.data);
+  c.err=false;c.o=r.data;
+  if(same)return;
+  renderNav();
+  if(S.view==='comm')ownRefresh();
+}
+function loadComm(){
+  if(isOwner()){loadCommOwner();loadOwnerStats()}
+  else loadCommSeller();
+}
+/* одна строка платежа: сумма, статус, когда и кто, комментарий; кнопки зависят от того, кто смотрит */
+function cmPayHTML(p,owner,did){
+  const st=CM_ST()[p.st]||['',''],c=S.cm,busy=!!c.busy;
+  const by=p.src==='o'?L('Записал владелец','Egasi yozgan')+(p.dn?' · '+p.dn:''):p.bn;
+  let h='<div class="cpl"><div class="cph"><b>'+esc(money(p.a))+'</b><span class="cfc'+(st[1]?' '+st[1]:'')+'">'+esc(st[0])+'</span></div>'
+    +'<div class="dmeta">'+esc([jrDate(p.at),by].filter(Boolean).join(' · '))+'</div>'
+    +(p.note?'<div class="dmeta">'+esc(L('Комментарий: ','Izoh: ')+p.note)+'</div>':'');
+  if(p.st!=='wait'&&p.src!=='o'&&p.dt){
+    const who=p.st==='void'&&!p.vo?L('Отозвал продавец','Sotuvchi qaytarib oldi'):(p.st==='ok'?L('Подтвердил: ','Tasdiqladi: '):p.st==='no'?L('Не получил: ','Olmadi: '):L('Отменил: ','Bekor qildi: '))+(p.dn||'');
+    h+='<div class="dmeta">'+esc(who+' · '+jrDate(p.dt))+'</div>';
+  }
+  if(p.st==='wait'){
+    if(owner)h+='<div class="row-btns" style="margin-top:6px"><button type="button" class="btn sm" data-act="commok" data-did="'+esc(did)+'" data-id="'+esc(p.id)+'"'+(busy?' disabled':'')+'>'+L('Получил','Qabul qildim')+'</button>'
+      +'<button type="button" class="btn ghost sm" data-act="commno" data-did="'+esc(did)+'" data-id="'+esc(p.id)+'"'+(busy?' disabled':'')+'>'+L('Не получил','Kelmadi')+'</button></div>';
+    else h+='<div class="row-btns" style="margin-top:6px"><button type="button" class="btn ghost sm" data-act="commcancel" data-id="'+esc(p.id)+'"'+(busy?' disabled':'')+'>'+L('Отозвать','Qaytarib olish')+'</button></div>'
+      +hintD('Если ошиблись в сумме, отзовите платёж и отметьте заново.','Summani adashgan boʻlsangiz, toʻlovni qaytarib oling va qaytadan belgilang.');
+  }
+  else if(p.st==='ok'&&owner)h+='<div class="row-btns" style="margin-top:6px"><button type="button" class="btn ghost sm" data-act="commvoid" data-did="'+esc(did)+'" data-id="'+esc(p.id)+'" data-a="'+p.a+'"'+(busy?' disabled':'')+'>'+L('Отменить платёж','Toʻlovni bekor qilish')+'</button></div>';
+  return h+'</div>';
+}
+const cmStats=(t,pending)=>'<div class="stats">'
+  +'<div class="stat'+(t.due>0?' hot':'')+'"><small>'+cmDueLab(t.due)+'</small><b>'+esc(money(Math.abs(t.due)))+'</b></div>'
+  +'<div class="stat"><small>'+L('Начислено всего','Jami hisoblangan')+'</small><b>'+esc(money(t.acc))+'</b></div>'
+  +'<div class="stat"><small>'+L('Оплачено (подтверждено)','Toʻlangan (tasdiqlangan)')+'</small><b>'+esc(money(t.paid))+'</b></div>'
+  +'<div class="stat"><small>'+L('Ждут подтверждения','Tasdiq kutmoqda')+'</small><b>'+(t.nw?esc(money(t.ws))+'<span class="sub"> · '+t.nw+'</span>':'—')+'</b></div></div>';
+const cmErrHTML=()=>'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="commreload">'+L('Повторить','Qayta urinish')+'</button></div>';
+/* Экран продавца: сколько он должен площадке, поле «оплатил» и история платежей */
+function commSellerHTML(){
+  const c=S.cm,d=c.d;
+  if(!d)return c.err?cmErrHTML():loadingHTML();
+  let h='<p class="lead">'+L('Площадка берёт '+fmtPct(d.pct)+'% от суммы выданных заказов (товары после скидки, без доставки). Заплатите владельцу любым удобным способом, впишите сумму ниже и нажмите «Оплатил». Когда владелец подтвердит, сумма «К оплате» уменьшится.','Platforma berilgan buyurtmalar summasidan '+fmtPct(d.pct)+'% oladi (chegirmadan keyingi mahsulotlar, yetkazib berishsiz). Egasiga istalgan qulay usulda toʻlang, quyiga summani yozing va «Toʻladim» tugmasini bosing. Egasi tasdiqlagach, «Toʻlanishi kerak» summasi kamayadi.')+'</p>';
+  if(c.nb>0)h+='<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(L('Владелец не подтвердил или отменил платежей: '+c.nb+'. Они в истории ниже. Проверьте сумму и отметьте оплату заново.','Egasi tasdiqlamagan yoki bekor qilgan toʻlovlar: '+c.nb+'. Ular quyidagi tarixda. Summani tekshirib, toʻlovni qaytadan belgilang.'))+'</div>';
+  h+=cmStats(d);
+  if(d.due<0)h+='<div class="note" style="margin-bottom:12px">'+L('Вы заплатили больше, чем начислено. Эта сумма зачтётся в счёт будущей комиссии.','Siz hisoblanganidan koʻp toʻladingiz. Bu summa kelgusi komissiyaga hisoblanadi.')+'</div>';
+  if(d.nw)h+='<div class="note" style="margin-bottom:12px">'+esc(L('Ждут подтверждения владельцем: '+d.nw+' на '+money(d.ws)+'. «К оплате» изменится после подтверждения.','Egasi tasdiqlashini kutmoqda: '+d.nw+' ta, '+money(d.ws)+'. Tasdiqlangach «Toʻlanishi kerak» oʻzgaradi.'))+'</div>';
+  h+='<div class="card"><h3>'+L('Я оплатил владельцу','Egasiga toʻladim')+'</h3><div class="form">'
+    +'<div><label class="lab" for="cm-a">'+L('Сколько вы заплатили, сум','Qancha toʻladingiz, soʻm')+'</label><input type="text" inputmode="numeric" id="cm-a" data-cm="a" maxlength="16" value="'+esc(c.a)+'" autocomplete="off" placeholder="400000">'
+    +hintD('Только цифры, например 400000. Можно меньше или больше суммы «К оплате»: остаток или аванс посчитаем сами.','Faqat raqamlar, masalan 400000. «Toʻlanishi kerak» summasidan kam yoki koʻp boʻlishi mumkin: qoldiq yoki avansni oʻzimiz hisoblaymiz.')+'</div>'
+    +'<div><label class="lab" for="cm-n">'+L('Комментарий (необязательно)','Izoh (majburiy emas)')+'</label><input type="text" id="cm-n" data-cm="note" maxlength="120" value="'+esc(c.note)+'" autocomplete="off">'
+    +hintD('Как и когда заплатили: перевод на карту, Click, наличными. Владелец увидит это в сообщении.','Qanday va qachon toʻlaganingiz: kartaga oʻtkazma, Click, naqd. Egasi buni xabarda koʻradi.')+'</div></div>'
+    +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="cmpay" data-act="commpay"'+(c.busy?' disabled':'')+'>'+(c.busy==='pay'?L('Отправляем…','Yuborilmoqda…'):L('Оплатил','Toʻladim'))+'</button></div></div>';
+  h+='<div class="card"><h3>'+L('История платежей','Toʻlovlar tarixi')+'</h3>'
+    +(d.pays.length?d.pays.map(p=>cmPayHTML(p,false,'')).join(''):'<div class="unit">'+L('Платежей пока нет.','Hozircha toʻlovlar yoʻq.')+'</div>')+'</div>';
+  return h;
+}
+/* Карточка одного дистрибьютора для владельца: цифры, процент, запись полученной оплаты, история */
+function cmShopHTML(r){
+  const c=S.cm,o=S.own,f=c.ow[r.id]||{a:'',note:'',open:false},hist=r.pays.filter(p=>p.st!=='wait'),shown=c.all[r.id]?hist:hist.slice(0,5);
+  const pv=o.pcts[r.id]!==undefined?o.pcts[r.id]:fmtPct(r.pct);
+  let h='<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+esc(L('комиссия ','komissiya ')+fmtPct(r.pct)+'%')+'</span></div>';
+  if(r.err)return h+'<div class="note" style="margin-top:10px">'+L('Нет данных по этому дистрибьютору.','Bu distribyutor boʻyicha maʼlumot yoʻq.')+'</div></div>';
+  h+='<div class="sum" style="margin:10px 0 6px">'
+    +'<div class="r"><span>'+L('Начислено всего','Jami hisoblangan')+'</span><span>'+esc(money(r.acc))+'</span></div>'
+    +'<div class="r"><span>'+L('Оплачено (подтверждено)','Toʻlangan (tasdiqlangan)')+'</span><span>'+esc(money(r.paid))+'</span></div>'
+    +'<div class="r t"><span>'+cmDueLab(r.due)+'</span><span>'+esc(money(Math.abs(r.due)))+'</span></div></div>'
+    +'<div class="pctrow"><div><label class="lab" for="pc-'+esc(r.id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(r.id)+'" data-opct="'+esc(r.id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off"></div>'
+    +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>'
+    +hintD('Сколько процентов от суммы выданных заказов вы берёте. Новый процент действует на заказы, выданные после изменения. Пример: 2,5.','Topshirilgan buyurtmalar summasidan necha foiz olasiz. Yangi foiz oʻzgargandan keyin topshirilgan buyurtmalarga amal qiladi. Masalan: 2,5.');
+  h+='<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="commopen" data-did="'+esc(r.id)+'" aria-expanded="'+!!f.open+'">'+(f.open?L('Скрыть','Yashirish'):L('Записать полученную оплату','Olingan toʻlovni yozish'))+'</button></div>';
+  if(f.open)h+='<div class="form" style="margin-top:10px">'
+    +'<div><label class="lab" for="cmo-a-'+esc(r.id)+'">'+L('Сколько получили, сум','Qancha oldingiz, soʻm')+'</label><input type="text" inputmode="numeric" id="cmo-a-'+esc(r.id)+'" data-cmo="a" data-did="'+esc(r.id)+'" maxlength="16" value="'+esc(f.a)+'" autocomplete="off" placeholder="400000">'
+    +hintD('Для денег, которые дистрибьютор отдал вам мимо приложения, например наличными. Запись сразу считается подтверждённой.','Distribyutor ilovadan tashqari bergan pul uchun, masalan naqd. Yozuv darhol tasdiqlangan hisoblanadi.')+'</div>'
+    +'<div><label class="lab" for="cmo-n-'+esc(r.id)+'">'+L('Комментарий (необязательно)','Izoh (majburiy emas)')+'</label><input type="text" id="cmo-n-'+esc(r.id)+'" data-cmo="note" data-did="'+esc(r.id)+'" maxlength="120" value="'+esc(f.note)+'" autocomplete="off">'
+    +hintD('Например: наличными в офисе. Дистрибьютор увидит это в истории.','Masalan: ofisda naqd. Distribyutor buni tarixda koʻradi.')+'</div>'
+    +'<div class="row-btns"><button type="button" class="btn" data-act="commadd" data-did="'+esc(r.id)+'"'+(S.cm.busy?' disabled':'')+'>'+(S.cm.busy===r.id?L('Записываем…','Yozilmoqda…'):L('Записать','Yozish'))+'</button></div></div>';
+  if(hist.length)h+='<h4 class="cmh">'+L('История платежей','Toʻlovlar tarixi')+'</h4>'+shown.map(p=>cmPayHTML(p,true,r.id)).join('')
+    +(hist.length>5?'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="commall" data-did="'+esc(r.id)+'">'+(c.all[r.id]?L('Свернуть','Yigʻish'):L('Показать все ('+hist.length+')','Hammasini koʻrsatish ('+hist.length+')'))+'</button></div>':'');
+  return h+'</div>';
+}
+/* Экран владельца: что ждёт подтверждения, затем карточки дистрибьюторов и сводка по заказам */
+function commOwnerHTML(){
+  const c=S.cm,d=c.o;
+  if(!d)return c.err?cmErrHTML():loadingHTML();
+  let h='<p class="lead">'+L('Дистрибьюторы платят вам комиссию любым способом и отмечают это здесь. Когда деньги пришли, нажмите «Получил»: только после этого сумма «К оплате» у дистрибьютора уменьшится. Платежи можно подтверждать и кнопками в сообщении бота.','Distribyutorlar komissiyani sizga istalgan usulda toʻlaydi va buni shu yerda belgilaydi. Pul kelganda «Qabul qildim» tugmasini bosing: faqat shundan keyin distribyutorning «Toʻlanishi kerak» summasi kamayadi. Toʻlovlarni bot xabaridagi tugmalar bilan ham tasdiqlash mumkin.')+'</p>';
+  h+=cmStats(d.total);
+  const wait=[];
+  d.rows.forEach(r=>r.pays.forEach(p=>{if(p.st==='wait')wait.push({r,p})}));
+  wait.sort((a,b)=>String(a.p.at).localeCompare(String(b.p.at)));
+  if(wait.length)h+='<div class="card"><h3>'+L('Ждут вашего подтверждения','Sizning tasdiqingizni kutmoqda')+'</h3>'
+    +hintD('«Получил» — деньги пришли, «К оплате» уменьшится. «Не получил» — платёж не засчитается, продавец введёт сумму заново.','«Qabul qildim» — pul keldi, «Toʻlanishi kerak» kamayadi. «Kelmadi» — toʻlov tasdiqlanmaydi, sotuvchi summani qaytadan kiritadi.')
+    +wait.map(x=>'<div class="cmw"><div class="cmwn">'+esc(x.r.name)+'</div>'+cmPayHTML(x.p,true,x.r.id)+'</div>').join('')+'</div>';
+  const rows=d.rows.slice().sort((a,b)=>(b.nw>0)-(a.nw>0)||b.due-a.due);
+  h+=rows.map(cmShopHTML).join('');
+  if(!rows.length)h+='<div class="empty"><b>'+L('Дистрибьюторов пока нет','Distribyutorlar hozircha yoʻq')+'</b>'+L('Добавьте первого в разделе «Дистрибьюторы».','Birinchisini «Distribyutorlar» boʻlimida qoʻshing.')+'</div>';
+  return h+ownStatsHTML();
+}
+function renderComm(){
+  const own=isOwner();
+  view.innerHTML='<div class="wrap page"><div class="eyebrow">'+L('Работа','Ish')+'</div><h1>'+L('Комиссия','Komissiya')+'</h1>'+(own?commOwnerHTML():commSellerHTML())+'</div>';
+}
+async function commSend(){
+  const c=S.cm;if(c.busy)return;
+  const a=cmAmount(c.a);
+  if(!a){toast(commErr('bad_amount'));const el=$('#cm-a');if(el)el.focus();return}
+  c.busy='pay';renderComm();
+  const r=await api('POST','/api/admin/comm',{a,note:c.note.trim()});
+  c.busy='';
+  if(r.ok&&r.data&&r.data.comm){c.d=r.data.comm;c.a='';c.note='';toast(L('Отправили владельцу: '+money(a)+'. «К оплате» изменится, когда он подтвердит.','Egasiga yubordik: '+money(a)+'. U tasdiqlagach «Toʻlanishi kerak» oʻzgaradi.'))}
+  else{toast(commErr(r.data&&r.data.error));loadCommSeller()}
+  renderComm();renderNav();
+}
+async function commCancel(id){
+  const c=S.cm;if(c.busy)return;
+  c.busy='cx';renderComm();
+  const r=await api('POST','/api/admin/comm/cancel',{id});
+  c.busy='';
+  if(r.ok){toast(L('Платёж отозван','Toʻlov qaytarib olindi'));if(r.data&&r.data.comm)c.d=r.data.comm}
+  else toast(commErr(r.data&&r.data.error));
+  renderComm();renderNav();
+  loadCommSeller();
+}
+/* владелец: act = ok (получил), no (не получил), void (отменить подтверждённый) */
+async function commDecide(did,id,act){
+  const c=S.cm;if(c.busy)return;
+  c.busy=id;renderComm();
+  const r=await api('POST','/api/hub/admin/comm',{did,id,act});
+  c.busy='';
+  if(r.ok&&r.data)toast(act==='ok'?L('Подтверждено. Дистрибьютор получил сообщение.','Tasdiqlandi. Distribyutor xabar oldi.'):act==='no'?L('Отмечено: не получено. Дистрибьютор получил сообщение.','Belgilandi: olinmadi. Distribyutor xabar oldi.'):L('Платёж отменён, «К оплате» вернулось.','Toʻlov bekor qilindi, «Toʻlanishi kerak» qaytdi.'));
+  else toast(commErr(r.data&&r.data.error));
+  await loadCommOwner();
+  renderComm();renderNav();
+}
+async function commAddOwn(did){
+  const c=S.cm;if(c.busy)return;
+  const f=c.ow[did]||(c.ow[did]={a:'',note:'',open:true}),a=cmAmount(f.a);
+  if(!a){toast(commErr('bad_amount'));const el=document.getElementById('cmo-a-'+did);if(el)el.focus();return}
+  c.busy=did;renderComm();
+  const r=await api('POST','/api/hub/admin/comm',{did,act:'add',a,note:f.note.trim()});
+  c.busy='';
+  if(r.ok&&r.data){f.a='';f.note='';f.open=false;toast(L('Записано: '+money(a)+'. Дистрибьютор получил сообщение.','Yozildi: '+money(a)+'. Distribyutor xabar oldi.'))}
+  else toast(commErr(r.data&&r.data.error));
+  await loadCommOwner();
+  renderComm();renderNav();
 }
 /* раздел владельца: каждый блок на своём экране, заходят в него из меню ☰ (категория → подраздел) */
 const ownSecs=()=>[
-  ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')],['comm',L('Комиссия','Komissiya'),L('Заказы и комиссия','Buyurtmalar va komissiya')]]],
+  ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')]]],
   ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
   ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['clients',L('База магазинов','Doʻkonlar bazasi'),L('База магазинов','Doʻkonlar bazasi')]]]
@@ -4711,7 +4893,7 @@ function ownListHTML(){
       const sure=o.rc===r.id;
       const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('продавцов: '+r.sellers,'sotuvchilar: '+r.sellers),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
       return '<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></div>'
-        +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div>'+ownShopStatsHTML(r.id)+'<div class="row-btns">'
+        +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div><div class="row-btns">'
         +'<button type="button" class="btn ghost sm" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button>'
         +'<button type="button" class="btn ghost sm" data-act="owntoggle" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(r.on?L('Скрыть и закрыть заказы','Yashirish va buyurtmani yopish'):L('Вернуть в список','Roʻyxatga qaytarish'))+'</button>'
         +'<button type="button" class="btn ghost sm" data-act="ownreset" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(sure?L('Точно? Прежние продавцы потеряют доступ','Aniqmi? Avvalgi sotuvchilar kirolmaydi'):L('Новый код','Yangi kod'))+'</button>'
@@ -4737,27 +4919,12 @@ function renderOwner(){
   else{
     if(sec==='dist')h+=ownMadeHTML()+ownListHTML();
     else if(sec==='add')h+=ownMadeHTML()+ownAddHTML();
-    else if(sec==='comm')h+=ownStatsHTML();
     else if(sec==='title')h+=ownTitleHTML();
     else if(sec==='disp')h+=ownDispHTML();
     else if(sec==='people')h+=ownWhoHTML();
     else h+=ownPeopleHTML(sec);
   }
   view.innerHTML=h+'</div>';
-}
-/* у каждого дистрибьютора: выданные заказы за период, комиссия и поле процента */
-function ownShopStatsHTML(id){
-  const o=S.own,st=o.stats,x=st&&st.period===o.period?st.rows.find(y=>y.id===id):null;
-  if(!x)return '';
-  if(x.err)return '<div class="note" style="margin-bottom:12px">'+L('Нет данных по этому дистрибьютору.','Bu distribyutor boʻyicha maʼlumot yoʻq.')+'</div>';
-  const pv=o.pcts[id]!==undefined?o.pcts[id]:fmtPct(x.pct);
-  return '<div class="sum" style="margin-bottom:6px">'
-    +'<div class="r"><span>'+L('Выдано заказов','Topshirilgan buyurtmalar')+'</span><span>'+num(x.n)+'</span></div>'
-    +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(x.base))+'</span></div>'
-    +(x.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(x.active)+'</span></div>':'')
-    +'<div class="r t"><span>'+L('Комиссия ','Komissiya ')+esc(fmtPct(x.pct))+'%</span><span>'+esc(money(x.cm))+'</span></div></div>'
-    +'<div class="pctrow"><div><label class="lab" for="pc-'+esc(id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(id)+'" data-opct="'+esc(id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off">'+hintD('Сколько процентов от суммы выданных заказов вы берёте. Пример: 2,5.','Topshirilgan buyurtmalar summasidan necha foiz olasiz. Masalan: 2,5.')+'</div>'
-    +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>';
 }
 async function ownAdd(){
   const o=S.own;if(o.busy)return;
@@ -4984,7 +5151,17 @@ document.addEventListener('click',e=>{
   else if(a==='ownadd')ownAdd();
   else if(a==='owntoggle')ownToggle(t.dataset.id);
   else if(a==='owntitle')ownTitle();
-  else if(a==='ownper'){S.own.period=t.dataset.v;renderOwner();loadOwnerStats()}
+  else if(a==='ownper'){S.own.period=t.dataset.v;ownRender();loadOwnerStats()}
+  else if(a==='commreload'){S.cm.err=false;renderComm();loadComm()}
+  else if(a==='commpay')commSend();
+  else if(a==='commcancel')commCancel(t.dataset.id);
+  else if(a==='commok')commDecide(t.dataset.did,t.dataset.id,'ok');
+  else if(a==='commno')commDecide(t.dataset.did,t.dataset.id,'no');
+  else if(a==='commvoid'){const did=t.dataset.did,id=t.dataset.id;askConfirm(L('Отменить подтверждённый платёж на '+money(Number(t.dataset.a))+'? «К оплате» у дистрибьютора вернётся, запись останется в истории со статусом «Отменён».','Tasdiqlangan '+money(Number(t.dataset.a))+' toʻlovni bekor qilasizmi? Distribyutorning «Toʻlanishi kerak» summasi qaytadi, yozuv tarixda «Bekor qilingan» holatida qoladi.'),()=>commDecide(did,id,'void'))}
+  else if(a==='commopen'){const f=S.cm.ow[t.dataset.did]||(S.cm.ow[t.dataset.did]={a:'',note:'',open:false});f.open=!f.open;renderComm()}
+  else if(a==='commall'){S.cm.all[t.dataset.did]=!S.cm.all[t.dataset.did];renderComm()}
+  else if(a==='commadd')commAddOwn(t.dataset.did);
+  else if(a==='ownsreload'){S.own.serr=false;ownRender();loadOwnerStats()}
   else if(a==='ownpct')ownPct(t.dataset.id);
   else if(a==='ownmadeclose'){S.own.made=null;renderOwner()}
   else if(a==='owndel'){
@@ -5333,6 +5510,8 @@ document.addEventListener('input',e=>{
   else if(t.dataset.rtxt!==undefined){S.rv.rtxt=t.value;rvRetSync()}
   else if(t.dataset.rf!==undefined)rvField(t)
   else if(t.dataset.opct!==undefined)S.own.pcts[t.dataset.opct]=t.value;
+  else if(t.dataset.cm!==undefined)S.cm[t.dataset.cm]=t.value;
+  else if(t.dataset.cmo!==undefined){const f=S.cm.ow[t.dataset.did]||(S.cm.ow[t.dataset.did]={a:'',note:'',open:true});f[t.dataset.cmo]=t.value}
   else if(t.dataset.bq!==undefined){S.base.q=t.value;clearTimeout(S.base.qt);S.base.qt=setTimeout(()=>loadBase(true),350)}
   else if(t.dataset.bf!==undefined)S.base.fm[t.dataset.bf]=t.value;
   else if(t.dataset.bfLink!==undefined)S.base.link=t.value;
@@ -5467,7 +5646,7 @@ async function loadMine(){
 }
 async function loadAdmin(){
   if(!S.admin||!S.did)return;
-  loadStock();loadDebts();
+  loadStock();loadDebts();loadCommSeller();
   if((S.sellerTab==='dlv'&&S.view==='seller')||!S.dv.ok||S.dv.list.length)loadCouriers();
   const r=await api('GET','/api/admin/orders');
   if(!r.ok||!r.data)return;
@@ -5516,7 +5695,8 @@ function tick(){
   else if(isOwner()&&tickN%4===0)loadHub();
   if(isOwner()&&(tickN%4===0||(S.view==='owner'&&S.own.sec==='disp'&&tickN%2===0)))loadDisputes();
   if(S.view==='review'&&tickN%2===0&&!S.rv.ret&&!S.rv.edit&&!S.rv.busy)loadReview(true);
-  if(S.admin&&S.did&&(S.view==='seller'||tickN%2===0))loadAdmin();
+  if(isOwner()&&((S.view==='comm'&&tickN%2===0)||tickN%4===0))loadCommOwner();
+  if(S.admin&&S.did&&(S.view==='seller'||S.view==='comm'||tickN%2===0))loadAdmin();
   if(S.courier&&S.did&&(S.view==='courier'||tickN%2===0))loadCourier();
   if(S.did&&tickN%4===0)loadCfg();
 }
@@ -5539,18 +5719,19 @@ function tick(){
   const me=S.hub.me;
   let did=validDid(want)?want:'';
   if(!did&&!vw&&S.hub.shops.length===1)did=S.hub.shops[0].id;   // дистрибьютор один: список выбирать не из чего
-  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым дистрибьютором
+  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым дистрибьютором
   if(!did&&vw==='seller'&&me&&me.sells.length===1)did=me.sells[0].id;
   if(!did&&vw==='courier'&&me&&me.delivers&&me.delivers.length===1)did=me.delivers[0].id;
   S.ready=true;
   let v='shops';
-  if(did&&await openShop(did))v=vw==='review'&&isOwner()?'review':vw==='seller'&&S.admin?'seller':vw==='courier'&&S.courier?'courier':vw==='mine'?'mine':vw==='debt'?'debt':'shop';
+  if(did&&await openShop(did))v=vw==='review'&&isOwner()?'review':vw==='comm'&&(isOwner()||S.admin)?'comm':vw==='seller'&&S.admin?'seller':vw==='courier'&&S.courier?'courier':vw==='mine'?'mine':vw==='debt'?'debt':'shop';
   else if(vw==='mine')v='mine';
   else if(vw==='debt')v='debt';
   else if(vw==='owner'&&isOwner())v='owner';
   else if(vw==='base'&&canBase())v='base';
   else if(vw==='review'&&isOwner())v='review';
   else if(vw==='analytics'&&isOwner())v='analytics';
+  else if(vw==='comm'&&isOwner())v='comm';
   S.view=v;
   render();
   if(v==='debt')loadMyDebt(true);
@@ -5558,6 +5739,8 @@ function tick(){
   if(v==='base')loadBase(true);
   if(v==='analytics')loadAnalytics();
   if(v==='review')loadReview();
+  if(v==='comm')loadComm();
+  else if(isOwner())loadCommOwner();
   if(S.admin&&S.did)loadAdmin();
   if(S.courier&&S.did)loadCourier();
   if(isOwner()&&v!=='owner')loadDisputes();
@@ -5565,7 +5748,7 @@ function tick(){
   setInterval(tick,15000);
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState!=='visible')return;
-    loadCfg();loadMine();loadMyDebt(S.view==='debt');loadAdmin();loadCourier();
+    loadCfg();loadMine();loadMyDebt(S.view==='debt');loadAdmin();loadCourier();if(isOwner())loadCommOwner();
     if(S.view==='shops')loadHub();
   });
 })();

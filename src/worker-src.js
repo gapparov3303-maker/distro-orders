@@ -1444,7 +1444,7 @@ const cleanPct = v => { const n = Number(String(v).replace(',', '.')); return Nu
 const commBase = r => r.cb !== undefined ? r.cb : Math.max(0, (Number(r.sum) || 0) - (Number(r.fee) || 0));
 /* Оплата комиссии. Дистрибьютор отмечает, сколько перевёл владельцу, владелец подтверждает. Платежи лежат в cpay (новые сверху):
    id, a — сумма, note, st — wait / ok / no / void, at, dt (когда решили), bn / dn (кто отметил / кто решил), src — s (дистрибьютор) или o (владелец записал сам),
-   vo — отменил владелец, ms — сообщения владельцам в Telegram. «К оплате» = начислено (cold + комиссии по дням) минус подтверждённое (cpo + платежи ok).
+   vo — отменил владелец, ms — сообщения владельцам в Telegram. «К оплате» = начислено (ctot) минус подтверждённое (cpo + платежи ok).
    Когда платежей больше CP_CAP, самые старые подтверждённые сворачиваются в cpo. */
 const CP_CAP = 500, CP_WAIT_MAX = 5, CP_NOTE = 120, CP_SHOW = 100;
 const cpPub = p => ({ id: p.id, a: p.a, note: p.note || '', st: p.st, at: p.at, dt: p.dt || '', bn: p.bn || '', dn: p.dn || '', src: p.src || 's', vo: p.vo ? 1 : 0 });
@@ -1790,10 +1790,14 @@ export class Shop {
     return { pct: cur.pct, cur: pick(first.slice(0, 7), cur), prev: pick(last.slice(0, 7), prev) };
   }
   /* --- оплата комиссии владельцу --- */
-  /* Начислено за всё время: комиссии сохранённых дней и свёрнутых старых. */
+  /* Начислено за всё время. Число ctot растёт с каждым выданным заказом и не зависит от того, что записи старых дней удаляются;
+     при первом обращении оно считается по записям дней, которые есть. */
   async commAccrued() {
-    const r = await this.commRange('', '9999-12-31');
-    return (Number(await this.st.get('cold')) || 0) + r.cm;
+    const t = await this.st.get('ctot');
+    if (typeof t === 'number') return t;
+    const t0 = (await this.commRange('', '9999-12-31')).cm;
+    await this.st.put('ctot', t0);
+    return t0;
   }
   async cpays() { const a = await this.st.get('cpay'); return Array.isArray(a) ? a : []; }
   /* Для экрана «Комиссия»: сколько начислено, подтверждено, что к оплате, платежи. bad — отклонённые и отменённые владельцем платежи, которых продавец ещё не видел. */
@@ -2459,9 +2463,10 @@ export class Shop {
         }
       }
       if (path === '/api/admin/comm' && method === 'GET') {
-        // seen=1: продавец открыл экран, отклонённые платежи больше не считаются новыми
-        if (new URL(request.url).searchParams.get('seen') === '1') await this.st.put('cseen', new Date().toISOString());
-        return json({ comm: await this.commState() });
+        // seen=1: продавец открыл экран. В этом ответе отклонённые платежи ещё «новые», дальше (в значке меню) уже нет
+        const st = await this.commState();
+        if (new URL(request.url).searchParams.get('seen') === '1' && st.bad) await this.st.put('cseen', new Date().toISOString());
+        return json({ comm: st });
       }
       if (path === '/api/admin/comm' && method === 'POST') {
         const r = await this.readBody(request, 1000);
@@ -2984,19 +2989,15 @@ export class Shop {
       if (to === 'done') {
         const day = dayOf(o.statusAt);
         const rp = (await this.st.get('rp:' + day)) || newRp();
+        const cm0 = Number(rp.cm) || 0, tot0 = await this.commAccrued();   // итог «начислено» берётся до записи этого заказа
         rpAdd(rp, o, await this.getPct(), await this.catOf());
         upd['rp:' + day] = rp;
+        upd.ctot = tot0 + (Number(rp.cm) || 0) - cm0;
         const idx = (await this.st.get('rpx')) || [];
         if (!idx.includes(day)) {
           idx.push(day); idx.sort();
           const drop = idx.splice(0, Math.max(0, idx.length - RP_KEEP));
-          if (drop.length) {
-            // начисленная комиссия удаляемых дней не пропадает: она сворачивается в cold
-            let cm = 0;
-            (await this.getMany(drop.map(d => 'rp:' + d))).forEach(r => { cm += Number(r && r.cm) || 0; });
-            if (cm) upd.cold = (Number(await this.st.get('cold')) || 0) + cm;
-            await this.st.delete(drop.map(d => 'rp:' + d));
-          }
+          if (drop.length) await this.st.delete(drop.map(d => 'rp:' + d));
           upd.rpx = idx;
         }
       }
