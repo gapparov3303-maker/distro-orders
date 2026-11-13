@@ -815,7 +815,7 @@ const S={
   cfg:clone(DEFAULT),
   form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:'',loc:null},
   region:'',showFar:false,regSent:false,regOnly:null,
-  myOrders:[],allOrders:[],stats:{doneSum:0,doneCount:0},
+  myOrders:[],allOrders:[],stats:{doneSum:0,doneCount:0},crs:[],cp:null,
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
   busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,ox:{},
   prod:{cats:[],items:[]},cart:{},shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
@@ -1579,12 +1579,46 @@ function sellerActs(o){
   const del=o.mode==='delivery';
   const pk='<button type="button" class="btn ghost sm" data-act="pick1" data-id="'+esc(o.id)+'">'+L('Сборочный лист','Yigʻish roʻyxati')+'</button>';
   if(o.status==='new')return a('accepted',L('Принять в работу','Ishga qabul qilish'))+cancelBtn(o)+pk;
-  if(o.status==='accepted')return a('ready',del?L('Готов к отправке','Joʻnatishga tayyor'):L('Готов к выдаче','Topshirishga tayyor'))+cancelBtn(o)+pk;
+  // доставка при наличии доставщиков: продавец выбирает, кому передать заказ, а «Доставлен клиенту» нажимает сам доставщик
+  const viaCr=del&&S.crs.length>0;
+  if(S.cp&&S.cp.key===okey(o.id,S.did)&&viaCr&&(S.cp.mode==='ready'?o.status==='accepted':o.status==='ready'))return crPickHTML(o);
+  if(o.status==='accepted'){
+    const lab=del?L('Готов к отправке','Joʻnatishga tayyor'):L('Готов к выдаче','Topshirishga tayyor');
+    return (viaCr?'<button type="button" class="btn sm" data-act="crpick" data-id="'+esc(o.id)+'" data-mode="ready">'+lab+'</button>':a('ready',lab))+cancelBtn(o)+pk;
+  }
   if(o.status==='ready'){
+    if(viaCr)return '<button type="button" class="btn sm" data-act="crpick" data-id="'+esc(o.id)+'" data-mode="change">'+(o.cr?L('Сменить доставщика','Yetkazuvchini almashtirish'):L('Назначить доставщика','Yetkazuvchini tayinlash'))+'</button>'+cancelBtn(o)+pk;
     if(S.pay&&S.pay.key===okey(o.id,S.did))return payBlockHTML(o);
     return '<button type="button" class="btn sm" data-act="payopen" data-id="'+esc(o.id)+'">'+(del?L('Доставлен клиенту','Mijozga yetkazildi'):L('Выдан клиенту','Mijozga topshirildi'))+'</button>'+cancelBtn(o)+pk;
   }
   return o.status==='done'?pk:'';
+}
+/* Кому передать доставку: выбранный доставщик получает заказ сразу, остальным ничего не приходит. «Всем» — заказ приходит всем, берёт первый. */
+function crPickHTML(o){
+  const p=S.cp,dis=p.busy?' disabled':'';
+  let h='<div class="payb"><div class="pt">'+(p.mode==='ready'?L('Кому передать заказ?','Buyurtma kimga topshiriladi?'):L('Какой доставщик повезёт заказ?','Buyurtmani qaysi yetkazuvchi olib boradi?'))+'</div>'
+    +'<div class="pyrow">'+S.crs.map(c=>'<button type="button" class="chip" data-act="crgo" data-c="'+esc(c.id)+'" aria-pressed="'+(c.id===o.cr)+'"'+dis+'>🚚 '+esc(c.name)+'</button>').join('')+'</div>';
+  if(p.mode==='ready'||o.cr)h+='<div class="pyrow"><button type="button" class="chip" data-act="crgo" data-c=""'+dis+'>'+(p.mode==='ready'?L('Всем, кто первый','Hammaga, kim birinchi boʻlsa'):L('Вернуть всем','Hammaga qaytarish'))+'</button></div>';
+  h+=hintD('Выбранный доставщик сразу получит заказ в Telegram, остальным ничего не придёт. «Всем» — получат все, повезёт первый, кто нажмёт «Взял».','Tanlangan yetkazuvchi buyurtmani darhol Telegramda oladi, boshqalarga hech narsa kelmaydi. «Hammaga» — hamma oladi, «Oldim» bosgan olib boradi.');
+  return h+'<div class="pyrow"><button type="button" class="btn ghost sm" data-act="crpickx"'+dis+'>'+L('Назад','Orqaga')+'</button></div></div>';
+}
+async function crAssign(cid){
+  const p=S.cp;
+  if(!p||p.busy)return;
+  p.busy=true;paintSeller();
+  const r=p.mode==='ready'?await api('POST','/api/admin/status',{id:p.id,to:'ready',cid}):await api('POST','/api/admin/order-courier',{id:p.id,cid});
+  if(!r.ok){
+    p.busy=false;
+    const e=r.data&&r.data.error;
+    toast(e==='no_courier'?L('Этот доставщик сейчас недоступен: выберите другого','Bu yetkazuvchi hozir mavjud emas: boshqasini tanlang'):L('Не удалось передать заказ','Buyurtmani topshirib boʻlmadi'));
+    if(r.data&&r.data.order){S.cp=null;applyOrder(r.data.order,r.data.stats)}else paintSeller();
+    loadAdmin();
+    return;
+  }
+  S.cp=null;
+  applyOrder(r.data.order,r.data.stats);
+  const c=S.crs.find(x=>x.id===cid);
+  toast(cid&&c?L('Заказ передан: ','Buyurtma topshirildi: ')+c.name:L('Заказ ушёл всем доставщикам','Buyurtma barcha yetkazuvchilarga yuborildi'));
 }
 function cancelBtn(o){
   const sure=S.cc===okey(o.id,S.did);
@@ -1614,6 +1648,7 @@ function orderCard(o,m){
     +'</div>'
     +(m==='seller'||m==='courier'?'<div class="cust"><b>'+esc(o.name)+'</b>'+(o.org?' <span>'+esc(o.org)+'</span>':'')+' <span>'+esc(o.phone)+'</span>'+(o.tg&&o.tg.username?' <span>@'+esc(o.tg.username)+'</span>':'')+(m==='courier'?' <a class="btn ghost sm" href="'+telHref(o.phone)+'">'+L('Позвонить','Qoʻngʻiroq')+'</a>':'')+' <button type="button" class="btn ghost sm ic" data-act="copy" data-v="'+esc(m==='courier'&&o.address?o.address:o.phone)+'"'+(m==='courier'?' data-ok="'+L('Адрес скопирован','Manzil nusxalandi')+'" data-lab=""':'')+' title="'+(m==='courier'?L('Копировать адрес','Manzilni nusxalash'):L('Копировать','Nusxalash'))+'" aria-label="'+(m==='courier'?L('Копировать адрес','Manzilni nusxalash'):L('Копировать','Nusxalash'))+'">'+ICO.copy+'</button></div>':'')
     +((m==='seller'||m==='courier')&&o.crn&&!o.mine&&o.status!=='done'?'<div class="note">🚚 '+L('Везёт: ','Olib ketmoqda: ')+esc(o.crn)+'</div>':'')
+    +(m==='seller'&&del&&o.status==='ready'&&!o.crn&&S.crs.length?'<div class="note">🚚 '+L('Ждёт доставщика','Yetkazuvchi kutilmoqda')+'</div>':'')
     +(m==='seller'&&o.status==='done'&&o.crn?'<div class="note">🚚 '+L('Доставил: ','Yetkazdi: ')+esc(o.crn)+'</div>':'')
     +((m==='seller'||m==='courier')&&o.loc?'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+o.loc.lat+'" data-lng="'+o.loc.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>':'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
@@ -1715,7 +1750,7 @@ function paintTabs(){
 }
 /* открыть раздел продавца из меню: из любого места приложения */
 function sellerOpen(tab){
-  S.sellerTab=tab;S.sc=null;S.pay=null;
+  S.sellerTab=tab;S.sc=null;S.pay=null;S.cp=null;
   if(tab==='debts')S.dbt.open=null;
   if(S.view!=='seller')go('seller');
   else{paintTabs();paintSeller();window.scrollTo(0,0)}
@@ -3674,7 +3709,13 @@ async function flushSave(){
 function applyOrder(o,stats,did){
   if(!o)return;
   did=did||S.did;
-  const upd=(list,hub)=>list.map(x=>x.id===o.id&&(!hub||(x.did||S.did)===did)?Object.assign({},x,o):x);
+  // доставщика могли снять: ключи, которых в ответе нет, не остаются от прошлого состояния
+  const upd=(list,hub)=>list.map(x=>{
+    if(!(x.id===o.id&&(!hub||(x.did||S.did)===did)))return x;
+    const m=Object.assign({},x,o);
+    ['cr','crn','crAt','crp'].forEach(k=>{if(!(k in o))delete m[k]});
+    return m;
+  });
   if(did===S.did){S.allOrders=upd(S.allOrders,false);if(stats)S.stats=stats}
   S.myOrders=upd(S.myOrders,true);
   renderNav();
@@ -3684,7 +3725,9 @@ function applyOrder(o,stats,did){
 async function setStatus(id,to,pay){
   const r=await api('POST','/api/admin/status',{id,to,pay});
   if(!r.ok){
-    toast(r.data&&r.data.error==='bad_pay'?L('Проверьте способ оплаты, срок и сумму','Toʻlov usuli, muddat va summani tekshiring'):L('Не удалось обновить статус','Holatni yangilab boʻlmadi'));
+    const e=r.data&&r.data.error;
+    toast(e==='bad_pay'?L('Проверьте способ оплаты, срок и сумму','Toʻlov usuli, muddat va summani tekshiring'):e==='use_courier'?L('Доставленным заказ отмечает доставщик','Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'):L('Не удалось обновить статус','Holatni yangilab boʻlmadi'));
+    if(e==='use_courier'){S.pay=null;loadAdmin()}
     if(r.data&&r.data.order)applyOrder(r.data.order,r.data.stats);
     return;
   }
@@ -4173,7 +4216,7 @@ function go(v){
   const was=S.view;
   if(was==='comm'&&v!=='comm')S.cm.nb=0;
   if(v==='base'&&was!=='base')baseResetUI();
-  S.view=v;S.cc=null;S.msub=null;setScrollLock();
+  S.view=v;S.cc=null;S.cp=null;S.msub=null;setScrollLock();
   render();window.scrollTo(0,0);
   if(v==='mine')loadMine();
   if(v==='debt')loadMyDebt(true);
@@ -5417,6 +5460,9 @@ document.addEventListener('click',e=>{
   else if(a==='filter'){S.filter=t.dataset.v;paintSeller()}
   else if(a==='status'){setStatus(t.dataset.id,t.dataset.to)}
   else if(a==='payopen')payOpen(t.dataset.id)
+  else if(a==='crpick'){S.cp={key:okey(t.dataset.id,S.did),id:t.dataset.id,mode:t.dataset.mode==='change'?'change':'ready',busy:false};paintSeller()}
+  else if(a==='crpickx'){S.cp=null;paintSeller()}
+  else if(a==='crgo')crAssign(t.dataset.c||'')
   else if(a==='payback'){if(S.view==='courier'){S.cr.pay=null;paintCourier()}else{S.pay=null;paintSeller()}}
   else if(a==='paym')payMethod(t.dataset.m)
   else if(a==='paydays'){if(curPay()){curPay().days=t.dataset.n;const el=$('#pd-days');if(el)el.value=t.dataset.n;document.querySelectorAll('[data-act="paydays"]').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.n===t.dataset.n)))}}
@@ -5650,8 +5696,9 @@ async function loadAdmin(){
   if((S.sellerTab==='dlv'&&S.view==='seller')||!S.dv.ok||S.dv.list.length)loadCouriers();
   const r=await api('GET','/api/admin/orders');
   if(!r.ok||!r.data)return;
-  if(JSON.stringify(r.data.orders)===JSON.stringify(S.allOrders)&&JSON.stringify(r.data.stats)===JSON.stringify(S.stats))return;
-  S.allOrders=r.data.orders;S.stats=r.data.stats;renderNav();
+  const crs=Array.isArray(r.data.crs)?r.data.crs:[];
+  if(JSON.stringify(r.data.orders)===JSON.stringify(S.allOrders)&&JSON.stringify(r.data.stats)===JSON.stringify(S.stats)&&JSON.stringify(crs)===JSON.stringify(S.crs))return;
+  S.allOrders=r.data.orders;S.stats=r.data.stats;S.crs=crs;renderNav();
   const ae=document.activeElement;
   if(S.view==='seller'&&S.sellerTab==='orders'&&!(S.pay&&ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)))paintSeller();
 }
