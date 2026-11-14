@@ -5307,6 +5307,67 @@ await t('доставка: готовый заказ на доставку пр�
   assert.equal((await drvTake('Z-NOPE1')).status, 404);
 });
 
+await t('доставка: доставщик и продавец видят данные и точку магазина из базы; своя точка заказа главнее; клиент этого не видит', async () => {
+  await stockWorld();
+  await hire(DRV, 'Рустам');
+  const A = newUser();
+  const o = await readyDelivery(A, CART);
+  const crOrder = async () => (await jsonOf(await call('GET', '/api/courier/orders', { init: iR() }))).orders.find(x => x.id === o.id);
+  const sellerOrder = async () => (await adminOrdersOf()).find(x => x.id === o.id);
+  const hasMap = m => m.reply_markup.inline_keyboard.flat().filter(b => b.url && /yandex|google/.test(b.url));
+  // в базе магазин есть, но точки и других номеров нет: название и номер показываются, карты нет
+  const bid = (await baseGet()).items.find(x => x.phone === formFor(S.DEFAULT, 'delivery').phone).id;
+  let c = await crOrder();
+  assert.deepEqual([c.bs.name, c.bs.phone, c.bs.loc, c.bs.ph, c.uid], [formFor(S.DEFAULT, 'delivery').name, formFor(S.DEFAULT, 'delivery').phone, undefined, undefined, undefined]);
+  assert.deepEqual(Object.keys(c.bs).sort(), ['addr', 'name', 'phone'], 'в заказ идёт только нужное из базы: без заметок, статуса и агента');
+  assert.equal(hasMap(lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes(o.id)).payload).length, 0);
+  // агент или владелец отметил точку, добавил второй номер и другой адрес
+  assert.equal((await baseSend('PUT', '/' + bid, { loc: { lat: 41.5, lng: 60.6 }, ph: ['+998 93 777 11 22'], addr: 'Навои, ул. Базарная 9', note: 'секрет' })).status, 200);
+  c = await crOrder();
+  assert.deepEqual([c.bs.ph, c.bs.addr, c.bs.loc.lat, c.bs.loc.lng], [['+998 93 777 11 22'], 'Навои, ул. Базарная 9', 41.5, 60.6], 'доставщик видит уже оформленный заказ с новой точкой');
+  assert.ok(!JSON.stringify(c).includes('секрет'), 'заметка владельца не уходит');
+  const s1 = await sellerOrder();
+  assert.deepEqual([s1.bs.loc.lat, s1.bs.ph], [41.5, ['+998 93 777 11 22']], 'продавец тоже');
+  // сообщение доставщику: другие номера, адрес из базы и карта по точке магазина
+  tgLog = [];
+  assert.equal((await drvTake(o.id)).status, 200);
+  const e1 = lastTg('editMessageText', p => p.chat_id === DRV.id && p.text.includes('Вы взяли заказ')).payload;
+  assert.ok(e1.text.includes('Другие номера: +998 93 777 11 22') && e1.text.includes('Адрес в базе: Навои, ул. Базарная 9') && e1.text.includes('Boshqa raqamlar: +998 93 777 11 22'), e1.text);
+  const maps = hasMap(e1);
+  assert.equal(maps.length, 2);
+  assert.ok(maps.every(b => b.url.includes('41.5') && b.url.includes('60.6')));
+  // карточка продавца в Telegram тоже получает карту по точке из базы
+  const sc = lastTg('editMessageText', p => p.chat_id === SELLER.id && p.text.includes('Доставщик')).payload;
+  assert.equal(hasMap(sc).length, 2);
+  // ответ на действие возвращает заказ с теми же данными, чтобы они не пропадали с экрана
+  const rel = await jsonOf(await crq(null, 'POST', '/api/courier/release', iR(), { id: o.id }));
+  assert.equal(rel.order.bs.loc.lat, 41.5);
+  assert.equal((await jsonOf(await drvTake(o.id))).order.bs.ph[0], '+998 93 777 11 22');
+  // заказ с собственной точкой: карта в Telegram по точке заказа
+  const B = newUser();
+  const own = Object.assign(formFor(S.DEFAULT, 'delivery'), { loc: { lat: 40.1, lng: 65.2 } });
+  const r2 = await crq(null, 'POST', '/api/order', B.init(), ob(CART, { form: own }, 'delivery'));
+  assert.equal(r2.status, 200);
+  const o2 = (await jsonOf(r2)).order;
+  tgLog = [];
+  for (const to of ['accepted', 'ready']) assert.equal((await setStatus(o2.id, to)).status, 200);
+  const m2 = lastTg('sendMessage', p => p.chat_id === DRV.id && p.text.includes(o2.id)).payload;
+  assert.ok(hasMap(m2).every(b => b.url.includes('40.1') && b.url.includes('65.2')), 'точка из заказа главнее');
+  // самовывоз и клиент: данных базы нет
+  const P = newUser();
+  const po = await readyOrder(P, ONE);
+  assert.equal((await adminOrdersOf()).find(x => x.id === po.id).bs, undefined, 'у самовывоза базы нет');
+  const mine = (await jsonOf(await call('GET', '/api/my-orders', { init: A.init() }))).orders.find(x => x.id === o.id);
+  assert.equal(mine.bs, undefined);
+  // заказ в базе не хранит эти данные: после удаления магазина из базы их нет
+  assert.equal(JSON.stringify(await W.storage.get('o:' + o.id)).includes('Базарная'), false, 'в самом заказе данные базы не сохраняются');
+  assert.equal((await baseSend('DELETE', '/' + bid)).status, 200);
+  assert.equal((await crOrder()).bs, undefined, 'нет в базе: карточка как раньше');
+  // выданные заказы в списке продавца не тянут базу
+  assert.equal((await drvDone(o.id, { m: 'cash' })).status, 200);
+  assert.equal((await adminOrdersOf()).find(x => x.id === o.id).bs, undefined);
+});
+
 await t('доставка: наличные оседают в кассе доставщика, карта нет; часть долга наличными тоже; сдача продавцу', async () => {
   await stockWorld();
   const id = await hire(DRV, 'Рустам');
