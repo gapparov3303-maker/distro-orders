@@ -699,14 +699,14 @@ function ordersSheets(orders, lang) {
     { name: L('Товары в заказах', 'Buyurtmadagi mahsulotlar'), w: [11, 16, 17, 22, 32, 13, 12, 20, 14, 14], money: [8, 9], rows: items }
   ];
 }
-function clientsSheets(clients, lang) {
+function clientsSheets(clients, lang, types) {
   setLang(XL_LANG(lang));
   const list = clients.slice().sort((a, b) => String(b.last || b.since).localeCompare(String(a.last || a.since)));
-  const rows = [[L('Имя', 'Ism'), L('Телефон', 'Telefon'), L('Организация', 'Tashkilot'), L('Группа', 'Guruh'), L('Адреса доставки', 'Yetkazib berish manzillari'), L('Заметка', 'Eslatma'), L('Заказов', 'Buyurtmalar'),
+  const rows = [[L('Имя', 'Ism'), L('Телефон', 'Telefon'), L('Организация', 'Tashkilot'), L('Тип', 'Turi'), L('Группа', 'Guruh'), L('Адреса доставки', 'Yetkazib berish manzillari'), L('Заметка', 'Eslatma'), L('Заказов', 'Buyurtmalar'),
     L('Завершено', 'Yakunlangan'), L('Сумма завершённых, сум', 'Yakunlanganlar summasi, soʻm'), L('Клиент с', 'Mijoz boʻlgan sana'), L('Последний заказ', 'Oxirgi buyurtma'), 'Telegram', L('Язык', 'Til'), L('Заблокирован', 'Bloklangan')]];
-  list.forEach(c => rows.push([c.name || '', c.phone || '', c.org || '', c.grp || '', (c.addrs || []).join(' | '), c.note || '', Number(c.n) || 0, Number(c.ds) || 0, Number(c.sum) || 0,
+  list.forEach(c => rows.push([c.name || '', c.phone || '', c.org || '', baseTypeName((types || {})[c.uid]), c.grp || '', (c.addrs || []).join(' | '), c.note || '', Number(c.n) || 0, Number(c.ds) || 0, Number(c.sum) || 0,
     shopTime(c.since), shopTime(c.last), c.tg && c.tg.username ? '@' + c.tg.username : '', c.lang === 'uz' ? L('узбекский', 'oʻzbekcha') : c.lang === 'ru' ? L('русский', 'ruscha') : '', c.blocked ? L('да', 'ha') : '']));
-  return [{ name: L('Клиенты', 'Mijozlar'), w: [22, 17, 22, 14, 40, 34, 9, 10, 18, 17, 17, 16, 11, 13], money: [8], rows }];
+  return [{ name: L('Клиенты', 'Mijozlar'), w: [22, 17, 22, 14, 14, 40, 34, 9, 10, 18, 17, 17, 16, 11, 13], money: [9], rows }];
 }
 
 /* Долги в Excel. list — строки debtRow, logs — их журналы (в том же порядке). Лист «Долги» по магазинам, лист «История» по всем записям журнала. */
@@ -2078,7 +2078,10 @@ export class Shop {
       await this.ensureClients();
       const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
       const list = idx.map(x => map.get('c:' + x)).filter(Boolean);
-      return { name: 'clients-' + day + '.xlsx', bytes: xlsxBuild(clientsSheets(list, lang)), mime: XLSX_MIME, n: list.length, caption: uz ? 'Mijozlar: ' + list.length + '. Excelda oching.' : 'Клиенты: ' + list.length + '. Откройте в Excel.' };
+      // тип точки живёт в общей базе (Hub); если она недоступна, колонка остаётся пустой, выгрузка не ломается
+      let types = {};
+      try { const r = await hubCall(this.env, '/__/types', { uids: list.map(c => c.uid) }); if (r && r.ty && typeof r.ty === 'object') types = r.ty; } catch (e) { console.error('types failed', e && e.message || e); }
+      return { name: 'clients-' + day + '.xlsx', bytes: xlsxBuild(clientsSheets(list, lang, types)), mime: XLSX_MIME, n: list.length, caption: uz ? 'Mijozlar: ' + list.length + '. Excelda oching.' : 'Клиенты: ' + list.length + '. Откройте в Excel.' };
     }
     if (kind === 'backup') {
       const bk = await this.backupFiles(lang);
@@ -4048,6 +4051,9 @@ const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50;
 const PEOPLE_GAP = 600000, PEOPLE_MAX = 1000;
 const BASE_STATUS = ['new', 'talk', 'refuse'];
+/* Тип точки (один на всех дистрибьюторов, ставит агент или владелец): магазин, супермаркет, оптовый покупатель, HoReCa. Пусто — не указан. */
+const BASE_TYPES = ['shop', 'super', 'whole', 'horeca'];
+const baseTypeName = k => ({ shop: L('Магазин', 'Doʻkon'), super: L('Супермаркет', 'Supermarket'), whole: L('Оптом', 'Ulgurji'), horeca: 'HoReCa' })[k] || '';
 /* Ключ для поиска повторов: последние 9 цифр номера (код страны, пробелы и скобки не мешают). */
 const phoneKey = p => { const d = String(p || '').replace(/\D/g, ''); return d.length > 9 ? d.slice(-9) : d; };
 /* Второй ключ повтора: то же название по тому же адресу (без регистра, пробелов и знаков). Без адреса ключа нет. */
@@ -4062,8 +4068,8 @@ const validTid = t => typeof t === 'string' && /^t[a-z0-9]{2,8}$/.test(t);
 /* Точка магазина: loc — сохранённая (поставил агент или владелец, либо принята от клиента), cloc — то, что прислал клиент в заказе и ждёт подтверждения.
    Дистрибьютор видит только сохранённую точку. */
 const locOut = l => l ? { lat: l.lat, lng: l.lng, by: l.by || '' } : null;
-const baseOwn = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src }; if (b.loc) o.loc = locOut(b.loc); if (b.cloc) o.cloc = { lat: b.cloc.lat, lng: b.cloc.lng }; return o; };
-const basePub = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid }; if (b.loc) o.loc = { lat: b.loc.lat, lng: b.loc.lng }; return o; };
+const baseOwn = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src }; if (b.ty) o.ty = b.ty; if (b.loc) o.loc = locOut(b.loc); if (b.cloc) o.cloc = { lat: b.cloc.lat, lng: b.cloc.lng }; return o; };
+const basePub = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid }; if (b.ty) o.ty = b.ty; if (b.loc) o.loc = { lat: b.loc.lat, lng: b.loc.lng }; return o; };
 /* Клиент прислал точку в заказе: запоминаем как предложение. Если она рядом с уже сохранённой (до 50 м), ничего не меняем. Возвращает, изменилась ли запись. */
 function setClientLoc(rec, loc, now) {
   const l = cleanLoc(loc);
@@ -4274,6 +4280,15 @@ export class Hub {
       try { await this.baseTouch(uid, b.prof); } catch (e) { console.error('base touch failed', e && e.message || e); }
       return json({ ok: true });
     }
+    if (path === '/__/types') {
+      // типы точек для выгрузки клиентов дистрибьютора: номер аккаунта -> тип (пусто, если не указан или магазина нет в базе)
+      const uids = (Array.isArray(b.uids) ? b.uids : []).slice(0, 5000).map(Number).filter(Number.isSafeInteger);
+      const bu = await this.getMany(uids.map(u => 'bu:' + u));
+      const recs = await this.getMany([...new Set([...bu.values()])].map(id => 'b:' + id));
+      const ty = {};
+      uids.forEach(u => { const r = recs.get('b:' + bu.get('bu:' + u)); if (r && r.ty) ty[u] = r.ty; });
+      return json({ ty });
+    }
     if (path === '/__/profile') {
       // магазин заполнил профиль у дистрибьютора: заносим в общую базу, если его там ещё нет
       const uid = Number(b.uid);
@@ -4297,6 +4312,14 @@ export class Hub {
   }
 
   /* --- территории, агенты, база магазинов --- */
+  async getMany(keys) {
+    const out = new Map();
+    for (let i = 0; i < keys.length; i += 100) {
+      const part = await this.st.get(keys.slice(i, i + 100));
+      part.forEach((v, k) => out.set(k, v));
+    }
+    return out;
+  }
   async terrs() { const t = await this.st.get('terr'); return Array.isArray(t) ? t : []; }
   async allAgents() {
     const idx = (await this.st.get('ax')) || [];
@@ -4423,6 +4446,7 @@ export class Hub {
     if (has('addr')) v.addr = cleanStr(b.addr, 200);
     if (has('note')) v.note = cleanStr(b.note, 500, true);
     if (has('st')) { if (!BASE_STATUS.includes(b.st)) return { err: 'bad_request' }; v.st = b.st; }
+    if (has('ty')) { if (typeof b.ty !== 'string' || (b.ty && !BASE_TYPES.includes(b.ty))) return { err: 'bad_request' }; v.ty = b.ty; }
     if (has('terr')) {
       const terrs = await this.terrs();
       if (b.terr === '') { if (terrs.length && role.r === 'agent') return { err: 'need_terr' }; v.terr = ''; }
@@ -4466,7 +4490,7 @@ export class Hub {
     const dup = await this.findDup(v.phone, v.name, v.addr || '', '');
     if (dup) return this.dupJson(dup, role);
     const now = new Date().toISOString(), id = await this.newBid();
-    const rec = { id, name: v.name, phone: v.phone, addr: v.addr || '', terr: v.terr || '', st: v.st || 'new', note: v.note || '', agent: role.r === 'agent' ? role.ag.id : (v.agent || ''), uid: 0, chk: true, ver: 1, src: 'agent', created: now, upd: now };
+    const rec = { id, name: v.name, phone: v.phone, addr: v.addr || '', terr: v.terr || '', st: v.st || 'new', ty: v.ty || '', note: v.note || '', agent: role.r === 'agent' ? role.ag.id : (v.agent || ''), uid: 0, chk: true, ver: 1, src: 'agent', created: now, upd: now };
     const lc = this.locChange(role, {}, b, now);
     if (lc.err) return json({ error: lc.err }, 400);
     if (lc.set) rec.loc = lc.set;
@@ -4531,22 +4555,30 @@ export class Hub {
     const full = role.r !== 'dist';
     const stOk = b => !full || !f || (f === 'chk' ? !b.chk : f === 'app' ? !!b.uid : b.st === f);
     const agOk = b => !ag || (ag === '-' ? !b.agent : b.agent === ag);
+    // тип точки: фильтр доступен всем, кто видит базу; «-» — тип не указан
+    const tyq = String(sp.get('ty') || ''), ty = tyq === '-' || BASE_TYPES.includes(tyq) ? tyq : '';
+    const tyOk = b => !ty || (ty === '-' ? !b.ty : b.ty === ty);
     const qOk = b => !q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd));
     // «Мои клиенты»: те, кто заказывал у дистрибьютора (у владельца: у любого дистрибьютора)
     const sh = role.r === 'agent' ? '' : await this.mineShop(uid, sp.get('sh'));
     let mine = null;
     if (sp.get('mine') === '1' && role.r !== 'agent') mine = await this.mineBids(role, sh);
-    const pre = scope.filter(b => stOk(b) && agOk(b) && qOk(b) && (!mine || mine.has(b.id)));
+    const pre0 = scope.filter(b => stOk(b) && agOk(b) && qOk(b) && (!mine || mine.has(b.id)));
+    const pre = pre0.filter(tyOk);
     const counts = {};
     pre.forEach(b => { const k = b.terr || ''; counts[k] = (counts[k] || 0) + 1; });
     const rows = pre.filter(b => !terr || (terr === '-' ? !b.terr : b.terr === terr));
+    // числа у типов считаются с учётом района и остальных фильтров, но без самого типа
+    const tcounts = { '-': 0 };
+    BASE_TYPES.forEach(k => { tcounts[k] = 0; });
+    pre0.filter(b => !terr || (terr === '-' ? !b.terr : b.terr === terr)).forEach(b => { tcounts[b.ty || '-']++; });
     // «Ближайшие»: сначала магазины с точкой по расстоянию от того, кто смотрит, потом остальные по названию
     const dist = new Map();
     if (here) rows.forEach(b => { if (b.loc) dist.set(b.id, distKm(here, b.loc)); });
     if (here) rows.sort((x, y) => (dist.has(x.id) ? 0 : 1) - (dist.has(y.id) ? 0 : 1) || (dist.get(x.id) || 0) - (dist.get(y.id) || 0) || lowName(x, y));
     else rows.sort(byNew ? (x, y) => String(y.created || '').localeCompare(String(x.created || '')) || lowName(x, y) : lowName);
     const out = {
-      role: role.r, total: rows.length, all: scope.length, counts, more: off + BASE_PAGE < rows.length,
+      role: role.r, total: rows.length, all: scope.length, counts, tcounts, more: off + BASE_PAGE < rows.length,
       items: rows.slice(off, off + BASE_PAGE).map(b => { const o = (full ? baseOwn : basePub)(b); if (dist.has(b.id)) o.d = Math.round(dist.get(b.id) * 10) / 10; return o; }),
       terrs: (await this.terrs()).map(t => ({ id: t.id, name: t.name }))
     };

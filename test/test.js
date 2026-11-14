@@ -2190,7 +2190,7 @@ await t('Excel с клиентами: поля базы, группа, заме�
   assert.ok(/^clients-\d{4}-\d{2}-\d{2}\.xlsx$/.test(doc.file.name));
   const rows = readXlsx(doc.file.bytes)['Клиенты'];
   const head = rows[0], col = n => head.indexOf(n);
-  assert.deepEqual(head.slice(0, 6), ['Имя', 'Телефон', 'Организация', 'Группа', 'Адреса доставки', 'Заметка']);
+  assert.deepEqual(head.slice(0, 7), ['Имя', 'Телефон', 'Организация', 'Тип', 'Группа', 'Адреса доставки', 'Заметка']);
   const a = rows.find(r => r[col('Организация')] === 'Кафе «Чинор»');
   assert.ok(a);
   assert.equal(a[col('Имя')], 'ООО Ориент' === a[col('Имя')] ? 'ООО Ориент' : 'Анвар');
@@ -4393,6 +4393,74 @@ await t('база: фильтры «новые», «в приложении», �
   assert.deepEqual((await baseGet('?terr=' + tk, iD())).items.map(x => x.name), ['Гамма']);
   assert.deepEqual((await baseGet('', iD())).counts, { [tn]: 2, [tk]: 1, '': 1 });
   assert.deepEqual((await baseGet('?sort=new', iD())).items.map(x => x.name), ['Эпсилон', 'Гамма', 'Бета', 'Альфа']);
+});
+
+await t('база: тип точки — ставят владелец и агент, фильтр «один тип» и «не указан», числа у типов; дистрибьютор видит и фильтрует, но не меняет; колонка «Тип» в Excel', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await putProd(SAMPLE_PROD())).status, 200);
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const tn = t1.terr[0].id, tk = t1.terr[1].id;
+  const made = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [tn] }));
+  await send(agentMsg(AGT, made.code, 2));
+  const mk = async (name, n, over) => (await jsonOf(await baseSend('POST', '', Object.assign({ name, phone: '+998 90 100 00 0' + n, addr: 'ул. ' + name }, over)))).item;
+  const a = await mk('Альфа', 1, { terr: tn, ty: 'super' });
+  const b = await mk('Бета', 2, { terr: tn, ty: 'horeca' });
+  const c = await mk('Гамма', 3, { terr: tk, ty: 'super' });
+  const d = await mk('Дельта', 4, { terr: tk });
+  assert.deepEqual([a.ty, b.ty, c.ty, d.ty], ['super', 'horeca', 'super', undefined], 'у записи без типа поля нет');
+  // неверный тип не принимается ни при добавлении, ни при правке
+  assert.equal((await baseSend('POST', '', { name: 'Эта', phone: '+998 90 100 00 09', terr: tn, ty: 'bar' })).status, 400);
+  assert.equal((await baseSend('POST', '', { name: 'Эта', phone: '+998 90 100 00 09', terr: tn, ty: 5 })).status, 400);
+  assert.equal((await baseSend('PUT', '/' + a.id, { ty: 'zzz' })).status, 400);
+  assert.equal((await baseSend('PUT', '/' + a.id, { ty: ['shop'] })).status, 400);
+  assert.equal((await baseGet('?q=' + encodeURIComponent('Эта'))).total, 0, 'с неверным типом магазин не добавился');
+  // смена типа не заставляет магазин править форму заказа (ver) и не трогает остальные данные
+  const ver0 = (await W.hubStorage.get('b:' + a.id)).ver;
+  const up = await jsonOf(await baseSend('PUT', '/' + a.id, { ty: 'whole' }));
+  assert.deepEqual([up.item.ty, up.item.name, up.item.terr], ['whole', 'Альфа', tn]);
+  assert.equal((await W.hubStorage.get('b:' + a.id)).ver, ver0);
+  assert.equal((await jsonOf(await baseSend('PUT', '/' + a.id, { ty: '' }))).item.ty, undefined, 'пустой тип снимает значение');
+  assert.equal((await jsonOf(await baseSend('PUT', '/' + a.id, { ty: 'super' }))).item.ty, 'super');
+  const nm = async (qs, init) => (await baseGet(qs, init)).items.map(x => x.name);
+  // фильтр: один тип, «не указан», неизвестное значение игнорируется
+  assert.deepEqual(await nm('?ty=super'), ['Альфа', 'Гамма']);
+  assert.deepEqual(await nm('?ty=horeca'), ['Бета']);
+  assert.deepEqual(await nm('?ty=shop'), []);
+  assert.deepEqual(await nm('?ty=-'), ['Дельта'], 'не указан');
+  assert.deepEqual(await nm('?ty=bar'), ['Альфа', 'Бета', 'Гамма', 'Дельта'], 'неизвестный тип не фильтрует');
+  assert.deepEqual(await nm('?ty=super&terr=' + tk), ['Гамма'], 'тип и район складываются');
+  assert.deepEqual(await nm('?ty=super&q=' + encodeURIComponent('аль')), ['Альфа'], 'тип и поиск складываются');
+  // числа у типов не зависят от выбранного типа, но учитывают район; числа районов учитывают выбранный тип
+  assert.deepEqual((await baseGet()).tcounts, { '-': 1, shop: 0, super: 2, whole: 0, horeca: 1 });
+  assert.deepEqual((await baseGet('?ty=super')).tcounts, { '-': 1, shop: 0, super: 2, whole: 0, horeca: 1 });
+  assert.deepEqual((await baseGet('?terr=' + tn)).tcounts, { '-': 0, shop: 0, super: 1, whole: 0, horeca: 1 });
+  assert.deepEqual((await baseGet('?ty=super')).counts, { [tn]: 1, [tk]: 1 });
+  const ft = await baseGet('?ty=super&terr=' + tk);
+  assert.deepEqual([ft.total, ft.all], [1, 4]);
+  // агент: ставит тип своим магазинам, чужим нет; фильтр работает в его зоне
+  assert.equal((await baseSend('PUT', '/' + b.id, { ty: 'shop' }, iG())).status, 200);
+  assert.equal((await baseSend('PUT', '/' + c.id, { ty: 'shop' }, iG())).status, 403, 'вне зоны агента');
+  assert.deepEqual(await nm('?ty=shop', iG()), ['Бета']);
+  assert.deepEqual((await baseGet('', iG())).tcounts, { '-': 0, shop: 1, super: 1, whole: 0, horeca: 0 }, 'числа только по зоне агента');
+  assert.equal((await baseSend('POST', '', { name: 'Эпсилон', phone: '+998 90 100 00 07', terr: tn, ty: 'whole' }, iG())).status, 200, 'агент добавляет с типом');
+  // дистрибьютор: видит тип и фильтрует, менять не может
+  const dv = await baseGet('?ty=super', iD());
+  assert.deepEqual(dv.items.map(x => [x.name, x.ty]), [['Альфа', 'super'], ['Гамма', 'super']]);
+  assert.deepEqual(dv.tcounts, { '-': 1, shop: 1, super: 2, whole: 1, horeca: 0 });
+  assert.deepEqual(await nm('?ty=-', iD()), ['Дельта']);
+  assert.equal((await baseSend('PUT', '/' + d.id, { ty: 'shop' }, iD())).status, 403);
+  assert.equal((await baseSend('POST', '', { name: 'Зета', phone: '+998 90 100 00 08', ty: 'shop' }, iD())).status, 403);
+  // Excel дистрибьютора: колонка «Тип» берётся из общей базы
+  const u1 = newUser(), u2 = newUser();
+  await ordBase(sid, u1, { name: 'Омега', phone: '+998 91 100 00 11' });
+  await ordBase(sid, u2, { name: 'Сигма', phone: '+998 91 100 00 12' });
+  const om = (await baseGet('?q=' + encodeURIComponent('Омега'))).items[0];
+  assert.equal((await baseSend('PUT', '/' + om.id, { ty: 'whole' })).status, 200);
+  const xl = async lang => { tgLog = []; assert.equal((await callS(sid, 'POST', '/api/admin/export', { init: iD(), body: { kind: 'clients', lang } })).status, 200); const rows = readXlsx(lastDoc().file.bytes)[lang === 'uz' ? 'Mijozlar' : 'Клиенты']; return { rows, col: n => rows[0].indexOf(n) }; };
+  const ru = await xl('ru'), uz = await xl('uz');
+  const types = x => x.rows.slice(1).map(r => String(r[x.col(x === ru ? 'Телефон' : 'Telefon')]).replace(/\D/g, '').slice(-2) + ':' + (r[x.col(x === ru ? 'Тип' : 'Turi')] || '')).sort();
+  assert.deepEqual(types(ru), ['11:Оптом', '12:'], 'у магазина с типом он есть, у остальных пусто');
+  assert.deepEqual(types(uz), ['11:Ulgurji', '12:']);
 });
 
 await t('база: территории и агенты — без повторов, удаляются только пустые; новый код отключает прежний аккаунт', async () => {
@@ -6616,7 +6684,7 @@ await t('подсказки под полями: в каждой форме пр
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
   // сколько подсказок минимум должно быть в каждой форме (по числу полей)
-  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, crPickHTML: 1, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 7, ownAddHTML: 2, cmShopHTML: 3, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
+  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, crPickHTML: 1, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 8, ownAddHTML: 2, cmShopHTML: 3, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
   for (const [name, n] of Object.entries(need)) {
     const body = fn(name);
     const k = (body.match(/hintD\(/g) || []).length;
@@ -6817,7 +6885,7 @@ await t('Excel по-узбекски: заказы и клиенты — лис�
   assert.ok(cdoc.payload.caption.startsWith('Mijozlar: 1'), cdoc.payload.caption);
   const cx = readXlsx(cdoc.file.bytes);
   assert.deepEqual(Object.keys(cx), ['Mijozlar']);
-  assert.deepEqual(cx['Mijozlar'][0].slice(0, 6), ['Ism', 'Telefon', 'Tashkilot', 'Guruh', 'Yetkazib berish manzillari', 'Eslatma']);
+  assert.deepEqual(cx['Mijozlar'][0].slice(0, 7), ['Ism', 'Telefon', 'Tashkilot', 'Turi', 'Guruh', 'Yetkazib berish manzillari', 'Eslatma']);
   assert.equal(cx['Mijozlar'][1][cx['Mijozlar'][0].indexOf('Til')], 'ruscha');
   // без lang по-прежнему русский
   tgLog = [];
