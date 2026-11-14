@@ -1091,7 +1091,7 @@ function switchLang(){
 /* меню: разделы по группам; у «Продавца» внутри раскрываются его пять разделов */
 const sellerSubs=()=>{
   const w=stockWarn(),rn=modRetN();
-  return [['orders',L('Заказы','Buyurtmalar')],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar'),dvAlerts(),'warn'],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
+  return [['orders',L('Заказы','Buyurtmalar'),newCount()],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar'),dvAlerts(),'warn'],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
 };
 /* Роли человека берутся с площадки (S.hub.me): владелец, агент, продавец и доставщик у каких-то дистрибьюторов. Кроме этого он всегда магазин-клиент. */
 function myRoles(){
@@ -1117,6 +1117,9 @@ function roleLine(){
   if(here&&(sl||dl))parts.push((sl||dl).name);
   return parts.length?parts.join(' · '):L('Магазин','Doʻkon');
 }
+/* Правило значков в меню: у каждого пункта своё число (оно держится, пока оповещение не обработано), у группы сумма чисел внутри,
+   на кнопке ☰ сумма по всем группам (без каталога и числа заказов магазина: это не оповещения). Так три уровня всегда сходятся. */
+const subSum=subs=>subs.reduce((a,x)=>a+(Number(x[2])||0),0);
 function menuGroups(){
   const g=[];
   const shop=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
@@ -1124,14 +1127,16 @@ function menuGroups(){
   if(S.auth&&S.did)shop.push(['profile',L('Профиль','Profil')]);
   g.push([L('Магазин','Doʻkon'),shop]);
   const work=[];
-  if(S.admin&&S.did)work.push(['seller',L('Продавец','Sotuvchi'),newCount(),'',sellerSubs(),'stab']);
-  if(S.courier&&S.did)work.push(['courier',L('Доставка','Yetkazib berish'),crFree(),'',crTabs(),'ctab']);
+  if(S.admin&&S.did){const sb=sellerSubs();work.push(['seller',L('Продавец','Sotuvchi'),subSum(sb),'',sb,'stab'])}
+  if(S.courier&&S.did){const cb=crTabs();work.push(['courier',L('Доставка','Yetkazib berish'),subSum(cb),'',cb,'ctab'])}
   if(canBase())work.push(['base',L('База','Baza')]);
   if(commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
   if(work.length)g.push([L('Работа','Ish'),work]);
-  if(isOwner())g.push([L('Владелец','Egasi'),ownSecs().map(o=>['o_'+o[0],o[1],o[0]==='money'?S.own.dn:0,'bad',o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']),'otab']).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
+  if(isOwner())g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
   return g;
 }
+/* сумма оповещений на кнопке ☰: все группы и пункты, кроме каталога и заказов магазина */
+const menuTotal=()=>menuGroups().reduce((a,gr)=>a+gr[1].reduce((b,i)=>b+(i[0]==='shop'||i[0]==='mine'?0:Number(i[2])||0),0),0);
 const badgeHTML=(n,c)=>n?' <span class="badge'+(c?' '+c:'')+'">'+n+'</span>':'';
 const menuWide=()=>!!(window.matchMedia&&matchMedia('(min-width:1000px)').matches);
 const menuIsOpen=()=>document.documentElement.classList.contains('mn-open');
@@ -1161,7 +1166,7 @@ function renderNav(){
   nav.scrollTop=st;
   if(fk){const f=[...nav.querySelectorAll('[data-act]')].find(x=>x.dataset.act===fk[0]&&(x.dataset.v||x.dataset.t||'')===fk[1]&&!x.closest('[hidden]'));if(f)f.focus({preventScroll:true})}
   // значок на кнопке ☰: что ждёт решения (новые заказы, товары на проверке или возвращённые)
-  const al=(S.admin&&S.did?newCount()+modRetN()+(S.dbt.fl||0)+dvAlerts():0)+(isOwner()?modN()+(S.own.dn||0):0)+(S.courier&&S.did?crFree()+(S.cr.ask||0)+(S.cr.late>0?1:0):0)+(S.auth?S.mdebt.ask||0:0)+(commOn()?commBadge():0),mb=$('#menubadge');
+  const al=menuTotal(),mb=$('#menubadge');
   mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
   const mr=$('#mrole'),rl=roleLine();
   if(mr){mr.hidden=!rl;mr.innerHTML=rl?esc(L('Вы: ','Siz: '))+'<b>'+esc(rl)+'</b>':''}
@@ -2437,7 +2442,7 @@ async function loadCourier(){
   if(!r.ok||!r.data||!Array.isArray(r.data.orders))return;
   const c=S.cr,same=c.ok&&JSON.stringify([r.data.orders,r.data.soon,r.data.cash,r.data.lim,r.data.nvn,r.data.late,r.data.dl,r.data.ask])===JSON.stringify([c.orders,c.soon,c.cash,c.lim,c.nvn,c.late,c.dl,c.ask]);
   Object.assign(c,{ok:true,orders:r.data.orders,soon:r.data.soon,cash:r.data.cash,lim:r.data.lim||0,nvn:r.data.nvn||0,late:r.data.late||0,dl:r.data.dl||0,ask:r.data.ask||0});
-  if(S.view==='courier'){loadCrDebts();if(c.tab==='cash')loadCrCash()}
+  loadCrDebts();if(S.view==='courier'&&c.tab==='cash')loadCrCash();   // долги нужны и в меню (число у «Должники»), не только на экране доставщика
   if(same||S.view!=='courier'){if(!same)renderNav();return}
   renderNav();
   const ae=document.activeElement;
@@ -2449,6 +2454,7 @@ async function loadCrDebts(){
   if(!r.ok||!r.data||!Array.isArray(r.data.debtors))return;
   const d=S.cr.dbt,same=d.ok&&JSON.stringify([r.data.debtors,r.data.total,r.data.late,r.data.fl])===JSON.stringify([d.list,d.total,d.late,d.fl]);
   Object.assign(d,{ok:true,list:r.data.debtors,total:r.data.total,overdue:r.data.overdue,n:r.data.n,late:r.data.late,fl:r.data.fl||0});
+  if(!same)renderNav();
   if(same||S.view!=='courier')return;
   paintCrTabs();
   if(S.cr.tab==='debts'&&d.open===null){
