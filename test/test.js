@@ -7656,6 +7656,25 @@ await t('карточка товара: «Отправить на проверк
   assert.ok(/data-act="pfoldall" data-v="0"/.test(html), '«Свернуть все» над списком остаётся словами');
 });
 
+await t('меню: значки по одному правилу: пункт — своё число, группа — сумма пунктов, ☰ — сумма групп', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 3000); };
+  const subs = html.slice(html.indexOf('const sellerSubs='), html.indexOf('/* Роли человека'));
+  assert.ok(/\['orders',L\('Заказы','Buyurtmalar'\),newCount\(\)\]/.test(subs), 'у «Продавец → Заказы» число новых заказов (раньше значка не было, хотя у группы он был)');
+  assert.ok(/const subSum=subs=>subs\.reduce\(\(a,x\)=>a\+\(Number\(x\[2\]\)\|\|0\),0\)/.test(html), 'сумма пунктов считается одним местом');
+  const mg = fn('menuGroups');
+  assert.ok(/work\.push\(\['seller',L\('Продавец','Sotuvchi'\),subSum\(sb\),''/.test(mg), 'число группы «Продавец» — сумма её пунктов');
+  assert.ok(/work\.push\(\['courier',L\('Доставка','Yetkazib berish'\),subSum\(cb\),''/.test(mg), 'число группы «Доставка» — сумма её пунктов');
+  assert.ok(/subSum\(sb\),'bad',sb,'otab'/.test(mg), 'число группы владельца — сумма её пунктов');
+  assert.ok(!/\['seller',L\('Продавец','Sotuvchi'\),newCount\(\)/.test(mg) && !/\['courier',L\('Доставка','Yetkazib berish'\),crFree\(\)/.test(mg), 'у групп больше нет своих отдельных формул');
+  assert.ok(/const menuTotal=\(\)=>menuGroups\(\)\.reduce/.test(html) && /i\[0\]==='shop'\|\|i\[0\]==='mine'\?0:/.test(html), '☰ считается по тем же группам, кроме каталога и заказов магазина');
+  assert.ok(/const al=menuTotal\(\),mb=\$\('#menubadge'\)/.test(fn('renderNav')), 'значок на ☰ берёт число из menuTotal, а не из своей формулы');
+  assert.ok(!/newCount\(\)\+modRetN\(\)/.test(fn('renderNav')), 'старой отдельной формулы на ☰ нет');
+  const cl = fn('loadCourier') + fn('loadCrDebts');
+  assert.ok(/loadCrDebts\(\);if\(S\.view==='courier'&&c\.tab==='cash'\)loadCrCash\(\)/.test(cl), 'долги доставщика подгружаются и вне его экрана: число у «Должники» видно в меню сразу');
+  assert.ok(/if\(!same\)renderNav\(\);\s*if\(same\|\|S\.view!=='courier'\)return/.test(cl), 'меню перерисовывается, когда число долгов изменилось');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
