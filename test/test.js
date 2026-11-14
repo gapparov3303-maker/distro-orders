@@ -4931,6 +4931,139 @@ await t('одна база: заметка у магазина без аккау
   assert.equal((await set({ sh: sid, note: 'ещё' })).status, 404);
 });
 
+await t('база: дополнительные номера магазина — до пяти, повторов нет, поиск и защита от дублей работают и по ним', async () => {
+  const { sid } = await twoShopWorld();
+  const mk = async (name, ph, over) => baseSend('POST', '', Object.assign({ name, phone: ph, addr: 'ул. ' + name }, over || {}));
+  const a = (await jsonOf(await mk('Номера-1', '+998 90 300 00 01', { ph: ['+998 90 300 00 02', '+998 (90) 300-00-02', '', '+998 90 300 00 01', '+998 90 300 00 03'] }))).item;
+  assert.deepEqual(a.ph, ['+998 90 300 00 02', '+998 90 300 00 03'], 'повторы и основной номер из списка убираются');
+  assert.equal((await jsonOf(await mk('Номера-0', '+998 90 300 00 09'))).item.ph, undefined, 'без доп. номеров поля нет');
+  // новый магазин не может занять чужой дополнительный или основной номер
+  assert.equal((await mk('Другой', '+998 90 300 00 02')).status, 409);
+  assert.equal((await mk('Другой', '+998 90 300 00 10', { ph: ['+998 90 300 00 03'] })).status, 409);
+  assert.equal((await baseGet('?q=300-00-03')).items.map(x => x.name).join(), 'Номера-1', 'поиск находит по доп. номеру');
+  assert.equal((await baseGet('?q=' + encodeURIComponent('90 300 00 03'))).total, 1);
+  // проверка присланного
+  const bad = ph => baseSend('PUT', '/' + a.id, { ph });
+  assert.equal((await bad('+998 90 300 00 05')).status, 400, 'не список');
+  assert.equal((await bad([5])).status, 400);
+  assert.equal((await bad(['12'])).status, 400, 'короткий номер');
+  assert.equal((await bad(['+998 90 300 01 01', '+998 90 300 01 02', '+998 90 300 01 03', '+998 90 300 01 04', '+998 90 300 01 05', '+998 90 300 01 06'])).status, 400, 'шестой доп. номер');
+  assert.equal((await jsonOf(await bad(['+998 90 300 01 01', '+998 90 300 01 02', '+998 90 300 01 03', '+998 90 300 01 04', '+998 90 300 01 05']))).item.ph.length, 5, 'пять можно');
+  // номер уже у другого магазина: правка отклоняется, а у этого магазина ничего не меняется
+  assert.equal((await bad(['+998 90 300 00 09'])).status, 409);
+  assert.equal((await baseGet('?q=' + encodeURIComponent('Номера-1'))).items[0].ph.length, 5);
+  // основным можно сделать один из доп. номеров; прежний основной в индексе освобождается, если его не оставили в списке
+  const up = await jsonOf(await baseSend('PUT', '/' + a.id, { phone: '+998 90 300 01 02', ph: ['+998 90 300 01 01', '+998 90 300 01 03'] }));
+  assert.deepEqual([up.item.phone, up.item.ph], ['+998 90 300 01 02', ['+998 90 300 01 01', '+998 90 300 01 03']]);
+  assert.equal(await W.hubStorage.get('bp:' + '903000001'), undefined, 'прежний основной номер освободился');
+  assert.equal((await mk('Новый', '+998 90 300 00 01')).status, 200, 'и его можно занять');
+  assert.equal((await mk('Ещё', '+998 90 300 01 04')).status, 200, 'номер, убранный из списка, свободен');
+  assert.equal((await mk('Ещё2', '+998 90 300 01 03')).status, 409, 'номер из списка занят');
+  // основной номер в списке не повторяется
+  assert.deepEqual((await jsonOf(await baseSend('PUT', '/' + a.id, { ph: ['+998 90 300 01 02', '+998 90 300 01 01'] }))).item.ph, ['+998 90 300 01 01']);
+  // дистрибьютор видит номера, но не правит
+  assert.deepEqual((await baseGet('?q=Номера-1', iD())).items[0].ph, ['+998 90 300 01 01']);
+  assert.equal((await baseSend('PUT', '/' + a.id, { ph: [] }, iD())).status, 403);
+  // удаление магазина освобождает и доп. номера
+  assert.equal((await baseSend('DELETE', '/' + a.id)).status, 200);
+  assert.equal(await W.hubStorage.get('bp:' + '903000101'), undefined);
+});
+
+await t('база: объединение дублей — аккаунты и номера в одном магазине, заметки дистрибьюторов складываются, новые заказы с любого номера идут в него', async () => {
+  const { sid, sid2 } = await twoShopWorld();
+  const t1 = await jsonOf(await adm('POST', '/terr', { names: ['Навои', 'Кармана'] }));
+  const tn = t1.terr[0].id, tk = t1.terr[1].id;
+  const made = await jsonOf(await adm('POST', '/agents', { name: 'Азиз', terr: [tn] }));
+  await send(agentMsg(AGT, made.code, 2));
+  const u1 = newUser(), u2 = newUser(), u3 = newUser();
+  await ordBase(sid, u1, { name: 'Ромашка', phone: '+998 90 111 22 33' });
+  await ordBase(sid2, u2, { name: 'Ромашка склад', phone: '+998 91 222 33 44' });
+  await ordBase(sid, u3, { name: 'Ромашка-3', phone: '+998 93 555 66 77' });
+  const A = byName(await baseGet(), 'Ромашка'), B = byName(await baseGet(), 'Ромашка склад'), C = byName(await baseGet(), 'Ромашка-3');
+  assert.equal((await baseGet()).total, 3);
+  for (const [x, terr, ty] of [[A, tn, 'shop'], [B, tn, ''], [C, tk, 'horeca']]) assert.equal((await baseSend('PUT', '/' + x.id, { terr, ty })).status, 200);
+  // заметки и группы у дистрибьюторов
+  const note = (did, bid, body, init) => call('PUT', '/api/hub/base/' + bid + '/mine', { init, body: Object.assign({ sh: did }, body) });
+  assert.equal((await note(sid, A.id, { note: 'Платит в конце недели', grp: 'Магазин' }, iD())).status, 200);
+  assert.equal((await note(sid, B.id, { note: 'Склад, звонить после 10', grp: 'Склад' }, iD())).status, 200);
+  assert.equal((await note(sid2, B.id, { note: 'Вежливый' }, iJ2())).status, 200);
+  assert.equal((await note(sid, C.id, { note: 'Третий номер' }, iD())).status, 200);
+  const mg = (id, body, init) => baseSend('POST', '/' + id + '/merge', body, init);
+  const total = async () => (await baseGet()).total;
+  // права и неверные запросы
+  assert.equal((await mg(A.id, { from: B.id }, iD())).status, 403, 'дистрибьютор не объединяет');
+  assert.equal((await call('POST', '/api/hub/base/' + A.id + '/merge', { body: { from: B.id } })).status, 401);
+  assert.equal((await mg(A.id, { from: A.id })).status, 400, 'сам с собой');
+  assert.equal((await mg(A.id, {})).status, 400);
+  assert.equal((await mg(A.id, { from: 5 })).status, 400);
+  assert.equal((await mg(A.id, { from: 'bnotfound1' })).status, 404);
+  assert.equal((await mg('bnotfound1', { from: B.id })).status, 404);
+  assert.equal((await mg(A.id, { from: C.id }, iG())).status, 403, 'агент: Кармана вне его зоны');
+  assert.equal((await mg(C.id, { from: A.id }, iG())).status, 403, 'и наоборот');
+  assert.equal(await total(), 3, 'отказы ничего не меняют');
+  // предварительный просмотр ничего не меняет
+  const pv = await jsonOf(await mg(A.id, { from: B.id, dry: true }));
+  assert.deepEqual([pv.preview.keep.name, pv.preview.gone.name, pv.preview.phones, pv.preview.moved, pv.preview.accounts, pv.preview.gAccounts, pv.preview.fill], ['Ромашка', 'Ромашка склад', ['+998 90 111 22 33', '+998 91 222 33 44'], 1, 2, 1, []]);
+  assert.equal(await total(), 3);
+  assert.ok(await W.hubStorage.get('b:' + B.id));
+  // агент объединяет магазины своей зоны
+  const ver0 = (await W.hubStorage.get('b:' + A.id)).ver;
+  const r1 = await mg(A.id, { from: B.id }, iG());
+  assert.equal(r1.status, 200);
+  const m1 = await jsonOf(r1);
+  assert.deepEqual([m1.item.id, m1.item.name, m1.item.phone, m1.item.ph, m1.moved, m1.accounts], [A.id, 'Ромашка', '+998 90 111 22 33', ['+998 91 222 33 44'], 1, 2]);
+  assert.equal(await total(), 2);
+  assert.equal(await W.hubStorage.get('b:' + B.id), undefined, 'дубль удалён');
+  assert.equal(await W.hubStorage.get('bu:' + u2.u.id), A.id, 'аккаунт переехал');
+  assert.equal(await W.hubStorage.get('bp:' + '912223344'), A.id, 'его номер ведёт в оставшийся магазин');
+  assert.equal(await W.hubStorage.get('bn'), 2, 'счётчик базы уменьшился');
+  assert.equal((await W.hubStorage.get('b:' + A.id)).ver, ver0 + 1, 'формы заказа переехавших аккаунтов получат данные магазина');
+  assert.equal((await baseSend('PUT', '/' + B.id, { note: 'x' })).status, 404);
+  // заметки: у каждого дистрибьютора своя; у Альфы обе записались подряд, главная первая; группа главного
+  const my = async (did, bid, init) => (await jsonOf(await call('GET', '/api/hub/base/' + bid + '/mine?sh=' + did, { init }))).my;
+  const ma = await my(sid, A.id, iD());
+  assert.deepEqual([ma.note, ma.grp], ['Платит в конце недели\nСклад, звонить после 10', 'Магазин']);
+  assert.deepEqual([(await my(sid2, A.id, iJ2())).note, (await my(sid2, A.id, iJ2())).grp], ['Вежливый', ''], 'у Беты заметка дубля перешла к магазину');
+  assert.equal((await note(sid, B.id, { note: 'x' }, iD())).status, 404);
+  // заказы всех аккаунтов в одной карточке
+  const ho = await jsonOf(await call('GET', '/api/hub/base/' + A.id + '/mine?sh=main', { init: iS() }));
+  assert.equal(ho.m.n, 2, 'заказы Ромашки и склада вместе (у двух дистрибьюторов)');
+  assert.equal(byName(await baseGet('?sh=' + sid, iD()), 'Ромашка').my.note, ma.note);
+  // тот, кто заказывал под старым номером, и новый сотрудник с этим номером попадают в тот же магазин
+  assert.equal((await meHub(u2)).card.name, 'Ромашка', 'форма заказа переехавшего аккаунта берёт данные магазина');
+  assert.equal((await meHub(u2)).card.ver, ver0 + 1);
+  const u4 = newUser();
+  await ordBase(sid, u4, { name: 'Совсем другое имя', phone: '+998 91 222 33 44' });
+  assert.equal(await total(), 2, 'заказ с прежнего номера дубля не создаёт');
+  assert.equal(await W.hubStorage.get('bu:' + u4.u.id), A.id);
+  assert.equal((await meHub(u4)).card.name, 'Ромашка');
+  // добавить магазин с занятым номером нельзя
+  assert.equal((await baseSend('POST', '', { name: 'Новый', phone: '+998 91 222 33 44' })).status, 409);
+  // владелец объединяет остальных: районы, тип, точка и статус остаются от главного, пустые поля берутся у дубля
+  assert.equal((await baseSend('PUT', '/' + C.id, { addr: 'ул. Базарная 5' })).status, 200);
+  const noTy = await jsonOf(await baseSend('PUT', '/' + A.id, { ty: '', addr: '' }));
+  assert.equal(noTy.item.ty, undefined);
+  const r2 = await jsonOf(await mg(A.id, { from: C.id, dry: true }));
+  assert.deepEqual(r2.preview.fill, ['addr', 'ty'], 'пустые адрес и тип берутся у дубля');
+  const r3 = await jsonOf(await mg(A.id, { from: C.id }));
+  assert.deepEqual([r3.item.ph, r3.item.ty, r3.item.terr, r3.item.addr, r3.accounts], [['+998 91 222 33 44', '+998 93 555 66 77'], 'horeca', tn, 'ул. Базарная 5', 4]);
+  assert.equal(await total(), 1);
+  assert.equal((await my(sid, A.id, iD())).note, 'Платит в конце недели\nСклад, звонить после 10\nТретий номер');
+  // пять дополнительных номеров — предел: в такой магазин больше номеров не влить
+  const x = (await jsonOf(await baseSend('POST', '', { name: 'Много', phone: '+998 90 400 00 00', ph: ['+998 90 400 00 01', '+998 90 400 00 02', '+998 90 400 00 03', '+998 90 400 00 04', '+998 90 400 00 05'] }))).item;
+  const y = (await jsonOf(await baseSend('POST', '', { name: 'Один', phone: '+998 90 400 00 09' }))).item;
+  const lim = await mg(x.id, { from: y.id });
+  assert.equal(lim.status, 409);
+  assert.equal((await jsonOf(lim)).error, 'too_many_phones');
+  assert.ok(await W.hubStorage.get('b:' + y.id), 'при отказе дубль остаётся');
+  assert.equal((await mg(x.id, { from: y.id, dry: true })).status, 409);
+  // тот же номер у двух магазинов не считается дважды
+  const z = (await jsonOf(await baseSend('POST', '', { name: 'Зеро', phone: '+998 90 400 00 77', addr: 'другой адрес' }))).item;
+  assert.equal((await baseSend('PUT', '/' + y.id, { ph: ['+998 90 400 00 77'] })).status, 409, 'номер уже у другого магазина');
+  assert.equal((await mg(y.id, { from: z.id })).status, 200);
+  assert.equal((await baseGet('?q=Зеро')).total, 0);
+});
+
 /* ---------- аналитика владельца: продажи по категориям, товарам и магазинам ---------- */
 const anaGet = async (qs, init) => jsonOf(await call('GET', '/api/hub/admin/analytics' + (qs || ''), { init: init || iS() }));
 const todayT = () => new Date(Date.now() + 5 * 3600000).toISOString().slice(0, 10);
@@ -6684,7 +6817,7 @@ await t('подсказки под полями: в каждой форме пр
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
   // сколько подсказок минимум должно быть в каждой форме (по числу полей)
-  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, crPickHTML: 1, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 8, ownAddHTML: 2, cmShopHTML: 3, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
+  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, crPickHTML: 1, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 10, ownAddHTML: 2, cmShopHTML: 3, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
   for (const [name, n] of Object.entries(need)) {
     const body = fn(name);
     const k = (body.match(/hintD\(/g) || []).length;

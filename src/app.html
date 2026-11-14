@@ -581,6 +581,25 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .dcats span{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--edge);border-radius:999px;padding:3px 9px;font-size:12px}
 .dtag{font-size:12px;font-weight:600;color:var(--tx)}
 .bty{margin-top:6px}
+.bph2{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 2px;font-size:12px;color:var(--ink-2)}
+.bph2 a{font-weight:600;color:var(--ink);text-decoration:none;background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--edge);border-radius:999px;padding:4px 10px;white-space:nowrap}
+.phrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px}
+.phrow input{flex:1 1 150px;min-width:0}
+.phrow .btn{flex:none}
+.mgbox{margin-top:4px}
+.mgp{font-size:14px;line-height:1.4;color:var(--ink-2);margin:0 0 12px}
+.mgit{display:block;width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:1.5px solid var(--edge);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.mgit b{display:block;overflow-wrap:anywhere}
+.mgit small{display:block;color:var(--ink-2);font-size:12px;margin-top:2px;overflow-wrap:anywhere}
+.mgcmp{display:grid;gap:8px;margin-bottom:12px}
+.mgcmp>div{background:var(--surface-2);border:1.5px solid var(--edge);border-radius:12px;padding:10px 12px;min-width:0}
+.mgcmp small{display:block;font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--ink-2);text-transform:uppercase}
+.mgcmp b{display:block;overflow-wrap:anywhere}
+.mgcmp span{display:block;font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
+.mgcmp .gone{border-style:dashed}
+.mgl{display:grid;gap:8px;margin-bottom:12px;font-size:14px;line-height:1.4}
+.mgl>div{overflow-wrap:anywhere}
+.mgw{font-size:13px;font-weight:600;color:var(--warn);background:var(--warn-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 button.mtag{border:0;font-family:inherit;cursor:pointer}
 .mono{font:700 19px/1.35 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;background:var(--surface-2);border:1px solid var(--edge);padding:10px 12px;border-radius:10px;overflow-wrap:anywhere;user-select:all}
 .mono.small{font-size:13px;letter-spacing:0;font-weight:600}
@@ -836,7 +855,7 @@ const S={
   own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
-  base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0}
+  base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
 };
 const view=$('#view');
 let toastT=null,saveT=null;
@@ -3406,7 +3425,7 @@ function clientSheetHTML(){
   const sub=[x.addr,terrName(x.terr)].filter(Boolean).map(esc).join(' · ');
   return '<div class="fs-bg" data-act="bsheetx"></div><div class="fs" role="dialog" aria-modal="true" aria-label="'+esc(x.name||'')+'"><div class="fs-grab"></div>'
     +'<div class="fs-head"><h2>'+esc(x.name||'')+'</h2><button type="button" class="lnk" data-act="bsheetx">'+L('Закрыть','Yopish')+'</button></div><div class="fs-body">'
-    +(sub?'<div class="dmeta" style="margin:0 0 10px">'+sub+'</div>':'')+(x.phone?'<div class="dmeta" style="margin:0 0 10px">'+esc(x.phone)+'</div>':'')+body+'</div>'
+    +(sub?'<div class="dmeta" style="margin:0 0 10px">'+sub+'</div>':'')+(x.phone?'<div class="dmeta" style="margin:0 0 10px">'+esc(x.phone)+'</div>':'')+phonesMoreHTML(x)+body+'</div>'
     +(d.loaded&&baseShop()?'<div class="fs-foot"><button type="button" class="btn" data-act="csave"'+(b.cbusy?' disabled':'')+'>'+(b.cbusy?L('Сохраняем…','Saqlanmoqda…'):L('Сохранить','Saqlash'))+'</button></div>':'')+'</div>';
 }
 async function clientCardOpen(id){
@@ -4372,6 +4391,10 @@ const baseErr=e=>({
   bad_phone:L('Укажите телефон: не меньше 9 цифр','Telefonni kiriting: kamida 9 ta raqam'),
   bad_terr:L('Выберите территорию из списка','Roʻyxatdan hududni tanlang'),
   need_terr:L('Выберите территорию','Hududni tanlang'),
+  too_many_phones:L('Номеров слишком много: у магазина основной и не больше 5 дополнительных. Уберите лишние и повторите.','Raqamlar juda koʻp: asosiy va 5 tagacha qoʻshimcha raqam boʻlishi mumkin. Ortiqchasini olib tashlab, qayta urinib koʻring.'),
+  too_many_accounts:L('У объединённого магазина было бы больше 10 аккаунтов: так объединить нельзя','Birlashgan doʻkonda 10 tadan koʻp akkaunt boʻlib qoladi: bunday birlashtirib boʻlmaydi'),
+  same:L('Нужен другой магазин, не тот же самый','Boshqa doʻkonni tanlang, bu emas'),
+  retry:L('Не удалось перенести заметки дистрибьюторов. Ничего не потеряно, повторите ещё раз.','Distribyutorlar eslatmalarini koʻchirib boʻlmadi. Hech narsa yoʻqolmadi, qayta urinib koʻring.'),
   too_many:L('В базе уже максимум магазинов','Bazada doʻkonlar maksimal sonda'),
   forbidden:L('Это действие вам недоступно','Bu amal siz uchun mavjud emas'),
   bad_loc:L('Точка не распознана. Отметьте её заново.','Nuqta aniqlanmadi. Uni qaytadan belgilang.'),
@@ -4397,7 +4420,7 @@ async function loadBase(reset){
 }
 /* фильтры экрана не переживают выход с него: при новом заходе список полный */
 function baseResetUI(){Object.assign(S.base,{terr:'',f:'',ag:'',ty:'',sort:'',q:'',mc:false,sheet:false,legend:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,edit:null,ferr:''});S.base.cseq++;setScrollLock()}
-function setScrollLock(){const b=S.base,v=S.rv;document.documentElement.classList.toggle('sh-open',!!((S.view==='base'&&(b.sheet||b.legend||b.cd))||(S.view==='review'&&(v.ret||v.edit))))}
+function setScrollLock(){const b=S.base,v=S.rv;document.documentElement.classList.toggle('sh-open',!!((S.view==='base'&&(b.sheet||b.legend||b.cd||b.mg))||(S.view==='review'&&(v.ret||v.edit))))}
 const ICO={
   talk:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v11H10l-4.5 3.5v-3.5H4z"/></svg>',
   app:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.2h2"/></svg>',
@@ -4440,6 +4463,10 @@ function renderBase(){
   view.innerHTML=h+'</div>';
   if(b.loaded)paintBase();
 }
+/* дополнительные номера магазина (заказывает с нескольких номеров): все с кнопкой звонка */
+function phonesMoreHTML(x){
+  return x.ph&&x.ph.length?'<div class="bph2"><span>'+L('Ещё номера:','Boshqa raqamlar:')+'</span>'+x.ph.map(p=>'<a href="'+esc(telHref(p))+'">'+esc(p)+'</a>').join('')+'</div>':'';
+}
 function baseCardHTML(x){
   const w=baseW(),b=S.base,sg=signOf(x),SG=SIGNS();
   const signs=sg.map(k=>w?'<button type="button" class="sgn '+k+'" data-act="bsign" data-v="'+SG[k].f+'" aria-label="'+esc(SG[k].name+'. '+L('Показать только такие','Faqat shundaylarini koʻrsatish'))+'">'+ICO[k]+'</button>'
@@ -4453,6 +4480,7 @@ function baseCardHTML(x){
     +(w&&x.note?'<div class="bnote">'+esc(x.note)+'</div>':'')
     +baseLocHTML(x)
     +(b.role!=='agent'?baseMineHTML(x):'')
+    +phonesMoreHTML(x)
     +'<div class="bact'+(w&&!x.chk&&canDel?' tight':'')+'"><a class="bphone" href="'+esc(telHref(x.phone))+'">'+ICO.tel+'<span>'+esc(x.phone)+'</span></a>'
     +'<div class="bic"><button type="button" class="ibtn" data-act="copy" data-v="'+esc(x.phone)+'" data-ok="'+esc(L('Телефон скопирован','Telefon nusxalandi'))+'" data-lab="" aria-label="'+esc(L('Копировать телефон','Telefonni nusxalash'))+'">'+ICO.copy+'</button>'
     +(w?(!x.chk?ib(' ok','basechk','ok',L('Проверено','Tekshirildi'),b.busy?' disabled':''):'')+ib('','baseedit','edit',L('Изменить','Tahrirlash'))+(canDel?ib('','basedel','del',L('Удалить','Oʻchirish'),b.busy?' disabled':''):''):'')
@@ -4465,6 +4493,9 @@ function baseFormHTML(){
   return '<div class="card" id="bform"><h3>'+(b.edit==='new'?L('Новый магазин','Yangi doʻkon'):L('Данные магазина','Doʻkon maʼlumotlari'))+'</h3><div class="form">'
     +'<div class="full"><label class="lab" for="bf-name">'+L('Название магазина','Doʻkon nomi')+'</label><input type="text" id="bf-name" data-bf="name" maxlength="60" value="'+esc(f.name)+'" autocomplete="off">'+hintD('Как магазин называется на вывеске. Пример: магазин «Зафар».','Doʻkon peshtaxtasidagi nomi. Masalan: «Zafar» doʻkoni.')+'</div>'
     +'<div><label class="lab" for="bf-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="bf-phone" data-bf="phone" value="'+esc(f.phone)+'" placeholder="+998 90 123 45 67" autocomplete="off">'+hintD('Телефон владельца или продавца магазина.','Doʻkon egasi yoki sotuvchisining telefoni.')+'</div>'
+    +'<div class="full"><label class="lab">'+L('Ещё номера','Boshqa raqamlar')+'</label>'+(f.ph||[]).map((p,i)=>'<div class="phrow"><input type="tel" data-bph="'+i+'" value="'+esc(p)+'" placeholder="+998 90 123 45 67" autocomplete="off" aria-label="'+esc(L('Ещё номер ','Boshqa raqam ')+(i+1))+'"><button type="button" class="btn ghost sm" data-act="bphmain" data-i="'+i+'">'+L('Сделать основным','Asosiy qilish')+'</button><button type="button" class="ibtn" data-act="bphdel" data-i="'+i+'" aria-label="'+esc(L('Убрать номер ','Raqamni olib tashlash ')+(i+1))+'">'+ICO.del+'</button></div>').join('')
+    +((f.ph||[]).length<5?'<button type="button" class="btn ghost sm" data-act="bphadd">+ '+L('Добавить номер','Raqam qoʻshish')+'</button>':'')
+    +hintD('Если магазин заказывает с нескольких номеров: все они ведут в один магазин. Не больше 5.','Doʻkon bir nechta raqamdan buyurtma bersa: hammasi bitta doʻkonga olib keladi. 5 tadan oshmasin.')+'</div>'
     +'<div><label class="lab" for="bf-terr">'+L('Территория','Hudud')+'</label><select id="bf-terr" data-bf="terr">'+opt('',agent?L('Выберите территорию','Hududni tanlang'):L('Без территории','Hududsiz'),f.terr)+tl.map(t=>opt(t.id,t.name,f.terr)).join('')+'</select>'+hintD('Район или город, к которому относится магазин.','Doʻkon qaysi tuman yoki shaharga tegishli.')+'</div>'
     +'<div class="full"><label class="lab" for="bf-addr">'+L('Адрес','Manzil')+'</label><input type="text" id="bf-addr" data-bf="addr" maxlength="200" value="'+esc(f.addr)+'" autocomplete="off">'+hintD('Улица, дом, ориентир. Пример: ул. Галаба 12, рядом с аптекой.','Koʻcha, uy, moʻljal. Masalan: Gʻalaba koʻchasi 12, dorixona yonida.')+'</div>'
     +'<div><label class="lab" for="bf-st">'+L('Статус','Holat')+'</label><select id="bf-st" data-bf="st">'+['new','talk','refuse'].map(k=>opt(k,BST()[k],f.st)).join('')+'</select>'+hintD('На каком этапе разговор с магазином.','Doʻkon bilan suhbat qaysi bosqichda.')+'</div>'
@@ -4472,6 +4503,7 @@ function baseFormHTML(){
     +(b.role==='owner'?'<div><label class="lab" for="bf-agent">'+L('Агент','Agent')+'</label><select id="bf-agent" data-bf="agent">'+opt('','—',f.agent)+b.agents.map(a=>opt(a.id,a.name,f.agent)).join('')+'</select>'+hintD('Агент, за которым закреплён магазин.','Doʻkon biriktirilgan agent.')+'</div>':'')
     +baseLocFormHTML()
     +'<div class="full"><label class="lab" for="bf-note">'+L('Заметка о визите (магазин и дистрибьюторы её не видят)','Tashrif haqida eslatma (doʻkon va distribyutorlar koʻrmaydi)')+'</label><textarea id="bf-note" data-bf="note" rows="3" maxlength="500">'+esc(f.note)+'</textarea>'+hintD('Что удалось выяснить за визит. Пример: придёт во вторник, интересует масло.','Tashrif vaqtida nima aniqlandi. Masalan: seshanba kuni keladi, yogʻ qiziqtiradi.')+'</div>'
+    +(b.edit!=='new'?'<div class="full mgbox"><button type="button" class="btn ghost" data-act="mgopen" data-id="'+esc(b.edit)+'">'+L('Объединить с дублем…','Dublikat bilan birlashtirish…')+'</button>'+hintD('Если этот магазин записан в базе дважды: дубль вольётся сюда, его номера и аккаунты перейдут к этому магазину.','Doʻkon bazada ikki marta yozilgan boʻlsa: dublikat shu yerga qoʻshiladi, uning raqamlari va akkauntlari shu doʻkonga oʻtadi.')+'</div>':'')
     +'</div><div class="err" id="bferr" role="alert">'+esc(b.ferr)+'</div>'
     +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="basesave"'+(b.busy?' disabled':'')+'>'+(b.busy?L('Сохраняем…','Saqlanmoqda…'):L('Сохранить','Saqlash'))+'</button><button type="button" class="btn ghost" data-act="basecancel"'+(b.busy?' disabled':'')+'>'+L('Отмена','Bekor qilish')+'</button></div></div>';
 }
@@ -4524,6 +4556,7 @@ function paintSheet(){
   const el=$('#bsheet');if(!el)return;
   const b=S.base,w=baseW(),owner=b.role==='owner';
   setScrollLock();
+  if(b.mg){el.innerHTML=mergeSheetHTML();return}
   if(b.cd){el.innerHTML=clientSheetHTML();return}
   if(b.legend){
     const SG=SIGNS(),ks=w?['talk','warn','app','refuse']:['app'];
@@ -4553,7 +4586,7 @@ function baseOpenForm(x){
   let terr=x?x.terr:(b.terr&&b.terr!=='-'?b.terr:'');
   if(!x&&b.role==='agent'&&!terr&&b.mine.length===1)terr=b.mine[0];
   b.edit=x?x.id:'new';b.ferr='';
-  b.fm=x?{name:x.name,phone:x.phone,addr:x.addr||'',terr:x.terr||'',st:x.st||'new',ty:x.ty||'',note:x.note||'',agent:x.agent||'',loc:x.loc?{lat:x.loc.lat,lng:x.loc.lng}:null,locDirty:false}:{name:'',phone:'',addr:'',terr,st:'new',ty:'',note:'',agent:'',loc:null,locDirty:false};b.link='';
+  b.fm=x?{name:x.name,phone:x.phone,ph:(x.ph||[]).slice(),addr:x.addr||'',terr:x.terr||'',st:x.st||'new',ty:x.ty||'',note:x.note||'',agent:x.agent||'',loc:x.loc?{lat:x.loc.lat,lng:x.loc.lng}:null,locDirty:false}:{name:'',phone:'',ph:[],addr:'',terr,st:'new',ty:'',note:'',agent:'',loc:null,locDirty:false};b.link='';
   paintBase();
   const f=$('#bform');if(f)try{f.scrollIntoView({block:'start',behavior:'smooth'})}catch(e){}
 }
@@ -4564,6 +4597,8 @@ async function baseSave(){
   if(f.locDirty)body.loc=f.loc?{lat:f.loc.lat,lng:f.loc.lng}:null;   // точку шлём, только если её меняли
   if(body.name.length<2){b.ferr=baseErr('bad_name');paintBase();return}
   if(body.phone.replace(/\D/g,'').length<9){b.ferr=baseErr('bad_phone');paintBase();return}
+  body.ph=(f.ph||[]).map(x=>x.trim()).filter(Boolean);
+  if(body.ph.some(x=>x.replace(/\D/g,'').length<9)){b.ferr=baseErr('bad_phone');paintBase();return}
   const isNew=b.edit==='new';
   b.busy=true;b.ferr='';paintBase();
   const r=await api(isNew?'POST':'PUT','/api/hub/base'+(isNew?'':'/'+encodeURIComponent(b.edit)),body);
@@ -4572,6 +4607,85 @@ async function baseSave(){
   b.edit=null;
   toast(isNew?L('Магазин добавлен в базу','Doʻkon bazaga qoʻshildi'):L('Данные сохранены','Maʼlumotlar saqlandi'));
   loadBase(true);
+}
+/* ---- объединение дублей: магазин остаётся, найденный дубль вливается в него ---- */
+const MGFILL=()=>({addr:L('адрес','manzil'),terr:L('район','rayon'),ty:L('тип','turi'),agent:L('агент','agent'),loc:L('точка на карте','xaritadagi nuqta'),note:L('заметка','eslatma')});
+function mergeOpen(id){
+  const b=S.base,x=b.items.find(y=>y.id===id);if(!x)return;
+  b.mg={id,name:x.name,q:'',res:[],loading:false,seq:0,qt:null,sel:null,pv:null,busy:false,err:''};
+  paintSheet();
+  setTimeout(()=>{const i=$('#mg-q');if(i)i.focus()},60);
+}
+function mergeClose(){const b=S.base;if(b.mg)clearTimeout(b.mg.qt);b.mg=null;paintSheet()}
+function mergeResPaint(){const el=$('#mg-res');if(el)el.innerHTML=mergeResHTML()}
+async function mergeSearch(){
+  const g=S.base.mg;if(!g)return;
+  const q=g.q.trim(),seq=++g.seq;
+  g.err='';
+  if(q.length<2){g.res=[];g.loading=false;mergeResPaint();return}
+  g.loading=true;mergeResPaint();
+  const r=await api('GET','/api/hub/base?q='+encodeURIComponent(q));
+  if(S.base.mg!==g||g.seq!==seq)return;
+  g.loading=false;
+  if(!r.ok||!r.data||!Array.isArray(r.data.items)){g.res=[];g.err=baseErr('');mergeResPaint();return}
+  g.res=r.data.items.filter(x=>x.id!==g.id);
+  mergeResPaint();
+}
+function mergeResHTML(){
+  const g=S.base.mg;
+  if(g.err)return '<div class="err" role="alert">'+esc(g.err)+'</div>';
+  if(g.q.trim().length<2)return '<div class="unit">'+L('Введите название, адрес или телефон дубля.','Dublikat nomi, manzili yoki telefonini kiriting.')+'</div>';
+  if(g.loading)return '<div class="unit">'+L('Ищем…','Qidirilmoqda…')+'</div>';
+  if(!g.res.length)return '<div class="unit">'+L('Ничего не найдено. Проверьте написание или попробуйте номер телефона.','Hech narsa topilmadi. Yozilishini tekshiring yoki telefon raqamini sinab koʻring.')+'</div>';
+  return g.res.map(x=>'<button type="button" class="mgit" data-act="mgpick" data-id="'+esc(x.id)+'"><b>'+esc(x.name)+'</b><small>'+esc([x.phone].concat(x.ph||[]).join(', '))+'</small>'+(x.addr||x.terr||x.app?'<small>'+esc([x.addr,terrName(x.terr),x.app?L('в приложении','ilovada'):''].filter(Boolean).join(' · '))+'</small>':'')+'</button>').join('')
+    +(g.res.length>=BASE_PAGE_MG?'<div class="unit">'+L('Показаны первые '+BASE_PAGE_MG+'. Уточните поиск, чтобы найти нужный.','Dastlabki '+BASE_PAGE_MG+' ta koʻrsatildi. Kerakli doʻkonni topish uchun qidiruvni aniqlashtiring.')+'</div>':'');
+}
+const BASE_PAGE_MG=50;
+async function mergePick(id){
+  const g=S.base.mg;if(!g)return;
+  const x=g.res.find(y=>y.id===id);if(!x)return;
+  Object.assign(g,{sel:x,pv:null,err:'',busy:true});
+  paintSheet();
+  const r=await api('POST','/api/hub/base/'+encodeURIComponent(g.id)+'/merge',{from:id,dry:true});
+  if(S.base.mg!==g||g.sel!==x)return;
+  g.busy=false;
+  if(r.ok&&r.data&&r.data.preview)g.pv=r.data.preview;else g.err=baseErr(r.data&&r.data.error);
+  paintSheet();
+}
+async function mergeDo(){
+  const b=S.base,g=b.mg;if(!g||!g.sel||!g.pv||g.busy)return;
+  g.busy=true;g.err='';paintSheet();
+  const r=await api('POST','/api/hub/base/'+encodeURIComponent(g.id)+'/merge',{from:g.sel.id});
+  if(b.mg!==g)return;
+  g.busy=false;
+  if(!r.ok||!r.data||!r.data.item){g.err=baseErr(r.data&&r.data.error);paintSheet();return}
+  b.mg=null;b.edit=null;
+  toast(L('Магазины объединены','Doʻkonlar birlashtirildi'));
+  loadBase(true);
+}
+function mergeSheetHTML(){
+  const g=S.base.mg,x=g.sel,pv=g.pv;
+  let body,foot='';
+  if(!x){
+    body='<p class="mgp">'+L('Магазин «'+esc(g.name)+'» останется. Найдите его дубль: он вольётся сюда и пропадёт из списка. Название, основной номер и адрес останутся прежними.','«'+esc(g.name)+'» doʻkoni qoladi. Uning dublikatini toping: u shu yerga qoʻshiladi va roʻyxatdan yoʻqoladi. Nomi, asosiy raqami va manzili oʻzgarmaydi.')+'</p>'
+      +'<div class="search"><input type="search" id="mg-q" data-mgq="1" value="'+esc(g.q)+'" placeholder="'+esc(L('Название, адрес, телефон','Nomi, manzil, telefon'))+'" autocomplete="off" aria-label="'+esc(L('Поиск дубля','Dublikatni qidirish'))+'"></div><div id="mg-res">'+mergeResHTML()+'</div>';
+  }else if(!pv){
+    body=g.err?'<div class="err" role="alert">'+esc(g.err)+'</div>':'<div class="unit">'+L('Считаем, что получится…','Natija hisoblanmoqda…')+'</div>';
+    foot='<div class="fs-foot"><button type="button" class="btn ghost" data-act="mgback">'+L('Назад к поиску','Qidiruvga qaytish')+'</button></div>';
+  }else{
+    const fl=(pv.fill||[]).map(k=>MGFILL()[k]).filter(Boolean);
+    body='<div class="mgcmp"><div><small>'+L('Останется','Qoladi')+'</small><b>'+esc(pv.keep.name)+'</b><span>'+esc([pv.keep.phone,pv.keep.addr].filter(Boolean).join(' · '))+'</span></div>'
+      +'<div class="gone"><small>'+L('Вольётся и пропадёт','Qoʻshiladi va yoʻqoladi')+'</small><b>'+esc(pv.gone.name)+'</b><span>'+esc([pv.gone.phone,pv.gone.addr].filter(Boolean).join(' · '))+'</span></div></div>'
+      +'<div class="mgl"><div><b>'+L('Номера ('+pv.phones.length+'): ','Raqamlar ('+pv.phones.length+'): ')+'</b>'+esc(pv.phones.join(', '))+(pv.moved?'':' · '+L('все уже были у магазина','hammasi doʻkonda bor edi'))+'</div>'
+      +'<div><b>'+L('Аккаунтов в приложении: ','Ilovadagi akkauntlar: ')+num(pv.accounts)+'</b>'+(pv.gAccounts?' · '+L('из них от дубля: '+pv.gAccounts+'. Заказы с них пойдут в этот магазин','shundan dublikatdan: '+pv.gAccounts+' ta. Ulardan buyurtmalar shu doʻkonga tushadi'):'')+'</div>'
+      +'<div>'+L('Заказы, долги и история остаются. Заметки и группы дистрибьюторов объединяются: если они есть у обоих, записываются подряд.','Buyurtmalar, qarzlar va tarix qoladi. Distribyutorlarning eslatma va guruhlari birlashtiriladi: ikkalasida ham boʻlsa, ketma-ket yoziladi.')+'</div>'
+      +(fl.length?'<div>'+L('Пустое у этого магазина возьмётся у дубля: ','Bu doʻkonda boʻsh boʻlgani dublikatdan olinadi: ')+esc(fl.join(', '))+'</div>':'')+'</div>'
+      +'<div class="mgw">'+L('Отменить объединение нельзя.','Birlashtirishni bekor qilib boʻlmaydi.')+'</div>'
+      +(g.err?'<div class="err" role="alert">'+esc(g.err)+'</div>':'');
+    foot='<div class="fs-foot"><div class="row-btns"><button type="button" class="btn" data-act="mgdo"'+(g.busy?' disabled':'')+'>'+(g.busy?L('Объединяем…','Birlashtirilmoqda…'):L('Объединить','Birlashtirish'))+'</button><button type="button" class="btn ghost" data-act="mgback"'+(g.busy?' disabled':'')+'>'+L('Назад','Orqaga')+'</button></div></div>';
+  }
+  return '<div class="fs-bg" data-act="bsheetx"></div><div class="fs" role="dialog" aria-modal="true" aria-label="'+esc(L('Объединить магазины','Doʻkonlarni birlashtirish'))+'"><div class="fs-grab"></div>'
+    +'<div class="fs-head"><h2>'+L('Объединить с дублем','Dublikat bilan birlashtirish')+'</h2><button type="button" class="lnk" data-act="bsheetx">'+L('Закрыть','Yopish')+'</button></div><div class="fs-body">'+body+'</div>'+foot+'</div>';
 }
 async function baseCheck(id){
   const b=S.base;if(b.busy)return;
@@ -5248,7 +5362,7 @@ document.addEventListener('click',e=>{
   else if(a==='basereload'){S.base.err=false;renderBase();loadBase(true)}
   else if(a==='bsheet'){S.base.sheet=true;S.base.legend=false;paintSheet()}
   else if(a==='blegend'){S.base.legend=true;S.base.sheet=false;paintSheet()}
-  else if(a==='bsheetx')clientCardClose()
+  else if(a==='bsheetx'){if(S.base.mg)mergeClose();else clientCardClose()}
   else if(a==='bset'){
     const k=t.dataset.k;
     if(k==='sort'&&t.dataset.v==='near')baseNear();
@@ -5272,6 +5386,13 @@ document.addEventListener('click',e=>{
   else if(a==='bfloc-link')bfLocLink();
   else if(a==='bfloc-clear'){S.base.fm.loc=null;S.base.fm.locDirty=true;paintBase()}
   else if(a==='basecancel'){S.base.edit=null;S.base.ferr='';paintBase()}
+  else if(a==='bphadd'){const f=S.base.fm;if((f.ph||[]).length<5){(f.ph=f.ph||[]).push('');paintBase();const l=document.querySelectorAll('[data-bph]');if(l.length)l[l.length-1].focus()}}
+  else if(a==='bphdel'){S.base.fm.ph.splice(Number(t.dataset.i),1);paintBase()}
+  else if(a==='bphmain'){const f=S.base.fm,i=Number(t.dataset.i),m=f.phone;f.phone=f.ph[i];f.ph[i]=m;paintBase()}
+  else if(a==='mgopen')mergeOpen(t.dataset.id);
+  else if(a==='mgpick')mergePick(t.dataset.id);
+  else if(a==='mgback'){const g=S.base.mg;if(g&&!g.busy){Object.assign(g,{sel:null,pv:null,err:''});paintSheet();setTimeout(()=>{const i=$('#mg-q');if(i)i.focus()},60)}}
+  else if(a==='mgdo')mergeDo();
   else if(a==='basesave')baseSave();
   else if(a==='basechk')baseCheck(t.dataset.id);
   else if(a==='basedel')baseDelete(t.dataset.id);
@@ -5587,6 +5708,8 @@ document.addEventListener('input',e=>{
   else if(t.dataset.cmo!==undefined){const f=S.cm.ow[t.dataset.did]||(S.cm.ow[t.dataset.did]={a:'',note:'',open:true});f[t.dataset.cmo]=t.value}
   else if(t.dataset.bq!==undefined){S.base.q=t.value;clearTimeout(S.base.qt);S.base.qt=setTimeout(()=>loadBase(true),350)}
   else if(t.dataset.bf!==undefined)S.base.fm[t.dataset.bf]=t.value;
+  else if(t.dataset.bph!==undefined)S.base.fm.ph[Number(t.dataset.bph)]=t.value;
+  else if(t.dataset.mgq!==undefined){const g=S.base.mg;if(g){g.q=t.value;clearTimeout(g.qt);g.qt=setTimeout(mergeSearch,350)}}
   else if(t.dataset.bfLink!==undefined)S.base.link=t.value;
   else if(t.dataset.aterr!==undefined){const set=new Set(S.own.aterr);if(t.checked)set.add(t.dataset.aterr);else set.delete(t.dataset.aterr);S.own.aterr=[...set]}
   else if(t.dataset.agterr!==undefined){
