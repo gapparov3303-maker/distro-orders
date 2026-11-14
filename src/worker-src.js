@@ -2227,6 +2227,7 @@ export class Shop {
     if (path === '/__/mine') return json({ rows: await this.mineRows(b.items) });
     if (path === '/__/mine-ids') return json({ uids: await this.mineIds() });
     if (path === '/__/mine-set') return await this.mineSet(b);
+    if (path === '/__/mine-merge') return await this.mineMerge(b);
     if (path === '/__/mine-orders') return json({ orders: await this.mineOrders(b.uids) });
     if (path === '/__/stats') return json(await this.commRange(String(b.from || ''), String(b.to || '')));
     if (path === '/__/analytics') {
@@ -2623,6 +2624,27 @@ export class Shop {
     for (const c of cs) { Object.assign(c, v.v); upd['c:' + c.uid] = c; }
     if (Object.keys(upd).length) await this.st.put(upd);
     return json({ row: (await this.mineRows([{ bid, uids }]))[0] });
+  }
+  /* Объединение магазинов в базе: заметка и группа, которые этот дистрибьютор вёл по номеру задвоенного магазина (from), переходят к оставшемуся (to).
+     Заметка и группа оставшегося главные; если заметки есть у обоих и они разные, они записываются подряд. uids: все аккаунты объединённого магазина. */
+  async mineMerge(b) {
+    await this.ensureClients();
+    const ok = x => typeof x === 'string' && /^b[a-z0-9]{4,12}$/.test(x);
+    if (!ok(b.from) || !ok(b.to) || b.from === b.to) return json({ error: 'bad_request' }, 400);
+    const uids = this.mineUids(b), fromUids = this.mineUids({ uids: b.fromUids });
+    const rows = await this.mineRows([{ bid: b.from, uids: fromUids }, { bid: b.to, uids: uids.filter(u => !fromUids.includes(u)) }]);
+    const rf = rows[0], rt = rows[1];
+    let note = rt.note;
+    if (rf.note && !note) note = rf.note;
+    else if (rf.note && rf.note !== note && !note.includes(rf.note)) note = (note + '\n' + rf.note).slice(0, 500);
+    const grp = rt.grp || rf.grp, upd = {};
+    if (note || grp) {
+      upd['bn:' + b.to] = { note, grp };
+      for (const c of (await Promise.all(uids.map(u => this.getClient(u)))).filter(Boolean)) { c.note = note; c.grp = grp; upd['c:' + c.uid] = c; }
+      await this.st.put(upd);
+    }
+    await this.st.delete('bn:' + b.from);
+    return json({ ok: true });
   }
   /* Последние заказы магазина у этого дистрибьютора. */
   async mineOrders(uids) {
@@ -4049,6 +4071,8 @@ const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
 const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50;
+/* У магазина один основной телефон и до пяти дополнительных номеров (ph): так одна точка заказывает с нескольких номеров. */
+const MAX_PH = 5;
 const PEOPLE_GAP = 600000, PEOPLE_MAX = 1000;
 const BASE_STATUS = ['new', 'talk', 'refuse'];
 /* Тип точки (один на всех дистрибьюторов, ставит агент или владелец): магазин, супермаркет, оптовый покупатель, HoReCa. Пусто — не указан. */
@@ -4068,8 +4092,8 @@ const validTid = t => typeof t === 'string' && /^t[a-z0-9]{2,8}$/.test(t);
 /* Точка магазина: loc — сохранённая (поставил агент или владелец, либо принята от клиента), cloc — то, что прислал клиент в заказе и ждёт подтверждения.
    Дистрибьютор видит только сохранённую точку. */
 const locOut = l => l ? { lat: l.lat, lng: l.lng, by: l.by || '' } : null;
-const baseOwn = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src }; if (b.ty) o.ty = b.ty; if (b.loc) o.loc = locOut(b.loc); if (b.cloc) o.cloc = { lat: b.cloc.lat, lng: b.cloc.lng }; return o; };
-const basePub = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid }; if (b.ty) o.ty = b.ty; if (b.loc) o.loc = { lat: b.loc.lat, lng: b.loc.lng }; return o; };
+const baseOwn = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, st: b.st, note: b.note, agent: b.agent, app: !!b.uid, chk: !!b.chk, src: b.src }; if (b.ty) o.ty = b.ty; if (b.ph && b.ph.length) o.ph = b.ph.slice(); if (b.loc) o.loc = locOut(b.loc); if (b.cloc) o.cloc = { lat: b.cloc.lat, lng: b.cloc.lng }; return o; };
+const basePub = b => { const o = { id: b.id, name: b.name, phone: b.phone, addr: b.addr, terr: b.terr, app: !!b.uid }; if (b.ty) o.ty = b.ty; if (b.ph && b.ph.length) o.ph = b.ph.slice(); if (b.loc) o.loc = { lat: b.loc.lat, lng: b.loc.lng }; return o; };
 /* Клиент прислал точку в заказе: запоминаем как предложение. Если она рядом с уже сохранённой (до 50 м), ничего не меняем. Возвращает, изменилась ли запись. */
 function setClientLoc(rec, loc, now) {
   const l = cleanLoc(loc);
@@ -4389,16 +4413,18 @@ export class Hub {
     do { id = 'b' + randId(7).toLowerCase(); } while (await this.st.get('b:' + id));
     return id;
   }
-  /* Нет ли уже такого магазина: по телефону или по названию с тем же адресом. except: запись, которую правим. */
+  /* Нет ли уже такого магазина: по телефону (основному или дополнительному; phone может быть списком номеров) или по названию с тем же адресом.
+     except: запись, которую правим. */
   async findDup(phone, name, addr, except) {
-    const ids = [await this.st.get('bp:' + phoneKey(phone))];
+    const ids = [];
+    for (const p of Array.isArray(phone) ? phone : [phone]) ids.push(await this.st.get('bp:' + phoneKey(p)));
     const k = nameKey(name, addr);
     if (k) ids.push(await this.st.get('bk:' + k));
     for (const id of ids) if (id && id !== except) { const e = await this.st.get('b:' + id); if (e) return e; }
     return null;
   }
   /* Ключи поиска повторов записи: что положить и что убрать при смене телефона, названия или адреса. */
-  idxOf(b) { const o = { ['bp:' + phoneKey(b.phone)]: b.id }, k = nameKey(b.name, b.addr); if (k) o['bk:' + k] = b.id; return o; }
+  idxOf(b) { const o = {}, k = nameKey(b.name, b.addr); for (const p of [b.phone].concat(b.ph || [])) o['bp:' + phoneKey(p)] = b.id; if (k) o['bk:' + k] = b.id; return o; }
   /* Магазин оформил заказ. Есть в базе — ничего не меняем (данные могла проверить агент); нет — добавляем из заказа, агент потом проверит. */
   async baseTouch(uid, p, src) {
     if (!p || typeof p !== 'object' || !Number.isSafeInteger(uid)) return;
@@ -4446,6 +4472,20 @@ export class Hub {
     if (has('addr')) v.addr = cleanStr(b.addr, 200);
     if (has('note')) v.note = cleanStr(b.note, 500, true);
     if (has('st')) { if (!BASE_STATUS.includes(b.st)) return { err: 'bad_request' }; v.st = b.st; }
+    if (has('ph')) {
+      if (!Array.isArray(b.ph)) return { err: 'bad_request' };
+      const out = [], seen = new Set();
+      for (const x of b.ph.slice(0, 20)) {
+        if (typeof x !== 'string') return { err: 'bad_request' };
+        const p = cleanStr(x, 25);
+        if (!p) continue;
+        if (!phoneOk(p)) return { err: 'bad_phone' };
+        const k = phoneKey(p);
+        if (!seen.has(k)) { seen.add(k); out.push(p); }
+      }
+      if (out.length > MAX_PH) return { err: 'too_many_phones' };
+      v.ph = out;
+    }
     if (has('ty')) { if (typeof b.ty !== 'string' || (b.ty && !BASE_TYPES.includes(b.ty))) return { err: 'bad_request' }; v.ty = b.ty; }
     if (has('terr')) {
       const terrs = await this.terrs();
@@ -4479,6 +4519,12 @@ export class Hub {
     if (!l) return { err: 'bad_loc' };
     return { set: { lat: l.lat, lng: l.lng, t: now, by: role.r === 'owner' ? 'owner' : 'agent' } };
   }
+  /* Дополнительные номера без основного и без повторов, не больше MAX_PH. */
+  extraPhones(main, list) {
+    const seen = new Set([phoneKey(main)]), out = [];
+    for (const p of Array.isArray(list) ? list : []) { const k = phoneKey(p); if (k && !seen.has(k)) { seen.add(k); out.push(p); } }
+    return out.slice(0, MAX_PH);
+  }
   async baseCreate(role, b) {
     const f = await this.baseFields(Object.assign({ terr: '' }, b), role);
     if (f.err) return json({ error: f.err }, 400);
@@ -4487,10 +4533,11 @@ export class Hub {
     if (!v.phone) return json({ error: 'bad_phone' }, 400);
     const n = (await this.st.get('bn')) || 0;
     if (n >= MAX_BASE) return json({ error: 'too_many' }, 409);
-    const dup = await this.findDup(v.phone, v.name, v.addr || '', '');
+    const ph = this.extraPhones(v.phone, v.ph);
+    const dup = await this.findDup([v.phone].concat(ph), v.name, v.addr || '', '');
     if (dup) return this.dupJson(dup, role);
     const now = new Date().toISOString(), id = await this.newBid();
-    const rec = { id, name: v.name, phone: v.phone, addr: v.addr || '', terr: v.terr || '', st: v.st || 'new', ty: v.ty || '', note: v.note || '', agent: role.r === 'agent' ? role.ag.id : (v.agent || ''), uid: 0, chk: true, ver: 1, src: 'agent', created: now, upd: now };
+    const rec = { id, name: v.name, phone: v.phone, ph, addr: v.addr || '', terr: v.terr || '', st: v.st || 'new', ty: v.ty || '', note: v.note || '', agent: role.r === 'agent' ? role.ag.id : (v.agent || ''), uid: 0, chk: true, ver: 1, src: 'agent', created: now, upd: now };
     const lc = this.locChange(role, {}, b, now);
     if (lc.err) return json({ error: lc.err }, 400);
     if (lc.set) rec.loc = lc.set;
@@ -4504,7 +4551,9 @@ export class Hub {
     const f = await this.baseFields(b, role);
     if (f.err) return json({ error: f.err }, 400);
     const v = f.v, next = Object.assign({}, rec, v);
-    const dup = await this.findDup(next.phone, next.name, next.addr, rec.id);
+    // дополнительные номера: основной номер в них не повторяется (если основным сделали один из них, он из списка уходит)
+    next.ph = this.extraPhones(next.phone, next.ph);
+    const dup = await this.findDup([next.phone].concat(next.ph), next.name, next.addr, rec.id);
     if (dup) return this.dupJson(dup, role);
     // точка магазина: только владелец и агент (эта запись — его зона); клиент и дистрибьютор её не меняют
     const lc = this.locChange(role, rec, b, new Date().toISOString());
@@ -4524,6 +4573,76 @@ export class Hub {
     await this.st.put(Object.assign({ ['b:' + id]: next }, now, upd));
     if (del.length) await this.st.delete(del);
     return json({ item: baseOwn(next) });
+  }
+  /* Что получится при объединении магазина gone в keep (keep остаётся). Ничего не пишет. null в err, если всё в порядке.
+     Номера и аккаунты обоих переходят к keep; название, основной номер, адрес, район, тип, агент, точка и статус остаются от keep, а пустые поля берутся у gone. */
+  async mergePlan(role, keep, gone) {
+    if (role.r === 'agent' && !(this.inScope(role.ag, keep) && this.inScope(role.ag, gone))) return { err: 'forbidden', status: 403 };
+    const seen = new Set([phoneKey(keep.phone)].concat((keep.ph || []).map(phoneKey))), ph = (keep.ph || []).slice(), moved = [];
+    for (const p of [gone.phone].concat(gone.ph || [])) { const k = phoneKey(p); if (k && !seen.has(k)) { seen.add(k); ph.push(p); moved.push(p); } }
+    if (ph.length > MAX_PH) return { err: 'too_many_phones', status: 409, max: MAX_PH };
+    const bu = await this.st.list({ prefix: 'bu:' });
+    const uidsOf = id => { const a = []; bu.forEach((bid, k) => { if (bid === id) a.push(Number(k.slice(3))); }); return a; };
+    const uk = uidsOf(keep.id), ug = uidsOf(gone.id);
+    if (keep.uid && !uk.includes(keep.uid)) uk.push(keep.uid);
+    if (gone.uid && !ug.includes(gone.uid)) ug.push(gone.uid);
+    const all = [...new Set(uk.concat(ug))];
+    if (all.length > 10) return { err: 'too_many_accounts', status: 409 };
+    const next = Object.assign({}, keep, { ph }), fill = [], now = new Date().toISOString();
+    const mine = role.r === 'owner' || gone.agent === (role.ag && role.ag.id);
+    if (!next.addr && gone.addr) {
+      // адрес берём у дубля, если из-за него название с адресом не совпадёт с каким-то третьим магазином
+      next.addr = gone.addr;
+      const d = await this.findDup([], next.name, next.addr, keep.id);
+      if (d && d.id !== gone.id) next.addr = keep.addr || ''; else fill.push('addr');
+    }
+    if (!next.terr && gone.terr && (role.r === 'owner' || !(role.ag.terr || []).length || role.ag.terr.includes(gone.terr))) { next.terr = gone.terr; fill.push('terr'); }
+    if (!next.ty && gone.ty) { next.ty = gone.ty; fill.push('ty'); }
+    if (!next.agent && gone.agent && mine) { next.agent = gone.agent; fill.push('agent'); }
+    if (!next.loc && gone.loc) { next.loc = gone.loc; fill.push('loc'); }
+    if (!next.cloc && gone.cloc) next.cloc = gone.cloc;
+    if (gone.note && !next.note) { next.note = gone.note; fill.push('note'); }
+    else if (gone.note && gone.note !== next.note && !next.note.includes(gone.note)) { next.note = (next.note + '\n' + gone.note).slice(0, 500); fill.push('note'); }
+    if (!next.uid && ug.length) next.uid = ug[0];
+    if (String(gone.created || '') && String(gone.created) < String(keep.created || '9')) next.created = gone.created;
+    // у переехавших аккаунтов форма заказа один раз подставит данные магазина, который остаётся
+    if (ug.length) next.ver = (Number(keep.ver) || 0) + 1;
+    next.chk = true;
+    next.upd = now;
+    return { err: '', next, moved, fill, uk, ug, all, ph };
+  }
+  /* Объединить: магазин from (дубль) вливается в магазин id. dry: только показать, что получится.
+     Сначала дистрибьюторы переносят свои заметки (это можно повторить), потом база: аккаунты и номера дубля переходят к id, дубль удаляется. Назад не вернуть. */
+  async baseMerge(role, id, b) {
+    const from = b.from;
+    if (!validBid(from)) return json({ error: 'bad_request' }, 400);
+    if (from === id) return json({ error: 'same' }, 400);
+    const keep = await this.st.get('b:' + id), gone = await this.st.get('b:' + from);
+    if (!keep || !gone) return json({ error: 'not_found' }, 404);
+    let pl = await this.mergePlan(role, keep, gone);
+    if (pl.err) return json({ error: pl.err, max: pl.max }, pl.status);
+    if (b.dry === true) {
+      return json({ preview: { keep: { name: keep.name, phone: keep.phone, addr: keep.addr || '' }, gone: { name: gone.name, phone: gone.phone, addr: gone.addr || '' }, phones: [keep.phone].concat(pl.ph), moved: pl.moved.length, accounts: pl.all.length, gAccounts: pl.ug.length, fill: pl.fill } });
+    }
+    const dists = (await this.allRecs()).map(r => r.id);
+    const res = await Promise.all(dists.map(d => shopCall(this.env, d, '/__/mine-merge', { from, to: id, uids: pl.all, fromUids: pl.ug })));
+    if (res.some(r => !r.ok)) return json({ error: 'retry' }, 502);
+    // пока дистрибьюторы отвечали, записи могли поменяться: проверяем ещё раз
+    const keep2 = await this.st.get('b:' + id), gone2 = await this.st.get('b:' + from);
+    if (!keep2 || !gone2) return json({ error: 'not_found' }, 404);
+    pl = await this.mergePlan(role, keep2, gone2);
+    if (pl.err) return json({ error: pl.err, max: pl.max }, pl.status);
+    const put = Object.assign({}, this.idxOf(gone2), { ['b:' + id]: pl.next });
+    const del = ['b:' + from];
+    Object.keys(put).forEach(k => { if (k.startsWith('bp:')) put[k] = id; });
+    Object.keys(this.idxOf(gone2)).forEach(k => { if (k.startsWith('bk:')) { delete put[k]; del.push(k); } });
+    Object.assign(put, this.idxOf(pl.next));
+    pl.ug.forEach(u => { put['bu:' + u] = id; });
+    if (pl.next.uid && !pl.uk.includes(pl.next.uid)) put['bu:' + pl.next.uid] = id;
+    put.bn = Math.max(0, ((await this.st.get('bn')) || 1) - 1);
+    await this.st.put(put);
+    await this.st.delete(del.filter(k => !(k in put)));
+    return json({ item: baseOwn(pl.next), moved: pl.moved.length, accounts: pl.all.length });
   }
   async baseDelete(role, id) {
     const rec = await this.st.get('b:' + id);
@@ -4558,7 +4677,7 @@ export class Hub {
     // тип точки: фильтр доступен всем, кто видит базу; «-» — тип не указан
     const tyq = String(sp.get('ty') || ''), ty = tyq === '-' || BASE_TYPES.includes(tyq) ? tyq : '';
     const tyOk = b => !ty || (ty === '-' ? !b.ty : b.ty === ty);
-    const qOk = b => !q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && String(b.phone).replace(/\D/g, '').includes(qd));
+    const qOk = b => !q || b.name.toLowerCase().includes(q) || (b.addr || '').toLowerCase().includes(q) || (qd.length >= 3 && [b.phone].concat(b.ph || []).some(p => String(p).replace(/\D/g, '').includes(qd)));
     // «Мои клиенты»: те, кто заказывал у дистрибьютора (у владельца: у любого дистрибьютора)
     const sh = role.r === 'agent' ? '' : await this.mineShop(uid, sp.get('sh'));
     let mine = null;
@@ -4958,6 +5077,11 @@ export class Hub {
       if (path === '/api/hub/base' && method === 'POST') {
         if (rd.err || !rd.body || typeof rd.body !== 'object') return json({ error: 'bad_request' }, 400);
         return await this.baseCreate(role, rd.body);
+      }
+      const mg = path.match(/^\/api\/hub\/base\/(b[a-z0-9]{4,12})\/merge$/);
+      if (mg && method === 'POST') {
+        if (rd.err || !rd.body || typeof rd.body !== 'object') return json({ error: 'bad_request' }, 400);
+        return await this.baseMerge(role, mg[1], rd.body);
       }
       const bm = path.match(/^\/api\/hub\/base\/(b[a-z0-9]{4,12})$/);
       if (bm && method === 'PUT') {
