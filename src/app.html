@@ -580,6 +580,8 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .dcats{display:flex;flex-wrap:wrap;gap:6px}
 .dcats span{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--edge);border-radius:999px;padding:3px 9px;font-size:12px}
 .dtag{font-size:12px;font-weight:600;color:var(--tx)}
+.bty{margin-top:6px}
+button.mtag{border:0;font-family:inherit;cursor:pointer}
 .mono{font:700 19px/1.35 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;background:var(--surface-2);border:1px solid var(--edge);padding:10px 12px;border-radius:10px;overflow-wrap:anywhere;user-select:all}
 .mono.small{font-size:13px;letter-spacing:0;font-weight:600}
 .codebox{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
@@ -834,7 +836,7 @@ const S={
   own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
-  base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0}
+  base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0}
 };
 const view=$('#view');
 let toastT=null,saveT=null;
@@ -4380,7 +4382,7 @@ const dupTxt=x=>L('Такой магазин уже есть в базе: «'+(x
   'Bunday doʻkon bazada bor: «'+(x&&x.name||'')+'»'+(x&&x.terr&&terrName(x.terr)?' ('+terrName(x.terr)+')':'')+'. Qayta qoʻshib boʻlmaydi'+(x&&x.mine?'. Uni roʻyxatdan ochib, maʼlumotlarni tuzating.':': uni boshqa agent yuritadi.'));
 async function loadBase(reset){
   const b=S.base,seq=++b.seq;
-  const r=await api('GET','/api/hub/base?terr='+encodeURIComponent(b.terr)+'&f='+encodeURIComponent(b.f)+'&ag='+encodeURIComponent(b.ag)+'&sort='+encodeURIComponent(b.sort)+(b.sort==='near'&&b.near?'&lat='+b.near.lat+'&lng='+b.near.lng:'')+'&q='+encodeURIComponent(b.q)+(isOwner()||!isAgent()?'&sh='+encodeURIComponent(baseShop())+(b.mc?'&mine=1':''):'')+'&off='+(reset?0:b.items.length));
+  const r=await api('GET','/api/hub/base?terr='+encodeURIComponent(b.terr)+'&f='+encodeURIComponent(b.f)+'&ag='+encodeURIComponent(b.ag)+'&ty='+encodeURIComponent(b.ty)+'&sort='+encodeURIComponent(b.sort)+(b.sort==='near'&&b.near?'&lat='+b.near.lat+'&lng='+b.near.lng:'')+'&q='+encodeURIComponent(b.q)+(isOwner()||!isAgent()?'&sh='+encodeURIComponent(baseShop())+(b.mc?'&mine=1':''):'')+'&off='+(reset?0:b.items.length));
   if(seq!==b.seq)return;
   if(!r.ok||!r.data||!Array.isArray(r.data.items)){
     if(!b.loaded)b.err=true;else toast(baseErr(r.data&&r.data.error));
@@ -4388,13 +4390,13 @@ async function loadBase(reset){
     return;
   }
   const d=r.data,first=!b.loaded;
-  Object.assign(b,{role:d.role,total:d.total,all:d.all,counts:d.counts||{},unchk:d.unchk||0,terrs:d.terrs||[],mine:d.mine||[],agents:d.agents||[],more:!!d.more,loaded:true,err:false});
+  Object.assign(b,{role:d.role,total:d.total,all:d.all,counts:d.counts||{},tcounts:d.tcounts||{},unchk:d.unchk||0,terrs:d.terrs||[],mine:d.mine||[],agents:d.agents||[],more:!!d.more,loaded:true,err:false});
   b.items=reset?d.items:b.items.concat(d.items);
   if(S.view!=='base')return;
   if(first)renderBase();else paintBase();
 }
 /* фильтры экрана не переживают выход с него: при новом заходе список полный */
-function baseResetUI(){Object.assign(S.base,{terr:'',f:'',ag:'',sort:'',q:'',mc:false,sheet:false,legend:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,edit:null,ferr:''});S.base.cseq++;setScrollLock()}
+function baseResetUI(){Object.assign(S.base,{terr:'',f:'',ag:'',ty:'',sort:'',q:'',mc:false,sheet:false,legend:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,edit:null,ferr:''});S.base.cseq++;setScrollLock()}
 function setScrollLock(){const b=S.base,v=S.rv;document.documentElement.classList.toggle('sh-open',!!((S.view==='base'&&(b.sheet||b.legend||b.cd))||(S.view==='review'&&(v.ret||v.edit))))}
 const ICO={
   talk:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v11H10l-4.5 3.5v-3.5H4z"/></svg>',
@@ -4419,7 +4421,10 @@ const SIGNS=()=>({
 });
 const signOf=x=>{const o=[],w=baseW();if(w&&x.st==='talk')o.push('talk');if(w&&!x.chk)o.push('warn');if(x.app)o.push('app');if(w&&x.st==='refuse')o.push('refuse');return o};
 const BSTAT=()=>[['','Любые','Har qanday'],['new','Новые','Yangi'],['chk','Не проверены','Tekshirilmagan'],['talk','Переговоры','Muzokara'],['app','В приложении','Ilovada'],['refuse','Отказались','Rad etganlar']];
-const bFilterN=()=>{const b=S.base;return (b.f?1:0)+(b.ag?1:0)+(b.sort?1:0)};
+const bFilterN=()=>{const b=S.base;return (b.f?1:0)+(b.ag?1:0)+(b.ty?1:0)+(b.sort?1:0)};
+/* тип точки: один на всех дистрибьюторов, ставит агент или владелец */
+const BTYPE=()=>[['shop',L('Магазин','Doʻkon')],['super',L('Супермаркет','Supermarket')],['whole',L('Оптом','Ulgurji')],['horeca','HoReCa']];
+const bTyName=k=>k==='-'?L('Не указан','Koʻrsatilmagan'):((BTYPE().find(x=>x[0]===k)||[])[1]||'');
 const bAgName=id=>id==='-'?L('Без агента','Agentsiz'):((S.base.agents.find(a=>a.id===id)||{}).name||'');
 function renderBase(){
   const b=S.base,ag=S.hub.me&&S.hub.me.agent,w=baseW();
@@ -4444,6 +4449,7 @@ function baseCardHTML(x){
   const ib=(cls,act,ico,lab,extra)=>'<button type="button" class="ibtn'+cls+'" data-act="'+act+'" data-id="'+esc(x.id)+'" aria-label="'+esc(lab)+'"'+(extra||'')+'>'+ICO[ico]+'</button>';
   return '<article class="bcard bst'+(w&&x.st==='refuse'?' dim':'')+'"><div class="bh"><h3>'+esc(x.name)+'</h3>'+(signs?'<span class="bsigns">'+signs+'</span>':'')+'<span class="dtag">'+esc(tn||(w?L('без района','rayonsiz'):''))+'</span></div>'
     +(x.addr?'<div class="dmeta">'+esc(x.addr)+'</div>':'')
+    +(x.ty&&bTyName(x.ty)?'<div class="bty"><button type="button" class="mtag" data-act="btype" data-v="'+esc(x.ty)+'" aria-label="'+esc(bTyName(x.ty)+'. '+L('Показать только такие','Faqat shundaylarini koʻrsatish'))+'">'+esc(bTyName(x.ty))+'</button></div>':'')
     +(w&&x.note?'<div class="bnote">'+esc(x.note)+'</div>':'')
     +baseLocHTML(x)
     +(b.role!=='agent'?baseMineHTML(x):'')
@@ -4462,6 +4468,7 @@ function baseFormHTML(){
     +'<div><label class="lab" for="bf-terr">'+L('Территория','Hudud')+'</label><select id="bf-terr" data-bf="terr">'+opt('',agent?L('Выберите территорию','Hududni tanlang'):L('Без территории','Hududsiz'),f.terr)+tl.map(t=>opt(t.id,t.name,f.terr)).join('')+'</select>'+hintD('Район или город, к которому относится магазин.','Doʻkon qaysi tuman yoki shaharga tegishli.')+'</div>'
     +'<div class="full"><label class="lab" for="bf-addr">'+L('Адрес','Manzil')+'</label><input type="text" id="bf-addr" data-bf="addr" maxlength="200" value="'+esc(f.addr)+'" autocomplete="off">'+hintD('Улица, дом, ориентир. Пример: ул. Галаба 12, рядом с аптекой.','Koʻcha, uy, moʻljal. Masalan: Gʻalaba koʻchasi 12, dorixona yonida.')+'</div>'
     +'<div><label class="lab" for="bf-st">'+L('Статус','Holat')+'</label><select id="bf-st" data-bf="st">'+['new','talk','refuse'].map(k=>opt(k,BST()[k],f.st)).join('')+'</select>'+hintD('На каком этапе разговор с магазином.','Doʻkon bilan suhbat qaysi bosqichda.')+'</div>'
+    +'<div><label class="lab" for="bf-ty">'+L('Тип','Turi')+'</label><select id="bf-ty" data-bf="ty">'+opt('',L('Не указан','Koʻrsatilmagan'),f.ty||'')+BTYPE().map(x=>opt(x[0],x[1],f.ty||'')).join('')+'</select>'+hintD('Кто покупает: магазин, супермаркет, оптовик или HoReCa (кафе, рестораны). Тип видят все дистрибьюторы.','Kim sotib oladi: doʻkon, supermarket, ulgurji xaridor yoki HoReCa (kafe, restoranlar). Turini barcha distribyutorlar koʻradi.')+'</div>'
     +(b.role==='owner'?'<div><label class="lab" for="bf-agent">'+L('Агент','Agent')+'</label><select id="bf-agent" data-bf="agent">'+opt('','—',f.agent)+b.agents.map(a=>opt(a.id,a.name,f.agent)).join('')+'</select>'+hintD('Агент, за которым закреплён магазин.','Doʻkon biriktirilgan agent.')+'</div>':'')
     +baseLocFormHTML()
     +'<div class="full"><label class="lab" for="bf-note">'+L('Заметка о визите (магазин и дистрибьюторы её не видят)','Tashrif haqida eslatma (doʻkon va distribyutorlar koʻrmaydi)')+'</label><textarea id="bf-note" data-bf="note" rows="3" maxlength="500">'+esc(f.note)+'</textarea>'+hintD('Что удалось выяснить за визит. Пример: придёт во вторник, интересует масло.','Tashrif vaqtida nima aniqlandi. Masalan: seshanba kuni keladi, yogʻ qiziqtiradi.')+'</div>'
@@ -4494,12 +4501,20 @@ function paintBase(){
   bar+='<div class="chip selc'+(b.terr?' on':'')+'"><span>'+esc(cur?cur.name:L('Все районы','Barcha rayonlar'))+'</span>'+ICO.chev
     +'<select data-bterr="1" aria-label="'+esc(L('Район','Rayon'))+'"><option value=""'+(b.terr?'':' selected')+'>'+esc(L('Все районы','Barcha rayonlar'))+' · '+tsum+'</option>'
     +tl.map(t=>'<option value="'+esc(t.id)+'"'+(b.terr===t.id?' selected':'')+'>'+esc(t.name)+' · '+t.n+'</option>').join('')+'</select></div>';
+  if(!w){
+    // дистрибьютору окна «Фильтры» нет: тип выбирается в списке рядом с районом
+    const tn=b.tcounts||{};
+    bar+='<div class="chip selc'+(b.ty?' on':'')+'"><span>'+esc(b.ty?bTyName(b.ty):L('Все типы','Barcha turlar'))+'</span>'+ICO.chev
+      +'<select data-bty="1" aria-label="'+esc(L('Тип','Turi'))+'"><option value=""'+(b.ty?'':' selected')+'>'+esc(L('Все типы','Barcha turlar'))+'</option>'
+      +BTYPE().concat([['-','']]).map(x=>'<option value="'+esc(x[0])+'"'+(b.ty===x[0]?' selected':'')+'>'+esc(bTyName(x[0]))+' · '+(tn[x[0]]||0)+'</option>').join('')+'</select></div>';
+  }
+  if(w&&b.ty)bar+='<button type="button" class="chip on x" data-act="bclr" data-k="ty">'+esc(bTyName(b.ty))+'<span class="xx" aria-hidden="true">✕</span><span class="sr">'+esc(L('Сбросить','Bekor qilish'))+'</span></button>';
   if(w&&b.f){const nm=(BSTAT().find(x=>x[0]===b.f)||[])[1];bar+='<button type="button" class="chip on x" data-act="bclr" data-k="f">'+esc(L(nm||'',(BSTAT().find(x=>x[0]===b.f)||[])[2]||''))+'<span class="xx" aria-hidden="true">✕</span><span class="sr">'+esc(L('Сбросить','Bekor qilish'))+'</span></button>'}
   if(w&&b.sort==='near')bar+='<button type="button" class="chip on x" data-act="bclr" data-k="sort">'+ICO.pin+L('Ближайшие','Eng yaqinlari')+'<span class="xx" aria-hidden="true">✕</span><span class="sr">'+esc(L('Сбросить','Bekor qilish'))+'</span></button>';
   if(owner&&b.ag)bar+='<button type="button" class="chip on x" data-act="bclr" data-k="ag">'+esc(bAgName(b.ag))+'<span class="xx" aria-hidden="true">✕</span><span class="sr">'+esc(L('Сбросить','Bekor qilish'))+'</span></button>';
   bar+='</div>';
   h+=bar+'<div class="bfrow"><div class="bfound">'+L('Найдено: ','Topildi: ')+num(b.total)+'</div>'+(b.role!=='agent'&&baseShop()?xbtn('clients','','bxport'):'')+'</div>';
-  h+=b.items.length?b.items.map(baseCardHTML).join(''):'<div class="empty"><b>'+L('Никого не найдено','Hech kim topilmadi')+'</b>'+(b.mc&&!b.q&&!b.f&&!b.terr&&!b.ag?(owner?L('Пока никто не заказывал. Нажмите «С заказами», чтобы увидеть всю базу.','Hozircha hech kim buyurtma bermagan. Butun bazani koʻrish uchun «Buyurtmalilar» tugmasini bosing.'):L('У вас ещё никто не заказывал. Нажмите «Мои клиенты», чтобы увидеть всю базу.','Sizdan hali hech kim buyurtma bermagan. Butun bazani koʻrish uchun «Mening mijozlarim» tugmasini bosing.')):L('Измените поиск или фильтры.','Qidiruv yoki filtrlarni oʻzgartiring.'))+'</div><div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn ghost" data-act="breset">'+L('Сбросить фильтры','Filtrlarni tozalash')+'</button></div>';
+  h+=b.items.length?b.items.map(baseCardHTML).join(''):'<div class="empty"><b>'+L('Никого не найдено','Hech kim topilmadi')+'</b>'+(b.mc&&!b.q&&!b.f&&!b.terr&&!b.ag&&!b.ty?(owner?L('Пока никто не заказывал. Нажмите «С заказами», чтобы увидеть всю базу.','Hozircha hech kim buyurtma bermagan. Butun bazani koʻrish uchun «Buyurtmalilar» tugmasini bosing.'):L('У вас ещё никто не заказывал. Нажмите «Мои клиенты», чтобы увидеть всю базу.','Sizdan hali hech kim buyurtma bermagan. Butun bazani koʻrish uchun «Mening mijozlarim» tugmasini bosing.')):L('Измените поиск или фильтры.','Qidiruv yoki filtrlarni oʻzgartiring.'))+'</div><div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn ghost" data-act="breset">'+L('Сбросить фильтры','Filtrlarni tozalash')+'</button></div>';
   if(b.more)h+='<div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn ghost" data-act="basemore">'+L('Показать ещё','Yana koʻrsatish')+'</button></div>';
   el.innerHTML=h;
   paintSheet();
@@ -4523,6 +4538,8 @@ function paintSheet(){
   let h=grp(L('Статус','Holat'),BSTAT().map(x=>bChip('bset','f',x[0],L(x[1],x[2]),x[0]==='chk'?b.unchk:undefined,b.f===x[0])).join(''));
   const tl=bTerrList(),tsum=Object.keys(b.counts).reduce((a,k)=>a+b.counts[k],0);
   h+=grp(L('Район','Rayon'),bChip('bset','terr','',L('Все','Hammasi'),tsum,b.terr==='')+tl.map(t=>bChip('bset','terr',t.id,t.name,t.n,b.terr===t.id)).join(''));
+  const tn=b.tcounts||{};
+  h+=grp(L('Тип','Turi'),bChip('bset','ty','',L('Все','Hammasi'),undefined,b.ty==='')+BTYPE().concat([['-','']]).map(x=>bChip('bset','ty',x[0],bTyName(x[0]),tn[x[0]]||0,b.ty===x[0])).join(''));
   if(owner)h+=grp(L('Агент','Agent'),bChip('bset','ag','',L('Все','Hammasi'),undefined,b.ag==='')+b.agents.map(a=>bChip('bset','ag',a.id,a.name,undefined,b.ag===a.id)).join('')+bChip('bset','ag','-',L('Без агента','Agentsiz'),undefined,b.ag==='-'));
   h+=grp(L('Порядок','Tartib'),bChip('bset','sort','',L('По названию','Nomi boʻyicha'),undefined,b.sort==='')+bChip('bset','sort','new',L('Сначала новые','Avval yangilari'),undefined,b.sort==='new')+bChip('bset','sort','near',L('Ближайшие','Eng yaqinlari'),undefined,b.sort==='near'));
   const n=b.total;
@@ -4536,13 +4553,13 @@ function baseOpenForm(x){
   let terr=x?x.terr:(b.terr&&b.terr!=='-'?b.terr:'');
   if(!x&&b.role==='agent'&&!terr&&b.mine.length===1)terr=b.mine[0];
   b.edit=x?x.id:'new';b.ferr='';
-  b.fm=x?{name:x.name,phone:x.phone,addr:x.addr||'',terr:x.terr||'',st:x.st||'new',note:x.note||'',agent:x.agent||'',loc:x.loc?{lat:x.loc.lat,lng:x.loc.lng}:null,locDirty:false}:{name:'',phone:'',addr:'',terr,st:'new',note:'',agent:'',loc:null,locDirty:false};b.link='';
+  b.fm=x?{name:x.name,phone:x.phone,addr:x.addr||'',terr:x.terr||'',st:x.st||'new',ty:x.ty||'',note:x.note||'',agent:x.agent||'',loc:x.loc?{lat:x.loc.lat,lng:x.loc.lng}:null,locDirty:false}:{name:'',phone:'',addr:'',terr,st:'new',ty:'',note:'',agent:'',loc:null,locDirty:false};b.link='';
   paintBase();
   const f=$('#bform');if(f)try{f.scrollIntoView({block:'start',behavior:'smooth'})}catch(e){}
 }
 async function baseSave(){
   const b=S.base;if(b.busy||b.edit===null)return;
-  const f=b.fm,body={name:f.name.trim(),phone:f.phone.trim(),addr:f.addr.trim(),terr:f.terr,st:f.st,note:f.note.trim()};
+  const f=b.fm,body={name:f.name.trim(),phone:f.phone.trim(),addr:f.addr.trim(),terr:f.terr,st:f.st,ty:f.ty||'',note:f.note.trim()};
   if(b.role==='owner')body.agent=f.agent||'';
   if(f.locDirty)body.loc=f.loc?{lat:f.loc.lat,lng:f.loc.lng}:null;   // точку шлём, только если её меняли
   if(body.name.length<2){b.ferr=baseErr('bad_name');paintBase();return}
@@ -5235,10 +5252,11 @@ document.addEventListener('click',e=>{
   else if(a==='bset'){
     const k=t.dataset.k;
     if(k==='sort'&&t.dataset.v==='near')baseNear();
-    else if(['f','terr','ag','sort'].includes(k)){S.base[k]=t.dataset.v;loadBase(true)}
+    else if(['f','terr','ag','ty','sort'].includes(k)){S.base[k]=t.dataset.v;loadBase(true)}
   }
-  else if(a==='bclr'){const k=t.dataset.k;if(k==='f'||k==='ag'||k==='sort'){S.base[k]='';loadBase(true)}}
-  else if(a==='breset'){Object.assign(S.base,{f:'',terr:'',ag:'',sort:'',mc:false});loadBase(true)}
+  else if(a==='bclr'){const k=t.dataset.k;if(k==='f'||k==='ag'||k==='ty'||k==='sort'){S.base[k]='';loadBase(true)}}
+  else if(a==='btype'){const b=S.base;b.ty=b.ty===t.dataset.v?'':t.dataset.v;loadBase(true);window.scrollTo(0,0)}
+  else if(a==='breset'){Object.assign(S.base,{f:'',terr:'',ag:'',ty:'',sort:'',mc:false});loadBase(true)}
   else if(a==='bsign'){const b=S.base;b.f=b.f===t.dataset.v?'':t.dataset.v;b.legend=false;loadBase(true);window.scrollTo(0,0)}
   else if(a==='basemore')loadBase(false);
   else if(a==='basenew')baseOpenForm(null);
@@ -5652,6 +5670,7 @@ document.addEventListener('change',e=>{
   }
   else if(t&&t.dataset&&t.dataset.rfil!==undefined){S.rv[t.dataset.rfil]=t.value;paintReview()}
   else if(t&&t.dataset&&t.dataset.bterr!==undefined){S.base.terr=t.value;loadBase(true)}
+  else if(t&&t.dataset&&t.dataset.bty!==undefined){S.base.ty=t.value;loadBase(true)}
   else if(t&&t.dataset&&t.dataset.ash!==undefined){S.an.sh=t.value;S.an.all=false;loadAnalytics()}
   else if(t&&t.dataset&&t.dataset.cf==='blocked'){if(S.base.cf)S.base.cf.blocked=!!t.checked}
   else if(t&&t.dataset&&t.dataset.reg!==undefined)setRegion(t.value);
