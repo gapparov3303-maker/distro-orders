@@ -447,6 +447,18 @@ const btn2 = (uz, ru) => { const e = uz.match(/^\S+/)[0]; return uz + ' · ' + (
 const ans2 = (ru, uz) => uz + '\n' + ru;
 const PAY_UZ = { cash: '💵 Naqd', card: '💳 Karta', bank: '🏦 Oʻtkazma', credit: '📒 Qarzga' };
 const payBtn = k => btn2(PAY_UZ[k], PAY_RU[k].replace(/^\S+\s/, ''));
+/* Что из базы магазинов добавить к карточке заказа: только то, чего в самом заказе нет или что отличается (название, другие номера, адрес). */
+function bsExtra(o) {
+  const b = o.bs, n = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!b) return { name: '', ph: [], addr: '' };
+  return {
+    name: b.name && n(b.name) !== n(o.org) && n(b.name) !== n(o.name) ? b.name : '',
+    ph: [b.phone].concat(b.ph || []).filter(p => p && phoneKey(p) !== phoneKey(o.phone)),
+    addr: o.mode === 'delivery' && b.addr && n(b.addr) !== n(o.address) ? b.addr : ''
+  };
+}
+/* Точка для карты: своя точка заказа главная, иначе сохранённая точка магазина из базы. */
+const orderLoc = o => o.loc || (o.bs && o.bs.loc) || null;
 function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
   const px = cbPrefix(did);
   const day = dayOf(new Date().toISOString());
@@ -486,7 +498,8 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
     // доставку закрывает доставщик; продавцу кнопка нужна, только если доставщиков нет (или самовывоз)
     if (o.status === 'ready' && !(del && hasCr)) rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен клиенту') : btn2('🤝 Topshirildi', '🤝 Выдан клиенту'), 's:' + px + o.id + ':done')]);
     if (NEXT[o.status]) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
-    if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
+    const ml = orderLoc(o);
+    if (ml) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', ml) }, { text: '📍 Google Maps', url: mapUrl('g', ml) }]);
     rows.push([{ text: btn2('Sotuvchi paneli', 'Панель продавца'), web_app: { url: sellerUrl(origin, did) } }]);
   }
   return { text, reply_markup: { inline_keyboard: rows } };
@@ -494,20 +507,25 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
 
 /* Сообщение доставщику: заказ готов к доставке. state: null — свободен, 'mine' — взял этот доставщик, 'given' — назначил продавец, строка — имя того, кто уже взял. */
 function courierCard(o, shop, origin, did, state) {
-  const px = cbPrefix(did);
+  const px = cbPrefix(did), bx = bsExtra(o);
   let text = biL(() => {
     const when = fmtWhen(o.pickupAt);
     const head = state === 'given' ? L('🚚 Вам назначен заказ ', '🚚 Sizga buyurtma tayinlandi: ') : state === 'mine' ? L('🚚 Вы взяли заказ ', '🚚 Siz buyurtmani oldingiz: ') : state ? L('✔ Заказ ', '✔ Buyurtma ') : L('🚚 Готов к доставке: заказ ', '🚚 Yetkazishga tayyor: buyurtma ');
     return head + o.id + (state && state !== 'mine' && state !== 'given' ? L(' уже взял ' + state, ' allaqachon olingan: ' + state) : '')
       + '\n\n' + (o.org ? o.org + ' · ' : '') + o.name + '\n' + L('Телефон: ', 'Telefon: ') + o.phone
-      + '\n' + L('Адрес: ', 'Manzil: ') + (o.address || '—') + '\n' + L('Когда: ', 'Qachon: ') + when
+      + '\n' + L('Адрес: ', 'Manzil: ') + (o.address || '—')
+      + (bx.addr ? '\n' + L('Адрес в базе: ', 'Bazadagi manzil: ') + bx.addr : '')
+      + (bx.ph.length ? '\n' + L('Другие номера: ', 'Boshqa raqamlar: ') + bx.ph.join(', ') : '')
+      + (bx.name ? '\n' + L('В базе: ', 'Bazada: ') + bx.name : '')
+      + '\n' + L('Когда: ', 'Qachon: ') + when
       + '\n' + L('Сумма: ', 'Summa: ') + money(o.total)
       + (o.comment ? '\n' + L('Комментарий: ', 'Izoh: ') + o.comment : '');
   });
   if (text.length > TEXT_MAX) text = text.slice(0, TEXT_MAX - 1) + '…';
   const rows = [];
   if (!state) rows.push([{ text: btn2('🚚 Oldim', '🚚 Взял'), callback_data: 'k:' + px + o.id }]);
-  if (o.loc) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', o.loc) }, { text: '📍 Google Maps', url: mapUrl('g', o.loc) }]);
+  const ml = orderLoc(o);
+  if (ml) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', ml) }, { text: '📍 Google Maps', url: mapUrl('g', ml) }]);
   rows.push([{ text: btn2('Yetkazib berishni ochish', 'Открыть доставку'), web_app: { url: courierUrl(origin, did) } }]);
   return { text, reply_markup: { inline_keyboard: rows } };
 }
@@ -1701,12 +1719,28 @@ export class Shop {
     const map = await this.getMany(ids.map(id => 'o:' + id));
     return ids.map(id => map.get('o:' + id)).filter(Boolean);
   }
+  /* Данные магазина из общей базы для карточки заказа: название, номера, адрес и сохранённая точка. Если площадка не ответила, карточка остаётся как была. */
+  async baseInfo(uids) {
+    const ids = [...new Set(uids.filter(Number.isSafeInteger))].slice(0, 200);
+    if (!ids.length || !this.env.HUB) return {};
+    try { const r = await hubCall(this.env, '/__/shopinfo', { uids: ids }); return r && r.info && typeof r.info === 'object' ? r.info : {}; }
+    catch (e) { console.error('shopinfo failed', e && e.message || e); return {}; }
+  }
+  /* Копии заказов на доставку с данными магазина из базы (bs). В хранилище они не попадают. pick: каким заказам это нужно. */
+  async withBs(list, pick) {
+    const need = list.filter(o => o && o.uid && o.mode === 'delivery' && (!pick || pick(o)));
+    if (!need.length) return list;
+    const info = await this.baseInfo(need.map(o => o.uid));
+    return list.map(o => need.includes(o) && info[o.uid] ? Object.assign({}, o, { bs: info[o.uid] }) : o);
+  }
+  async bs1(o) { return o ? (await this.withBs([o]))[0] : o; }
   async getCfg() { return mergeCfg(await this.st.get('cfg')); }
   async getClient(uid) { const c = await this.st.get('c:' + uid); return c && typeof c === 'object' ? c : null; }
   async clientsIdx() { const x = await this.st.get('cx'); return Array.isArray(x) ? x : []; }
   /* Карточка заказа для продавца вместе с группой и заметкой клиента. */
   async card(o, shop, confirm) {
     const hasCr = o.mode === 'delivery' && o.status === 'ready' ? (await this.crActive()).length > 0 : false;
+    o = await this.bs1(o);
     return adminCard(o, shop, this.origin, confirm, o.uid ? await this.getClient(o.uid) : null, this.did, o.uid ? await this.st.get('lh:' + o.uid) : null, hasCr);
   }
   /* Один раз собирает базу клиентов из уже оформленных заказов (активных и в истории). Дальше база живёт сама. */
@@ -2376,7 +2410,7 @@ export class Shop {
       if (path === '/api/admin/orders' && method === 'GET') {
         const act = (await this.st.get('act')) || [], hist = (await this.st.get('hist')) || [];
         const raw = await this.getOrders(act.concat(hist));
-        const orders = raw.map(adminOrder);
+        const orders = (await this.withBs(raw, o => NEXT[o.status])).map(adminOrder);   // данные магазина из базы нужны только заказам в работе
         // у заказов в работе показываем долг магазина: продавец видит его до выдачи
         const live = raw.map((o, i) => [o, i]).filter(([o]) => o.uid && NEXT[o.status]);
         if (live.length) {
@@ -2403,18 +2437,18 @@ export class Shop {
           if (!assign || !assign.uid || assign.on === false) return json({ error: 'no_courier' }, 409);
         }
         const res = await this.changeStatus(String(r.body.id || ''), String(r.body.to || ''), r.body.pay, null, { id: uid, name: whoName(u) }, assign);
-        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(res.order) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : 409);
+        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(await this.bs1(res.order)) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : 409);
         if (res.changed) { await this.afterChange(res.order, 'admin'); if (res.ask) await this.askConfirm(res.ask.uid, res.ask.n); }
-        return json({ order: adminOrder(res.order), stats: res.stats || (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 } });
+        return json({ order: adminOrder(await this.bs1(res.order)), stats: res.stats || (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 } });
       }
       // продавец назначает или меняет доставщика у готового заказа на доставку; пустой cid — вернуть заказ всем доставщикам
       if (path === '/api/admin/order-courier' && method === 'POST') {
         const r = await this.readBody(request, 1000);
         if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
         const res = await this.setCourier(String(r.body.id || ''), r.body.cid ? String(r.body.cid) : '');
-        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(res.order) : undefined }, res.err === 'not_found' ? 404 : 409);
+        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(await this.bs1(res.order)) : undefined }, res.err === 'not_found' ? 404 : 409);
         if (res.changed) await this.afterAssign(res.order, res.prev, false);
-        return json({ order: adminOrder(res.order) });
+        return json({ order: adminOrder(await this.bs1(res.order)) });
       }
       if (path === '/api/admin/config' && method === 'PUT') {
         const r = await this.readBody(request, 100000);
@@ -2747,7 +2781,7 @@ export class Shop {
 
     // уведомления: ошибки Telegram не должны ломать приём заказа
     const sent = [];
-    const card = adminCard(order, cfg.shop, this.origin, false, cl, this.did, await this.st.get('lh:' + uid));
+    const card = adminCard(await this.bs1(order), cfg.shop, this.origin, false, cl, this.did, await this.st.get('lh:' + uid));
     for (const aid of (await this.st.get('admins')) || []) {
       const t = await this.tg('sendMessage', { chat_id: aid, text: card.text, reply_markup: card.reply_markup });
       if (t.ok && t.result) sent.push({ chat_id: aid, message_id: t.result.message_id });
@@ -3187,7 +3221,7 @@ export class Shop {
     const del = (await this.getOrders(act)).filter(o => o.mode === 'delivery');
     const today = dayOf(new Date().toISOString());
     const done = (await this.getOrders(hist)).filter(o => o.status === 'done' && o.mode === 'delivery' && o.cr === cour.id && dayOf(o.statusAt) === today);
-    const list = del.filter(o => o.status === 'ready').concat(done);
+    const list = await this.withBs(del.filter(o => o.status === 'ready').concat(done));
     const heads = await this.getMany([...new Set(list.map(o => o.uid).filter(Boolean))].map(u => 'lh:' + u));
     const orders = list.map(o => {
       const x = this.cview(o, cour);
@@ -3245,16 +3279,16 @@ export class Shop {
   /* Заказ закреплён продавцом за доставщиком: карточка уходит только ему, у остальных сообщения обновляются, прежний доставщик узнаёт, что заказ снят.
      fresh: заказ только что стал «готов» (карточки продавцов и клиент уже обработаны в afterChange). Без доставщика заказ уходит всем, как «Готов к отправке» из Telegram. */
   async afterAssign(o, prev, fresh) {
-    const cfg = await this.getCfg();
+    const cfg = await this.getCfg(), ob = await this.bs1(o);
     if (!fresh) {
       await this.afterChange(o, null);
       if (o.cr && o.uid) await this.tg('sendMessage', { chat_id: o.uid, text: customerText(o, 'taken', cfg.shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
     }
     if (o.cr) {
-      for (const m of o.cm || []) await this.editCard(m, courierCard(o, cfg.shop, this.origin, this.did, m.cid === o.cr ? 'given' : o.crn));
+      for (const m of o.cm || []) await this.editCard(m, courierCard(ob, cfg.shop, this.origin, this.did, m.cid === o.cr ? 'given' : o.crn));
       const c = await this.crGet(o.cr);
       if (c && c.uid) {
-        const card = courierCard(o, cfg.shop, this.origin, this.did, 'given');
+        const card = courierCard(ob, cfg.shop, this.origin, this.did, 'given');
         const t = await this.tg('sendMessage', { chat_id: c.uid, text: card.text, reply_markup: card.reply_markup });
         if (t.ok && t.result) {
           const cur = await this.st.get('o:' + o.id);
@@ -3262,7 +3296,7 @@ export class Shop {
         }
       }
     } else {
-      for (const m of o.cm || []) await this.editCard(m, courierCard(o, cfg.shop, this.origin, this.did, null));
+      for (const m of o.cm || []) await this.editCard(m, courierCard(ob, cfg.shop, this.origin, this.did, null));
       await this.notifyCouriers(o, cfg, null, true);
     }
     if (prev && prev.id !== o.cr) {
@@ -3272,29 +3306,29 @@ export class Shop {
   }
   /* Заказ взяли: карточки продавцов и сообщения других доставщиков обновляются, клиент узнаёт, кто везёт. */
   async afterTake(o) {
-    const cfg = await this.getCfg();
+    const cfg = await this.getCfg(), ob = await this.bs1(o);
     await this.afterChange(o, null);
     for (const m of o.cm || []) {
-      const card = courierCard(o, cfg.shop, this.origin, this.did, m.cid === o.cr ? 'mine' : o.crn);
+      const card = courierCard(ob, cfg.shop, this.origin, this.did, m.cid === o.cr ? 'mine' : o.crn);
       await this.editCard(m, card);
     }
     await this.tg('sendMessage', { chat_id: o.uid, text: customerText(o, 'taken', cfg.shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
   }
   /* Заказ вернули в свободные: сообщения доставщиков снова с кнопкой «Взял», продавцы видят, что доставщика нет. */
   async afterRelease(o, byId) {
-    const cfg = await this.getCfg();
+    const cfg = await this.getCfg(), ob = await this.bs1(o);
     await this.afterChange(o, null);
-    for (const m of o.cm || []) await this.editCard(m, courierCard(o, cfg.shop, this.origin, this.did, null));
+    for (const m of o.cm || []) await this.editCard(m, courierCard(ob, cfg.shop, this.origin, this.did, null));
     await this.notifyCouriers(o, cfg, byId, true);
   }
   /* Готовый заказ на доставку приходит всем доставщикам с кнопкой «Взял»; номера сообщений запоминаются, чтобы потом обновить. */
   async notifyCouriers(o, cfg, except, again) {
     const list = (await this.crActive()).filter(c => c.id !== except);
     if (!list.length) return;
-    const sent = [];
+    const sent = [], ob = await this.bs1(o);
     for (const c of list) {
       if (again && (o.cm || []).some(m => m.cid === c.id)) continue;   // у него сообщение уже есть и обновлено
-      const card = courierCard(o, cfg.shop, this.origin, this.did, null);
+      const card = courierCard(ob, cfg.shop, this.origin, this.did, null);
       const t = await this.tg('sendMessage', { chat_id: c.uid, text: card.text, reply_markup: card.reply_markup });
       if (t.ok && t.result) sent.push({ chat_id: c.uid, message_id: t.result.message_id, cid: c.id });
     }
@@ -3312,7 +3346,7 @@ export class Shop {
     const res = await this.courierTake(cour, p.id);
     if (res.err === 'not_found') return answer(ans2('Заказ не найден', 'Buyurtma topilmadi'), true);
     if (res.err === 'taken') {
-      if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, res.order.crn));
+      if (here) await this.editCard(here, courierCard(await this.bs1(res.order), cfg.shop, this.origin, this.did, res.order.crn));
       return answer(ans2('Заказ уже взял ' + res.order.crn, 'Buyurtmani allaqachon ' + res.order.crn + ' olgan'), true);
     }
     if (res.err === 'cash_limit') return answer(biL(() => L('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', лимит ' + money(res.lim), 'Avval pulni sotuvchiga topshiring: qoʻlingizda ' + money(res.cash) + ', limit ' + money(res.lim)), '\n'), true);
@@ -3320,7 +3354,7 @@ export class Shop {
     if (res.err === 'cash_late') return answer(biL(() => L('Сначала сдайте деньги продавцу: на руках ' + money(res.cash) + ', просрочка ' + res.late + ' дн.', 'Avval pulni sotuvchiga topshiring: qoʻlingizda ' + money(res.cash) + ', kechikish ' + res.late + ' kun'), '\n'), true);
     if (res.err) return answer(ans2('Этот заказ уже не ждёт доставки', 'Bu buyurtma endi yetkazishni kutmayapti'), true);
     if (res.changed) await this.afterTake(res.order);
-    else if (here) await this.editCard(here, courierCard(res.order, cfg.shop, this.origin, this.did, 'mine'));
+    else if (here) await this.editCard(here, courierCard(await this.bs1(res.order), cfg.shop, this.origin, this.did, 'mine'));
     return answer(ans2('Вы взяли заказ ' + p.id, 'Siz buyurtmani oldingiz: ' + p.id));
   }
   /* API доставщика: заказы, «Взял», выдача с оплатой, должники, касса. */
@@ -3355,24 +3389,24 @@ export class Shop {
       const id = String(r.body.id || '');
       if (om[1] === 'take') {
         const res = await this.courierTake(cour, id);
-        if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined, cash: res.cash, lim: res.lim, late: res.late }, res.err === 'not_found' ? 404 : 409);
+        if (res.err) return json({ error: res.err, order: res.order ? this.cview(await this.bs1(res.order), cour) : undefined, cash: res.cash, lim: res.lim, late: res.late }, res.err === 'not_found' ? 404 : 409);
         if (res.changed) await this.afterTake(res.order);
-        return json({ order: this.cview(res.order, cour) });
+        return json({ order: this.cview(await this.bs1(res.order), cour) });
       }
       if (om[1] === 'release') {
         const res = await this.courierRelease(cour, id);
-        if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined }, res.err === 'not_found' ? 404 : 409);
+        if (res.err) return json({ error: res.err, order: res.order ? this.cview(await this.bs1(res.order), cour) : undefined }, res.err === 'not_found' ? 404 : 409);
         await this.afterRelease(res.order, cour.id);
-        return json({ order: this.cview(res.order, cour) });
+        return json({ order: this.cview(await this.bs1(res.order), cour) });
       }
       const pay = r.body.pay;
       if (pay && typeof pay === 'object' && pay.m === 'credit' && cour.credit === false) return json({ error: 'no_credit' }, 403);
       const res = await this.changeStatus(id, 'done', pay, cour, { id: uid, name: whoName(u) });
       if (!res.err && res.same && res.order.cr !== cour.id) res.err = 'not_yours';
-      if (res.err) return json({ error: res.err, order: res.order ? this.cview(res.order, cour) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : res.err === 'not_yours' ? 403 : 409);
+      if (res.err) return json({ error: res.err, order: res.order ? this.cview(await this.bs1(res.order), cour) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' ? 400 : res.err === 'not_yours' ? 403 : 409);
       if (res.changed) { await this.afterChange(res.order, 'admin'); if (res.ask) await this.askConfirm(res.ask.uid, res.ask.n); }
       const c = await this.crGet(cour.id);
-      return json({ order: this.cview(res.order, cour), cash: c ? Number(c.cash) || 0 : 0 });
+      return json({ order: this.cview(await this.bs1(res.order), cour), cash: c ? Number(c.cash) || 0 : 0 });
     }
     return json({ error: 'not_found' }, 404);
   }
@@ -4312,6 +4346,23 @@ export class Hub {
       const ty = {};
       uids.forEach(u => { const r = recs.get('b:' + bu.get('bu:' + u)); if (r && r.ty) ty[u] = r.ty; });
       return json({ ty });
+    }
+    if (path === '/__/shopinfo') {
+      // данные магазина из общей базы для карточки заказа у доставщика и продавца: аккаунт -> название, номера, адрес, сохранённая точка
+      const uids = (Array.isArray(b.uids) ? b.uids : []).slice(0, 200).map(Number).filter(Number.isSafeInteger);
+      const bu = await this.getMany(uids.map(u => 'bu:' + u));
+      const recs = await this.getMany([...new Set([...bu.values()])].map(id => 'b:' + id));
+      const info = {};
+      uids.forEach(u => {
+        const r = recs.get('b:' + bu.get('bu:' + u));
+        if (!r) return;
+        const x = { name: r.name, phone: r.phone };
+        if (r.ph && r.ph.length) x.ph = r.ph.slice();
+        if (r.addr) x.addr = r.addr;
+        if (r.loc) x.loc = { lat: r.loc.lat, lng: r.loc.lng };
+        info[u] = x;
+      });
+      return json({ info });
     }
     if (path === '/__/profile') {
       // магазин заполнил профиль у дистрибьютора: заносим в общую базу, если его там ещё нет

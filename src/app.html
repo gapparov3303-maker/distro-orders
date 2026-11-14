@@ -581,6 +581,9 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .dcats span{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--edge);border-radius:999px;padding:3px 9px;font-size:12px}
 .dtag{font-size:12px;font-weight:600;color:var(--tx)}
 .bty{margin-top:6px}
+.obase{display:grid;gap:4px;margin:8px 0 2px;font-size:13px;color:var(--ink)}
+.obase small{font-size:12px;color:var(--ink-2)}
+.obase .bph2{margin:0}
 .bph2{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 2px;font-size:12px;color:var(--ink-2)}
 .bph2 a{font-weight:600;color:var(--ink);text-decoration:none;background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--edge);border-radius:999px;padding:4px 10px;white-space:nowrap}
 .phrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px}
@@ -1654,6 +1657,20 @@ function orderThumbs(o,od){
   const cell=it=>{const p=prods.find(x=>x.id===it.id);return p&&p.pv?'<i><img src="'+imgUrl(p)+'" alt="" loading="lazy"></i>':'<i class="lt">'+esc(([...String(it.name||'?').trim()][0]||'?').toUpperCase())+'</i>'};
   return '<div class="thx" aria-hidden="true">'+(n>MAX?its.slice(0,MAX-1):its).map(cell).join('')+(n>MAX?'<b>+'+(n-MAX+1)+'</b>':'')+'</div>';
 }
+/* Данные магазина из общей базы (доставщику и продавцу): название, если оно другое, другие номера со звонком и адрес, если он отличается от адреса в заказе */
+function orderBaseHTML(o){
+  const b=o.bs;if(!b)return '';
+  const n=x=>String(x||'').toLowerCase().replace(/\s+/g,' ').trim(),k=p=>String(p||'').replace(/\D/g,'').slice(-9);
+  const nm=b.name&&n(b.name)!==n(o.org)&&n(b.name)!==n(o.name)?b.name:'';
+  const ph=[b.phone].concat(b.ph||[]).filter(p=>p&&k(p)!==k(o.phone));
+  const ad=o.mode==='delivery'&&b.addr&&n(b.addr)!==n(o.address)?b.addr:'';
+  if(!nm&&!ph.length&&!ad)return '';
+  return '<div class="obase">'
+    +(nm?'<div><small>'+L('В базе:','Bazada:')+'</small> <b>'+esc(nm)+'</b></div>':'')
+    +(ad?'<div><small>'+L('Адрес в базе:','Bazadagi manzil:')+'</small> '+esc(ad)+'</div>':'')
+    +(ph.length?'<div class="bph2"><span>'+L('Другие номера:','Boshqa raqamlar:')+'</span>'+ph.map(p=>'<a href="'+esc(telHref(p))+'">'+esc(p)+'</a>').join('')+'</div>':'')
+    +'</div>';
+}
 function orderCard(o,m){
   const od=o.did||S.did,key=okey(o.id,od),dd=m==='mine'?' data-d="'+esc(od)+'"':'';
   const rep=m==='mine'?'<button type="button" class="btn ghost sm" data-act="repeat" data-id="'+esc(o.id)+'"'+dd+'>'+L('Повторить заказ','Buyurtmani takrorlash')+'</button>':'';
@@ -1674,7 +1691,8 @@ function orderCard(o,m){
     +((m==='seller'||m==='courier')&&o.crn&&!o.mine&&o.status!=='done'?'<div class="note">🚚 '+L('Везёт: ','Olib ketmoqda: ')+esc(o.crn)+'</div>':'')
     +(m==='seller'&&del&&o.status==='ready'&&!o.crn&&S.crs.length?'<div class="note">🚚 '+L('Ждёт доставщика','Yetkazuvchi kutilmoqda')+'</div>':'')
     +(m==='seller'&&o.status==='done'&&o.crn?'<div class="note">🚚 '+L('Доставил: ','Yetkazdi: ')+esc(o.crn)+'</div>':'')
-    +((m==='seller'||m==='courier')&&o.loc?'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+o.loc.lat+'" data-lng="'+o.loc.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>':'')
+    +((m==='seller'||m==='courier')?orderBaseHTML(o):'')
+    +((m==='seller'||m==='courier')&&(o.loc||(o.bs&&o.bs.loc))?(l=>'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>')(o.loc||o.bs.loc):'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
     +((m==='seller'||m==='courier')&&o.debt?'<div class="note warnnote">'+L('Долг магазина: ','Doʻkon qarzi: ')+money(o.debt.bal)+(o.debt.days?' · '+L('просрочка '+o.debt.days+' дн.',o.debt.days+' kun kechikdi'):'')+'</div>':'')
     +'<div class="tot"><b>'+money(o.total)+'</b><span>'+(o.pay?esc(payText(o)):L('оплата при получении','olganda toʻlanadi'))+'</span></div>'
