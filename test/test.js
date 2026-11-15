@@ -8294,6 +8294,39 @@ await t('меню: у продавца «Продавец» раскрыт ср�
   assert.ok(/S\.msub=it&&menuSubOpen\(it,cur\)\?'':t\.dataset\.v/.test(html), 'нажатие переключает по тому же правилу');
 });
 
+await t('меню: «Продавец» виден и тогда, когда компания не открыта; нажатие на раздел открывает компанию в этом разделе', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fnLine = (src, re, what) => { const m = src.match(re); assert.ok(m, 'нет ' + what); return m[0]; };
+  // те же семь разделов в том же порядке, что и с цифрами
+  const ids = src => [...src.matchAll(/\['(orders|debts|dlv|prod|stock|reports|settings)',L\(/g)].map(m => m[1]).join(',');
+  const tabs = fnLine(html, /^const sellerTabs=.*$/m, 'sellerTabs'), subs = fnLine(html, /^const sellerSubs=\(\)=>\{[\s\S]*?\n\};/m, 'sellerSubs');
+  assert.equal(ids(tabs), 'orders,debts,dlv,prod,stock,reports,settings');
+  assert.equal(ids(tabs), ids(subs), 'в меню без цифр и с цифрами одни и те же разделы');
+  // меню: ветка «компания не открыта» берёт компании продавца с площадки, по группе на каждую
+  const mg = html.slice(html.indexOf('function menuGroups()'), html.indexOf('/* сумма оповещений на кнопке'));
+  assert.ok(/else if\(!as\|\|as==='seller'\)\{/.test(mg), 'ветка без открытой компании');
+  assert.ok(/S\.auth&&S\.hub\.me&&S\.hub\.me\.sells\|\|\[\]/.test(mg), 'компании берутся из ролей человека');
+  assert.ok(/k\?'seller:'\+x\.id:'seller'/.test(mg), 'первая группа «seller», остальные «seller:<id>»');
+  assert.ok(/sl\.length>1\?L\('Продавец · ','Sotuvchi · '\)\+x\.name:L\('Продавец','Sotuvchi'\)/.test(mg), 'при нескольких компаниях в названии группы компания');
+  assert.ok(/'sof',x\.id\]/.test(mg), 'у группы действие sof и номер компании');
+  assert.ok(/\(i\[6\]\?' data-id="'\+esc\(i\[6\]\)\+'"':''\)/.test(html), 'подпункт несёт номер компании');
+  // нажатие: закрыть меню, открыть компанию и сразу раздел
+  assert.ok(/a==='sof'\)\{menuSet\(false\);enterSeller\(t\.dataset\.id,t\.dataset\.t\)\}/.test(html), 'обработчик sof');
+  const es = html.slice(html.indexOf('async function enterSeller('), html.indexOf('/* Переключатель «Смотреть как»'));
+  assert.ok(/openShop\(did\)/.test(es) && /sellerOpen\(tab\)/.test(es) && /if\(!S\.admin\)\{go\('shop'\)/.test(es), 'открывает компанию, раздел; без прав — каталог');
+  // раскрыта по умолчанию только первая группа «Продавец»
+  const pick = new Function('S', 'menuGroups', fnLine(html, /^const parentHere=.*$/m, 'parentHere') + '\n' + fnLine(html, /^const menuSubOpen=.*$/m, 'menuSubOpen') + '\nreturn menuSubOpen;');
+  const g1 = ['seller', 'Продавец · A', 0, '', [['orders', 'Заказы']], 'sof', 'a'], g2 = ['seller:b', 'Продавец · B', 0, '', [['orders', 'Заказы']], 'sof', 'b'];
+  const gs = [['Работа', [g1, g2, ['base', 'База']]]];
+  const st = { msub: null, own: { sec: 'dists' }, cr: { tab: 'today' }, sellerTab: 'orders' };
+  const open = pick(st, () => { throw new Error('группы переданы'); });
+  assert.equal(open(g1, 'shop', gs), true, 'первая компания раскрыта');
+  assert.equal(open(g2, 'shop', gs), false, 'вторая свёрнута');
+  st.msub = 'seller:b';
+  assert.equal(open(g2, 'shop', gs), true, 'вторую раскрыли руками');
+  assert.equal(open(g1, 'shop', gs), false, 'первая при этом свернулась');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
