@@ -823,6 +823,14 @@ div.lgd{cursor:default}
 .abli{margin:0;padding:0 0 0 20px;display:grid;gap:9px;font-size:15px;line-height:1.5}
 .abli li::marker{color:var(--tx)}
 @media (min-width:700px){.abfig{float:right;margin:0 0 12px 18px}.abli{clear:none}}
+.asbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px));background:var(--accent-soft);border-top:1px solid var(--line);font-size:13px;color:var(--ink-2)}
+.asbar[hidden],.mas[hidden]{display:none}
+.asbar b{color:var(--ink);font-weight:700}
+.asbar .btn{flex:none}
+.mas{flex:none;padding:10px 16px 12px;border-bottom:1px solid var(--line)}
+.masl{margin-bottom:7px;font:600 10.5px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--grp)}
+.masr{display:flex;flex-wrap:wrap;gap:6px}
+.masr .chip{height:34px;padding:0 11px;font-size:13px}
 /* широкий экран: меню стоит слева всегда (правила стоят в конце, чтобы переопределить .bar и .toast) */
 @media (min-width:1000px){
   body{padding-left:260px}
@@ -832,6 +840,9 @@ div.lgd{cursor:default}
   .mhd .langsw{display:inline-flex}
   .bar{left:260px}
   .toast{left:calc(50% + 130px)}
+  html.as-on .top{display:block}
+  html.as-on .top .wrap{display:none}
+}
 </style>
 </head><body>
 
@@ -842,7 +853,7 @@ div.lgd{cursor:default}
     <span id="brandName"></span>
   </div>
   <div class="langsw" id="langsw" role="group"><button type="button" data-act="setlang" data-lg="ru" title="Русский">RU</button><button type="button" data-act="setlang" data-lg="uz" title="Oʻzbekcha">UZ</button></div>
-</div></header>
+</div><div class="asbar" id="asbar" hidden></div></header>
 <div class="mscrim" id="mscrim" data-act="menuclose" hidden></div>
 <aside class="menu" id="menu" role="dialog" aria-modal="true">
   <div class="mhd">
@@ -854,6 +865,7 @@ div.lgd{cursor:default}
     <button type="button" class="mclose" data-act="menuclose" id="mclose"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4l12 12M16 4 4 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
   <div class="mrole" id="mrole" hidden></div>
+  <div class="mas" id="mas" hidden></div>
   <nav class="mnav" id="nav"></nav>
 </aside>
 <main id="view"></main>
@@ -866,7 +878,7 @@ div.lgd{cursor:default}
 const $=(s,r)=>(r||document).querySelector(s);
 const MAX_QTY=500,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
-  view:'shops',sellerTab:'orders',filter:'active',msub:null,dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
+  view:'shops',as:'',sellerTab:'orders',filter:'active',msub:null,dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
   cfg:clone(DEFAULT),
   form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:'',loc:null},
   region:'',showFar:false,regSent:false,regOnly:null,
@@ -1146,22 +1158,35 @@ function roleLine(){
   if(here&&(sl||dl))parts.push((sl||dl).name);
   return parts.length?parts.join(' · '):L('Магазин','Doʻkon');
 }
+/* «Смотреть как»: владелец на время показывает себе приложение глазами одной из своих ролей (меню, «О нас», кнопки на списке).
+   Меняется только вид: права и данные те же, заказы по-прежнему приходят владельцу как продавцу. Режим не запоминается: при каждом запуске снова «Все мои роли». */
+function asRoles(){
+  const me=S.auth&&S.hub&&S.hub.me;
+  if(!me||!me.owner)return [];
+  const r=[['shop',L('Магазин','Doʻkon')]];
+  if((me.sells||[]).length)r.push(['seller',L('Продавец','Sotuvchi')]);
+  if((me.delivers||[]).length)r.push(['courier',L('Доставщик','Yetkazuvchi')]);
+  if(me.agent)r.push(['agent',L('Агент','Agent')]);
+  return r;
+}
+const viewAs=()=>S.as&&asRoles().some(x=>x[0]===S.as)?S.as:'';
+const asName=k=>(asRoles().find(x=>x[0]===k)||['',''])[1];
 /* Правило значков в меню: у каждого пункта своё число (оно держится, пока оповещение не обработано), у группы сумма чисел внутри,
    на кнопке ☰ сумма по всем группам (без каталога и числа заказов магазина: это не оповещения). Так три уровня всегда сходятся. */
 const subSum=subs=>subs.reduce((a,x)=>a+(Number(x[2])||0),0);
 function menuGroups(){
-  const g=[];
+  const g=[],as=viewAs();
   const shop=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
   if(S.mdebt.ok&&(S.mdebt.total>0||S.mdebt.ask>0))shop.push(['debt',L('Мой долг','Mening qarzim'),S.mdebt.ask,'warn']);
   if(S.auth&&S.did)shop.push(['profile',L('Профиль','Profil')]);
-  g.push([L('Магазин','Doʻkon'),shop]);
+  if(!as||as==='shop')g.push([L('Магазин','Doʻkon'),shop]);
   const work=[];
-  if(S.admin&&S.did){const sb=sellerSubs();work.push(['seller',L('Продавец','Sotuvchi'),subSum(sb),'',sb,'stab'])}
-  if(S.courier&&S.did){const cb=crTabs();work.push(['courier',L('Доставка','Yetkazib berish'),subSum(cb),'',cb,'ctab'])}
-  if(canBase())work.push(['base',L('База','Baza')]);
-  if(commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
+  if(S.admin&&S.did&&(!as||as==='seller')){const sb=sellerSubs();work.push(['seller',L('Продавец','Sotuvchi'),subSum(sb),'',sb,'stab'])}
+  if(S.courier&&S.did&&(!as||as==='courier')){const cb=crTabs();work.push(['courier',L('Доставка','Yetkazib berish'),subSum(cb),'',cb,'ctab'])}
+  if(canBase()&&(!as||as==='seller'||as==='agent'))work.push(['base',L('База','Baza')]);
+  if(!as&&commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
   if(work.length)g.push([L('Работа','Ish'),work]);
-  if(isOwner())g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
+  if(isOwner()&&!as)g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
   g.push(['',[['about',L('О нас','Biz haqimizda')]]]);   // отдельный пункт внизу меню, виден всем
   return g;
 }
@@ -1201,6 +1226,18 @@ function renderNav(){
   mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
   const mr=$('#mrole'),rl=roleLine();
   if(mr){mr.hidden=!rl;mr.innerHTML=rl?esc(L('Вы: ','Siz: '))+'<b>'+esc(rl)+'</b>':''}
+  // «Смотреть как» (только владелец): под строкой «Вы:», и полоска «Вернуться» над экраном
+  const as=viewAs(),ar=asRoles(),ma=$('#mas'),ab=$('#asbar');
+  if(ma){
+    ma.hidden=!ar.length;
+    ma.innerHTML=ar.length?'<div class="masl">'+L('Смотреть как','Rol sifatida koʻrish')+'</div><div class="masr" role="group" aria-label="'+esc(L('Смотреть как','Rol sifatida koʻrish'))+'">'
+      +[['',L('Все мои роли','Barcha rollarim')]].concat(ar).map(x=>'<button type="button" class="chip" data-act="viewas" data-v="'+x[0]+'" aria-pressed="'+(as===x[0])+'">'+esc(x[1])+'</button>').join('')+'</div>':'';
+  }
+  if(ab){
+    ab.hidden=!as;
+    ab.innerHTML=as?'<span>'+esc(L('Смотрю как: ','Koʻrish rejimi: '))+'<b>'+esc(asName(as))+'</b></span><button type="button" class="btn ghost sm" data-act="viewas" data-v="">'+esc(L('Вернуться','Qaytish'))+'</button>':'';
+  }
+  document.documentElement.classList.toggle('as-on',!!as);
   const mbt=$('#menubtn');
   mbt.setAttribute('aria-label',L('Меню','Menyu')+(al?': '+al:''));
   $('#mclose').setAttribute('aria-label',L('Закрыть меню','Menyuni yopish'));
@@ -4407,7 +4444,8 @@ const ABOUT_ROLES=[
 const aboutUrl=(img)=>'/about/'+img+'-'+(LANG==='uz'?'uz':'ru')+'.webp?v='+ABOUT_V;
 /* роли человека в порядке важности; магазином он является всегда */
 function aboutMine(){
-  const me=S.auth&&S.hub&&S.hub.me,r=[];
+  const me=S.auth&&S.hub&&S.hub.me,r=[],as=viewAs();
+  if(as)return as==='shop'?['shop']:[as,'shop'];   // «Смотреть как»: подсказки по выбранной роли
   if(me){if(me.owner)r.push('owner');if((me.sells||[]).length)r.push('seller');if((me.delivers||[]).length)r.push('courier');if(me.agent)r.push('agent')}
   r.push('shop');
   return r;
@@ -4440,7 +4478,7 @@ function renderAbout(){
   let h='<div class="wrap page abt"><div class="abhead"><span class="logo big" role="img" aria-label="Sarbon"></span><div><div class="eyebrow">'+L('Оптовая площадка в Telegram','Telegramdagi ulgurji savdo maydonchasi')+'</div><h1>'+L('О нас','Biz haqimizda')+'</h1></div></div>';
   h+='<div class="card"><p class="abintro">'+esc(intro)+'</p>'+aboutContactsHTML(a)+'</div>';
   h+='<h2 class="abtitle">'+L('Что умеет приложение: по ролям','Ilova nimalarga qodir: rollar boʻyicha')+'</h2><div class="unit abhint">'+L('Нажмите на свою роль, чтобы прочитать подробно. Нажмите на картинку, чтобы открыть её на весь экран.','Batafsil oʻqish uchun oʻz rolingizni bosing. Rasmni butun ekranga ochish uchun uni bosing.')+'</div>';
-  ABOUT_ROLES.filter(r=>!r.only||(r.only==='owner'&&isOwner())).forEach(r=>{h+=aboutRoleHTML(r,ok===r.k,mine)});
+  ABOUT_ROLES.filter(r=>!r.only||(r.only==='owner'&&isOwner()&&!viewAs())).forEach(r=>{h+=aboutRoleHTML(r,ok===r.k,mine)});
   view.innerHTML=h+'</div>';
 }
 function aboutToggle(k){
@@ -4577,9 +4615,10 @@ function renderShops(){
     const pc=pendingCart();
     if(pc)out+='<div class="note" style="margin-bottom:12px">🛒 '+esc(L('В корзине '+pc.n+' поз.'+(pc.name?' · «'+pc.name+'»':''),'Savatda '+pc.n+' ta mahsulot'+(pc.name?' · «'+pc.name+'»':'')))+' <button type="button" class="btn ghost sm" data-act="opencartshop" data-id="'+esc(pc.did)+'">'+L('Открыть корзину','Savatni ochish')+'</button></div>';
     const sells=me&&me.sells||[];
-    if(sells.length)out+='<div class="row-btns" style="margin-bottom:14px">'+sells.map(x=>'<button type="button" class="btn ghost sm" data-act="sellerof" data-id="'+esc(x.id)+'">'+esc(L('Панель продавца: ','Sotuvchi paneli: ')+x.name)+'</button>').join('')+'</div>';
+    const as=viewAs();
+    if(sells.length&&(!as||as==='seller'))out+='<div class="row-btns" style="margin-bottom:14px">'+sells.map(x=>'<button type="button" class="btn ghost sm" data-act="sellerof" data-id="'+esc(x.id)+'">'+esc(L('Панель продавца: ','Sotuvchi paneli: ')+x.name)+'</button>').join('')+'</div>';
     const dels=me&&me.delivers||[];
-    if(dels.length)out+='<div class="row-btns" style="margin-bottom:14px">'+dels.map(x=>'<button type="button" class="btn ghost sm" data-act="courierof" data-id="'+esc(x.id)+'">'+esc(L('Доставка: ','Yetkazib berish: ')+x.name)+'</button>').join('')+'</div>';
+    if(dels.length&&(!as||as==='courier'))out+='<div class="row-btns" style="margin-bottom:14px">'+dels.map(x=>'<button type="button" class="btn ghost sm" data-act="courierof" data-id="'+esc(x.id)+'">'+esc(L('Доставка: ','Yetkazib berish: ')+x.name)+'</button>').join('')+'</div>';
     out+=shopsListHTML();
   }
   view.innerHTML=out+'</div>';
@@ -4641,6 +4680,25 @@ async function enterShop(did,v,cart){
   S.shopPlaced=null;S.shopStep=cart&&cartCount()>0?'cart':'list';
   go(v==='seller'&&S.admin?'seller':v==='courier'&&S.courier?'courier':'shop');
   return true;
+}
+/* Переключатель «Смотреть как»: ставит режим и открывает начальный экран выбранной роли */
+const AS_SHOP_VIEWS=['shops','shop','mine','debt','profile','about'];
+async function setViewAs(v){
+  if(v&&!asRoles().some(x=>x[0]===v))v='';
+  S.as=v;S.ab.open=null;
+  menuSet(false);
+  const me=S.hub.me||{},sells=me.sells||[],dels=me.delivers||[];
+  if(v==='shop'){
+    if(AS_SHOP_VIEWS.includes(S.view))render();
+    else{S.shopPlaced=null;S.shopStep='list';go(S.did?'shop':'shops')}
+  }else if(v==='seller'||v==='courier'){
+    const a=v==='seller'?sells:dels,t=a.find(x=>x.id===S.did)||a[0];
+    if(S.view===v)render();
+    else if(t)await enterShop(t.id,v);
+    else render();
+  }else if(v==='agent'){
+    if(S.view==='base')render();else go('base');
+  }else render();
 }
 /* ---------- база магазинов ---------- */
 const BST=()=>({new:L('Новый','Yangi'),talk:L('Переговоры','Muzokara'),refuse:L('Отказался','Rad etdi')});
@@ -5586,6 +5644,7 @@ document.addEventListener('click',e=>{
   }
   else if(a==='menu')menuSet(!menuIsOpen());
   else if(a==='menuclose')menuSet(false);
+  else if(a==='viewas')setViewAs(t.dataset.v||'');
   else if(a==='msub'){const it=menuGroups().reduce((r,g)=>r.concat(g[1]),[]).find(x=>x[0]===t.dataset.v),cur=S.view==='shops'?'shop':S.view;S.msub=it&&menuSubOpen(it,cur)?'':t.dataset.v;renderNav()}
   else if(a==='shops')go('shops');
   else if(a==='owner')go('owner');
