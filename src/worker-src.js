@@ -338,8 +338,11 @@ function validateOrder(b, cfg, prod, stk) {
   return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt, loc: fm.loc };
 }
 
-const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; delete x.cm; delete x.cr; delete x.crAt; return x; };
-const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; delete x.rs; delete x.cm; return x; };
+const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; delete x.cm; delete x.cr; delete x.crAt; delete x.whu; return x; };
+const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; delete x.rs; delete x.cm; delete x.whu; return x; };
+/* Заказ для кладовщика: состав и данные покупателя, чтобы сверить привезённое; без внутренних полей. */
+const whOrder = o => ({ id: o.id, createdAt: o.createdAt, status: o.status, mode: o.mode, name: o.name, org: o.org || '', phone: o.phone, items: o.items || [], total: o.total, comment: o.comment || '', wh: o.wh || null });
+const fmtKg = (kg, lang) => String(Math.round(Number(kg) * 100) / 100).replace('.', ',') + (lang === 'uz' ? ' kg' : ' кг');
 
 /* ---------- клиентская база ---------- */
 const phoneOk = p => { const d = p.replace(/\D/g, '').length; return d >= 9 && d <= 15; };
@@ -590,6 +593,14 @@ function customerText(o, kind, shop) {
     case 'taken': return L(
       '🚚 Заказ ' + o.id + ': доставщик ' + o.crn + ' везёт ваш заказ.' + (o.crp ? '\nТелефон: ' + o.crp : '') + '\nОплата при получении: ' + money(o.total),
       '🚚 Buyurtma ' + o.id + ': yetkazib beruvchi ' + o.crn + ' buyurtmangizni olib ketmoqda.' + (o.crp ? '\nTelefon: ' + o.crp : '') + '\nOlganda toʻlanadi: ' + money(o.total));
+    case 'warehouse': case 'warehouse2': {
+      const w = o.wh || {}, first = kind === 'warehouse';
+      const body = L('\nВес: ' + fmtKg(w.kg, 'ru') + '.\nПеревозка в Навои: ' + money(w.fee) + ' (' + money(w.rate) + ' за 1 кг), платится водителю.\nСумма заказа: ' + money(o.total) + '.',
+        '\nOgʻirligi: ' + fmtKg(w.kg, 'uz') + '.\nNavoiygacha yuk tashish: ' + money(w.fee) + ' (1 kg uchun ' + money(w.rate) + '), haydovchiga toʻlanadi.\nBuyurtma summasi: ' + money(o.total) + '.');
+      if (!first) return L('⚖️ Заказ ' + o.id + ': вес уточнён.' + body, '⚖️ Buyurtma ' + o.id + ': ogʻirlik aniqlashtirildi.' + body);
+      return L('📦 Заказ ' + o.id + ' принят на складе Sarbon.' + body + '\nСпособ оплаты согласуйте с продавцом' + (contact ? ': ' + contact : '') + '.\nПосле оплаты склад отправит груз в Навои.',
+        '📦 Buyurtma ' + o.id + ' Sarbon omboriga qabul qilindi.' + body + '\nToʻlov usulini sotuvchi bilan kelishib oling' + (contact ? ': ' + contact : '') + '.\nToʻlovdan keyin ombor yukni Navoiyga joʻnatadi.');
+    }
     case 'cancelled': return L(
       '❌ Заказ ' + o.id + ' отменён продавцом.' + (contact ? '\nВопросы: ' + contact : ''),
       '❌ Buyurtma ' + o.id + ' sotuvchi tomonidan bekor qilindi.' + (contact ? '\nSavollar: ' + contact : ''));
@@ -2316,6 +2327,9 @@ export class Shop {
       const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
       return json({ clients: idx.map(x => map.get('c:' + x)).filter(Boolean).map(c => ({ uid: c.uid, name: c.name, phone: c.phone, org: c.org, addr: (c.addrs || [])[0] || '' })) });
     }
+    // склад Sarbon: заказы в работе для кладовщика и приём заказа с весом
+    if (path === '/__/wh-list') return json({ orders: (await this.getOrders((await this.st.get('act')) || [])).filter(o => NEXT[o.status]).map(whOrder) });
+    if (path === '/__/wh-receive') return await this.whReceive(b);
     if (path === '/__/mine') return json({ rows: await this.mineRows(b.items) });
     if (path === '/__/mine-ids') return json({ uids: await this.mineIds() });
     if (path === '/__/mine-set') return await this.mineSet(b);
@@ -2793,6 +2807,35 @@ export class Shop {
     }
     if (ids.length) await this.st.put('f:' + uid, ids); else await this.st.delete('f:' + uid);
     return json({ fav: ids });
+  }
+
+  /* Склад принял заказ: кладовщик ввёл вес, перевозка = вес × ставка. Статус заказа не меняется. Первый приём пишет покупателю и продавцу,
+     повторный (поправили вес) только покупателю. */
+  async whReceive(b) {
+    if (/^https:\/\/(?!internal)/.test(b.origin || '')) this.origin = b.origin;
+    const id = String(b.id || ''), kg = Math.round(Number(b.kg) * 100) / 100, rate = Number(b.rate);
+    if (!validId(id) || !Number.isFinite(kg) || kg <= 0 || kg > WH_KG_MAX || !Number.isInteger(rate) || rate < 0 || rate > WH_RATE_MAX) return json({ error: 'bad_request' }, 400);
+    const o = await this.st.get('o:' + id);
+    if (!o) return json({ error: 'not_found' }, 404);
+    if (!NEXT[o.status]) return json({ error: 'closed', order: whOrder(o) }, 409);
+    const first = !o.wh, now = new Date().toISOString();
+    o.wh = { at: first ? now : o.wh.at, kg, rate, fee: Math.round(kg * rate), bn: cleanStr(b.name, 60) };
+    if (!first) o.wh.upd = now;
+    o.whu = Number(b.uid) || 0;
+    await this.st.put('o:' + id, o);
+    if (this.env.BOT_TOKEN) {
+      const cfg = await this.getCfg();
+      if (o.uid) {
+        try { await this.tg('sendMessage', { chat_id: o.uid, text: customerText(o, first ? 'warehouse' : 'warehouse2', cfg.shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') }); }
+        catch (e) { console.error('warehouse notify failed', e && e.message || e); }
+      }
+      if (first) {
+        const who = [o.name, o.phone].filter(Boolean).join(', ');
+        await this.notifyAdmins(biL(() => L('📦 Заказ ' + o.id + ' принят на складе Sarbon: вес ' + fmtKg(o.wh.kg, 'ru') + ', перевозка ' + money(o.wh.fee) + '.\nПокупатель: ' + who + '.\nДоговоритесь с покупателем об оплате.',
+          '📦 Buyurtma ' + o.id + ' Sarbon omboriga qabul qilindi: ogʻirligi ' + fmtKg(o.wh.kg, 'uz') + ', yuk tashish ' + money(o.wh.fee) + '.\nXaridor: ' + who + '.\nToʻlov haqida xaridor bilan kelishib oling.')), btn2('Buyurtmalar', 'Заказы'));
+      }
+    }
+    return json({ order: whOrder(o), first });
   }
 
   async myOrders(uid) {
@@ -4198,6 +4241,14 @@ const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
 const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50, MAX_BAZAARS = 30;
+/* Склад Sarbon: кладовщики, ставка перевозки (сум за 1 кг, платится водителю), предельный вес одного заказа. */
+const MAX_WH = 30, WH_RATE_DEF = 500, WH_RATE_MAX = 100000, WH_KG_MAX = 20000;
+/* «Как это работает» у базара: первая строка заголовок, дальше шаги. До 9 строк, до 400 знаков в строке и до 1500 всего. */
+function cleanHow(v) {
+  if (typeof v !== 'string') return '';
+  const out = v.replace(/\r/g, '').split('\n').map(x => cleanStr(x, 400)).filter(Boolean).slice(0, 9).join('\n');
+  return out.length > 1500 ? out.slice(0, 1500) : out;
+}
 /* У магазина один основной телефон и до пяти дополнительных номеров (ph): так одна точка заказывает с нескольких номеров. */
 const MAX_PH = 5;
 const PEOPLE_GAP = 600000, PEOPLE_MAX = 1000;
@@ -4509,6 +4560,20 @@ export class Hub {
     return a && a.on && a.uid === uid ? a : null;
   }
   async agentLink(id) { const b = await this.botName(); return b ? 'https://t.me/' + b + '?start=a_' + id : ''; }
+  /* Склад Sarbon: кладовщики [{id,name,on,hash,since,uid,bz}] (bz: свой базар или '' — все базары), вход по коду «/sklad КОД». */
+  async allWh() {
+    const idx = (await this.st.get('wx')) || [];
+    if (!idx.length) return [];
+    const map = await this.st.get(idx.map(x => 'w:' + x));
+    return idx.map(x => map.get('w:' + x)).filter(Boolean);
+  }
+  async whOf(uid) {
+    const wid = await this.st.get('wu:' + uid);
+    const w = wid ? await this.st.get('w:' + wid) : null;
+    return w && w.on && w.uid === uid ? w : null;
+  }
+  /* Ставка перевозки, сум за 1 кг: её платит покупатель водителю. */
+  async whRate() { const r = await this.st.get('whrate'); return Number.isInteger(r) && r >= 0 && r <= WH_RATE_MAX ? r : WH_RATE_DEF; }
   /* Реестр людей: кто открывал приложение или писал боту (имя, логин, первый и последний заход). Роли здесь не хранятся: они считаются при показе списка.
      Запись обновляется не чаще раза в 10 минут на человека, чтобы каждый запрос не писал в хранилище. */
   async touchPerson(u) {
@@ -4537,6 +4602,7 @@ export class Hub {
     for (const [k, list] of (await this.st.list({ prefix: 'dls:' })).entries()) for (const did of Array.isArray(list) ? list : []) if (recs.has(did)) row(uidOf(k)).roles.push({ r: 'courier', n: recs.get(did) });
     const ags = new Map((await this.allAgents()).map(a => [a.id, a]));
     for (const a of ags.values()) if (a.on && a.uid) row(a.uid).roles.push({ r: 'agent', n: a.name });
+    for (const w of await this.allWh()) if (w.on && w.uid) row(w.uid).roles.push({ r: 'wh', n: w.name });
     for (const b of (await this.st.list({ prefix: 'b:' })).values()) if (b && b.uid) row(b.uid).shop = { name: b.name || '', phone: b.phone || '' };
     const all = [...rec.values()].filter(x => Number.isInteger(x.id) && x.id > 0);
     all.sort((a, b) => String(b.last).localeCompare(String(a.last)) || a.id - b.id);
@@ -4956,7 +5022,9 @@ export class Hub {
     rows.forEach(b => { byT[b.terr || ''] = (byT[b.terr || ''] || 0) + 1; byA[b.agent || ''] = (byA[b.agent || ''] || 0) + 1; });
     const terr = (await this.terrs()).map(t => ({ id: t.id, name: t.name, n: byT[t.id] || 0 }));
     const agents = await Promise.all((await this.allAgents()).map(async a => ({ id: a.id, name: a.name, on: a.on, since: a.since, terr: a.terr || [], used: !!a.uid, n: byA[a.id] || 0, link: await this.agentLink(a.id) })));
-    return { terr, agents, free: byT[''] || 0, total: rows.length, max: { terr: MAX_TERR, agents: MAX_AGENTS, base: MAX_BASE } };
+    const bzs = new Set((await this.bazaars()).map(b => b.id));
+    const wh = (await this.allWh()).map(w => ({ id: w.id, name: w.name, on: w.on, since: w.since, bz: bzs.has(w.bz) ? w.bz : '', used: !!w.uid }));
+    return { terr, agents, wh, whrate: await this.whRate(), free: byT[''] || 0, total: rows.length, max: { terr: MAX_TERR, agents: MAX_AGENTS, base: MAX_BASE, wh: MAX_WH } };
   }
   async addTerr(names) {
     const terrs = await this.terrs();
@@ -4980,14 +5048,17 @@ export class Hub {
     const name = cleanStr(body && body.name, 40), uz = cleanStr(body && body.uz, 40);
     if (name.length < 2 && uz.length < 2) return null;
     const ru = name.length >= 2 ? name : uz;
-    return { name: ru, uz: uz.length >= 2 && uz.toLowerCase() !== ru.toLowerCase() ? uz : '' };
+    const out = { name: ru, uz: uz.length >= 2 && uz.toLowerCase() !== ru.toLowerCase() ? uz : '' };
+    if (body && body.how !== undefined) out.how = cleanHow(body.how);
+    if (body && body.howUz !== undefined) out.howUz = cleanHow(body.howUz);
+    return out;
   }
   async adminBazaars(request, path, method) {
     const dup = (list, c, except) => list.some(x => x.id !== except
       && [x.name, x.uz].filter(Boolean).some(n => [c.name, c.uz].filter(Boolean).some(m => n.toLowerCase() === m.toLowerCase())));
     if (path === '/api/hub/admin/bazaars' && method === 'GET') return json({ bazaars: await this.bazaars(), max: MAX_BAZAARS });
     if (path === '/api/hub/admin/bazaars' && method === 'POST') {
-      const r = await this.readBody(request, 1000);
+      const r = await this.readBody(request, 8000);
       const c = r.err || !r.body || typeof r.body !== 'object' ? null : this.cleanBazaar(r.body);
       if (!c) return json({ error: 'bad_name' }, 400);
       const list = await this.bazaars();
@@ -4995,7 +5066,7 @@ export class Hub {
       if (dup(list, c, '')) return json({ error: 'bz_dup' }, 409);
       let id;
       do { id = 'b' + randId(4).toLowerCase(); } while (list.some(x => x.id === id));
-      list.push({ id, name: c.name, uz: c.uz });
+      list.push(Object.assign({ id, name: c.name, uz: c.uz }, c.how ? { how: c.how } : {}, c.howUz ? { howUz: c.howUz } : {}));
       await this.st.put('bz', list);
       return json({ bazaars: list, id, max: MAX_BAZAARS });
     }
@@ -5004,12 +5075,14 @@ export class Hub {
     const list = await this.bazaars(), cur = list.find(x => x.id === m[1]);
     if (!cur) return json({ error: 'not_found' }, 404);
     if (method === 'PUT') {
-      const r = await this.readBody(request, 1000);
+      const r = await this.readBody(request, 8000);
       const c = r.err || !r.body || typeof r.body !== 'object' ? null : this.cleanBazaar(r.body);
       if (!c) return json({ error: 'bad_name' }, 400);
       if (dup(list, c, cur.id)) return json({ error: 'bz_dup' }, 409);
       cur.name = c.name;
       cur.uz = c.uz;
+      // текст «Как это работает» меняется только если пришёл; пустой убирает его
+      for (const k of ['how', 'howUz']) if (c[k] !== undefined) { if (c[k]) cur[k] = c[k]; else delete cur[k]; }
       await this.st.put('bz', list);
       return json({ bazaars: list, max: MAX_BAZAARS });
     }
@@ -5111,6 +5184,59 @@ export class Hub {
         return json(await this.peopleState());
       }
     }
+    // склад Sarbon: кладовщики и ставка перевозки
+    if (path === '/api/hub/admin/whrate' && method === 'PUT') {
+      const r = await this.readBody(request, 300);
+      const rate = r.body && typeof r.body === 'object' ? r.body.rate : undefined;
+      if (r.err || !Number.isInteger(rate) || rate < 0 || rate > WH_RATE_MAX) return json({ error: 'bad_rate' }, 400);
+      await this.st.put('whrate', rate);
+      return json(await this.peopleState());
+    }
+    const bzOk = async v => v === '' || v === undefined || v === null || (await this.bazaars()).some(b => b.id === v);
+    if (path === '/api/hub/admin/wh' && method === 'POST') {
+      const r = await this.readBody(request, 3000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const name = cleanStr(r.body.name, 60);
+      if (name.length < 2) return json({ error: 'bad_name' }, 400);
+      const idx = (await this.st.get('wx')) || [];
+      if (idx.length >= MAX_WH) return json({ error: 'too_many' }, 409);
+      if (!(await bzOk(r.body.bz))) return json({ error: 'bad_request' }, 400);
+      const c = await this.pickCode(r.body.code);
+      if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
+      let id;
+      do { id = 'w' + randId(5).toLowerCase(); } while (idx.includes(id));
+      await this.st.put({ ['w:' + id]: { id, name, on: true, hash: c.hash, since: new Date().toISOString(), uid: 0, bz: r.body.bz || '' }, wx: idx.concat([id]) });
+      return json(Object.assign(await this.peopleState(), { code: c.code, whId: id }));
+    }
+    const wm = path.match(/^\/api\/hub\/admin\/wh\/(w[a-z0-9]{3,10})(\/code)?$/);
+    if (wm) {
+      const w = await this.st.get('w:' + wm[1]);
+      if (!w) return json({ error: 'not_found' }, 404);
+      const r = await this.readBody(request, 3000);
+      if (r.err) return json({ error: 'bad_request' }, 400);
+      const b = r.body && typeof r.body === 'object' ? r.body : {};
+      if (wm[2] && method === 'POST') {
+        const c = await this.pickCode(b.code, w.id);
+        if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
+        if (w.uid) await this.st.delete('wu:' + w.uid);   // прежний аккаунт теряет доступ
+        w.hash = c.hash; w.uid = 0;
+        await this.st.put('w:' + w.id, w);
+        return json(Object.assign(await this.peopleState(), { code: c.code, whId: w.id }));
+      }
+      if (!wm[2] && method === 'DELETE') {
+        if (w.uid) await this.st.delete('wu:' + w.uid);
+        await this.st.put('wx', ((await this.st.get('wx')) || []).filter(x => x !== w.id));
+        await this.st.delete('w:' + w.id);
+        return json(await this.peopleState());
+      }
+      if (!wm[2] && method === 'PUT') {
+        if (typeof b.on === 'boolean') w.on = b.on;
+        if (b.name !== undefined) { const n = cleanStr(b.name, 60); if (n.length < 2) return json({ error: 'bad_name' }, 400); w.name = n; }
+        if (b.bz !== undefined) { if (!(await bzOk(b.bz))) return json({ error: 'bad_request' }, 400); w.bz = b.bz || ''; }
+        await this.st.put('w:' + w.id, w);
+        return json(await this.peopleState());
+      }
+    }
     if (path === '/api/hub/admin/base/import' && method === 'POST') return json(Object.assign(await this.importClients(), { state: await this.peopleState() }));
     return null;
   }
@@ -5171,6 +5297,27 @@ export class Hub {
     return { r: 'ok', ag, fresh, prev };
   }
 
+  /* Вход кладовщика по коду. Ошибки считаются в том же счётчике, что и у /admin. */
+  async tryWhCode(code, uid) {
+    const f = (await this.st.get('fail:' + uid)) || { n: 0, until: 0 };
+    if (f.until > Date.now()) return { r: 'locked' };
+    const h = await sha256hex('code:' + String(code || ''));
+    let w = null;
+    for (const x of await this.allWh()) if (x.hash && safeEq(h, x.hash) && !w) w = x;
+    if (!w || !w.on) {
+      f.n += 1;
+      if (f.n >= 8) { f.n = 0; f.until = Date.now() + 3600 * 1000; }
+      await this.st.put('fail:' + uid, f);
+      return { r: 'bad' };
+    }
+    if (f.n || f.until) await this.st.delete('fail:' + uid);
+    const prev = w.uid && w.uid !== uid ? w.uid : 0, fresh = w.uid !== uid;
+    if (prev) await this.st.delete('wu:' + prev);
+    w.uid = uid;
+    await this.st.put({ ['w:' + w.id]: w, ['wu:' + uid]: w.id });
+    return { r: 'ok', w, fresh, prev };
+  }
+
   /* --- приложение --- */
   async auth(request) {
     if (!this.env.BOT_TOKEN) return { err: 'no_token' };
@@ -5211,6 +5358,8 @@ export class Hub {
       }
       const ag = await this.agentOf(au.user.id);
       if (ag) out.me.agent = { id: ag.id, name: ag.name, terr: ag.terr || [], link: await this.agentLink(ag.id) };
+      const wh0 = await this.whOf(au.user.id);
+      if (wh0) out.me.wh = { id: wh0.id, name: wh0.name, bz: wh0.bz || '' };
       // данные магазина из общей базы: форма заказа подставляется сама, на любом телефоне и у любого дистрибьютора
       const bid = await this.st.get('bu:' + au.user.id), br = bid ? await this.st.get('b:' + bid) : null;
       if (br) out.me.card = { name: br.name, phone: br.phone, addr: br.addr || '', terr: terrs.some(t => t.id === br.terr) ? br.terr : '', ver: Number(br.ver) || 0 };
@@ -5258,6 +5407,33 @@ export class Hub {
       const sc = await shopCall(this.env, b.did, '/__/my-confirm', { uid, n: Number(b.n), ok: b.ok });
       if (!sc.ok) return json({ error: (sc.data && sc.data.error) || 'server' }, sc.status || 500);
       return json({ debt: sc.data.debt ? Object.assign({}, sc.data.debt, { did: b.did, shopName: (await this.getRec(b.did)).name }) : null });
+    }
+
+    // склад Sarbon: кладовщик видит заказы продавцов-базаров (своего базара, если задан) и принимает их с весом
+    if (path === '/api/hub/wh' || path === '/api/hub/wh/receive') {
+      const w = await this.whOf(uid);
+      if (!w) return json({ error: 'forbidden' }, 403);
+      const sellers = async () => (await this.allRecs()).filter(r => cleanCat(r.cat) === 'bazaar' && (!w.bz || r.bz === w.bz));
+      if (path === '/api/hub/wh' && method === 'GET') {
+        const recs = await sellers();
+        const got = await Promise.all(recs.map(async rec => {
+          const r = await shopCall(this.env, rec.id, '/__/wh-list', {});
+          return ((r.data && r.data.orders) || []).map(o => Object.assign({}, o, { did: rec.id, shopName: rec.name, bz: cleanBz(rec.bz) }));
+        }));
+        const orders = [].concat(...got).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).slice(0, 400);
+        return json({ wh: { id: w.id, name: w.name, bz: w.bz || '' }, rate: await this.whRate(), orders });
+      }
+      if (path === '/api/hub/wh/receive' && method === 'POST') {
+        const r = await this.readBody(request, 500);
+        const b = r.body && typeof r.body === 'object' ? r.body : null;
+        if (r.err || !b || !validDid(b.did) || !validId(b.id) || typeof b.kg !== 'number' || !(b.kg > 0) || b.kg > WH_KG_MAX) return json({ error: 'bad_request' }, 400);
+        const rec = await this.getRec(b.did);
+        if (!rec || !(await sellers()).some(x => x.id === rec.id)) return json({ error: 'not_found' }, 404);
+        const sc = await shopCall(this.env, rec.id, '/__/wh-receive', { id: b.id, kg: b.kg, rate: await this.whRate(), name: w.name, uid, origin: this.origin });
+        if (!sc.ok) return json({ error: (sc.data && sc.data.error) || 'server', order: sc.data && sc.data.order ? Object.assign({}, sc.data.order, { did: rec.id, shopName: rec.name }) : undefined }, sc.status || 500);
+        return json({ order: Object.assign({}, sc.data.order, { did: rec.id, shopName: rec.name, bz: cleanBz(rec.bz) }), first: !!sc.data.first });
+      }
+      return json({ error: 'not_found' }, 404);
     }
 
     // выход из роли продавца: человек теряет доступ только к одной компании; компания, данные и другие продавцы не меняются
@@ -5319,7 +5495,7 @@ export class Hub {
     if (!path.startsWith('/api/hub/admin/')) return json({ error: 'not_found' }, 404);
     if (!(await this.owners()).includes(uid)) return json({ error: 'forbidden' }, 403);
     if (path.startsWith('/api/hub/admin/mod')) return await this.adminMod(request, path, method);
-    if (path.startsWith('/api/hub/admin/people') || path.startsWith('/api/hub/admin/terr') || path.startsWith('/api/hub/admin/agents') || path === '/api/hub/admin/base/import') {
+    if (path.startsWith('/api/hub/admin/people') || path.startsWith('/api/hub/admin/terr') || path.startsWith('/api/hub/admin/agents') || path.startsWith('/api/hub/admin/wh') || path === '/api/hub/admin/base/import') {
       const res = await this.adminPeople(request, path, method);
       if (res) return res;
     }
@@ -5582,6 +5758,7 @@ export class Hub {
     if (this.env.ADMIN_CODE && safeEq(hash, await sha256hex('code:' + this.env.ADMIN_CODE))) return { err: 'code_taken' };
     for (const x of await this.allRecs()) if (x.hash && x.id !== except && safeEq(hash, x.hash)) return { err: 'code_taken' };
     for (const x of await this.allAgents()) if (x.hash && x.id !== except && safeEq(hash, x.hash)) return { err: 'code_taken' };
+    for (const x of await this.allWh()) if (x.hash && x.id !== except && safeEq(hash, x.hash)) return { err: 'code_taken' };
     return { code, hash };
   }
   async createShop(b) {
@@ -5728,6 +5905,28 @@ export class Hub {
             'Tayyor, siz «' + res.ag.name + '» agentisiz.' + (names.length ? ' Hududlar: ' + names.join(', ') + '.' : '')
             + '\n\nIlovada «Baza» boʻlimini oching: u yerda tashrifdan keyin xaridor maʼlumotlarini tekshirish, xatolarni tuzatish va hali yoʻqlarini qoʻshish mumkin. Xaridorlar uchun oʻz havolangizni ham shu yerdan topasiz.')),
           reply_markup: openBtn(this.origin, btn2('Bazani ochish', 'Открыть базу'), this.origin + '/?v=base')
+        });
+      } else if (res.r === 'locked') await this.tg('sendMessage', { chat_id: chat, text: biU('Слишком много неверных попыток. Попробуйте через час.', 'Juda koʻp notoʻgʻri urinish. Bir soatdan keyin urinib koʻring.') });
+      else await this.tg('sendMessage', { chat_id: chat, text: biU('Неверный код.', 'Kod notoʻgʻri.') });
+      return;
+    }
+
+    if (cmd === '/sklad') {
+      const code = text.replace(/^\S+\s*/, '');
+      if (!code) {
+        await this.tg('sendMessage', { chat_id: chat, text: biU('Отправьте «/sklad КОД». Код кладовщика выдаёт владелец площадки.', '«/sklad KOD» yuboring. Omborchi kodini platforma egasi beradi.') });
+        return;
+      }
+      const res = await this.tryWhCode(code, uid);
+      await this.tg('deleteMessage', { chat_id: chat, message_id: msg.message_id });   // код не должен оставаться в переписке
+      if (res.r === 'ok') {
+        if (res.fresh) await this.notifyOwners(biL(() => L('🔑 Вход по коду: ' + whoFull(msg.from) + ' вошёл как кладовщик «' + res.w.name + '».' + (res.prev ? ' Этот код раньше был у другого Telegram-аккаунта (ID ' + res.prev + '), тот аккаунт отключён.' : ''),
+          '🔑 Kod bilan kirish: ' + whoFull(msg.from) + ' «' + res.w.name + '» omborchisi sifatida kirdi.' + (res.prev ? ' Bu kod avval boshqa Telegram hisobida edi (ID ' + res.prev + '), u hisob oʻchirildi.' : ''))), uid);
+        await this.tg('sendMessage', {
+          chat_id: chat,
+          text: biL(() => L('Готово, вы кладовщик «' + res.w.name + '».\n\nВ приложении откройте раздел «Склад»: там заказы продавцов с базара. Когда заказ привезли, найдите его, введите вес и нажмите «Принят на складе»: покупатель и продавец получат сообщение.',
+            'Tayyor, siz «' + res.w.name + '» omborchisiz.\n\nIlovada «Ombor» boʻlimini oching: u yerda bozor sotuvchilarining buyurtmalari. Buyurtma olib kelinganda uni toping, ogʻirligini kiriting va «Omborga qabul qilindi» tugmasini bosing: xaridor va sotuvchiga xabar boradi.')),
+          reply_markup: openBtn(this.origin, btn2('Omborni ochish', 'Открыть склад'), this.origin + '/?v=wh')
         });
       } else if (res.r === 'locked') await this.tg('sendMessage', { chat_id: chat, text: biU('Слишком много неверных попыток. Попробуйте через час.', 'Juda koʻp notoʻgʻri urinish. Bir soatdan keyin urinib koʻring.') });
       else await this.tg('sendMessage', { chat_id: chat, text: biU('Неверный код.', 'Kod notoʻgʻri.') });
