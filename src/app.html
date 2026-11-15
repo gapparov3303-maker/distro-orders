@@ -4393,8 +4393,8 @@ function rvClose(){
 const ABOUT_V='/*ABOUTV*/dev';
 const ABOUT_SHOT={w:540,h:1020};
 const ABOUT_DEF=()=>({
-  ru:'Sarbon — оптовая площадка в Telegram для Навои. Она соединяет продавцов и покупателей: покупатели заказывают прямо в Telegram, а продавцы получают заказы, учёт долгов и контроль доставки в одном месте.\n\nНаши агенты ходят по магазинам, супермаркетам, HoReCa и фастфуду, продвигают всех продавцов на площадке и приводят новых покупателей. Ничего скачивать не нужно.',
-  uz:'Sarbon — Navoiy uchun Telegramdagi ulgurji savdo maydonchasi. U sotuvchilar va xaridorlarni birlashtiradi: xaridorlar bevosita Telegramda buyurtma beradi, sotuvchilar esa buyurtmalar, qarzlar hisobi va yetkazib berish nazoratini bir joyda oladi.\n\nAgentlarimiz doʻkonlar, supermarketlar, HoReCa va fast-fud nuqtalarini aylanib, maydonchadagi barcha sotuvchilarni targʻib qiladi va yangi xaridorlar olib keladi. Hech narsa yuklab olish shart emas.'
+  ru:'Sarbon — оптовая площадка в Telegram для Навои, созданная для продуктов питания. Она соединяет продавцов и покупателей: покупатели заказывают прямо в Telegram, а продавцы получают заказы, учёт долгов и контроль доставки в одном месте.\n\nНаши агенты ходят по магазинам, супермаркетам, HoReCa и фастфуду, продвигают всех продавцов на площадке и приводят новых покупателей. Ничего скачивать не нужно.',
+  uz:'Sarbon — Navoiy uchun Telegramdagi ulgurji savdo maydonchasi. Platforma oziq-ovqat mahsulotlari uchun moʻljallangan. U sotuvchilar va xaridorlarni birlashtiradi: xaridorlar bevosita Telegramda buyurtma beradi, sotuvchilar esa buyurtmalar, qarzlar hisobi va yetkazib berish nazoratini bir joyda oladi.\n\nAgentlarimiz doʻkonlar, supermarketlar, HoReCa va fast-fud nuqtalarini aylanib, maydonchadagi barcha sotuvchilarni targʻib qiladi va yangi xaridorlar olib keladi. Hech narsa yuklab olish shart emas.'
 });
 /* Роли: lead — вступление, secs — разделы (img — имя скриншота без языка и расширения, li — шаги). Пары [рус, узб]. */
 const ABOUT_ROLES=[
@@ -4734,7 +4734,7 @@ function renderShops(){
   const pickBz=ck==='bazaar'&&!bk&&h.loaded&&!!bzGroups();   // вместо продавцов показаны базары
   let out='<div class="wrap page">'+(bk?'<button type="button" class="btn ghost sm backlink" data-act="bzback">← '+L('Базары','Bozorlar')+'</button><div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Базар','Bozor')+'</div><h1>'+esc(bkName)+'</h1></div></div>'
     :ck?'<button type="button" class="btn ghost sm backlink" data-act="catback">← '+L('Категории','Kategoriyalar')+'</button><div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Категория','Kategoriya')+'</div><h1>'+esc(shopCatName(ck))+'</h1></div></div>'
-    :'<div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Продавцы и покупатели в одном приложении','Sotuvchilar va xaridorlar bir ilovada')+'</div></div></div>');
+    :'<div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Продукты питания: продавцы и покупатели в одном приложении','Oziq-ovqat mahsulotlari: sotuvchilar va xaridorlar bir ilovada')+'</div></div></div>');
   if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
