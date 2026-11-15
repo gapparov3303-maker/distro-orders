@@ -1746,8 +1746,8 @@ function sellerActs(o){
   const del=o.mode==='delivery';
   const pk='<button type="button" class="btn ghost sm" data-act="pick1" data-id="'+esc(o.id)+'">'+L('Сборочный лист','Yigʻish roʻyxati')+'</button>';
   if(o.status==='new')return a('accepted',L('Принять в работу','Ishga qabul qilish'))+cancelBtn(o)+pk;
-  // заказ Базара идёт через склад: доставщиков нет, «Отвёз на склад» вместо «Готов к выдаче», закрыть можно после разрешения отправки
-  const bz=noWhen(o);
+  // заказ Базара идёт через склад: доставщиков нет, «Отвёз на склад» вместо «Готов к выдаче». Закрывает его покупатель кнопкой «Получил», у продавца кнопки «Доставлен» нет; отменить можно, пока склад не отправил заказ
+  const bz=noWhen(o),cx=o.sent?'':cancelBtn(o);
   // доставка при наличии доставщиков: продавец выбирает, кому передать заказ, а «Доставлен клиенту» нажимает сам доставщик
   const viaCr=del&&!bz&&S.crs.length>0;
   if(S.cp&&S.cp.key===okey(o.id,S.did)&&viaCr&&(S.cp.mode==='ready'?o.status==='accepted':o.status==='ready'))return crPickHTML(o);
@@ -1757,9 +1757,9 @@ function sellerActs(o){
   }
   if(o.status==='ready'){
     if(viaCr)return '<button type="button" class="btn sm" data-act="crpick" data-id="'+esc(o.id)+'" data-mode="change">'+(o.cr?L('Сменить доставщика','Yetkazuvchini almashtirish'):L('Назначить доставщика','Yetkazuvchini tayinlash'))+'</button>'+cancelBtn(o)+pk;
-    if(bz&&!o.ship)return cancelBtn(o)+pk;
+    if(buyerCloses(o))return cx+pk;
     if(S.pay&&S.pay.key===okey(o.id,S.did))return payBlockHTML(o);
-    return '<button type="button" class="btn sm" data-act="payopen" data-id="'+esc(o.id)+'">'+(del?L('Доставлен покупателю','Xaridorga yetkazildi'):L('Выдан покупателю','Xaridorga topshirildi'))+'</button>'+cancelBtn(o)+pk;
+    return '<button type="button" class="btn sm" data-act="payopen" data-id="'+esc(o.id)+'">'+(del?L('Доставлен покупателю','Xaridorga yetkazildi'):L('Выдан покупателю','Xaridorga topshirildi'))+'</button>'+cx+pk;
   }
   return o.status==='done'?pk:'';
 }
@@ -2007,7 +2007,7 @@ function payBlockHTML(o){
   const p=curPay(),ship=p.mode==='ship';
   let h='<div class="payb"><div class="pt">'+(ship?L('Как договорились об оплате?','Toʻlov haqida qanday kelishdingiz?'):L('Как оплатил покупатель?','Xaridor qanday toʻladi?'))+'</div><div class="pmute">'+L('К оплате: ','Toʻlanadi: ')+money(o.total)+'</div>';
   if(p.step==='m'){
-    h+='<div class="pyrow">'+(ship?['cash','card','bank','later','credit']:['cash','card','bank','credit']).filter(k=>k!=='credit'||S.view!=='courier'||S.courier.credit!==false).map(k=>'<button type="button" class="chip" data-act="paym" data-m="'+k+'"'+(S.cr.busy&&S.view==='courier'?' disabled':'')+'>'+esc(payName(k))+'</button>').join('')+'</div>'+(ship?hintD('Склад увидит только «Разрешено». Оплата и долг запишутся в учёт, покупатель получит сообщение.','Ombor faqat «Ruxsat berilgan»ni koʻradi. Toʻlov va qarz hisobga yoziladi, xaridorga xabar boradi.'):'');
+    h+='<div class="pyrow">'+['cash','card','bank','credit'].filter(k=>k!=='credit'||S.view!=='courier'||S.courier.credit!==false).map(k=>'<button type="button" class="chip" data-act="paym" data-m="'+k+'"'+(S.cr.busy&&S.view==='courier'?' disabled':'')+'>'+esc(payName(k))+'</button>').join('')+'</div>'+(ship?hintD('Оплата записывается здесь один раз. Склад увидит только «Разрешено», покупатель получит сообщение.','Toʻlov shu yerda bir marta yoziladi. Ombor faqat «Ruxsat berilgan»ni koʻradi, xaridorga xabar boradi.'):'');
   }else{
     h+='<div class="pyrow"><label for="pd-days">'+L('В долг на (дней)','Qarzga (kun)')+'</label><input type="number" id="pd-days" inputmode="numeric" min="1" max="90" step="1" value="'+esc(p.days)+'">'
       +[3,7,14,30].map(n=>'<button type="button" class="chip" data-act="paydays" data-n="'+n+'" aria-pressed="'+(String(p.days)===String(n))+'">'+n+'</button>').join('')+'</div>'+hintD('Через сколько дней покупатель должен вернуть деньги. Пример: 7.','Xaridor pulni necha kundan keyin qaytarishi kerak. Masalan: 7.')+''
@@ -2046,7 +2046,7 @@ function payGo(){
 }
 
 /* «Разрешить отправку»: продавец после согласования записывает способ оплаты, склад видит «Разрешено», покупатель получает сообщение. */
-const payAskTxt=(pay,total)=>pay.m==='later'?L('при получении в Навои','Navoiyda olganda'):pay.m==='credit'?(pay.paid?payName(pay.pm)+' '+money(pay.paid)+' + ':'')+payName('credit')+' '+money(Math.max(0,total-(pay.paid||0)))+' · '+pay.days+L(' дн.',' kun'):payName(pay.m);
+const payAskTxt=(pay,total)=>pay.m==='credit'?(pay.paid?payName(pay.pm)+' '+money(pay.paid)+' + ':'')+payName('credit')+' '+money(Math.max(0,total-(pay.paid||0)))+' · '+pay.days+L(' дн.',' kun'):payName(pay.m);
 function shipAllow(id,pay){
   const o=curOrder(id);
   if(!o||S.shipBusy)return;
@@ -4033,7 +4033,7 @@ async function setStatus(id,to,pay){
   const r=await api('POST','/api/admin/status',{id,to,pay});
   if(!r.ok){
     const e=r.data&&r.data.error;
-    toast(e==='bad_pay'?L('Проверьте способ оплаты, срок и сумму','Toʻlov usuli, muddat va summani tekshiring'):e==='use_courier'?L('Доставленным заказ отмечает доставщик','Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'):L('Не удалось обновить статус','Holatni yangilab boʻlmadi'));
+    toast(e==='bad_pay'?L('Проверьте способ оплаты, срок и сумму','Toʻlov usuli, muddat va summani tekshiring'):e==='use_courier'?L('Доставленным заказ отмечает доставщик','Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'):e==='buyer_closes'?L('Заказ закрывает покупатель кнопкой «Получил»','Buyurtmani xaridor «Oldim» tugmasi bilan yopadi'):e==='shipped'?L('Заказ уже отправлен со склада, отменить нельзя','Buyurtma ombordan joʻnatilgan, bekor qilib boʻlmaydi'):L('Не удалось обновить статус','Holatni yangilab boʻlmadi'));
     if(e==='use_courier'){S.pay=null;loadAdmin()}
     if(r.data&&r.data.order)applyOrder(r.data.order,r.data.stats);
     return;

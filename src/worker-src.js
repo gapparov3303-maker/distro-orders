@@ -541,8 +541,8 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
     if (o.status === 'new') rows.push([btn(btn2('✅ Ishga olish', '✅ Принять в работу'), 's:' + px + o.id + ':accepted')]);
     if (o.status === 'accepted') rows.push([btn(bzo ? btn2('📦 Omborga olib bordim', '📦 Отвёз на склад') : del ? btn2('📦 Joʻnatishga tayyor', '📦 Готов к отправке') : btn2('📦 Topshirishga tayyor', '📦 Готов к выдаче'), 's:' + px + o.id + ':ready')]);
     // доставку закрывает доставщик; продавцу кнопка нужна, только если доставщиков нет (или самовывоз)
-    if (o.status === 'ready' && !(del && hasCr) && (!bzo || o.ship)) rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен покупателю') : btn2('🤝 Topshirildi', '🤝 Выдан покупателю'), 's:' + px + o.id + ':done')]);
-    if (NEXT[o.status]) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
+    if (o.status === 'ready' && !(del && hasCr) && !buyerCloses(o)) rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен покупателю') : btn2('🤝 Topshirildi', '🤝 Выдан покупателю'), 's:' + px + o.id + ':done')]);
+    if (NEXT[o.status] && !o.sent) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
     const ml = orderLoc(o);
     if (ml) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', ml) }, { text: '📍 Google Maps', url: mapUrl('g', ml) }]);
     rows.push([{ text: btn2('Sotuvchi paneli', 'Панель продавца'), web_app: { url: sellerUrl(origin, did) } }]);
@@ -636,9 +636,6 @@ function customerText(o, kind, shop) {
     case 'unship': return L(
       '⚠️ Заказ ' + o.id + ': продавец отозвал разрешение на отправку. Способ оплаты уточните у продавца' + (contact ? ': ' + contact : '') + '.',
       '⚠️ Buyurtma ' + o.id + ': sotuvchi joʻnatishga ruxsatni qaytarib oldi. Toʻlov usulini sotuvchi bilan aniqlashtiring' + (contact ? ': ' + contact : '') + '.');
-    case 'auto': return L(
-      '✅ Заказ ' + o.id + ' закрыт автоматически: с отправки в Навои прошло 3 дня. Если что-то не так, напишите продавцу' + (contact ? ': ' + contact : '') + '.',
-      '✅ Buyurtma ' + o.id + ' avtomatik yopildi: Navoiyga joʻnatilganidan 3 kun oʻtdi. Biror narsa notoʻgʻri boʻlsa, sotuvchiga yozing' + (contact ? ': ' + contact : '') + '.');
     case 'cancelled': return L(
       '❌ Заказ ' + o.id + ' отменён продавцом.' + (contact ? '\nВопросы: ' + contact : ''),
       '❌ Buyurtma ' + o.id + ' sotuvchi tomonidan bekor qilindi.' + (contact ? '\nSavollar: ' + contact : ''));
@@ -3259,8 +3256,8 @@ export class Shop {
     return await this.lgAdd(o.uid, adds, snap);
   }
 
-  /* Продавец разрешает отправку заказа со склада и записывает, как договорились об оплате: наличные, карта, перечисление, «при получении» (m 'later': способ
-     запишется при выдаче) или в долг (срок и часть, оплаченная сразу). Работает только для принятого на складе заказа, один раз. Оплата попадает в o.pay, долг в журнал расчётов. */
+  /* Продавец разрешает отправку заказа со склада и записывает, как договорились об оплате: наличные, карта, перечисление или в долг (срок и часть, оплаченная сразу).
+     Оплата записывается только здесь, обязательно: варианта «при получении» нет. Работает только для принятого на складе заказа, один раз. Оплата попадает в o.pay, долг в журнал расчётов. */
   async whAllow(b) {
     const id = String(b.id || '');
     if (!validId(id)) return { err: 'bad_request' };
@@ -3272,20 +3269,17 @@ export class Shop {
     const p = b.pay;
     if (!p || typeof p !== 'object') return { err: 'bad_pay', order: o };
     const nowIso = new Date().toISOString(), total = Number(o.total) || 0;
-    const later = p.m === 'later';
-    const payRec = later ? null : p.m === undefined ? null : cleanPay(p, total, dayOf(nowIso));
-    if (!later && !payRec) return { err: 'bad_pay', order: o };
-    o.ship = { at: nowIso, m: later ? 'later' : payRec.m };
+    const payRec = p.m === undefined ? null : cleanPay(p, total, dayOf(nowIso));
+    if (!payRec) return { err: 'bad_pay', order: o };
+    o.ship = { at: nowIso, m: payRec.m };
     o.shu = Number(b.uid) || 0;
+    o.pay = payRec;
     const upd = { ['o:' + id]: o };
     let ask = null;
-    if (payRec) {
-      o.pay = payRec;
-      if (payRec.m === 'credit' && o.uid && total > 0) {
-        const lr = await this.lgCredit(o, payRec, { id: Number(b.uid) || 0, name: cleanStr(b.name, 60) }, null);
-        Object.assign(upd, lr.put);
-        ask = { uid: o.uid, n: lr.ns[0] };
-      }
+    if (payRec.m === 'credit' && o.uid && total > 0) {
+      const lr = await this.lgCredit(o, payRec, { id: Number(b.uid) || 0, name: cleanStr(b.name, 60) }, null);
+      Object.assign(upd, lr.put);
+      ask = { uid: o.uid, n: lr.ns[0] };
     }
     await this.st.put(upd);
     return { order: o, ask };
@@ -3336,8 +3330,8 @@ export class Shop {
     await this.st.put('o:' + id, o);
     return { order: o };
   }
-  /* Покупатель нажал «Получил» (или прошло GOT_DAYS дней). Оплачено при разрешении отправки: заказ закрывается сам.
-     «При получении»: продавец сам закрывает заказ и отмечает, как заплатил покупатель. */
+  /* Покупатель нажал «Получил»: заказ закрывается. Только так он и закрывается: само время заказ не закрывает. Оплата записана при разрешении отправки, при закрытии повторно не пишется.
+     Старый заказ с оплатой «при получении» (раньше такой вариант был): закрывает продавец и записывает оплату. */
   async buyerGot(b) {
     if (/^https:\/\/(?!internal)/.test(b.origin || '')) this.origin = b.origin;
     const id = String(b.id || ''), uid = Number(b.uid);
@@ -3349,14 +3343,13 @@ export class Shop {
     if (o.got) return { order: o, closed: false };
     o.got = { at: new Date().toISOString(), by: 'buyer' };
     await this.st.put('o:' + id, o);
-    const r = await this.afterGot(o, 'buyer');
+    const r = await this.afterGot(o);
     return { order: r.order, closed: r.closed };
   }
-  async afterGot(o, by) {
-    const prepaid = !!(o.ship && o.ship.m !== 'later' && o.pay);
+  async afterGot(o) {
     const who = [o.name, o.phone].filter(Boolean).join(', ');
     const lab = btn2('Buyurtmalar', 'Заказы');
-    if (!prepaid) {
+    if (!buyerCloses(o)) {
       await this.afterChange(o, 'ship');
       await this.notifyAdmins(biL(() => L('📥 Покупатель получил заказ ' + o.id + '.\nПокупатель: ' + who + '.\nОплата при получении: закройте заказ и отметьте, как заплатил покупатель.',
         '📥 Xaridor ' + o.id + ' buyurtmasini oldi.\nXaridor: ' + who + '.\nOlganda toʻlanadi: buyurtmani yoping va xaridor qanday toʻlaganini belgilang.')), lab);
@@ -3366,30 +3359,11 @@ export class Shop {
       o.status = 'ready'; o.statusAt = new Date().toISOString();
       await this.st.put('o:' + o.id, o);
     }
-    const res = await this.changeStatus(o.id, 'done', undefined, null, { id: by === 'buyer' ? Number(o.uid) || 0 : 0, name: by === 'buyer' ? (o.name || '') : '' });
+    const res = await this.changeStatus(o.id, 'done', undefined, null, { id: Number(o.uid) || 0, name: o.name || '' }, undefined, true);
     if (res.err) return { order: o, closed: false };
     await this.afterChange(res.order, null);
-    await this.notifyAdmins(biL(() => by === 'auto'
-      ? L('✅ Заказ ' + o.id + ' закрыт автоматически: с отправки в Навои прошло ' + GOT_DAYS + ' дня.\nПокупатель: ' + who + '.', '✅ Buyurtma ' + o.id + ' avtomatik yopildi: Navoiyga joʻnatilganidan ' + GOT_DAYS + ' kun oʻtdi.\nXaridor: ' + who + '.')
-      : L('✅ Покупатель получил заказ ' + o.id + ', заказ закрыт.\nПокупатель: ' + who + '.', '✅ Xaridor ' + o.id + ' buyurtmasini oldi, buyurtma yopildi.\nXaridor: ' + who + '.')), lab);
-    if (by === 'auto' && o.uid && this.env.BOT_TOKEN) {
-      try { await this.tg('sendMessage', { chat_id: o.uid, text: customerText(res.order, 'auto', (await this.getCfg()).shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') }); }
-      catch (e) { console.error('auto close notify failed', e && e.message || e); }
-    }
+    await this.notifyAdmins(biL(() => L('✅ Покупатель получил заказ ' + o.id + ', заказ закрыт.\nПокупатель: ' + who + '.', '✅ Xaridor ' + o.id + ' buyurtmasini oldi, buyurtma yopildi.\nXaridor: ' + who + '.')), lab);
     return { order: res.order, closed: true };
-  }
-  /* Каждое утро: оплаченные заказы, которые склад отправил в Навои GOT_DAYS дней назад, а покупатель так и не нажал «Получил», закрываются сами.
-     Заказы с оплатой «при получении» не трогаем: способ оплаты отмечает продавец. */
-  async autoGot(origin) {
-    if (/^https:\/\/(?!internal)/.test(origin || '')) this.origin = origin;
-    const now = Date.now(); let n = 0;
-    for (const o of await this.getOrders((await this.st.get('act')) || [])) {
-      if (!o.sent || !NEXT[o.status] || !(o.ship && o.ship.m !== 'later' && o.pay)) continue;
-      if (now - Date.parse(o.sent.at) < GOT_DAYS * 86400000) continue;
-      if (!o.got) { o.got = { at: new Date().toISOString(), by: 'auto' }; await this.st.put('o:' + o.id, o); }
-      if ((await this.afterGot(o, 'auto')).closed) n++;
-    }
-    return n;
   }
   /* Сообщения об этапах склада: карточки продавца обновляются, покупатель получает сообщение, продавцу пишем про отправку и её отмену. */
   async afterStage(o, kind) {
@@ -3405,7 +3379,7 @@ export class Shop {
   }
 
   /* Меняет статус без обращений к сети между чтением и записью. */
-  async changeStatus(id, to, pay, cour, by, assign) {
+  async changeStatus(id, to, pay, cour, by, assign, viaBuyer) {
     await this.ensureClients();
     await this.ensureReports();
     const o = await this.st.get('o:' + id);
@@ -3413,6 +3387,10 @@ export class Shop {
     if (o.status === to) return { order: o, same: true };
     if (!(NEXT[o.status] || []).includes(to)) return { err: 'bad_transition', order: o };
     if (to === 'cancelled' && shipLocked(o)) return { err: 'shipping_allowed', order: o };
+    // склад уже отправил заказ Базара в Навои: отменять поздно
+    if (to === 'cancelled' && o.sent) return { err: 'shipped', order: o };
+    // заказ Базара закрывает только покупатель кнопкой «Получил» (viaBuyer): продавцу закрывать нечем
+    if (to === 'done' && !cour && !viaBuyer && buyerCloses(o)) return { err: 'buyer_closes', order: o };
     // доставщик закрывает только свой заказ на доставку
     if (cour && (o.mode !== 'delivery' || o.cr !== cour.id || to !== 'done')) return { err: 'not_yours', order: o };
     // продавец не закрывает доставку, если есть доставщики: «Доставлен клиенту» нажимает доставщик
@@ -3910,7 +3888,6 @@ export class Shop {
   }
   /* Утреннее напоминание продавцам. Вызывается площадкой по расписанию. Молчит, если выключено, уже было сегодня или просрочки нет. */
   async morning(origin) {
-    try { await this.autoGot(origin); } catch (e) { console.error('auto close failed', e && e.message || e); }
     if (!this.env.BOT_TOKEN) return { sent: 0, why: 'no_token' };
     if (/^https:\/\/(?!internal)/.test(origin || '')) this.origin = origin;
     if ((await this.st.get('mrn')) === 0) return { sent: 0, why: 'off' };
@@ -4388,12 +4365,22 @@ export class Shop {
     const here = cq.message && cq.message.chat ? { chat_id: cq.message.chat.id, message_id: cq.message.message_id } : null;
     const edit = card => here ? this.editCard(here, card) : null;
 
+    // склад уже отправил заказ: отменять поздно (в старых сообщениях кнопка «Отменить» остаётся)
+    if ((kind === 'c' || kind === 's' && to === 'cancelled') && o.sent) {
+      await edit(await this.card(o, cfg.shop, false));
+      return answer(ans2('Заказ уже отправлен со склада, отменить нельзя', 'Buyurtma ombordan joʻnatilgan, bekor qilib boʻlmaydi'), true);
+    }
     if (kind === 'c') { await edit(await this.card(o, cfg.shop, true)); return answer(ans2('Отменить заказ ' + id + '?', 'Buyurtma ' + id + ' bekor qilinsinmi?')); }
     if (kind === 'b') { await edit(await this.card(o, cfg.shop, false)); return answer(''); }
     // доставку закрывает доставщик: в старых сообщениях кнопка «Доставлен» остаётся, но продавцу она не подходит
     if ((kind === 's' && to === 'done' || kind === 'p') && o.mode === 'delivery' && !noWhen(o) && o.status === 'ready' && (await this.crActive()).length) {
       await edit(await this.card(o, cfg.shop, false));
       return answer(ans2('Доставленным заказ отмечает доставщик', 'Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'), true);
+    }
+    // заказ Базара закрывает покупатель («Получил»): в старых сообщениях кнопка «Выдан» остаётся, но продавцу она не подходит
+    if ((kind === 's' && to === 'done' || kind === 'p') && buyerCloses(o)) {
+      await edit(await this.card(o, cfg.shop, false));
+      return answer(ans2('Заказ закрывает покупатель кнопкой «Получил»', 'Buyurtmani xaridor «Oldim» tugmasi bilan yopadi'), true);
     }
     // «Выдан клиенту» сначала спрашивает, как оплатил клиент (нажатия в старых сообщениях тоже придут сюда)
     if (kind === 's' && to === 'done' && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'pay')); return answer(ans2('Как оплатил покупатель?', 'Xaridor qanday toʻladi?')); }
@@ -4405,6 +4392,10 @@ export class Shop {
       if (res.err === 'use_courier') {   // у заказа Базара доставщиков нет, сюда он не попадает
         await edit(await this.card(res.order, cfg.shop, false));
         return answer(ans2('Доставленным заказ отмечает доставщик', 'Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'), true);
+      }
+      if (res.err === 'buyer_closes' || res.err === 'shipped') {
+        await edit(await this.card(res.order, cfg.shop, false));
+        return answer(res.err === 'shipped' ? ans2('Заказ уже отправлен со склада, отменить нельзя', 'Buyurtma ombordan joʻnatilgan, bekor qilib boʻlmaydi') : ans2('Заказ закрывает покупатель кнопкой «Получил»', 'Buyurtmani xaridor «Oldim» tugmasi bilan yopadi'), true);
       }
       if (res.err === 'bad_transition') {
         await edit(await this.card(res.order, cfg.shop, false));
@@ -4472,7 +4463,7 @@ const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 /* ---------- База магазинов: территории, агенты, записи ---------- */
 const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50, MAX_BAZAARS = 30;
 /* Склад Sarbon: кладовщики, ставка перевозки (сум за 1 кг, платится водителю), предельный вес одного заказа. */
-const MAX_WH = 30, WH_RATE_DEF = 500, WH_RATE_MAX = 100000, WH_KG_MAX = 20000, GOT_DAYS = 3;   // GOT_DAYS: через сколько дней после отправки в Навои оплаченный заказ закрывается сам
+const MAX_WH = 30, WH_RATE_DEF = 500, WH_RATE_MAX = 100000, WH_KG_MAX = 20000;
 /* «Как это работает» у базара: первая строка заголовок, дальше шаги. До 9 строк, до 400 знаков в строке и до 1500 всего. */
 function cleanHow(v) {
   if (typeof v !== 'string') return '';

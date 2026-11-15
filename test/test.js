@@ -8631,6 +8631,9 @@ await t('склад: продавец разрешает отправку пос
   const recv = (id, kg) => call('POST', '/api/hub/wh/receive', { init: iW(), body: { did: sA, id, kg } });
   const whList = async () => (await jsonOf(await call('GET', '/api/hub/wh', { init: iW() }))).orders;
   const mine = async (u, id) => (await jsonOf(await call('GET', '/api/hub/orders', { init: u.init() }))).orders.find(o => o.id === id);
+  const sent = id => call('POST', '/api/hub/wh/sent', { init: iW(), body: { did: sA, id } });
+  const got = (u, id) => call('POST', '/api/hub/orders/got', { init: u.init(), body: { did: sA, id } });
+  const store1 = id => W.shops.get(sA).storage.get('o:' + id);
   const A = newUser(), B = newUser(), C = newUser(), D = newUser();
   const place = async u => (await ordBase(sA, u, { name: 'Магазин ' + u.u.id })).order;
   const oCash = await place(A), oLater = await place(B), oCredit = await place(C), oCard = await place(D);
@@ -8670,16 +8673,21 @@ await t('склад: продавец разрешает отправку пос
   r = await recv(oCash.id, 11);
   assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'shipping_allowed');
   assert.equal((await whList()).find(o => o.id === oCash.id).wh.kg, 10, 'вес остался прежним');
-  // «при получении»: способ ещё не известен
+  // «при получении» больше нет: оплату записывают только при разрешении, обязательно
+  for (const pay of [{ m: 'later' }, {}, { m: 'wire' }]) {
+    r = await ship(sA, iD(), { id: oLater.id, pay });
+    assert.equal(r.status, 400, JSON.stringify(pay)); assert.equal((await jsonOf(r)).error, 'bad_pay');
+  }
+  assert.ok(!(await store1(oLater.id)).ship, 'после отказа разрешения нет');
   tgLog = [];
-  d = await jsonOf(await ship(sA, iD(), { id: oLater.id, pay: { m: 'later' } }));
-  assert.equal(d.order.pay, undefined); assert.equal(d.order.ship.m, 'later');
-  assert.ok(tgAll('sendMessage', p => p.chat_id === B.u.id)[0].payload.text.includes('при получении в Навои'));
+  d = await jsonOf(await ship(sA, iD(), { id: oLater.id, pay: { m: 'bank' } }));
+  assert.deepEqual(d.order.pay, { m: 'bank' }); assert.equal(d.order.ship.m, 'bank');
+  assert.ok(tgAll('sendMessage', p => p.chat_id === B.u.id)[0].payload.text.includes('Перечисление'));
   // карта: записана как оплата
   d = await jsonOf(await ship(sA, iD(), { id: oCard.id, pay: { m: 'card' } }));
   assert.deepEqual(d.order.pay, { m: 'card' });
   const debts0 = await jsonOf(await callS(sA, 'GET', '/api/admin/debts', { init: iD() }));
-  assert.equal(debts0.n, 0, 'наличные, карта и «при получении» долгом не становятся');
+  assert.equal(debts0.n, 0, 'наличные и карта долгом не становятся');
   // в долг на 7 дней с частью картой: долг в журнале, покупатель подтверждает запись
   tgLog = [];
   d = await jsonOf(await ship(sA, iD(), { id: oCredit.id, pay: { m: 'credit', days: 7, paid: 400000, pm: 'card' } }));
@@ -8698,17 +8706,21 @@ await t('склад: продавец разрешает отправку пос
   assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'not_cancellable', 'покупатель тоже не отменяет заказ, записанный в долг');
   assert.equal((await mine(C, oCredit.id)).status, 'new', 'заказ в долг остался на месте');
   assert.equal((await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oCard.id, to: 'cancelled' } })).status, 200, 'заказ с оплатой картой отменить можно');
-  // выдача после разрешения не пишет оплату второй раз
+  // продавец заказ Базара не закрывает: его закрывает покупатель кнопкой «Получил», оплата второй раз не пишется
   for (const to of ['accepted', 'ready']) assert.equal((await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oCredit.id, to } })).status, 200);
-  d = await jsonOf(await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oCredit.id, to: 'done', pay: { m: 'cash' } } }));
-  assert.equal(d.order.pay.m, 'credit', 'при выдаче остаётся оплата, записанная при разрешении');
+  r = await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oCredit.id, to: 'done', pay: { m: 'cash' } } });
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'buyer_closes');
+  assert.equal((await sent(oCredit.id)).status, 200);
+  d = (await jsonOf(await got(C, oCredit.id)));
+  assert.equal(d.closed, true); assert.equal(d.order.pay.m, 'credit', 'остаётся оплата, записанная при разрешении');
   const after = await jsonOf(await callS(sA, 'GET', '/api/admin/debts/' + C.u.id, { init: iD() }));
   assert.deepEqual(after.debt.rows.map(x => [x.k, x.d]), [['pay', -400000], ['ch', 1394000]], 'в журнале по-прежнему две записи');
   assert.equal((await jsonOf(await callS(sA, 'GET', '/api/admin/debts', { init: iD() }))).total, 994000);
-  // «при получении» закрывается обычным выбором способа
+  // перечисление: способ записан при разрешении, покупатель закрыл заказ
   for (const to of ['accepted', 'ready']) assert.equal((await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oLater.id, to } })).status, 200);
-  d = await jsonOf(await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oLater.id, to: 'done', pay: { m: 'bank' } } }));
-  assert.equal(d.order.pay.m, 'bank', 'способ выбран при выдаче');
+  assert.equal((await sent(oLater.id)).status, 200);
+  d = await jsonOf(await got(B, oLater.id));
+  assert.equal(d.order.pay.m, 'bank', 'способ записан при разрешении');
   // отменённый или закрытый заказ разрешить нельзя
   r = await ship(sA, iD(), { id: oCard.id, pay: { m: 'cash' } });
   assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'closed');
@@ -8785,7 +8797,7 @@ await t('склад на экране: блок «Как это работает
   assert.ok(/\['wh',L\('Склад','Ombor'\),L\('Склад','Ombor'\)\]/.test(html) && /data-act="whadd"/.test(html), 'у владельца есть раздел «Склад»');
 });
 
-await t('разрешение отправки на экране: кнопка только у принятого на складе заказа, окно оплаты с «при получении», выдача без повторного вопроса, вкладка кладовщика', async () => {
+await t('разрешение отправки на экране: кнопка только у принятого на складе заказа, окно оплаты без «при получении», выдача без повторного вопроса, вкладка кладовщика', async () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const oc = html.slice(html.indexOf('function orderCard('), html.indexOf('function renderMine('));
   assert.ok(/shipBtn=m==='seller'&&o\.wh&&!o\.ship&&NEXT_LIVE\.includes\(o\.status\)/.test(oc), 'кнопка: свой заказ продавца, принят на складе, ещё не разрешён, не закрыт');
@@ -8793,7 +8805,7 @@ await t('разрешение отправки на экране: кнопка �
   assert.ok(/Разрешить отправку/.test(oc) && /Joʻnatishga ruxsat/.test(oc), 'надпись на двух языках');
   assert.ok(/o\.ship\?'<div class="note">✅/.test(oc), 'в карточке видно, что отправка разрешена');
   const pb = html.slice(html.indexOf('function payBlockHTML('), html.indexOf('function payRestTxt('));
-  assert.ok(/ship\?\['cash','card','bank','later','credit'\]:\['cash','card','bank','credit'\]/.test(pb), 'при разрешении добавлен способ «При получении», при выдаче его нет');
+  assert.ok(/\['cash','card','bank','credit'\]\.filter\(/.test(pb) && !/later/.test(pb), 'способы оплаты: наличные, карта, перечисление, в долг; «При получении» нет');
   assert.ok(/Разрешить в долг/.test(pb) && /Склад увидит только «Разрешено»/.test(pb), 'кнопка долга и подсказка про склад');
   const pm = html.slice(html.indexOf('function payMethod('), html.indexOf('function payGo('));
   assert.ok(/p\.mode==='ship'&&PAYN\[m\]\)\{shipAllow\(p\.id,\{m\}\);return\}/.test(pm) && /m!=='later'/.test(pm), 'способ в режиме разрешения идёт в shipAllow, «при получении» не уходит в выдачу');
@@ -8806,7 +8818,6 @@ await t('разрешение отправки на экране: кнопка �
   for (const e of ['bad_pay', 'not_received', 'already', 'closed']) assert.ok(sa.includes("e==='" + e + "'"), 'ошибка ' + e);
   const pay = (m, extra) => Object.assign({ m }, extra || {});
   const ask = new Function('L', 'payName', 'money', 'return ' + html.match(/const payAskTxt=.*\n/)[0].replace(/^const payAskTxt=/, '').replace(/;\s*$/, ''))((ru) => ru, m => ({ cash: 'Наличные', card: 'Карта', credit: 'В долг' }[m] || m), v => v + ' сум');
-  assert.equal(ask(pay('later'), 1000), 'при получении в Навои');
   assert.equal(ask(pay('card'), 1000), 'Карта');
   assert.equal(ask(pay('credit', { days: 14, paid: 400, pm: 'card' }), 1000), 'Карта 400 сум + В долг 600 сум · 14 дн.');
   // кладовщик
@@ -9118,7 +9129,7 @@ await t('форма Базара на экране: две кнопки полу
   assert.ok(html.includes('<span class="when">\'+esc(whenText(o))+\'</span>'), 'карточка заказа');
 });
 
-await t('склад, часть 3: «Отвёз на склад», «Отправлен в Навои», «Получил», «Снять разрешение», закрытие через 3 дня', async () => {
+await t('склад, часть 3: «Отвёз на склад», «Отправлен в Навои», «Получил» закрывает заказ только сам, «Снять разрешение», без автозакрытия', async () => {
   await hubWorld();
   const bz = (await jsonOf(await adm('POST', '/bazaars', { name: 'Урикзор', uz: 'Oʻrikzor' }))).id;
   const sA = await mkBazaarShop('Рынок Один', bz, 80);
@@ -9192,7 +9203,25 @@ await t('склад, часть 3: «Отвёз на склад», «Отпра�
   assert.ok(texts(A)[0].includes('склад отменил отправку'));
   assert.equal((await unsent(oA.id)).status, 409, 'нечего возвращать');
   assert.equal((await whList()).find(o => o.id === oA.id).sent, false);
+  tgLog = [];
   assert.equal((await sent(oA.id)).status, 200);
+  const sentCard = tgAll('editMessageText', p => String(p.text).includes(oA.id)).pop();
+  assert.ok(sentCard && !JSON.stringify(sentCard.payload.reply_markup).includes('Отменить') && !JSON.stringify(sentCard.payload.reply_markup).includes('Выдан покупателю'), 'после отправки в карточке продавца нет ни «Отменить», ни «Выдан»');
+  // продавец заказ Базара не закрывает и после отправки не отменяет: закрывает только покупатель
+  r = await setSt(oA.id, 'done');
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'buyer_closes');
+  r = await setSt(oA.id, 'done', { m: 'cash' });
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'buyer_closes', 'с оплатой тоже нельзя');
+  r = await setSt(oA.id, 'cancelled');
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'shipped');
+  assert.equal((await adminO(oA.id)).status, 'ready', 'заказ остался на месте');
+  // старые кнопки в Telegram («Отменить», «Выдан», оплата) тоже ничего не меняют
+  for (const [data, txt] of [['c:' + sA + ':' + oA.id, 'уже отправлен со склада'], ['s:' + sA + ':' + oA.id + ':cancelled', 'уже отправлен со склада'], ['s:' + sA + ':' + oA.id + ':done', 'закрывает покупатель'], ['p:' + sA + ':' + oA.id + ':cash', 'закрывает покупатель']]) {
+    tgLog = [];
+    await cb(DIL, data, 790);
+    assert.ok(lastTg('answerCallbackQuery').payload.text.includes(txt), data + ': ' + lastTg('answerCallbackQuery').payload.text);
+  }
+  assert.equal((await adminO(oA.id)).status, 'ready', 'после нажатий в Telegram заказ тот же');
 
   // покупатель: чужой и неотправленный заказ нельзя; оплачено заранее — «Получил» закрывает заказ сам
   r = await got(B, oA.id);
@@ -9215,20 +9244,21 @@ await t('склад, часть 3: «Отвёз на склад», «Отпра�
   const stats = await jsonOf(await callS(sA, 'GET', '/api/admin/orders', { init: iD() }));
   assert.equal(stats.stats.doneCount, 1);
 
-  // «при получении»: «Получил» только отмечает, закрывает и записывает оплату продавец; сам такой заказ не закрывается и через 3 дня
+  // «при получении» больше нет: оплата записывается только при разрешении; время заказ не закрывает, закрывает только покупатель
   assert.equal((await setSt(oB.id, 'accepted')).status, 200); assert.equal((await setSt(oB.id, 'ready')).status, 200);
   assert.equal((await recv(oB.id)).status, 200);
-  assert.equal((await ship(iD(), { id: oB.id, pay: { m: 'later' } })).status, 200);
+  for (const pay of [{ m: 'later' }, {}, { m: 'wire' }]) {
+    r = await ship(iD(), { id: oB.id, pay });
+    assert.equal(r.status, 400, JSON.stringify(pay)); assert.equal((await jsonOf(r)).error, 'bad_pay');
+  }
+  assert.equal((await ship(iD(), { id: oB.id, pay: { m: 'card' } })).status, 200);
   assert.equal((await sent(oB.id)).status, 200);
-  tgLog = [];
+  await back(oB.id, 10); tgLog = [];
+  await runMorning();
+  assert.equal((await adminO(oB.id)).status, 'ready', 'прошло 10 дней, заказ сам не закрылся');
+  assert.ok(!tgAll('sendMessage', p => String(p.text).includes('закрыт автоматически')).length);
   const gb = await jsonOf(await got(B, oB.id));
-  assert.equal(gb.closed, false); assert.equal(gb.order.status, 'ready'); assert.ok(gb.order.got.at);
-  assert.ok(tgAll('sendMessage', p => p.chat_id === DIL.id && String(p.text).includes('Оплата при получении: закройте заказ')).length >= 1);
-  assert.equal((await jsonOf(await got(B, oB.id))).closed, false, 'повторное нажатие ничего не ломает');
-  await back(oB.id, 10); await runMorning();
-  assert.equal((await adminO(oB.id)).status, 'ready', 'через 3 дня заказ «при получении» сам не закрывается');
-  const cb = await jsonOf(await setSt(oB.id, 'done', { m: 'card' }));
-  assert.equal(cb.order.status, 'done'); assert.deepEqual(cb.order.pay, { m: 'card' }, 'продавец закрыл и записал, как заплатил покупатель');
+  assert.equal(gb.closed, true); assert.equal(gb.order.status, 'done'); assert.deepEqual(gb.order.pay, { m: 'card' }); assert.equal(gb.order.got.by, 'buyer');
 
   // в долг: разрешение снять нельзя (долг уже в журнале); с картой можно, оплата стирается, вес снова меняется, потом разрешить заново
   assert.equal((await recv(oC.id)).status, 200);
@@ -9251,24 +9281,25 @@ await t('склад, часть 3: «Отвёз на склад», «Отпра�
   assert.equal((await ship(iD(), { id: oD.id, pay: { m: 'bank' } })).status, 200);
   assert.equal((await sent(oD.id)).status, 200);
 
-  // автозакрытие: оплаченный заказ закрывается через 3 дня после отправки; до этого нет; в том числе из «В работе»
+  // и через 40 дней заказ сам не закрывается; из «В работе» его закрывает покупатель
+  await back(oD.id, 40); tgLog = [];
+  await runMorning();
+  assert.equal((await adminO(oD.id)).status, 'accepted', 'и через 40 дней заказ сам не закрывается');
+  assert.ok(!tgAll('sendMessage', p => String(p.text).includes('закрыт автоматически')).length);
+  const gd = await jsonOf(await got(D, oD.id));
+  assert.equal(gd.closed, true); assert.deepEqual(gd.order.pay, { m: 'bank' }); assert.equal(gd.order.got.by, 'buyer');
+
+  // старый заказ, разрешённый ещё с оплатой «при получении»: «Получил» только отмечает, закрывает продавец и записывает оплату
   assert.equal((await recv(oE.id)).status, 200);
-  assert.equal((await ship(iD(), { id: oE.id, pay: { m: 'card' } })).status, 200);
-  assert.equal((await sent(oE.id)).status, 200);
-  await back(oD.id, 2); await back(oE.id, 4);
+  const eo = await store.get('o:' + oE.id);
+  Object.assign(eo, { status: 'ready', ship: { at: new Date().toISOString(), m: 'later' }, sent: { at: new Date().toISOString(), bn: 'Салим' } });
+  await store.put('o:' + oE.id, eo);
   tgLog = [];
-  await runMorning();
-  assert.equal((await adminO(oD.id)).status, 'accepted', 'прошло меньше трёх дней');
-  const ae = await adminO(oE.id);
-  assert.equal(ae.status, 'done'); assert.equal(ae.got.by, 'auto'); assert.deepEqual(ae.pay, { m: 'card' });
-  assert.ok(texts(E).some(x => x.includes('закрыт автоматически')), 'покупателю пишем');
-  assert.ok(tgAll('sendMessage', p => p.chat_id === DIL.id && String(p.text).includes('закрыт автоматически')).length >= 1, 'продавцу тоже');
-  await back(oD.id, 3.5); tgLog = [];
-  await runMorning();
-  const ad = await adminO(oD.id);
-  assert.equal(ad.status, 'done'); assert.equal(ad.got.by, 'auto'); assert.deepEqual(ad.pay, { m: 'bank' });
-  tgLog = []; await runMorning();
-  assert.equal(tgAll('sendMessage', p => String(p.text).includes('закрыт автоматически')).length, 0, 'второй запуск ничего не задваивает');
+  const ge = await jsonOf(await got(E, oE.id));
+  assert.equal(ge.closed, false); assert.equal(ge.order.status, 'ready'); assert.ok(ge.order.got.at);
+  assert.ok(tgAll('sendMessage', p => p.chat_id === DIL.id && String(p.text).includes('Оплата при получении: закройте заказ')).length >= 1);
+  const ce = await jsonOf(await setSt(oE.id, 'done', { m: 'cash' }));
+  assert.equal(ce.order.status, 'done'); assert.deepEqual(ce.order.pay, { m: 'cash' }, 'продавец закрыл старый заказ и записал оплату');
   assert.equal((await jsonOf(await callS(sA, 'GET', '/api/admin/orders', { init: iD() }))).stats.doneCount, 4, 'A, B, D, E закрыты, C ещё в работе');
   assert.equal((await adminO(oC.id)).status, 'new');
 });
@@ -9277,7 +9308,8 @@ await t('склад, часть 3 на экране: «Отвёз на скла�
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const sa = html.slice(html.indexOf('function sellerActs('), html.indexOf('function crPickHTML('));
   assert.ok(/const bz=noWhen\(o\)/.test(sa) && /viaCr=del&&!bz&&S\.crs\.length>0/.test(sa), 'у заказа Базара доставщиков нет');
-  assert.ok(/bz\?bzReadyBtn\(\)/.test(sa) && /if\(bz&&!o\.ship\)return cancelBtn\(o\)\+pk/.test(sa), '«Отвёз на склад», закрыть можно только после разрешения');
+  assert.ok(/bz\?bzReadyBtn\(\)/.test(sa) && /if\(buyerCloses\(o\)\)return cx\+pk/.test(sa), '«Отвёз на склад»; кнопки «Доставлен» у продавца нет, заказ закрывает покупатель');
+  assert.ok(/cx=o\.sent\?'':cancelBtn\(o\)/.test(sa) && /\+cx\+pk/.test(sa), '«Отменить» пропадает, когда склад отправил заказ');
   const oc = html.slice(html.indexOf('function orderCard('), html.indexOf('function renderMine('));
   assert.ok(/unshipBtn=m==='seller'&&o\.ship&&!o\.sent&&!\(o\.pay&&o\.pay\.m==='credit'\)&&NEXT_LIVE\.includes\(o\.status\)/.test(oc), '«Снять разрешение»: до отправки и не для долга');
   assert.ok(/gotBtn=m==='mine'&&o\.sent&&!o\.got&&NEXT_LIVE\.includes\(o\.status\)/.test(oc) && /Получил/.test(oc) && /Oldim/.test(oc), '«Получил» у покупателя после отправки');
