@@ -934,8 +934,8 @@ const isAgent=()=>!!(S.hub.me&&S.hub.me.agent);
 /* общая база магазинов: смотрят владелец, агенты и дистрибьюторы */
 const canBase=()=>!!(S.auth&&S.hub.me&&(isOwner()||isAgent()||S.hub.me.sells.length));
 const canList=()=>S.hub.shops.length>1||!!(S.hub.me&&(S.hub.me.owner||S.hub.me.sells.length>1));
-const backHTML=()=>canList()?'<button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все дистрибьюторы','Barcha distribyutorlar')+'</button>':'';
-const offTxt=()=>L('Этот дистрибьютор сейчас не принимает заказы.','Bu distribyutor hozir buyurtma qabul qilmayapti.');
+const backHTML=()=>canList()?'<button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все продавцы','Barcha sotuvchilar')+'</button>':'';
+const offTxt=()=>L('Этот продавец сейчас не принимает заказы.','Bu sotuvchi hozir buyurtma qabul qilmayapti.');
 const offHTML=()=>S.off?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(offTxt())+'</div>':'';
 const sellLink=()=>{const m=S.hub.me&&S.hub.me.sells.find(x=>x.id===S.did);return m&&m.link||''};
 const shopNameOf=did=>{const s=S.hub.shops.find(x=>x.id===did);return s?s.name:''};
@@ -993,8 +993,8 @@ function terrFieldHTML(){
 function regionFieldHTML(){
   const z=zone(),cur=orderRegion(),off=S.region&&!z.includes(S.region);
   return '<div class="full"><label class="lab" for="f-region">'+L('Регион доставки','Yetkazib berish hududi')+'</label><select id="f-region" data-f="region"><option value="">'+L('Выберите регион','Hududni tanlang')+'</option>'
-    +z.map(id=>'<option value="'+id+'"'+(id===cur?' selected':'')+'>'+esc(regionName(id))+'</option>').join('')+'</select>'+hintD('Дистрибьютор доставляет только в эти регионы. Самовывоз доступен всем.','Distribyutor faqat shu hududlarga yetkazib beradi. Olib ketish hamma uchun ochiq.')+'<div class="err" id="e-region"></div>'
-    +(off?'<div class="note warnnote" role="status" style="margin-top:8px">'+esc(L('Этот дистрибьютор не доставляет в ваш регион ('+regionName(S.region)+'). Выберите самовывоз или регион из списка.','Bu distribyutor sizning hududingizga ('+regionName(S.region)+') yetkazib bermaydi. Olib ketishni yoki roʻyxatdagi hududni tanlang.'))+'</div>':'')+'</div>';
+    +z.map(id=>'<option value="'+id+'"'+(id===cur?' selected':'')+'>'+esc(regionName(id))+'</option>').join('')+'</select>'+hintD('Продавец доставляет только в эти регионы. Самовывоз доступен всем.','Sotuvchi faqat shu hududlarga yetkazib beradi. Olib ketish hamma uchun ochiq.')+'<div class="err" id="e-region"></div>'
+    +(off?'<div class="note warnnote" role="status" style="margin-top:8px">'+esc(L('Этот продавец не доставляет в ваш регион ('+regionName(S.region)+'). Выберите самовывоз или регион из списка.','Bu sotuvchi sizning hududingizga ('+regionName(S.region)+') yetkazib bermaydi. Olib ketishni yoki roʻyxatdagi hududni tanlang.'))+'</div>':'')+'</div>';
 }
 /* в каталоге: куда доставляет этот дистрибьютор, и предупреждение, если не в регион магазина */
 function regionNoteHTML(){
@@ -1027,7 +1027,7 @@ function loadCart(){
   }catch(e){}
 }
 function saveCart(){
-  if(S.otherCart)return;   // пока открыт другой дистрибьютор, его корзину не трогаем
+  if(S.otherCart)return;   // пока открыт другой продавец, его корзину не трогаем
   try{
     if(Object.keys(S.cart).length)localStorage.setItem('sh-cart',JSON.stringify({did:S.did,name:S.cfg.shop.name||'',items:S.cart}));
     else localStorage.removeItem('sh-cart');
@@ -1039,7 +1039,7 @@ const otherCartCount=()=>S.otherCart?Object.keys(S.otherCart.items).length:0;
 function askOtherCart(cb){
   if(!S.otherCart){cb();return}
   const n=otherCartName(),q=n?' («'+n+'»)':'';
-  askConfirm(L('В корзине товары другого дистрибьютора'+q+'. Очистить корзину и добавить этот товар?','Savatda boshqa distribyutor'+q+' mahsulotlari bor. Savatni tozalab, bu mahsulotni qoʻshamizmi?'),()=>{
+  askConfirm(L('В корзине товары другого продавца'+q+'. Очистить корзину и добавить этот товар?','Savatda boshqa sotuvchi'+q+' mahsulotlari bor. Savatni tozalab, bu mahsulotni qoʻshamizmi?'),()=>{
     S.otherCart=null;
     try{localStorage.removeItem('sh-cart')}catch(e){}
     cb();
@@ -1652,7 +1652,7 @@ async function submitOrder(){
     if(er==='no_region'||er==='region_need'){
       normalizeRegion();renderShop();
       toast(er==='region_need'?L('Выберите регион доставки.','Yetkazib berish hududini tanlang.')
-        :L('Дистрибьютор не доставляет в этот регион. Выберите самовывоз или регион из списка.','Distribyutor bu hududga yetkazib bermaydi. Olib ketishni yoki roʻyxatdagi hududni tanlang.'));
+        :L('Продавец не доставляет в этот регион. Выберите самовывоз или регион из списка.','Sotuvchi bu hududga yetkazib bermaydi. Olib ketishni yoki roʻyxatdagi hududni tanlang.'));
       return;
     }
     if(er==='price_changed'||er==='unavailable'||er==='no_delivery'){
@@ -1794,7 +1794,7 @@ function renderMine(){
   else if(!S.myOrders.length)h+='<div class="empty"><b>'+L('Пока нет заказов','Hozircha buyurtma yoʻq')+'</b>'+L('Выберите товары в каталоге, и заказ появится здесь со статусом.','Katalogdan mahsulot tanlang, buyurtma shu yerda holati bilan koʻrinadi.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="nav" data-v="shop">'+L('Открыть каталог','Katalogni ochish')+'</button></div>';
   else{
     const list=S.myOrders.slice().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
-    h+='<p class="lead">'+L('Заказы у всех дистрибьюторов. Статус обновляется, когда продавец принимает и собирает заказ.','Barcha distribyutorlardagi buyurtmalar. Sotuvchi buyurtmani qabul qilib yigʻganda holat yangilanadi.')+'</p><div class="ordlist">'+list.map(o=>orderCard(o,'mine')).join('')+'</div>';
+    h+='<p class="lead">'+L('Заказы у всех продавцов. Статус обновляется, когда продавец принимает и собирает заказ.','Barcha sotuvchilardagi buyurtmalar. Sotuvchi buyurtmani qabul qilib yigʻganda holat yangilanadi.')+'</p><div class="ordlist">'+list.map(o=>orderCard(o,'mine')).join('')+'</div>';
   }
   view.innerHTML=h+'</div>';
 }
@@ -1808,7 +1808,7 @@ function rolesBoxHTML(){
 function renderProfile(){
   let h='<div class="wrap page"><h1>'+L('Мой профиль','Mening profilim')+'</h1>';
   if(!S.ready)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
-  else if(!S.did)h+='<div class="empty"><b>'+L('Выберите дистрибьютора','Distribyutorni tanlang')+'</b>'+L('Профиль хранится у каждого дистрибьютора отдельно.','Profil har bir distribyutorda alohida saqlanadi.')+'</div>';
+  else if(!S.did)h+='<div class="empty"><b>'+L('Выберите продавца','Sotuvchini tanlang')+'</b>'+L('Профиль хранится у каждого продавца отдельно.','Profil har bir sotuvchida alohida saqlanadi.')+'</div>';
   else if(!S.auth)h+='<div class="empty"><b>'+L('Откройте через бота','Bot orqali oching')+'</b>'+L('Профиль доступен, если открыть приложение из бота в Telegram.','Profil ilovani Telegramdagi botdan ochganda mavjud.')+'</div>';
   else{
     const p=S.profile||{name:'',phone:'',org:'',addrs:[]};
@@ -2065,7 +2065,7 @@ function myDebtBlock(x){
   const pays=(x.rows||[]).filter(r=>r.k==='pay');
   if(pays.length)h+='<h3 class="dsub">'+L('Оплаты','Toʻlovlar')+'</h3><div class="lbox">'+pays.slice(0,15).map(r=>'<div class="lrow'+(r.void?' void':'')+'"><div class="lt"><b>'+esc(payName(r.m))+'</b><small>'+esc(jrDate(r.t))+(r.bn?' · '+L('Принял: ','Qabul qildi: ')+esc(r.bn):'')+(r.void?' · '+L('отменена','bekor qilingan'):'')+'</small></div><div class="lsum pos">−'+money(r.a)+'</div></div>'+mdChips(r)).join('')+'</div>'
     +(pays.length>15?'<p class="rnote">'+L('Показаны последние 15 оплат.','Oxirgi 15 ta toʻlov koʻrsatilgan.')+'</p>':'');
-  const btns=(tg?'<a class="btn ghost sm" data-act="contact" href="https://t.me/'+encodeURIComponent(tg)+'?text='+encodeURIComponent(L('Здравствуйте! Вопрос по долгу.','Assalomu alaykum! Qarz boʻyicha savol.'))+'" target="_blank" rel="noopener">'+L('Написать дистрибьютору','Distribyutorga yozish')+'</a>':'')
+  const btns=(tg?'<a class="btn ghost sm" data-act="contact" href="https://t.me/'+encodeURIComponent(tg)+'?text='+encodeURIComponent(L('Здравствуйте! Вопрос по долгу.','Assalomu alaykum! Qarz boʻyicha savol.'))+'" target="_blank" rel="noopener">'+L('Написать продавцу','Sotuvchiga yozish')+'</a>':'')
     +(ph?'<a class="btn ghost sm" href="'+telHref(ph)+'">'+L('Позвонить','Qoʻngʻiroq')+'</a>':'');
   if(btns)h+='<div class="row-btns" style="margin-top:12px">'+btns+'</div>';
   return h+'</section>';
@@ -2081,9 +2081,9 @@ function renderMyDebt(){
     h+='<div class="stats"><div class="stat'+(m.over>0?' hot':'')+'"><small>'+L('Вы должны','Siz qarzdorsiz')+'</small><b>'+money(m.total)+'</b></div>'
       +'<div class="stat"><small>'+L('Просрочено','Muddati oʻtgan')+'</small><b>'+money(m.over)+'</b></div>'
       +'<div class="stat"><small>'+L('Ближайший срок','Eng yaqin muddat')+'</small><b>'+(dues[0]?fDay(dues[0]):'—')+'</b></div></div>';
-    if(m.over>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Есть просроченные платежи. Пожалуйста, свяжитесь с дистрибьютором и оплатите.','Muddati oʻtgan toʻlovlar bor. Iltimos, distribyutor bilan bogʻlanib, toʻlang.')+'</div>';
+    if(m.over>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Есть просроченные платежи. Пожалуйста, свяжитесь с продавцом и оплатите.','Muddati oʻtgan toʻlovlar bor. Iltimos, sotuvchi bilan bogʻlanib, toʻlang.')+'</div>';
     h+=m.list.map(myDebtBlock).join('')
-      +'<p class="rnote">'+L('Выдачу в долг и оплату записывает дистрибьютор или доставщик, а вы подтверждаете, что запись верна. Если нет, нажмите «Не так»: продавец увидит.','Qarzga berish va toʻlovni distribyutor yoki yetkazuvchi yozadi, siz esa yozuv toʻgʻriligini tasdiqlaysiz. Aks holda «Notoʻgʻri»ni bosing: sotuvchi koʻradi.')+'</p>';
+      +'<p class="rnote">'+L('Выдачу в долг и оплату записывает продавец или доставщик, а вы подтверждаете, что запись верна. Если нет, нажмите «Не так»: продавец увидит.','Qarzga berish va toʻlovni sotuvchi yoki yetkazuvchi yozadi, siz esa yozuv toʻgʻriligini tasdiqlaysiz. Aks holda «Notoʻgʻri»ni bosing: sotuvchi koʻradi.')+'</p>';
   }
   view.innerHTML=h+'</div>';
 }
@@ -3496,7 +3496,7 @@ function baseMineHTML(x){
   if(m){
     parts.push(L('Заказов: ','Buyurtmalar: ')+num(m.n));
     if(m.sum)parts.push(L('выдано на ','topshirildi: ')+money(m.sum));
-    if(owner&&m.by&&m.by.length)parts.push(m.by.length>1?L('у '+m.by.length+' дистрибьюторов',m.by.length+' ta distribyutorda'):esc(m.by[0].name));
+    if(owner&&m.by&&m.by.length)parts.push(m.by.length>1?L('у '+m.by.length+' продавцов',m.by.length+' ta sotuvchida'):esc(m.by[0].name));
     if(m.last)parts.push(L('последний: ','oxirgisi: ')+esc(agoTxt(m.last)));
   }
   const head=parts.length?parts.join(' · '):(owner?L('Ещё не заказывал','Hali buyurtma bermagan'):L('У вас ещё не заказывал','Sizdan hali buyurtma bermagan'));
@@ -3523,11 +3523,11 @@ function clientSheetHTML(){
     const m=d.m||{n:0,ds:0,sum:0,last:''},my=d.my||{};
     body+='<div class="cact">'+(phone?'<a class="btn ghost sm" href="tel:'+esc(phone)+'">'+L('Позвонить','Qoʻngʻiroq')+'</a>':'')+(tgu?'<a class="btn ghost sm" data-act="contact" href="https://t.me/'+encodeURIComponent(tgu)+'" target="_blank" rel="noopener">Telegram</a>':'')+'</div>';
     body+='<div class="cst"><div><small>'+(owner?L('Заказов у всех','Hammasida buyurtma'):L('Заказов у вас','Sizda buyurtma'))+'</small><b>'+num(m.n)+'</b></div><div><small>'+L('Выдано на','Topshirildi')+'</small><b>'+money(m.sum)+'</b></div><div><small>'+L('Последний','Oxirgisi')+'</small><b>'+(m.last?esc(agoTxt(m.last)):'—')+'</b></div></div>';
-    if(owner&&m.by&&m.by.length)body+='<div class="csec"><h3>'+L('По дистрибьюторам','Distribyutorlar boʻyicha')+'</h3>'+m.by.map(y=>'<div class="corder"><span class="oid">'+esc(y.name||y.did)+'</span><b>'+L('заказов: ','buyurtma: ')+num(y.n)+(y.sum?' · '+money(y.sum):'')+'</b></div>').join('')+'</div>';
+    if(owner&&m.by&&m.by.length)body+='<div class="csec"><h3>'+L('По продавцам','Sotuvchilar boʻyicha')+'</h3>'+m.by.map(y=>'<div class="corder"><span class="oid">'+esc(y.name||y.did)+'</span><b>'+L('заказов: ','buyurtma: ')+num(y.n)+(y.sum?' · '+money(y.sum):'')+'</b></div>').join('')+'</div>';
     if(baseShop())body+='<div class="csec form"><div class="full"><label class="lab" for="cf-grp">'+L('Группа','Guruh')+'</label><input type="text" id="cf-grp" data-cf="grp" maxlength="30" value="'+esc(f.grp)+'" placeholder="'+esc(L('Например: Магазин','Masalan: Doʻkon'))+'" autocomplete="off">'+hintD('Чтобы собрать похожих клиентов вместе. Пример: Магазин, Кафе, Оптовик.','Oʻxshash mijozlarni birlashtirish uchun. Masalan: Doʻkon, Kafe, Ulgurji.')+'<div class="gchips">'+groupSuggest().map(g=>'<button type="button" class="chip" data-act="cgrp" data-v="'+esc(g)+'">'+esc(g)+'</button>').join('')+'</div></div>'
-      +'<div class="full"><label class="lab" for="cf-note">'+L('Заметка (видна только вам)','Eslatma (faqat sizga koʻrinadi)')+'</label><textarea id="cf-note" data-cf="note" rows="3" maxlength="500" placeholder="'+esc(L('Например: платит в конце недели','Masalan: hafta oxirida toʻlaydi'))+'">'+esc(f.note)+'</textarea>'+hintD('Для себя: клиент и другие дистрибьюторы её не видят.','Oʻzingiz uchun: mijoz va boshqa distribyutorlar koʻrmaydi.')+'</div>'
-      +'<div class="full"><label class="ck"><input type="checkbox" id="cf-blocked" data-cf="blocked"'+(f.blocked?' checked':'')+(my.has?'':' disabled')+'><span>'+L('Заблокировать','Bloklash')+'<small>'+(my.has?L('Магазин не сможет оформить заказ у вас, пока вы не снимете блокировку. У других дистрибьюторов он заказывает как раньше.','Siz blokni olmaguningizcha doʻkon sizdan buyurtma bera olmaydi. Boshqa distribyutorlarda avvalgidek buyurtma beradi.'):L('Доступно, когда магазин закажет у вас или заполнит профиль в вашем каталоге.','Doʻkon sizdan buyurtma berganda yoki katalogingizda profilini toʻldirganda mavjud boʻladi.'))+'</small></span></label></div></div>';
-    body+='<div class="csec"><h3>'+(owner?L('История заказов у всех дистрибьюторов','Barcha distribyutorlardagi buyurtmalar tarixi'):L('История заказов','Buyurtmalar tarixi'))+'</h3>'+cardOrdersHTML(d)+'</div>';
+      +'<div class="full"><label class="lab" for="cf-note">'+L('Заметка (видна только вам)','Eslatma (faqat sizga koʻrinadi)')+'</label><textarea id="cf-note" data-cf="note" rows="3" maxlength="500" placeholder="'+esc(L('Например: платит в конце недели','Masalan: hafta oxirida toʻlaydi'))+'">'+esc(f.note)+'</textarea>'+hintD('Для себя: клиент и другие продавцы её не видят.','Oʻzingiz uchun: mijoz va boshqa sotuvchilar koʻrmaydi.')+'</div>'
+      +'<div class="full"><label class="ck"><input type="checkbox" id="cf-blocked" data-cf="blocked"'+(f.blocked?' checked':'')+(my.has?'':' disabled')+'><span>'+L('Заблокировать','Bloklash')+'<small>'+(my.has?L('Магазин не сможет оформить заказ у вас, пока вы не снимете блокировку. У других продавцов он заказывает как раньше.','Siz blokni olmaguningizcha doʻkon sizdan buyurtma bera olmaydi. Boshqa sotuvchilarda avvalgidek buyurtma beradi.'):L('Доступно, когда магазин закажет у вас или заполнит профиль в вашем каталоге.','Doʻkon sizdan buyurtma berganda yoki katalogingizda profilini toʻldirganda mavjud boʻladi.'))+'</small></span></label></div></div>';
+    body+='<div class="csec"><h3>'+(owner?L('История заказов у всех продавцов','Barcha sotuvchilardagi buyurtmalar tarixi'):L('История заказов','Buyurtmalar tarixi'))+'</h3>'+cardOrdersHTML(d)+'</div>';
   }
   const sub=[x.addr,terrName(x.terr)].filter(Boolean).map(esc).join(' · ');
   return '<div class="fs-bg" data-act="bsheetx"></div><div class="fs" role="dialog" aria-modal="true" aria-label="'+esc(x.name||'')+'"><div class="fs-grab"></div>'
@@ -3588,7 +3588,7 @@ function anListHTML(d){
     rows=anSort(d.prods).map(p=>({t:p.name,s:(one?'':p.shopName+' · ')+L('заказов: '+anN(d,p.n)+' · продано '+num(p.qty)+' '+pc,'buyurtma: '+anN(d,p.n)+' · sotildi '+num(p.qty)+' '+pc),v:p.sum}));
     total=d.nprods;
   }else{
-    rows=anSort(d.stores).map(x=>({t:x.name||L('Без имени','Nomsiz'),s:L('заказов: '+num(x.n)+(one?'':' · дистрибьюторов: '+x.nd)+' · последний: '+fDay(x.last),'buyurtma: '+num(x.n)+(one?'':' · distribyutorlar: '+x.nd)+' · oxirgisi: '+fDay(x.last)),v:x.sum}));
+    rows=anSort(d.stores).map(x=>({t:x.name||L('Без имени','Nomsiz'),s:L('заказов: '+num(x.n)+(one?'':' · продавцов: '+x.nd)+' · последний: '+fDay(x.last),'buyurtma: '+num(x.n)+(one?'':' · sotuvchilar: '+x.nd)+' · oxirgisi: '+fDay(x.last)),v:x.sum}));
     total=d.nstores;
   }
   const show=A.all?rows:rows.slice(0,20);
@@ -3601,8 +3601,8 @@ function renderAnalytics(){
   const shops=(d&&d.shops)||A.shops;
   let h='<div class="wrap page anp"><div class="hrow"><div><div class="eyebrow">'+L('Только выданные и доставленные заказы','Faqat topshirilgan va yetkazilgan buyurtmalar')+'</div><h1>'+L('Аналитика','Tahlil')+'</h1></div></div>';
   h+='<div class="filters">'+RP_DAYS.map(x=>'<button type="button" class="chip" data-act="adays" data-v="'+x+'" aria-pressed="'+(A.days===x)+'">'+esc(rpRange(x))+'</button>').join('')+'</div>';
-  h+='<div class="filters"><div class="chip selc'+(A.sh?' on':'')+'"><span>'+esc(A.sh?((shops.find(x=>x.id===A.sh)||{}).name||''):L('Все дистрибьюторы','Barcha distribyutorlar'))+'</span>'+ICO.chev
-    +'<select data-ash="1" aria-label="'+esc(L('Дистрибьютор','Distribyutor'))+'"><option value=""'+(A.sh?'':' selected')+'>'+esc(L('Все дистрибьюторы','Barcha distribyutorlar'))+'</option>'+shops.map(x=>'<option value="'+esc(x.id)+'"'+(A.sh===x.id?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div></div>';
+  h+='<div class="filters"><div class="chip selc'+(A.sh?' on':'')+'"><span>'+esc(A.sh?((shops.find(x=>x.id===A.sh)||{}).name||''):L('Все продавцы','Barcha sotuvchilar'))+'</span>'+ICO.chev
+    +'<select data-ash="1" aria-label="'+esc(L('Продавец','Sotuvchi'))+'"><option value=""'+(A.sh?'':' selected')+'>'+esc(L('Все продавцы','Barcha sotuvchilar'))+'</option>'+shops.map(x=>'<option value="'+esc(x.id)+'"'+(A.sh===x.id?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></div></div>';
   if(!fresh){
     h+=A.err?'<div class="empty"><b>'+L('Не удалось загрузить аналитику','Tahlilni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение.','Ulanishni tekshiring.')+'<div style="margin-top:10px"><button type="button" class="btn sm" data-act="anretry">'+L('Повторить','Qayta urinish')+'</button></div></div>'
       :'<div class="empty"><b>'+L('Считаем продажи','Sotuvlar hisoblanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
@@ -3611,13 +3611,13 @@ function renderAnalytics(){
   }
   h+='<p class="rnote" style="margin:0 0 4px">'+L('Период: '+fDay(d.from)+' — '+fDay(d.to)+', по дню выдачи заказа.','Davr: '+fDay(d.from)+' — '+fDay(d.to)+', buyurtma topshirilgan kun boʻyicha.')+'</p>';
   if(d.since&&d.since>d.from)h+='<p class="rnote">'+L('Учёт продаж ведётся с '+fDay(d.since)+', раньше данных нет.','Sotuvlar hisobi '+fDay(d.since)+' dan yuritiladi, undan oldin maʼlumot yoʻq.')+'</p>';
-  if(d.failed)h+='<p class="rnote" style="color:var(--bad)">'+L('Не удалось получить данные у дистрибьюторов: '+d.failed+'. Цифры неполные.','Distribyutorlardan maʼlumot olinmadi: '+d.failed+'. Raqamlar toʻliq emas.')+'</p>';
+  if(d.failed)h+='<p class="rnote" style="color:var(--bad)">'+L('Не удалось получить данные у продавцов: '+d.failed+'. Цифры неполные.','Sotuvchilardan maʼlumot olinmadi: '+d.failed+'. Raqamlar toʻliq emas.')+'</p>';
   if(!d.tot.n){
-    view.innerHTML=h+'<div class="empty"><b>'+L('За этот период выданных заказов нет','Bu davrda topshirilgan buyurtma yoʻq')+'</b>'+L('Заказ попадает в аналитику, когда дистрибьютор переводит его в «Выдан» или «Доставлен».','Buyurtma distribyutor uni «Topshirildi» yoki «Yetkazildi» ga oʻtkazganda tahlilga tushadi.')+'</div></div>';
+    view.innerHTML=h+'<div class="empty"><b>'+L('За этот период выданных заказов нет','Bu davrda topshirilgan buyurtma yoʻq')+'</b>'+L('Заказ попадает в аналитику, когда продавец переводит его в «Выдан» или «Доставлен».','Buyurtma sotuvchi uni «Topshirildi» yoki «Yetkazildi» ga oʻtkazganda tahlilga tushadi.')+'</div></div>';
     return;
   }
   const t=d.tot,kpi=(lab,v)=>'<div class="stat rkpi"><small>'+lab+'</small><b>'+v+'</b></div>';
-  h+='<div class="stats">'+kpi(L('Заказов','Buyurtmalar'),num(t.n))+kpi(L('Выручка','Tushum'),esc(money(t.sum)))+kpi(L('Магазинов','Doʻkonlar'),num(t.stores))+(d.sh?kpi(L('Средний заказ','Oʻrtacha buyurtma'),esc(money(Math.round(t.sum/t.n)))):kpi(L('Дистрибьюторов','Distribyutorlar'),num(t.shops)))+'</div>';
+  h+='<div class="stats">'+kpi(L('Заказов','Buyurtmalar'),num(t.n))+kpi(L('Выручка','Tushum'),esc(money(t.sum)))+kpi(L('Магазинов','Doʻkonlar'),num(t.stores))+(d.sh?kpi(L('Средний заказ','Oʻrtacha buyurtma'),esc(money(Math.round(t.sum/t.n)))):kpi(L('Продавцов','Sotuvchilar'),num(t.shops)))+'</div>';
   const cnt={cats:d.cats.length,prods:d.nprods,stores:d.nstores};
   h+='<div class="seg s3" role="group" aria-label="'+esc(L('Раздел','Boʻlim'))+'">'+AN_TABS().map(x=>'<button type="button" data-act="antab" data-v="'+x[0]+'" aria-pressed="'+(A.tab===x[0])+'"><span>'+x[1]+'</span><b class="cnt">'+num(cnt[x[0]])+'</b></button>').join('')+'</div>';
   h+='<div class="card"><div class="filters" style="margin-bottom:6px"><button type="button" class="chip" data-act="ansort" data-v="sum" aria-pressed="'+(A.sort==='sum')+'">'+L('По сумме','Summa boʻyicha')+'</button><button type="button" class="chip" data-act="ansort" data-v="n" aria-pressed="'+(A.sort==='n')+'">'+L('По заказам','Buyurtma boʻyicha')+'</button></div>'+anListHTML(d)+'</div>';
@@ -3634,7 +3634,7 @@ async function loadAnalytics(){
   if(seq!==A.seq)return;
   if(!r.ok||!r.data||!r.data.tot){A.err=true;if(S.view==='analytics')renderAnalytics();return}
   A.data=r.data;A.shops=r.data.shops||A.shops;
-  if(r.data.sh!==A.sh)A.sh=r.data.sh;   // такого дистрибьютора нет: показаны все
+  if(r.data.sh!==A.sh)A.sh=r.data.sh;   // такого продавца нет: показаны все
   if(S.view==='analytics')renderAnalytics();
 }
 
@@ -3789,7 +3789,7 @@ function settingsHTML(){
   const s=S.cfg.shop;
   const num=(id,lab,k,min,max,hint)=>'<div><label class="lab" for="s-'+id+'">'+lab+'</label><input type="number" id="s-'+id+'" inputmode="numeric" min="'+min+'" max="'+max+'" data-s="'+k+'" value="'+esc(s[k])+'">'+(hint?hintD(hint[0],hint[1]):'')+'</div>';
   return '<div class="savebar" id="savebar"></div><div class="card"><div class="settings">'
-    +'<div><label class="lab" for="s-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="s-name" data-s="name" value="'+esc(s.name)+'" maxlength="60">'+hintD('Так вас видят клиенты в списке дистрибьюторов и в сообщениях бота. Пример: Навои Фуд.','Mijozlar sizni distribyutorlar roʻyxatida va bot xabarlarida shunday koʻradi. Masalan: Navoiy Fud.')+'</div>'
+    +'<div><label class="lab" for="s-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="s-name" data-s="name" value="'+esc(s.name)+'" maxlength="60">'+hintD('Так вас видят клиенты в списке продавцов и в сообщениях бота. Пример: Навои Фуд.','Mijozlar sizni sotuvchilar roʻyxatida va bot xabarlarida shunday koʻradi. Masalan: Navoiy Fud.')+'</div>'
     +'<div><label class="lab" for="s-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="s-phone" data-s="phone" value="'+esc(s.phone)+'" placeholder="+998 …">'+hintD('Клиент увидит его в сообщениях бота о заказе и сможет позвонить. Пример: +998 90 123 45 67.','Mijoz uni bot xabarlarida koʻradi va qoʻngʻiroq qila oladi. Masalan: +998 90 123 45 67.')+'</div>'
     +'<div><label class="lab" for="s-tg">'+L('Telegram для вопросов по заказу, без @','Buyurtma savollari uchun Telegram, @ belgisisiz')+'</label><input type="text" id="s-tg" data-s="telegram" value="'+esc(s.telegram)+'">'+hintD('Логин без @: клиент сможет написать вам из карточки заказа. Пример: navoi_food.','Login @ belgisisiz: mijoz buyurtma kartochkasidan sizga yoza oladi. Masalan: navoi_food.')+'</div>'
     +'<div><label class="lab" for="s-cat">'+L('Категория','Kategoriya')+'</label><select id="s-cat" data-catsel="1"><option value="">'+L('Не выбрана','Tanlanmagan')+'</option>'+SHOP_CATS.map(k=>'<option value="'+k+'"'+(cleanCat(s.category)===k?' selected':'')+'>'+esc(shopCatName(k))+'</option>').join('')+'</select>'+hintD('Магазины увидят вас в этой категории. Если не выбрать, вас покажут в «Дистрибьюторах». Владелец тоже может её изменить.','Doʻkonlar sizni shu kategoriyada koʻradi. Tanlamasangiz, «Distribyutorlar» ichida koʻrsatiladi. Egasi ham oʻzgartira oladi.')+'</div>'
@@ -4099,7 +4099,7 @@ function renderReview(){
   const v=S.rv;
   view.innerHTML='<div class="wrap page rvpage"><div class="hrow"><div><div class="eyebrow">'+esc(hubTitle())+'</div><h1>'+L('Проверка товаров','Mahsulotlarni tekshirish')+'</h1></div></div>'
     +'<div class="seg s3" id="rvsegs" role="group" aria-label="'+esc(L('Статус','Holat'))+'"></div>'
-    +'<div class="search"><input type="search" id="rq" data-rq="1" value="'+esc(v.q)+'" placeholder="'+esc(L('Название, дистрибьютор, категория','Nomi, distribyutor, kategoriya'))+'" autocomplete="off" aria-label="'+esc(L('Поиск','Qidiruv'))+'"></div>'
+    +'<div class="search"><input type="search" id="rq" data-rq="1" value="'+esc(v.q)+'" placeholder="'+esc(L('Название, продавец, категория','Nomi, sotuvchi, kategoriya'))+'" autocomplete="off" aria-label="'+esc(L('Поиск','Qidiruv'))+'"></div>'
     +'<div id="rvbody"></div><div id="rvsheet"></div></div>';
   paintReview();
 }
@@ -4110,7 +4110,7 @@ function rvSegsHTML(){
 function rvFiltersHTML(){
   const v=S.rv,opt=(val,lab,cur)=>'<option value="'+esc(val)+'"'+(val===cur?' selected':'')+'>'+esc(lab)+'</option>';
   const cats=[...new Set(v.items.filter(p=>!v.did||p.did===v.did).map(catLabel).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  return '<div class="rvfil"><select data-rfil="did" aria-label="'+esc(L('Дистрибьютор','Distribyutor'))+'">'+opt('',L('Все дистрибьюторы','Barcha distribyutorlar'),v.did)+v.shops.map(s=>opt(s.id,s.name+' · '+s.n,v.did)).join('')+'</select>'
+  return '<div class="rvfil"><select data-rfil="did" aria-label="'+esc(L('Продавец','Sotuvchi'))+'">'+opt('',L('Все продавцы','Barcha sotuvchilar'),v.did)+v.shops.map(s=>opt(s.id,s.name+' · '+s.n,v.did)).join('')+'</select>'
     +'<select data-rfil="cat" aria-label="'+esc(L('Категория','Kategoriya'))+'">'+opt('',L('Все категории','Barcha kategoriyalar'),v.cat)+cats.map(c=>opt(c,c,v.cat)).join('')+'</select></div>';
 }
 function rvCard(p){
@@ -4351,18 +4351,18 @@ function rvClose(){
 const ABOUT_V='/*ABOUTV*/dev';
 const ABOUT_SHOT={w:540,h:1020};
 const ABOUT_DEF=()=>({
-  ru:'Sarbon — оптовая площадка в Telegram для Навои. Она соединяет дистрибьюторов, производителей и магазины: магазины заказывают прямо в Telegram, а дистрибьюторы получают заказы, учёт долгов и контроль доставки в одном месте.\n\nНаши агенты ходят по магазинам, супермаркетам, HoReCa и фастфуду, продвигают всех продавцов на площадке и приводят новых клиентов. Ничего скачивать не нужно.',
-  uz:'Sarbon — Navoiy uchun Telegramdagi ulgurji savdo maydonchasi. U distribyutorlar, ishlab chiqaruvchilar va doʻkonlarni birlashtiradi: doʻkonlar bevosita Telegramda buyurtma beradi, distribyutorlar esa buyurtmalar, qarzlar hisobi va yetkazib berish nazoratini bir joyda oladi.\n\nAgentlarimiz doʻkonlar, supermarketlar, HoReCa va fast-fud nuqtalarini aylanib, maydonchadagi barcha sotuvchilarni targʻib qiladi va yangi mijozlar olib keladi. Hech narsa yuklab olish shart emas.'
+  ru:'Sarbon — оптовая площадка в Telegram для Навои. Она соединяет продавцов и магазины: магазины заказывают прямо в Telegram, а продавцы получают заказы, учёт долгов и контроль доставки в одном месте.\n\nНаши агенты ходят по магазинам, супермаркетам, HoReCa и фастфуду, продвигают всех продавцов на площадке и приводят новых клиентов. Ничего скачивать не нужно.',
+  uz:'Sarbon — Navoiy uchun Telegramdagi ulgurji savdo maydonchasi. U sotuvchilar va doʻkonlarni birlashtiradi: doʻkonlar bevosita Telegramda buyurtma beradi, sotuvchilar esa buyurtmalar, qarzlar hisobi va yetkazib berish nazoratini bir joyda oladi.\n\nAgentlarimiz doʻkonlar, supermarketlar, HoReCa va fast-fud nuqtalarini aylanib, maydonchadagi barcha sotuvchilarni targʻib qiladi va yangi mijozlar olib keladi. Hech narsa yuklab olish shart emas.'
 });
 /* Роли: lead — вступление, secs — разделы (img — имя скриншота без языка и расширения, li — шаги). Пары [рус, узб]. */
 const ABOUT_ROLES=[
 {k:'shop',n:['Магазин','Doʻkon'],
- lead:['Вы заказываете у дистрибьюторов и производителей прямо в Telegram. Ничего скачивать не нужно: откройте бота и нажмите «Каталог». Заказы, их статусы и долги всегда под рукой.','Siz distribyutor va ishlab chiqaruvchilardan bevosita Telegramda buyurtma berasiz. Hech narsa yuklab olish shart emas: botni oching va «Katalog» tugmasini bosing. Buyurtmalar, ularning holati va qarzlar doim qoʻl ostida.'],
+ lead:['Вы заказываете у продавцов прямо в Telegram. Ничего скачивать не нужно: откройте бота и нажмите «Каталог». Заказы, их статусы и долги всегда под рукой.','Siz sotuvchilardan bevosita Telegramda buyurtma berasiz. Hech narsa yuklab olish shart emas: botni oching va «Katalog» tugmasini bosing. Buyurtmalar, ularning holati va qarzlar doim qoʻl ostida.'],
  secs:[
- {img:'shop-list',h:['Выбор дистрибьютора','Distribyutorni tanlash'],cap:['Главный экран: категории','Bosh ekran: kategoriyalar'],li:[
-  ['На главном экране пять категорий: Производители, Импортеры, Оптовики, Дистрибьюторы и Базары. У каждой видно, сколько в ней дистрибьюторов; пустые помечены «Пока пусто».','Bosh ekranda beshta kategoriya: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar va Bozorlar. Har birida nechta distribyutor borligi koʻrinadi; boʻshlari «Hozircha boʻsh» deb belgilangan.'],
-  ['Нажмите на категорию: откроется список её дистрибьюторов (название, сколько товаров, есть ли доставка и минимальная сумма заказа). Кнопка «← Категории» вернёт назад.','Kategoriyani bosing: uning distribyutorlari roʻyxati ochiladi (nomi, tovarlar soni, yetkazib berish bor-yoʻqligi va minimal buyurtma summasi). «← Kategoriyalar» tugmasi orqaga qaytaradi.'],
-  ['Нажмите «Открыть каталог» у нужного. В одной корзине бывают товары только одного дистрибьютора.','Kerakli distribyutorda «Katalogni ochish» tugmasini bosing. Bitta savatda faqat bitta distribyutorning tovarlari boʻladi.'],
+ {img:'shop-list',h:['Выбор продавца','Sotuvchini tanlash'],cap:['Главный экран: категории','Bosh ekran: kategoriyalar'],li:[
+  ['На главном экране пять категорий: Производители, Импортеры, Оптовики, Дистрибьюторы и Базары. У каждой видно, сколько в ней продавцов; пустые помечены «Пока пусто».','Bosh ekranda beshta kategoriya: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar va Bozorlar. Har birida nechta sotuvchi borligi koʻrinadi; boʻshlari «Hozircha boʻsh» deb belgilangan.'],
+  ['Нажмите на категорию: откроется список её продавцов (название, сколько товаров, есть ли доставка и минимальная сумма заказа). Кнопка «← Категории» вернёт назад.','Kategoriyani bosing: uning sotuvchilari roʻyxati ochiladi (nomi, tovarlar soni, yetkazib berish bor-yoʻqligi va minimal buyurtma summasi). «← Kategoriyalar» tugmasi orqaga qaytaradi.'],
+  ['Нажмите «Открыть каталог» у нужного. В одной корзине бывают товары только одного продавца.','Kerakli sotuvchida «Katalogni ochish» tugmasini bosing. Bitta savatda faqat bitta sotuvchining tovarlari boʻladi.'],
   ['Все разделы лежат в меню ☰ слева вверху, язык переключается кнопками RU | UZ справа вверху.','Barcha boʻlimlar yuqori chapdagi ☰ menyuda, til yuqori oʻngdagi RU | UZ tugmalari bilan almashadi.']]},
  {img:'shop-catalog',h:['Каталог','Katalog'],cap:['Каталог: фото, цена, остаток','Katalog: rasm, narx, qoldiq'],li:[
   ['В карточке товара: фото (нажмите, и оно откроется на весь экран; листайте свайпом), название, вес, цена и описание. Когда товаров больше восьми, вверху появляется поиск.','Tovar kartochkasida: rasm (bossangiz, butun ekranga ochiladi; suring), nomi, ogʻirligi, narxi va tavsifi. Tovarlar sakkiztadan koʻp boʻlsa, tepada qidiruv paydo boʻladi.'],
@@ -4372,19 +4372,19 @@ const ABOUT_ROLES=[
   ['Нажмите «В корзину», затем «−» и «+» или введите число с клавиатуры (до 500 штук одного товара). Внизу всегда видна сумма и кнопка «Оформить заказ».','«Savatga» tugmasini bosing, soʻng «−» va «+» bilan yoki raqamni klaviaturadan kiriting (bitta tovardan 500 tagacha). Pastda doim summa va «Buyurtma berish» tugmasi koʻrinadi.']]},
  {img:'shop-cart',h:['Оформление заказа','Buyurtma berish'],cap:['Корзина и оформление','Savat va buyurtma berish'],li:[
   ['Выберите «Самовывоз» или «Доставка». Для доставки впишите адрес; по желанию можно отметить своё местоположение на карте.','«Olib ketish» yoki «Yetkazib berish»ni tanlang. Yetkazib berish uchun manzilni yozing; xohlasangiz, joylashuvingizni xaritada belgilashingiz mumkin.'],
-  ['Укажите дату и время (в часы работы дистрибьютора; для доставки нужен запас по времени) и пожелания к заказу.','Sana va vaqtni (distribyutorning ish vaqtida; yetkazib berish uchun vaqt zaxirasi kerak) hamda buyurtmaga istaklaringizni yozing.'],
+  ['Укажите дату и время (в часы работы продавца; для доставки нужен запас по времени) и пожелания к заказу.','Sana va vaqtni (sotuvchining ish vaqtida; yetkazib berish uchun vaqt zaxirasi kerak) hamda buyurtmaga istaklaringizni yozing.'],
   ['Имя, телефон и адрес запоминаются, при следующих заказах вводить их заново не нужно. При первом заказе выберите свой район или город.','Ism, telefon va manzil eslab qolinadi, keyingi buyurtmalarda qayta yozish shart emas. Birinchi buyurtmada oʻz tumaningiz yoki shahringizni tanlang.'],
-  ['Оплата только при получении: наличные, карта или перечисление. Взять товар в долг можно только по договорённости: способ оплаты отмечает дистрибьютор при выдаче.','Toʻlov faqat qabul qilishda: naqd, karta yoki pul oʻtkazish. Tovarni qarzga faqat kelishuv boʻyicha olish mumkin: toʻlov usulini distribyutor topshirishda belgilaydi.'],
-  ['Если у дистрибьютора есть минимальная сумма, скидка от суммы или бесплатная доставка от суммы, корзина подскажет, сколько осталось.','Distribyutorda minimal summa, summaga qarab chegirma yoki bepul yetkazib berish boʻlsa, savat nechta qolganini aytib turadi.']]},
+  ['Оплата только при получении: наличные, карта или перечисление. Взять товар в долг можно только по договорённости: способ оплаты отмечает продавец при выдаче.','Toʻlov faqat qabul qilishda: naqd, karta yoki pul oʻtkazish. Tovarni qarzga faqat kelishuv boʻyicha olish mumkin: toʻlov usulini sotuvchi topshirishda belgilaydi.'],
+  ['Если у продавца есть минимальная сумма, скидка от суммы или бесплатная доставка от суммы, корзина подскажет, сколько осталось.','Sotuvchida minimal summa, summaga qarab chegirma yoki bepul yetkazib berish boʻlsa, savat nechta qolganini aytib turadi.']]},
  {img:'shop-orders',h:['Заказы','Buyurtmalar'],cap:['Мои заказы','Mening buyurtmalarim'],li:[
   ['Здесь все ваши заказы со статусом: «Новый», «В работе», «Готов», «Выдан» или «Доставлен», «Отменён». Новый заказ можно отменить самому. Каждый шаг приходит и сообщением в Telegram.','Bu yerda barcha buyurtmalaringiz holati bilan: «Yangi», «Ishlanmoqda», «Tayyor», «Topshirildi» yoki «Yetkazildi», «Bekor qilindi». Yangi buyurtmani oʻzingiz bekor qila olasiz. Har bir qadam Telegramga xabar boʻlib ham keladi.'],
   ['«Повторить заказ» кладёт в корзину всё из прошлого заказа, что сейчас есть в продаже, по сегодняшним ценам и остаткам.','«Buyurtmani takrorlash» oldingi buyurtmadan hozir sotuvda bor hamma narsani bugungi narx va qoldiq boʻyicha savatga soladi.']]},
  {img:'shop-debt',h:['Мой долг и профиль','Mening qarzim va profil'],cap:['Мой долг','Mening qarzim'],li:[
   ['Если вы взяли товар в долг, вверху каталога появляется плашка «Ваш долг …» (красная, когда есть просрочка), а в меню ☰ пункт «Мой долг»: сколько вы должны, что просрочено, ближайший срок. Нажмите на заказ, и откроется его состав.','Agar tovarni qarzga olgan boʻlsangiz, katalog tepasida «Sizning qarzingiz …» chizigʻi paydo boʻladi (muddat oʻtgan boʻlsa, qizil), ☰ menyuda esa «Mening qarzim» boʻlimi: qancha qarzingiz bor, nima muddati oʻtgan, eng yaqin muddat. Buyurtmani bossangiz, uning tarkibi ochiladi.'],
-  ['Когда дистрибьютор записывает долг или принимает оплату, вам приходит сообщение в Telegram с кнопками «Верно» и «Не так». Нажмите «Не так», если запись неверна: спор увидят дистрибьютор и владелец площадки.','Distribyutor qarz yozganda yoki toʻlov qabul qilganda, Telegramga «Toʻgʻri» va «Notoʻgʻri» tugmali xabar keladi. Yozuv xato boʻlsa, «Notoʻgʻri»ni bosing: bahsni distribyutor va platforma egasi koʻradi.'],
+  ['Когда продавец записывает долг или принимает оплату, вам приходит сообщение в Telegram с кнопками «Верно» и «Не так». Нажмите «Не так», если запись неверна: спор увидят продавец и владелец площадки.','Sotuvchi qarz yozganda yoki toʻlov qabul qilganda, Telegramga «Toʻgʻri» va «Notoʻgʻri» tugmali xabar keladi. Yozuv xato boʻlsa, «Notoʻgʻri»ni bosing: bahsni sotuvchi va platforma egasi koʻradi.'],
   ['«Профиль»: имя, телефон, организация и до пяти адресов доставки. Всё подставляется в заказ само.','«Profil»: ism, telefon, tashkilot va beshtagacha yetkazib berish manzili. Hammasi buyurtmaga oʻzi qoʻyiladi.']]}
  ]},
-{k:'seller',n:['Дистрибьютор и производитель','Distribyutor va ishlab chiqaruvchi'],
+{k:'seller',n:['Продавец','Sotuvchi'],
  lead:['Вы продаёте напрямую магазинам и точкам общепита. Вход по личному коду от владельца площадки: откройте бота и отправьте /admin и ваш код. Бот удалит сообщение с кодом, а в меню ☰ появится группа «Продавец». Производители работают здесь же.','Siz doʻkonlar va umumiy ovqatlanish nuqtalariga bevosita sotasiz. Kirish platforma egasi bergan shaxsiy kod bilan: botni oching va /admin va kodingizni yuboring. Bot kodli xabarni oʻchiradi, ☰ menyuda esa «Sotuvchi» guruhi paydo boʻladi. Ishlab chiqaruvchilar ham shu yerda ishlaydi.'],
  secs:[
  {img:'sel-orders',h:['Заказы','Buyurtmalar'],cap:['Заказы продавца','Sotuvchining buyurtmalari'],li:[
@@ -4417,20 +4417,20 @@ const ABOUT_ROLES=[
   ['Наличные копятся у каждого доставщика «на руках». Сдачу денег вы записываете в карточке доставщика, а он подтверждает её кнопкой «Верно». Для каждого можно задать «Срок сдачи».','Naqd pul har bir yetkazuvchining «qoʻlida» yigʻiladi. Pul topshirilishini yetkazuvchi kartochkasida yozasiz, u esa «Toʻgʻri» tugmasi bilan tasdiqlaydi. Har biriga «Topshirish muddati»ni belgilash mumkin.']]},
  {h:['Отчёты, база и настройки','Hisobotlar, baza va sozlamalar'],li:[
   ['«Отчёты»: выручка по дням, неделям и месяцам, ходовые товары, лучшие клиенты, подсказка «что пора закупать» и выгрузка в Excel.','«Hisobotlar»: kunlar, haftalar va oylar boʻyicha tushum, ommabop tovarlar, eng yaxshi mijozlar, «nimani sotib olish kerak» maslahati va Excelga yuklash.'],
-  ['«База»: общая база магазинов площадки с адресами, телефонами и точкой на карте. «Мои клиенты» оставляет тех, кто заказывал у вас. Заметка, группа и блокировка у каждого дистрибьютора свои, другие их не видят.','«Baza»: platformaning umumiy doʻkonlar bazasi — manzil, telefon va xaritadagi nuqta bilan. «Mening mijozlarim» sizdan buyurtma bergan doʻkonlarni qoldiradi. Izoh, guruh va bloklash har bir distribyutorda alohida, boshqalar koʻrmaydi.'],
+  ['«База»: общая база магазинов площадки с адресами, телефонами и точкой на карте. «Мои клиенты» оставляет тех, кто заказывал у вас. Заметка, группа и блокировка у каждого продавца свои, другие их не видят.','«Baza»: platformaning umumiy doʻkonlar bazasi — manzil, telefon va xaritadagi nuqta bilan. «Mening mijozlarim» sizdan buyurtma bergan doʻkonlarni qoldiradi. Izoh, guruh va bloklash har bir sotuvchida alohida, boshqalar koʻrmaydi.'],
   ['«Настройки»: минимальная сумма заказа, стоимость доставки и бесплатная доставка от суммы, часы работы, адрес самовывоза, районы доставки, ссылка на ваш каталог для клиентов, резервная копия.','«Sozlamalar»: buyurtmaning minimal summasi, yetkazib berish narxi va summadan bepul yetkazish, ish vaqti, olib ketish manzili, yetkazib berish tumanlari, mijozlar uchun katalogingiz havolasi, zaxira nusxa.'],
   ['«Категория» в настройках: выберите, где вас увидят магазины: Производители, Импортеры, Оптовики, Дистрибьюторы или Базары. Выбор сохраняется сразу. Пока не выбрана, вас показывают в «Дистрибьюторах». Владелец площадки тоже может её поменять.','Sozlamalardagi «Kategoriya»: doʻkonlar sizni qayerda koʻrishini tanlang: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar yoki Bozorlar. Tanlov darhol saqlanadi. Tanlanmaguncha sizni «Distribyutorlar» ichida koʻrsatadi. Platforma egasi ham uni oʻzgartirishi mumkin.'],
   ['«Комиссия»: площадка ведёт учёт комиссии с выданных заказов. Накопленная сумма уменьшается, когда вы вписываете оплаченное, нажимаете «Оплатил», а владелец подтверждает.','«Komissiya»: platforma topshirilgan buyurtmalardan komissiya hisobini yuritadi. Toʻplangan summa siz toʻlanganini yozib «Toʻladim»ni bosganingizda va ega tasdiqlaganida kamayadi.']]}
  ]},
 {k:'courier',n:['Доставщик','Yetkazuvchi'],
- lead:['Вы возите заказы дистрибьютора. Вход по ссылке-приглашению от продавца: нажмите её, и бот подтвердит, что вы доставщик. В меню ☰ появится группа «Доставка».','Siz distribyutor buyurtmalarini yetkazasiz. Kirish sotuvchi bergan taklif havolasi orqali: uni bosing, bot sizni yetkazuvchi deb tasdiqlaydi. ☰ menyuda «Yetkazib berish» guruhi paydo boʻladi.'],
+ lead:['Вы возите заказы продавца. Вход по ссылке-приглашению от него: нажмите её, и бот подтвердит, что вы доставщик. В меню ☰ появится группа «Доставка».','Siz sotuvchi buyurtmalarini yetkazasiz. Kirish u bergan taklif havolasi orqali: uni bosing, bot sizni yetkazuvchi deb tasdiqlaydi. ☰ menyuda «Yetkazib berish» guruhi paydo boʻladi.'],
  secs:[
  {img:'cr-today',h:['Сегодня','Bugun'],cap:['Заказы на сегодня','Bugungi buyurtmalar'],li:[
   ['Список заказов на доставку: адрес, сумма, телефон, время. Свободный заказ берите кнопкой «Взял». Если продавец назначил заказ вам, придёт сообщение «Вам назначен заказ».','Yetkazib berish buyurtmalari roʻyxati: manzil, summa, telefon, vaqt. Boʻsh buyurtmani «Oldim» tugmasi bilan oling. Sotuvchi buyurtmani sizga tayinlasa, «Sizga buyurtma tayinlandi» xabari keladi.'],
   ['В заказе видны данные магазина из общей базы: название, другие номера телефона, адрес и точка на карте. Нажмите «На карте», чтобы открыть Яндекс.Карты или Google Maps; «Позвонить» звонит магазину.','Buyurtmada umumiy bazadagi doʻkon maʼlumotlari koʻrinadi: nomi, boshqa telefon raqamlari, manzil va xaritadagi nuqta. Yandex Xarita yoki Google Maps ochish uchun «Xaritada»ni bosing; «Qoʻngʻiroq» doʻkonga qoʻngʻiroq qiladi.'],
   ['Когда привезли, нажмите «Доставлен клиенту» и выберите оплату: наличные, карта, перечисление или в долг (если продавец это разрешил). Часть суммы можно взять сразу, остальное записать в долг.','Yetkazganingizda «Mijozga yetkazildi»ni bosing va toʻlovni tanlang: naqd, karta, pul oʻtkazish yoki qarzga (sotuvchi ruxsat bergan boʻlsa). Summaning bir qismini darhol olib, qolganini qarzga yozish mumkin.']]},
  {img:'cr-debts',h:['Должники','Qarzdorlar'],cap:['Должники на маршруте','Marshrutdagi qarzdorlar'],li:[
-  ['Здесь все должники дистрибьютора с адресом и телефоном: «Позвонить» и «Копировать адрес». Можно принять оплату, в том числе частично, и нажать «Напомнить в Telegram».','Bu yerda distribyutorning barcha qarzdorlari manzil va telefon bilan: «Qoʻngʻiroq» va «Manzilni nusxalash». Toʻlovni, jumladan qisman, qabul qilish va «Telegramda eslatish»ni bosish mumkin.'],
+  ['Здесь все должники продавца с адресом и телефоном: «Позвонить» и «Копировать адрес». Можно принять оплату, в том числе частично, и нажать «Напомнить в Telegram».','Bu yerda sotuvchining barcha qarzdorlari manzil va telefon bilan: «Qoʻngʻiroq» va «Manzilni nusxalash». Toʻlovni, jumladan qisman, qabul qilish va «Telegramda eslatish»ni bosish mumkin.'],
   ['Отменять записи и менять долги доставщик не может: это делает только продавец. Магазин получит сообщение об оплате и подтвердит её.','Yozuvlarni bekor qilish va qarzlarni oʻzgartirish yetkazuvchi qoʻlidan kelmaydi: buni faqat sotuvchi qiladi. Doʻkon toʻlov haqida xabar oladi va uni tasdiqlaydi.']]},
  {img:'cr-cash',h:['Касса','Kassa'],cap:['Касса доставщика','Yetkazuvchi kassasi'],li:[
   ['Наличные, принятые при доставке и при оплате долгов, копятся у вас «на руках». Карта и перечисление в кассу не попадают: их проверяет продавец.','Yetkazishda va qarz toʻlovlarida qabul qilingan naqd pul sizning «qoʻlingizda» yigʻiladi. Karta va pul oʻtkazish kassaga tushmaydi: ularni sotuvchi tekshiradi.'],
@@ -4448,30 +4448,30 @@ const ABOUT_ROLES=[
   ['«+ Добавить» открывает форму: название, телефон, адрес, район и «Тип» точки: «Магазин», «Супермаркет», «Оптом» или HoReCa.','«+ Qoʻshish» shaklni ochadi: nomi, telefon, manzil, tuman va nuqta «Turi»: «Doʻkon», «Supermarket», «Ulgurji» yoki HoReCa.'],
   ['Приложение не даёт добавить магазин второй раз: если он уже в базе, покажет какой.','Ilova doʻkonni ikkinchi marta qoʻshishga yoʻl qoʻymaydi: u bazada bor boʻlsa, qaysi ekanini koʻrsatadi.'],
   ['После визита проверьте данные, исправьте ошибки и нажмите «Проверено».','Tashrifdan keyin maʼlumotlarni tekshiring, xatolarni tuzating va «Tekshirildi»ni bosing.'],
-  ['Точку на карте обновляете вы (агент своей территории) и владелец, дистрибьюторы её только видят. У магазина один основной телефон и до пяти дополнительных: «Сделать основным» меняет их местами.','Xaritadagi nuqtani siz (oʻz hududingiz agenti) va ega yangilaysiz, distribyutorlar uni faqat koʻradi. Doʻkonning bitta asosiy telefoni va beshtagacha qoʻshimcha raqami boʻladi: «Asosiy qilish» ularning oʻrnini almashtiradi.']]},
+  ['Точку на карте обновляете вы (агент своей территории) и владелец, продавцы её только видят. У магазина один основной телефон и до пяти дополнительных: «Сделать основным» меняет их местами.','Xaritadagi nuqtani siz (oʻz hududingiz agenti) va ega yangilaysiz, sotuvchilar uni faqat koʻradi. Doʻkonning bitta asosiy telefoni va beshtagacha qoʻshimcha raqami boʻladi: «Asosiy qilish» ularning oʻrnini almashtiradi.']]},
  {img:'ag-merge',h:['Объединение дублей','Dublikatlarni birlashtirish'],cap:['Объединение дублей','Dublikatlarni birlashtirish'],li:[
   ['Если один магазин попал в базу дважды, откройте «Данные магазина» и нажмите «Объединить с дублем…».','Agar bitta doʻkon bazaga ikki marta tushgan boʻlsa, doʻkon maʼlumotlarini oching va «Dublikat bilan birlashtirish…»ni bosing.'],
   ['Найдите дубль по названию, адресу или телефону. Приложение покажет, что получится: что останется, какие номера добавятся. Подтвердите, и записи сольются.','Dublikatni nomi, manzili yoki telefoni boʻyicha toping. Ilova nima chiqishini koʻrsatadi: nima qoladi, qaysi raqamlar qoʻshiladi. Tasdiqlang, yozuvlar birlashadi.'],
   ['Агент объединяет только свои магазины и магазины своих территорий.','Agent faqat oʻz doʻkonlarini va oʻz hududlaridagi doʻkonlarni birlashtiradi.']]}
  ]},
 {k:'owner',n:['Владелец','Ega'],only:'owner',
- lead:['Вы управляете площадкой: дистрибьюторами, агентами, проверкой товаров и деньгами. Группа «Владелец» в меню ☰ видна только вам.','Siz platformani boshqarasiz: distribyutorlar, agentlar, tovarlarni tekshirish va pul. ☰ menyudagi «Egasi» guruhi faqat sizga koʻrinadi.'],
+ lead:['Вы управляете площадкой: продавцами, агентами, проверкой товаров и деньгами. Группа «Владелец» в меню ☰ видна только вам.','Siz platformani boshqarasiz: sotuvchilar, agentlar, tovarlarni tekshirish va pul. ☰ menyudagi «Egasi» guruhi faqat sizga koʻrinadi.'],
  secs:[
- {img:'ow-dist',h:['Дистрибьюторы','Distribyutorlar'],cap:['Дистрибьюторы площадки','Platforma distribyutorlari'],li:[
-  ['☰ → «Владелец» → «Дистрибьюторы» → «Добавить»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его дистрибьютору, он напишет боту /admin и код.','☰ → «Egasi» → «Distribyutorlar» → «Qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni distribyutorga yuboring, u botga /admin va kodni yozadi.'],
-  ['Подраздел «Категории»: у каждого дистрибьютора выберите категорию (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары), её видят магазины на первом экране. Продавец тоже выбирает сам; побеждает последнее изменение. Пока не выбрана, дистрибьютор в «Дистрибьюторах».','«Kategoriyalar» boʻlimi: har bir distribyutorga kategoriya tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar), doʻkonlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha distribyutor «Distribyutorlar» ichida.'],
-  ['Есть «Новый код» (прежние продавцы теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого дистрибьютора, вашу компанию, удалить нельзя.','«Yangi kod» (avvalgi sotuvchilar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi distribyutorni, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
+ {img:'ow-dist',h:['Продавцы','Sotuvchilar'],cap:['Продавцы площадки','Platforma sotuvchilari'],li:[
+  ['☰ → «Владелец» → «Продавцы» → «Добавить»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его продавцу, он напишет боту /admin и код.','☰ → «Egasi» → «Sotuvchilar» → «Qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni sotuvchiga yuboring, u botga /admin va kodni yozadi.'],
+  ['Подраздел «Категории»: выберите категорию каждому продавцу (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары), её видят магазины на первом экране. Продавец может выбрать её и сам; побеждает последнее изменение. Пока категории нет, продавец в «Дистрибьюторах».','«Kategoriyalar» boʻlimi: har bir sotuvchiga kategoriya tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar), doʻkonlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha sotuvchi «Distribyutorlar» ichida.'],
+  ['Есть «Новый код» (вошедшие по прежнему коду теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого продавца, вашу компанию, удалить нельзя.','«Yangi kod» (eski kod bilan kirganlar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi sotuvchini, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
  {img:'ow-review',h:['Проверка товаров','Tovarlarni tekshirish'],cap:['Проверка товаров','Tovarlarni tekshirish'],li:[
-  ['Пункт «Проверка» собирает все новые товары дистрибьюторов в одном списке с названием дистрибьютора. Число на значке — сколько товаров ждёт решения.','«Tekshiruv» boʻlimi distribyutorlarning barcha yangi tovarlarini bitta roʻyxatga distribyutor nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
+  ['Пункт «Проверка» собирает все новые товары продавцов в одном списке с названием продавца. Число на значке — сколько товаров ждёт решения.','«Tekshiruv» boʻlimi sotuvchilarning barcha yangi tovarlarini bitta roʻyxatga sotuvchi nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
   ['Исправьте ошибки в карточке сами или нажмите «Вернуть» и напишите причину: продавец её увидит. «Одобрить» открывает товар магазинам. Ваши товары одобряются сразу.','Kartochkadagi xatolarni oʻzingiz tuzating yoki «Qaytarish»ni bosib sababini yozing: sotuvchi uni koʻradi. «Tasdiqlash» tovarni doʻkonlarga ochadi. Oʻzingizning tovarlaringiz darhol tasdiqlanadi.']]},
  {img:'ow-people',h:['Люди, агенты и территории','Odamlar, agentlar va hududlar'],cap:['Люди и территории','Odamlar va hududlar'],li:[
   ['«Территории»: создайте районы и города, по которым работают агенты. «Агенты»: имя, территории и личный код (он показывается один раз); у каждого агента своя ссылка.','«Hududlar»: agentlar ishlaydigan tuman va shaharlarni yarating. «Agentlar»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi); har bir agentning oʻz havolasi bor.'],
   ['«Люди»: все, кто открывал приложение или писал боту, и их роли: владелец, продавец, агент, доставщик или магазин.','«Odamlar»: ilovani ochgan yoki botga yozgan hamma va ularning rollari: ega, sotuvchi, agent, yetkazuvchi yoki doʻkon.']]},
  {h:['Деньги, аналитика и площадка','Pul, tahlil va platforma'],li:[
-  ['«Деньги → Спорные записи»: спорные записи по всем дистрибьюторам, закрываются с комментарием.','«Pul → Bahsli yozuvlar»: barcha distribyutorlar boʻyicha bahsli yozuvlar, izoh bilan yopiladi.'],
-  ['«Комиссия»: сводка по дистрибьюторам, накопленное и оплаченное; оплаты дистрибьюторов вы подтверждаете. Процент можно задать каждому отдельно.','«Komissiya»: distribyutorlar boʻyicha xulosa, toʻplangan va toʻlangan; distribyutorlar toʻlovlarini siz tasdiqlaysiz. Foizni har biriga alohida belgilash mumkin.'],
-  ['«Аналитика»: продажи по категориям, товарам и магазинам за выбранный период, по всем дистрибьюторам или по одному.','«Tahlil»: tanlangan davr uchun kategoriyalar, tovarlar va doʻkonlar boʻyicha sotuvlar — barcha distribyutorlar yoki bittasi boʻyicha.'],
-  ['«Площадка»: название, этот экран «О нас» с контактами и «База магазинов» (перенос клиентов дистрибьюторов в общую базу).','«Platforma»: nomi, kontaktlar bilan shu «Biz haqimizda» ekrani va «Doʻkonlar bazasi» (distribyutorlar mijozlarini umumiy bazaga koʻchirish).']]}
+  ['«Деньги → Спорные записи»: спорные записи по всем продавцам, закрываются с комментарием.','«Pul → Bahsli yozuvlar»: barcha sotuvchilar boʻyicha bahsli yozuvlar, izoh bilan yopiladi.'],
+  ['«Комиссия»: сводка по продавцам, накопленное и оплаченное; оплаты продавцов вы подтверждаете. Процент можно задать каждому отдельно.','«Komissiya»: sotuvchilar boʻyicha xulosa, toʻplangan va toʻlangan; sotuvchilar toʻlovlarini siz tasdiqlaysiz. Foizni har biriga alohida belgilash mumkin.'],
+  ['«Аналитика»: продажи по категориям, товарам и магазинам за выбранный период, по всем продавцам или по одному.','«Tahlil»: tanlangan davr uchun kategoriyalar, tovarlar va doʻkonlar boʻyicha sotuvlar — barcha sotuvchilar yoki bittasi boʻyicha.'],
+  ['«Площадка»: название, этот экран «О нас» с контактами и «База магазинов» (перенос клиентов продавцов в общую базу).','«Platforma»: nomi, kontaktlar bilan shu «Biz haqimizda» ekrani va «Doʻkonlar bazasi» (sotuvchilar mijozlarini umumiy bazaga koʻchirish).']]}
  ]}
 ];
 const aboutUrl=(img)=>'/about/'+img+'-'+(LANG==='uz'?'uz':'ru')+'.webp?v='+ABOUT_V;
@@ -4619,23 +4619,23 @@ function pendingCart(){
 function regionBarHTML(){
   return '<div class="card regbar"><label class="lab" for="reg-sel">'+L('Ваш регион','Sizning hududingiz')+'</label><select id="reg-sel" data-reg="1"><option value="">'+L('Выберите регион','Hududni tanlang')+'</option>'
     +REGIONS.map(r=>'<option value="'+r.id+'"'+(r.id===S.region?' selected':'')+'>'+esc(regionName(r.id))+'</option>').join('')+'</select>'
-    +'<div class="unit">'+(S.region?L('Сначала показываем тех, кто доставляет к вам или находится в вашем регионе.','Avval sizga yetkazib beradigan yoki hududingizdagi distribyutorlar koʻrsatiladi.'):L('Выберите регион, и мы покажем тех, кто доставляет к вам.','Hududni tanlang, sizga yetkazib beradiganlarni koʻrsatamiz.'))+'</div></div>';
+    +'<div class="unit">'+(S.region?L('Сначала показываем тех, кто доставляет к вам или находится в вашем регионе.','Avval sizga yetkazib beradigan yoki hududingizdagi sotuvchilar koʻrsatiladi.'):L('Выберите регион, и мы покажем тех, кто доставляет к вам.','Hududni tanlang, sizga yetkazib beradiganlarni koʻrsatamiz.'))+'</div></div>';
 }
 /* Список: сначала те, кто доставляет в регион магазина или находится в нём; остальные (у них можно заказать с самовывозом) спрятаны за кнопкой */
 function shopsListHTML(list){
   const all=list||S.hub.shops;
-  if(!all.length)return '<div class="empty"><b>'+L('Пока нет дистрибьюторов с товарами','Hozircha mahsulotli distribyutorlar yoʻq')+'</b>'+L('Загляните позже.','Keyinroq qaytib keling.')+'</div>';
+  if(!all.length)return '<div class="empty"><b>'+L('Пока нет продавцов с товарами','Hozircha mahsulotli sotuvchilar yoʻq')+'</b>'+L('Загляните позже.','Keyinroq qaytib keling.')+'</div>';
   const grid=a=>'<div class="dgrid">'+a.map(shopCardHTML).join('')+'</div>';
   if(!regionsInUse())return grid(all);
   const bar=regionBarHTML();
   if(!S.region)return bar+grid(all);
   const near=all.filter(r=>servesRegion(r,S.region)),far=all.filter(r=>!servesRegion(r,S.region));
   if(!far.length)return bar+grid(near);
-  if(!near.length)return bar+'<div class="note warnnote" role="status" style="margin-bottom:12px">'+esc(L('В вашем регионе ('+regionName(S.region)+') пока нет дистрибьюторов с доставкой. Ниже те, у кого можно заказать с самовывозом.','Sizning hududingizda ('+regionName(S.region)+') yetkazib beradigan distribyutorlar hozircha yoʻq. Quyida olib ketish bilan buyurtma berish mumkin boʻlganlar.'))+'</div>'+grid(far);
+  if(!near.length)return bar+'<div class="note warnnote" role="status" style="margin-bottom:12px">'+esc(L('В вашем регионе ('+regionName(S.region)+') пока нет продавцов с доставкой. Ниже те, у кого можно заказать с самовывозом.','Sizning hududingizda ('+regionName(S.region)+') yetkazib beradigan sotuvchilar hozircha yoʻq. Quyida olib ketish bilan buyurtma berish mumkin boʻlganlar.'))+'</div>'+grid(far);
   return bar+grid(near)
     +'<div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn ghost" data-act="showfar" aria-expanded="'+S.showFar+'">'
     +(S.showFar?L('Скрыть тех, кто не доставляет к вам','Sizga yetkazib bermaydiganlarni yashirish'):L('Показать и тех, кто не доставляет к вам ('+far.length+')','Sizga yetkazib bermaydiganlarni ham koʻrsatish ('+far.length+')'))+'</button></div>'
-    +(S.showFar?'<p class="lead">'+L('Эти дистрибьюторы не доставляют в ваш регион, но у них можно заказать с самовывозом.','Bu distribyutorlar sizning hududingizga yetkazib bermaydi, lekin olib ketish bilan buyurtma berish mumkin.')+'</p>'+grid(far):'');
+    +(S.showFar?'<p class="lead">'+L('Эти продавцы не доставляют в ваш регион, но у них можно заказать с самовывозом.','Bu sotuvchilar sizning hududingizga yetkazib bermaydi, lekin olib ketish bilan buyurtma berish mumkin.')+'</p>'+grid(far):'');
 }
 /* Категории: первый экран показывает их карточками, внутри открывается список дистрибьюторов категории */
 const CAT_ICONS={
@@ -4645,14 +4645,14 @@ const CAT_ICONS={
   distributor:'<path d="M2 6h11v10H2z"/><path d="M13 9h4l3 3v4h-7"/><circle cx="6" cy="18" r="1.8"/><circle cx="16.5" cy="18" r="1.8"/>',
   bazaar:'<path d="M3 9l2-5h14l2 5"/><path d="M3 9c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3"/><path d="M5 12v8h14v-8"/>'
 };
-const plDistr=n=>{const a=n%100,b=n%10;return a>=11&&a<=14?'дистрибьюторов':b===1?'дистрибьютор':b>=2&&b<=4?'дистрибьютора':'дистрибьюторов'};
+const plDistr=n=>{const a=n%100,b=n%10;return a>=11&&a<=14?'продавцов':b===1?'продавец':b>=2&&b<=4?'продавца':'продавцов'};
 const catShops=k=>S.hub.shops.filter(r=>shopCatOf(r)===k);
 function catsHTML(){
   const chev='<svg class="chev" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5l4.5 4.5L6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   return '<p class="lead">'+L('Выберите, у кого хотите заказать.','Kimdan buyurtma berishni tanlang.')+'</p><div class="catgrid">'+SHOP_CATS.map(k=>{
     const n=catShops(k).length;
     return '<button type="button" class="cat'+(n?'':' em')+'" data-act="opencat" data-k="'+k+'"><span class="cic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+CAT_ICONS[k]+'</svg></span>'
-      +'<span class="ct"><b>'+esc(shopCatName(k))+'</b><span>'+(n?esc(L(n+' '+plDistr(n),n+' ta distribyutor')):esc(L('Пока пусто','Hozircha boʻsh')))+'</span></span>'+(n?'<span class="cn">'+n+'</span>':'')+chev+'</button>';
+      +'<span class="ct"><b>'+esc(shopCatName(k))+'</b><span>'+(n?esc(L(n+' '+plDistr(n),n+' ta sotuvchi')):esc(L('Пока пусто','Hozircha boʻsh')))+'</span></span>'+(n?'<span class="cn">'+n+'</span>':'')+chev+'</button>';
   }).join('')+'</div>';
 }
 function catListHTML(k){
@@ -4663,12 +4663,12 @@ function catListHTML(k){
 function renderShops(){
   const h=S.hub,me=h.me,ck=SHOP_CATS.includes(S.shopsCat)?S.shopsCat:'';
   let out='<div class="wrap page">'+(ck?'<button type="button" class="btn ghost sm backlink" data-act="catback">← '+L('Категории','Kategoriyalar')+'</button><div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Категория','Kategoriya')+'</div><h1>'+esc(shopCatName(ck))+'</h1></div></div>'
-    :'<div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Дистрибьюторы и магазины в одном приложении','Distribyutorlar va doʻkonlar bir ilovada')+'</div></div></div>');
+    :'<div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Продавцы и магазины в одном приложении','Sotuvchilar va doʻkonlar bir ilovada')+'</div></div></div>');
   if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
     out+=bannerSlot();
-    if(ck)out+='<p class="lead">'+L('Выберите дистрибьютора, чтобы посмотреть каталог и заказать товары. В одной корзине товары только одного дистрибьютора.','Katalog va buyurtma uchun distribyutorni tanlang. Bitta savatda faqat bitta distribyutorning mahsulotlari boʻladi.')+'</p>';
+    if(ck)out+='<p class="lead">'+L('Выберите продавца, чтобы посмотреть каталог и заказать товары. В одной корзине товары только одного продавца.','Katalog va buyurtma uchun sotuvchini tanlang. Bitta savatda faqat bitta sotuvchining mahsulotlari boʻladi.')+'</p>';
     const pc=pendingCart();
     if(pc)out+='<div class="note" style="margin-bottom:12px">🛒 '+esc(L('В корзине '+pc.n+' поз.'+(pc.name?' · «'+pc.name+'»':''),'Savatda '+pc.n+' ta mahsulot'+(pc.name?' · «'+pc.name+'»':'')))+' <button type="button" class="btn ghost sm" data-act="opencartshop" data-id="'+esc(pc.did)+'">'+L('Открыть корзину','Savatni ochish')+'</button></div>';
     const sells=me&&me.sells||[];
@@ -4773,7 +4773,7 @@ const baseErr=e=>({
   too_many_phones:L('Номеров слишком много: у магазина основной и не больше 5 дополнительных. Уберите лишние и повторите.','Raqamlar juda koʻp: asosiy va 5 tagacha qoʻshimcha raqam boʻlishi mumkin. Ortiqchasini olib tashlab, qayta urinib koʻring.'),
   too_many_accounts:L('У объединённого магазина было бы больше 10 аккаунтов: так объединить нельзя','Birlashgan doʻkonda 10 tadan koʻp akkaunt boʻlib qoladi: bunday birlashtirib boʻlmaydi'),
   same:L('Нужен другой магазин, не тот же самый','Boshqa doʻkonni tanlang, bu emas'),
-  retry:L('Не удалось перенести заметки дистрибьюторов. Ничего не потеряно, повторите ещё раз.','Distribyutorlar eslatmalarini koʻchirib boʻlmadi. Hech narsa yoʻqolmadi, qayta urinib koʻring.'),
+  retry:L('Не удалось перенести заметки продавцов. Ничего не потеряно, повторите ещё раз.','Sotuvchilar eslatmalarini koʻchirib boʻlmadi. Hech narsa yoʻqolmadi, qayta urinib koʻring.'),
   too_many:L('В базе уже максимум магазинов','Bazada doʻkonlar maksimal sonda'),
   forbidden:L('Это действие вам недоступно','Bu amal siz uchun mavjud emas'),
   bad_loc:L('Точка не распознана. Отметьте её заново.','Nuqta aniqlanmadi. Uni qaytadan belgilang.'),
@@ -4878,10 +4878,10 @@ function baseFormHTML(){
     +'<div><label class="lab" for="bf-terr">'+L('Территория','Hudud')+'</label><select id="bf-terr" data-bf="terr">'+opt('',agent?L('Выберите территорию','Hududni tanlang'):L('Без территории','Hududsiz'),f.terr)+tl.map(t=>opt(t.id,t.name,f.terr)).join('')+'</select>'+hintD('Район или город, к которому относится магазин.','Doʻkon qaysi tuman yoki shaharga tegishli.')+'</div>'
     +'<div class="full"><label class="lab" for="bf-addr">'+L('Адрес','Manzil')+'</label><input type="text" id="bf-addr" data-bf="addr" maxlength="200" value="'+esc(f.addr)+'" autocomplete="off">'+hintD('Улица, дом, ориентир. Пример: ул. Галаба 12, рядом с аптекой.','Koʻcha, uy, moʻljal. Masalan: Gʻalaba koʻchasi 12, dorixona yonida.')+'</div>'
     +'<div><label class="lab" for="bf-st">'+L('Статус','Holat')+'</label><select id="bf-st" data-bf="st">'+['new','talk','refuse'].map(k=>opt(k,BST()[k],f.st)).join('')+'</select>'+hintD('На каком этапе разговор с магазином.','Doʻkon bilan suhbat qaysi bosqichda.')+'</div>'
-    +'<div><label class="lab" for="bf-ty">'+L('Тип','Turi')+'</label><select id="bf-ty" data-bf="ty">'+opt('',L('Не указан','Koʻrsatilmagan'),f.ty||'')+BTYPE().map(x=>opt(x[0],x[1],f.ty||'')).join('')+'</select>'+hintD('Кто покупает: магазин, супермаркет, оптовик или HoReCa (кафе, рестораны). Тип видят все дистрибьюторы.','Kim sotib oladi: doʻkon, supermarket, ulgurji xaridor yoki HoReCa (kafe, restoranlar). Turini barcha distribyutorlar koʻradi.')+'</div>'
+    +'<div><label class="lab" for="bf-ty">'+L('Тип','Turi')+'</label><select id="bf-ty" data-bf="ty">'+opt('',L('Не указан','Koʻrsatilmagan'),f.ty||'')+BTYPE().map(x=>opt(x[0],x[1],f.ty||'')).join('')+'</select>'+hintD('Кто покупает: магазин, супермаркет, оптовик или HoReCa (кафе, рестораны). Тип видят все продавцы.','Kim sotib oladi: doʻkon, supermarket, ulgurji xaridor yoki HoReCa (kafe, restoranlar). Turini barcha sotuvchilar koʻradi.')+'</div>'
     +(b.role==='owner'?'<div><label class="lab" for="bf-agent">'+L('Агент','Agent')+'</label><select id="bf-agent" data-bf="agent">'+opt('','—',f.agent)+b.agents.map(a=>opt(a.id,a.name,f.agent)).join('')+'</select>'+hintD('Агент, за которым закреплён магазин.','Doʻkon biriktirilgan agent.')+'</div>':'')
     +baseLocFormHTML()
-    +'<div class="full"><label class="lab" for="bf-note">'+L('Заметка о визите (магазин и дистрибьюторы её не видят)','Tashrif haqida eslatma (doʻkon va distribyutorlar koʻrmaydi)')+'</label><textarea id="bf-note" data-bf="note" rows="3" maxlength="500">'+esc(f.note)+'</textarea>'+hintD('Что удалось выяснить за визит. Пример: придёт во вторник, интересует масло.','Tashrif vaqtida nima aniqlandi. Masalan: seshanba kuni keladi, yogʻ qiziqtiradi.')+'</div>'
+    +'<div class="full"><label class="lab" for="bf-note">'+L('Заметка о визите (магазин и продавцы её не видят)','Tashrif haqida eslatma (doʻkon va sotuvchilar koʻrmaydi)')+'</label><textarea id="bf-note" data-bf="note" rows="3" maxlength="500">'+esc(f.note)+'</textarea>'+hintD('Что удалось выяснить за визит. Пример: придёт во вторник, интересует масло.','Tashrif vaqtida nima aniqlandi. Masalan: seshanba kuni keladi, yogʻ qiziqtiradi.')+'</div>'
     +(b.edit!=='new'?'<div class="full mgbox"><button type="button" class="btn ghost" data-act="mgopen" data-id="'+esc(b.edit)+'">'+L('Объединить с дублем…','Dublikat bilan birlashtirish…')+'</button>'+hintD('Если этот магазин записан в базе дважды: дубль вольётся сюда, его номера и аккаунты перейдут к этому магазину.','Doʻkon bazada ikki marta yozilgan boʻlsa: dublikat shu yerga qoʻshiladi, uning raqamlari va akkauntlari shu doʻkonga oʻtadi.')+'</div>':'')
     +'</div><div class="err" id="bferr" role="alert">'+esc(b.ferr)+'</div>'
     +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="basesave"'+(b.busy?' disabled':'')+'>'+(b.busy?L('Сохраняем…','Saqlanmoqda…'):L('Сохранить','Saqlash'))+'</button><button type="button" class="btn ghost" data-act="basecancel"'+(b.busy?' disabled':'')+'>'+L('Отмена','Bekor qilish')+'</button></div></div>';
@@ -5057,7 +5057,7 @@ function mergeSheetHTML(){
       +'<div class="gone"><small>'+L('Вольётся и пропадёт','Qoʻshiladi va yoʻqoladi')+'</small><b>'+esc(pv.gone.name)+'</b><span>'+esc([pv.gone.phone,pv.gone.addr].filter(Boolean).join(' · '))+'</span></div></div>'
       +'<div class="mgl"><div><b>'+L('Номера ('+pv.phones.length+'): ','Raqamlar ('+pv.phones.length+'): ')+'</b>'+esc(pv.phones.join(', '))+(pv.moved?'':' · '+L('все уже были у магазина','hammasi doʻkonda bor edi'))+'</div>'
       +'<div><b>'+L('Аккаунтов в приложении: ','Ilovadagi akkauntlar: ')+num(pv.accounts)+'</b>'+(pv.gAccounts?' · '+L('из них от дубля: '+pv.gAccounts+'. Заказы с них пойдут в этот магазин','shundan dublikatdan: '+pv.gAccounts+' ta. Ulardan buyurtmalar shu doʻkonga tushadi'):'')+'</div>'
-      +'<div>'+L('Заказы, долги и история остаются. Заметки и группы дистрибьюторов объединяются: если они есть у обоих, записываются подряд.','Buyurtmalar, qarzlar va tarix qoladi. Distribyutorlarning eslatma va guruhlari birlashtiriladi: ikkalasida ham boʻlsa, ketma-ket yoziladi.')+'</div>'
+      +'<div>'+L('Заказы, долги и история остаются. Заметки и группы продавцов объединяются: если они есть у обоих, записываются подряд.','Buyurtmalar, qarzlar va tarix qoladi. Sotuvchilarning eslatma va guruhlari birlashtiriladi: ikkalasida ham boʻlsa, ketma-ket yoziladi.')+'</div>'
       +(fl.length?'<div>'+L('Пустое у этого магазина возьмётся у дубля: ','Bu doʻkonda boʻsh boʻlgani dublikatdan olinadi: ')+esc(fl.join(', '))+'</div>':'')+'</div>'
       +'<div class="mgw">'+L('Отменить объединение нельзя.','Birlashtirishni bekor qilib boʻlmaydi.')+'</div>'
       +(g.err?'<div class="err" role="alert">'+esc(g.err)+'</div>':'');
@@ -5087,10 +5087,10 @@ function baseDelete(id){
   });
 }
 const ownErr=e=>({
-  main_shop:L('Первого дистрибьютора (вашу компанию) удалить нельзя','Birinchi distribyutorni (sizning kompaniyangizni) oʻchirib boʻlmaydi'),
+  main_shop:L('Первого продавца (вашу компанию) удалить нельзя','Birinchi sotuvchini (sizning kompaniyangizni) oʻchirib boʻlmaydi'),
   not_found:L('Уже удалён. Обновите страницу.','Allaqachon oʻchirilgan. Sahifani yangilang.'),
   bad_name:L('Название — от 2 символов','Nomi kamida 2 belgi boʻlsin'),
-  too_many:L('Больше дистрибьюторов добавить нельзя','Boshqa distribyutor qoʻshib boʻlmaydi'),
+  too_many:L('Больше продавцов добавить нельзя','Boshqa sotuvchi qoʻshib boʻlmaydi'),
   bad_pct:L('Процент — число от 0 до 50','Foiz — 0 dan 50 gacha son'),
   weak_code:L('Код должен быть не короче 12 символов','Kod kamida 12 belgidan iborat boʻlsin'),
   code_taken:L('Такой код уже занят, придумайте другой','Bu kod band, boshqasini oʻylab toping'),
@@ -5209,7 +5209,7 @@ function ownStatsHTML(){
     +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(t.base))+'</span></div>'
     +(t.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(t.active)+'</span></div>':'')
     +'<div class="r t"><span>'+L('Комиссия к получению','Olinadigan komissiya')+'</span><span>'+esc(money(t.cm))+'</span></div></div>'
-    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого дистрибьютора свой, его можно менять в его карточке выше. Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: клиенты платят дистрибьютору при получении, дистрибьютор платит вам комиссию сам любым способом, а вы подтверждаете получение выше.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir distribyutorning foizi alohida, uni yuqoridagi uning kartochkasida oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: mijozlar distribyutorga olganda toʻlaydi, distribyutor komissiyani sizga oʻzi istalgan usulda toʻlaydi, siz esa olinganini yuqorida tasdiqlaysiz.')+'</div></div>';
+    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого продавца свой, его можно менять в его карточке выше. Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: клиенты платят продавцу при получении, продавец платит вам комиссию сам любым способом, а вы подтверждаете получение выше.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir sotuvchining foizi alohida, uni yuqoridagi uning kartochkasida oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: mijozlar sotuvchiga olganda toʻlaydi, sotuvchi komissiyani sizga oʻzi istalgan usulda toʻlaydi, siz esa olinganini yuqorida tasdiqlaysiz.')+'</div></div>';
   return h;
 }
 async function ownPct(id){
@@ -5328,7 +5328,7 @@ function cmShopHTML(r){
   const c=S.cm,o=S.own,f=c.ow[r.id]||{a:'',note:'',open:false},hist=r.pays.filter(p=>p.st!=='wait'),shown=c.all[r.id]?hist:hist.slice(0,5);
   const pv=o.pcts[r.id]!==undefined?o.pcts[r.id]:fmtPct(r.pct);
   let h='<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+esc(L('комиссия ','komissiya ')+fmtPct(r.pct)+'%')+'</span></div>';
-  if(r.err)return h+'<div class="note" style="margin-top:10px">'+L('Нет данных по этому дистрибьютору.','Bu distribyutor boʻyicha maʼlumot yoʻq.')+'</div></div>';
+  if(r.err)return h+'<div class="note" style="margin-top:10px">'+L('Нет данных по этому продавцу.','Bu sotuvchi boʻyicha maʼlumot yoʻq.')+'</div></div>';
   h+='<div class="sum" style="margin:10px 0 6px">'
     +'<div class="r"><span>'+L('Начислено всего','Jami hisoblangan')+'</span><span>'+esc(money(r.acc))+'</span></div>'
     +'<div class="r"><span>'+L('Оплачено (подтверждено)','Toʻlangan (tasdiqlangan)')+'</span><span>'+esc(money(r.paid))+'</span></div>'
@@ -5339,9 +5339,9 @@ function cmShopHTML(r){
   h+='<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="commopen" data-did="'+esc(r.id)+'" aria-expanded="'+!!f.open+'">'+(f.open?L('Скрыть','Yashirish'):L('Записать полученную оплату','Olingan toʻlovni yozish'))+'</button></div>';
   if(f.open)h+='<div class="form" style="margin-top:10px">'
     +'<div><label class="lab" for="cmo-a-'+esc(r.id)+'">'+L('Сколько получили, сум','Qancha oldingiz, soʻm')+'</label><input type="text" inputmode="numeric" id="cmo-a-'+esc(r.id)+'" data-cmo="a" data-did="'+esc(r.id)+'" maxlength="16" value="'+esc(f.a)+'" autocomplete="off" placeholder="400000">'
-    +hintD('Для денег, которые дистрибьютор отдал вам мимо приложения, например наличными. Запись сразу считается подтверждённой.','Distribyutor ilovadan tashqari bergan pul uchun, masalan naqd. Yozuv darhol tasdiqlangan hisoblanadi.')+'</div>'
+    +hintD('Для денег, которые продавец отдал вам мимо приложения, например наличными. Запись сразу считается подтверждённой.','Sotuvchi ilovadan tashqari bergan pul uchun, masalan naqd. Yozuv darhol tasdiqlangan hisoblanadi.')+'</div>'
     +'<div><label class="lab" for="cmo-n-'+esc(r.id)+'">'+L('Комментарий (необязательно)','Izoh (majburiy emas)')+'</label><input type="text" id="cmo-n-'+esc(r.id)+'" data-cmo="note" data-did="'+esc(r.id)+'" maxlength="120" value="'+esc(f.note)+'" autocomplete="off">'
-    +hintD('Например: наличными в офисе. Дистрибьютор увидит это в истории.','Masalan: ofisda naqd. Distribyutor buni tarixda koʻradi.')+'</div>'
+    +hintD('Например: наличными в офисе. Продавец увидит это в истории.','Masalan: ofisda naqd. Sotuvchi buni tarixda koʻradi.')+'</div>'
     +'<div class="row-btns"><button type="button" class="btn" data-act="commadd" data-did="'+esc(r.id)+'"'+(S.cm.busy?' disabled':'')+'>'+(S.cm.busy===r.id?L('Записываем…','Yozilmoqda…'):L('Записать','Yozish'))+'</button></div></div>';
   if(hist.length)h+='<h4 class="cmh">'+L('История платежей','Toʻlovlar tarixi')+'</h4>'+shown.map(p=>cmPayHTML(p,true,r.id)).join('')
     +(hist.length>5?'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="commall" data-did="'+esc(r.id)+'">'+(c.all[r.id]?L('Свернуть','Yigʻish'):L('Показать все ('+hist.length+')','Hammasini koʻrsatish ('+hist.length+')'))+'</button></div>':'');
@@ -5351,7 +5351,7 @@ function cmShopHTML(r){
 function commOwnerHTML(){
   const c=S.cm,d=c.o;
   if(!d)return c.err?cmErrHTML():loadingHTML();
-  let h='<p class="lead">'+L('Дистрибьюторы платят вам комиссию любым способом и отмечают это здесь. Когда деньги пришли, нажмите «Получил»: только после этого сумма «К оплате» у дистрибьютора уменьшится. Платежи можно подтверждать и кнопками в сообщении бота.','Distribyutorlar komissiyani sizga istalgan usulda toʻlaydi va buni shu yerda belgilaydi. Pul kelganda «Qabul qildim» tugmasini bosing: faqat shundan keyin distribyutorning «Toʻlanishi kerak» summasi kamayadi. Toʻlovlarni bot xabaridagi tugmalar bilan ham tasdiqlash mumkin.')+'</p>';
+  let h='<p class="lead">'+L('Продавцы платят вам комиссию любым способом и отмечают это здесь. Когда деньги пришли, нажмите «Получил»: только после этого сумма «К оплате» у продавца уменьшится. Платежи можно подтверждать и кнопками в сообщении бота.','Sotuvchilar komissiyani sizga istalgan usulda toʻlaydi va buni shu yerda belgilaydi. Pul kelganda «Qabul qildim» tugmasini bosing: faqat shundan keyin sotuvchining «Toʻlanishi kerak» summasi kamayadi. Toʻlovlarni bot xabaridagi tugmalar bilan ham tasdiqlash mumkin.')+'</p>';
   h+=cmStats(d.total);
   const wait=[];
   d.rows.forEach(r=>r.pays.forEach(p=>{if(p.st==='wait')wait.push({r,p})}));
@@ -5361,7 +5361,7 @@ function commOwnerHTML(){
     +wait.map(x=>'<div class="cmw"><div class="cmwn">'+esc(x.r.name)+'</div>'+cmPayHTML(x.p,true,x.r.id)+'</div>').join('')+'</div>';
   const rows=d.rows.slice().sort((a,b)=>(b.nw>0)-(a.nw>0)||b.due-a.due);
   h+=rows.map(cmShopHTML).join('');
-  if(!rows.length)h+='<div class="empty"><b>'+L('Дистрибьюторов пока нет','Distribyutorlar hozircha yoʻq')+'</b>'+L('Добавьте первого в разделе «Дистрибьюторы».','Birinchisini «Distribyutorlar» boʻlimida qoʻshing.')+'</div>';
+  if(!rows.length)h+='<div class="empty"><b>'+L('Продавцов пока нет','Sotuvchilar hozircha yoʻq')+'</b>'+L('Добавьте первого в разделе «Продавцы».','Birinchisini «Sotuvchilar» boʻlimida qoʻshing.')+'</div>';
   return h+ownStatsHTML();
 }
 function renderComm(){
@@ -5395,7 +5395,7 @@ async function commDecide(did,id,act){
   c.busy=id;renderComm();
   const r=await api('POST','/api/hub/admin/comm',{did,id,act});
   c.busy='';
-  if(r.ok&&r.data)toast(act==='ok'?L('Подтверждено. Дистрибьютор получил сообщение.','Tasdiqlandi. Distribyutor xabar oldi.'):act==='no'?L('Отмечено: не получено. Дистрибьютор получил сообщение.','Belgilandi: olinmadi. Distribyutor xabar oldi.'):L('Платёж отменён, «К оплате» вернулось.','Toʻlov bekor qilindi, «Toʻlanishi kerak» qaytdi.'));
+  if(r.ok&&r.data)toast(act==='ok'?L('Подтверждено. Продавец получил сообщение.','Tasdiqlandi. Sotuvchi xabar oldi.'):act==='no'?L('Отмечено: не получено. Продавец получил сообщение.','Belgilandi: olinmadi. Sotuvchi xabar oldi.'):L('Платёж отменён, «К оплате» вернулось.','Toʻlov bekor qilindi, «Toʻlanishi kerak» qaytdi.'));
   else toast(commErr(r.data&&r.data.error));
   await loadCommOwner();
   renderComm();renderNav();
@@ -5407,14 +5407,14 @@ async function commAddOwn(did){
   c.busy=did;renderComm();
   const r=await api('POST','/api/hub/admin/comm',{did,act:'add',a,note:f.note.trim()});
   c.busy='';
-  if(r.ok&&r.data){f.a='';f.note='';f.open=false;toast(L('Записано: '+money(a)+'. Дистрибьютор получил сообщение.','Yozildi: '+money(a)+'. Distribyutor xabar oldi.'))}
+  if(r.ok&&r.data){f.a='';f.note='';f.open=false;toast(L('Записано: '+money(a)+'. Продавец получил сообщение.','Yozildi: '+money(a)+'. Sotuvchi xabar oldi.'))}
   else toast(commErr(r.data&&r.data.error));
   await loadCommOwner();
   renderComm();renderNav();
 }
 /* раздел владельца: каждый блок на своём экране, заходят в него из меню ☰ (категория → подраздел) */
 const ownSecs=()=>[
-  ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['cats',L('Категории','Kategoriyalar'),L('Категории дистрибьюторов','Distribyutor kategoriyalari')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')]]],
+  ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['cats',L('Категории','Kategoriyalar'),L('Категории продавцов','Sotuvchi kategoriyalari')],['add',L('Добавить','Qoʻshish'),L('Добавить продавца','Sotuvchi qoʻshish')]]],
   ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
   ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База магазинов','Doʻkonlar bazasi'),L('База магазинов','Doʻkonlar bazasi')]]]
@@ -5432,24 +5432,24 @@ function ownMadeHTML(){
   const o=S.own;let h='';
     if(o.made){
       const m=o.made;
-      h+='<div class="card codebox"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Дистрибьютор добавлен: ','Distribyutor qoʻshildi: ')+m.name)+'</h3>'
-        +'<div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его дистрибьютору.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni distribyutorga yuboring.')+'</div>'
+      h+='<div class="card codebox"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Продавец добавлен: ','Sotuvchi qoʻshildi: ')+m.name)+'</h3>'
+        +'<div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его продавцу.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni sotuvchiga yuboring.')+'</div>'
         +'<div class="mono">'+esc(m.code)+'</div>'
         +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="'+esc(L('Код: ','Kod: '))+'">'+L('Копировать код','Kodni nusxalash')+'</button>'
         +'<button type="button" class="btn ghost" data-act="copy" data-v="/admin '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/admin КОД»','«/admin KOD» nusxalash')+'</button></div>'
-        +'<div class="note">'+L('Дистрибьютор открывает бота, отправляет «/admin КОД» (бот сразу удалит сообщение с кодом) и нажимает «Открыть приложение». Заказы будут приходить ему в бот.','Distribyutor botni ochib, «/admin KOD» yuboradi (bot kod yozilgan xabarni darhol oʻchiradi) va «Ilovani ochish» tugmasini bosadi. Buyurtmalar botga keladi.')+'</div>'
+        +'<div class="note">'+L('Продавец открывает бота, отправляет «/admin КОД» (бот сразу удалит сообщение с кодом) и нажимает «Открыть приложение». Заказы будут приходить ему в бот.','Sotuvchi botni ochib, «/admin KOD» yuboradi (bot kod yozilgan xabarni darhol oʻchiradi) va «Ilovani ochish» tugmasini bosadi. Buyurtmalar botga keladi.')+'</div>'
         +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="ownmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
     }
   return h;
 }
 function ownAddHTML(){
   const o=S.own;let h='';
-    h+='<p class="lead">'+L('Каждому дистрибьютору вы даёте личный код. Он пишет боту «/admin КОД», становится продавцом и сам добавляет товары в приложении.','Har bir distribyutorga shaxsiy kod berasiz. U botga «/admin KOD» deb yozadi, sotuvchi boʻladi va mahsulotlarni ilovada oʻzi qoʻshadi.')+'</p>';
+    h+='<p class="lead">'+L('Каждому продавцу вы даёте личный код. Он пишет боту «/admin КОД» и сам добавляет товары в приложении.','Har bir sotuvchiga shaxsiy kod berasiz. U botga «/admin KOD» deb yozadi va mahsulotlarni ilovada oʻzi qoʻshadi.')+'</p>';
     const full=o.shops.length>=o.max;
-    h+='<div class="card"><h3>'+L('Добавить дистрибьютора','Distribyutor qoʻshish')+'</h3><div class="form">'
-      +'<div><label class="lab" for="o-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="o-name" data-own="fname" maxlength="60" value="'+esc(o.fname)+'" autocomplete="off">'+hintD('Так дистрибьютор будет назван в списке. Пример: Навои Фуд.','Distribyutor roʻyxatda shunday nomlanadi. Masalan: Navoiy Fud.')+'</div>'
-      +'<div><label class="lab" for="o-cat">'+L('Категория (можно выбрать позже)','Kategoriya (keyinroq ham tanlash mumkin)')+'</label><select id="o-cat" data-own="fcat"><option value="">'+esc(L('Не выбрана (в «Дистрибьюторах»)','Tanlanmagan («Distribyutorlar» ichida)'))+'</option>'+SHOP_CATS.map(k=>'<option value="'+k+'"'+(cleanCat(o.fcat)===k?' selected':'')+'>'+esc(shopCatName(k))+'</option>').join('')+'</select>'+hintD('Магазины увидят дистрибьютора в этой категории. Продавец потом сможет выбрать её сам.','Doʻkonlar distribyutorni shu kategoriyada koʻradi. Sotuvchi keyin oʻzi tanlay oladi.')+'</div>'
-      +'<div><label class="lab" for="o-code">'+L('Свой код (от 12 символов) или пусто — придумаем','Oʻz kodingiz (12 belgidan) yoki boʻsh — oʻzimiz yaratamiz')+'</label><input type="text" id="o-code" data-own="fcode" maxlength="64" value="'+esc(o.fcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Этот код дистрибьютор отправит боту командой «/admin КОД». Если оставить пустым, бот придумает код сам.','Distribyutor bu kodni botga «/admin KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div>'
+    h+='<div class="card"><h3>'+L('Добавить продавца','Sotuvchi qoʻshish')+'</h3><div class="form">'
+      +'<div><label class="lab" for="o-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="o-name" data-own="fname" maxlength="60" value="'+esc(o.fname)+'" autocomplete="off">'+hintD('Так продавец будет назван в списке. Пример: Навои Фуд.','Sotuvchi roʻyxatda shunday nomlanadi. Masalan: Navoiy Fud.')+'</div>'
+      +'<div><label class="lab" for="o-cat">'+L('Категория (можно выбрать позже)','Kategoriya (keyinroq ham tanlash mumkin)')+'</label><select id="o-cat" data-own="fcat"><option value="">'+esc(L('Не выбрана (в «Дистрибьюторах»)','Tanlanmagan («Distribyutorlar» ichida)'))+'</option>'+SHOP_CATS.map(k=>'<option value="'+k+'"'+(cleanCat(o.fcat)===k?' selected':'')+'>'+esc(shopCatName(k))+'</option>').join('')+'</select>'+hintD('Магазины увидят продавца в этой категории. Позже он сможет сменить её сам.','Doʻkonlar sotuvchini shu kategoriyada koʻradi. Keyinroq u oʻzi oʻzgartira oladi.')+'</div>'
+      +'<div><label class="lab" for="o-code">'+L('Свой код (от 12 символов) или пусто — придумаем','Oʻz kodingiz (12 belgidan) yoki boʻsh — oʻzimiz yaratamiz')+'</label><input type="text" id="o-code" data-own="fcode" maxlength="64" value="'+esc(o.fcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Этот код продавец отправит боту командой «/admin КОД». Если оставить пустым, бот придумает код сам.','Sotuvchi bu kodni botga «/admin KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div>'
       +'</div><div class="err" id="o-err" role="alert">'+esc(o.err2||'')+'</div>'
       +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="ownadd" data-act="ownadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='add'?L('Добавляем…','Qoʻshilmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
       +(full?'<div class="note" style="margin-top:10px">'+esc(ownErr('too_many'))+'</div>':'')+'</div>';
@@ -5462,8 +5462,8 @@ function ownCatSel(id,cur){
 /* Категории: у каждого дистрибьютора одна. Продавец выбирает её сам в настройках, владелец может поменять; побеждает последнее изменение. */
 function ownCatsHTML(){
   const o=S.own;
-  let h='<p class="lead">'+L('Выберите категорию каждому: магазины увидят её на первом экране. Пока не выбрана, дистрибьютор в «Дистрибьюторах». Продавец тоже выбирает сам; побеждает последнее изменение.','Har bir distribyutorga kategoriya tanlang: doʻkonlar uni birinchi ekranda koʻradi. Kategoriya tanlanmaguncha distribyutor «Distribyutorlar» ichida koʻrsatiladi. Sotuvchi ham kategoriyani oʻz sozlamalarida tanlay oladi; oxirgi oʻzgarish kuchga kiradi.')+'</p>';
-  if(!o.shops.length)return h+'<div class="empty"><b>'+L('Дистрибьюторов пока нет','Distribyutorlar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'</div>';
+  let h='<p class="lead">'+L('Выберите категорию каждому: магазины увидят её на первом экране. Пока не выбрана, продавец в «Дистрибьюторах». Он тоже может выбрать её сам; побеждает последнее изменение.','Har bir sotuvchiga kategoriya tanlang: doʻkonlar uni birinchi ekranda koʻradi. Kategoriya tanlanmaguncha sotuvchi «Distribyutorlar» ichida koʻrsatiladi. U ham kategoriyani oʻz sozlamalarida tanlay oladi; oxirgi oʻzgarish kuchga kiradi.')+'</p>';
+  if(!o.shops.length)return h+'<div class="empty"><b>'+L('Продавцов пока нет','Sotuvchilar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'</div>';
   return h+'<div class="card" style="padding-top:4px;padding-bottom:4px">'+o.shops.map(r=>'<div class="srow"><b>'+esc(r.name)+'</b>'+ownCatSel(r.id,r.cat)+'</div>').join('')+'</div>';
 }
 async function ownCat(id,v){
@@ -5480,29 +5480,29 @@ function ownListHTML(){
   const o=S.own;let h='';
     h+=o.shops.map(r=>{
       const sure=o.rc===r.id;
-      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('продавцов: '+r.sellers,'sotuvchilar: '+r.sellers),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq'),cleanCat(r.cat)?shopCatName(cleanCat(r.cat)):L('категория не выбрана','kategoriya tanlanmagan')];
+      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('доступ: '+r.sellers+' чел.','kirish: '+r.sellers+' kishi'),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq'),cleanCat(r.cat)?shopCatName(cleanCat(r.cat)):L('категория не выбрана','kategoriya tanlanmagan')];
       return '<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></div>'
         +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div><div class="row-btns">'
         +'<button type="button" class="btn ghost sm" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button>'
         +'<button type="button" class="btn ghost sm" data-act="owntoggle" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(r.on?L('Скрыть и закрыть заказы','Yashirish va buyurtmani yopish'):L('Вернуть в список','Roʻyxatga qaytarish'))+'</button>'
-        +'<button type="button" class="btn ghost sm" data-act="ownreset" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(sure?L('Точно? Прежние продавцы потеряют доступ','Aniqmi? Avvalgi sotuvchilar kirolmaydi'):L('Новый код','Yangi kod'))+'</button>'
+        +'<button type="button" class="btn ghost sm" data-act="ownreset" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(sure?L('Точно? Вошедшие по прежнему коду потеряют доступ','Aniqmi? Eski kod bilan kirganlar kirolmaydi'):L('Новый код','Yangi kod'))+'</button>'
         +(r.link?'<button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(r.link)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Ссылка для клиентов','Mijozlar uchun havola')+'</button>':'')
         +(r.id!=='main'?'<button type="button" class="btn ghost sm" data-act="owndel" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Удалить','Oʻchirish')+'</button>':'')
         +'</div></div>';
     }).join('');
-  if(!o.shops.length)h+='<div class="empty"><b>'+L('Дистрибьюторов пока нет','Distribyutorlar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="otab" data-t="add">'+L('Добавить дистрибьютора','Distribyutor qoʻshish')+'</button></div></div>';
+  if(!o.shops.length)h+='<div class="empty"><b>'+L('Продавцов пока нет','Sotuvchilar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="otab" data-t="add">'+L('Добавить продавца','Sotuvchi qoʻshish')+'</button></div></div>';
   return h;
 }
 function ownTitleHTML(){
   const o=S.own;let h='';
     const tv=o.ftitle===null?o.title:o.ftitle;
-    h+='<div class="card"><h3>'+L('Название площадки','Platforma nomi')+'</h3><div class="unit">'+L('Показывается наверху списка дистрибьюторов.','Distribyutorlar roʻyxati tepasida koʻrsatiladi.')+'</div><div class="form"><div class="full"><input type="text" id="o-title" data-own="ftitle" maxlength="60" value="'+esc(tv)+'" aria-label="'+esc(L('Название площадки','Platforma nomi'))+'"></div></div>'
+    h+='<div class="card"><h3>'+L('Название площадки','Platforma nomi')+'</h3><div class="unit">'+L('Показывается наверху списка продавцов.','Sotuvchilar roʻyxati tepasida koʻrsatiladi.')+'</div><div class="form"><div class="full"><input type="text" id="o-title" data-own="ftitle" maxlength="60" value="'+esc(tv)+'" aria-label="'+esc(L('Название площадки','Platforma nomi'))+'"></div></div>'
       +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="owntitle"'+(o.busy?' disabled':'')+'>'+L('Сохранить название','Nomni saqlash')+'</button></div></div>';
   return h;
 }
 function renderOwner(){
   const o=S.own,sec=o.sec||'dist',info=ownSecInfo(sec);
-  let h='<div class="wrap page"><button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все дистрибьюторы','Barcha distribyutorlar')+'</button><div class="eyebrow" style="margin-top:12px">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1>';
+  let h='<div class="wrap page"><button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все продавцы','Barcha sotuvchilar')+'</button><div class="eyebrow" style="margin-top:12px">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1>';
   if(!o.loaded)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
@@ -5618,12 +5618,12 @@ function ownPeopleHTML(part){
   if(!p)return '<div class="card"><h3>'+esc(ownSecInfo(part).title)+'</h3><div class="unit">'+L('Загружаем…','Yuklanmoqda…')+'</div></div>';
   let h='';
   if(part==='clients'){
-  h+='<div class="card"><h3>'+L('База магазинов','Doʻkonlar bazasi')+'</h3><div class="unit">'+L('Магазин попадает в базу сам при первом заказе. Агент проверяет данные после визита и добавляет тех, кого ещё нет. Дистрибьюторы видят всю базу (название, адрес, телефон, территорию), но не заметки агентов.','Doʻkon birinchi buyurtmada bazaga oʻzi tushadi. Agent tashrifdan keyin maʼlumotlarni tekshiradi va hali yoʻqlarini qoʻshadi. Distribyutorlar butun bazani koʻradi (nomi, manzil, telefon, hudud), lekin agent eslatmalarini emas.')+'</div>'
+  h+='<div class="card"><h3>'+L('База магазинов','Doʻkonlar bazasi')+'</h3><div class="unit">'+L('Магазин попадает в базу сам при первом заказе. Агент проверяет данные после визита и добавляет тех, кого ещё нет. Продавцы видят всю базу (название, адрес, телефон, территорию), но не заметки агентов.','Doʻkon birinchi buyurtmada bazaga oʻzi tushadi. Agent tashrifdan keyin maʼlumotlarni tekshiradi va hali yoʻqlarini qoʻshadi. Sotuvchilar butun bazani koʻradi (nomi, manzil, telefon, hudud), lekin agent eslatmalarini emas.')+'</div>'
     +'<div class="sum"><div class="r"><span>'+L('Магазинов в базе','Bazadagi doʻkonlar')+'</span><span>'+num(p.total)+'</span></div><div class="r"><span>'+L('Без территории','Hududsiz')+'</span><span>'+num(p.free)+'</span></div></div>'
     +(o.perr?'<div class="err" role="alert" style="margin-top:8px">'+esc(o.perr)+'</div>':'')
     +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="nav" data-v="base">'+L('Открыть базу','Bazani ochish')+'</button>'
-    +'<button type="button" class="btn ghost" data-act="baseimport"'+dis+'>'+L('Перенести клиентов дистрибьюторов','Distribyutorlar mijozlarini oʻtkazish')+'</button></div>'
-    +'<div class="unit" style="margin-top:8px">'+L('Перенос нужен один раз: клиенты, которые уже заказывали у дистрибьюторов, попадут в общую базу. Кто уже есть, не добавится повторно.','Oʻtkazish bir marta kerak: distribyutorlarga allaqachon buyurtma bergan mijozlar umumiy bazaga tushadi. Bor boʻlganlar qayta qoʻshilmaydi.')+'</div>'
+    +'<button type="button" class="btn ghost" data-act="baseimport"'+dis+'>'+L('Перенести клиентов продавцов','Sotuvchilar mijozlarini oʻtkazish')+'</button></div>'
+    +'<div class="unit" style="margin-top:8px">'+L('Перенос нужен один раз: клиенты, которые уже заказывали у продавцов, попадут в общую базу. Кто уже есть, не добавится повторно.','Oʻtkazish bir marta kerak: sotuvchilarga allaqachon buyurtma bergan mijozlar umumiy bazaga tushadi. Bor boʻlganlar qayta qoʻshilmaydi.')+'</div>'
     +(o.imp?'<div class="note" style="margin-top:8px">'+esc(L('Перенос выполнен: добавлено '+o.imp.added+', уже были в базе '+o.imp.linked+', пропущено '+o.imp.skipped+'.','Oʻtkazildi: qoʻshildi '+o.imp.added+', bazada bor edi '+o.imp.linked+', oʻtkazib yuborildi '+o.imp.skipped+'.'))+'</div>':'')+'</div>';
   }
   else if(part==='terr'){
@@ -5677,7 +5677,7 @@ async function ownDelete(id){
   o.busy='';
   if(!r.ok){toast(ownErr(r.data&&r.data.error));if(r.data&&r.data.error==='not_found')o.shops=o.shops.filter(x=>x.id!==id);renderOwner();return}
   o.shops=o.shops.filter(x=>x.id!==id);
-  toast(L('Дистрибьютор «'+rec.name+'» удалён','Distribyutor «'+rec.name+'» oʻchirildi'));
+  toast(L('Продавец «'+rec.name+'» удалён','Sotuvchi «'+rec.name+'» oʻchirildi'));
   renderOwner();
   loadHub();loadOwnerStats();
 }
@@ -5754,7 +5754,7 @@ document.addEventListener('click',e=>{
   else if(a==='commcancel')commCancel(t.dataset.id);
   else if(a==='commok')commDecide(t.dataset.did,t.dataset.id,'ok');
   else if(a==='commno')commDecide(t.dataset.did,t.dataset.id,'no');
-  else if(a==='commvoid'){const did=t.dataset.did,id=t.dataset.id;askConfirm(L('Отменить подтверждённый платёж на '+money(Number(t.dataset.a))+'? «К оплате» у дистрибьютора вернётся, запись останется в истории со статусом «Отменён».','Tasdiqlangan '+money(Number(t.dataset.a))+' toʻlovni bekor qilasizmi? Distribyutorning «Toʻlanishi kerak» summasi qaytadi, yozuv tarixda «Bekor qilingan» holatida qoladi.'),()=>commDecide(did,id,'void'))}
+  else if(a==='commvoid'){const did=t.dataset.did,id=t.dataset.id;askConfirm(L('Отменить подтверждённый платёж на '+money(Number(t.dataset.a))+'? «К оплате» у продавца вернётся, запись останется в истории со статусом «Отменён».','Tasdiqlangan '+money(Number(t.dataset.a))+' toʻlovni bekor qilasizmi? Sotuvchining «Toʻlanishi kerak» summasi qaytadi, yozuv tarixda «Bekor qilingan» holatida qoladi.'),()=>commDecide(did,id,'void'))}
   else if(a==='commopen'){const f=S.cm.ow[t.dataset.did]||(S.cm.ow[t.dataset.did]={a:'',note:'',open:false});f.open=!f.open;renderComm()}
   else if(a==='commall'){S.cm.all[t.dataset.did]=!S.cm.all[t.dataset.did];renderComm()}
   else if(a==='commadd')commAddOwn(t.dataset.did);
@@ -5763,7 +5763,7 @@ document.addEventListener('click',e=>{
   else if(a==='ownmadeclose'){S.own.made=null;renderOwner()}
   else if(a==='owndel'){
     const id=t.dataset.id,rec=S.own.shops.find(x=>x.id===id);
-    if(rec)askConfirm(L('Удалить дистрибьютора «'+rec.name+'» навсегда? Его товары ('+rec.items+'), заказы, клиенты и настройки сотрутся, вернуть их будет нельзя. Продавцы потеряют доступ. Если нужно только убрать его из списка, нажмите «Скрыть и закрыть заказы».','«'+rec.name+'» distribyutori butunlay oʻchirilsinmi? Uning mahsulotlari ('+rec.items+' ta), buyurtmalari, mijozlari va sozlamalari oʻchib ketadi, qaytarib boʻlmaydi. Sotuvchilar kirishdan mahrum boʻladi. Faqat roʻyxatdan olib qoʻymoqchi boʻlsangiz, «Yashirish va buyurtmani yopish» tugmasini bosing.'),()=>ownDelete(id));
+    if(rec)askConfirm(L('Удалить продавца «'+rec.name+'» навсегда? Его товары ('+rec.items+'), заказы, клиенты и настройки сотрутся, вернуть их будет нельзя. Все, у кого был доступ, его потеряют. Если нужно только убрать его из списка, нажмите «Скрыть и закрыть заказы».','«'+rec.name+'» sotuvchisi butunlay oʻchirilsinmi? Uning mahsulotlari ('+rec.items+' ta), buyurtmalari, mijozlari va sozlamalari oʻchib ketadi, qaytarib boʻlmaydi. Kirish huquqi borlar uni yoʻqotadi. Faqat roʻyxatdan olib qoʻymoqchi boʻlsangiz, «Yashirish va buyurtmani yopish» tugmasini bosing.'),()=>ownDelete(id));
   }
   else if(a==='ownreset'){
     const id=t.dataset.id;
@@ -6332,8 +6332,8 @@ function tick(){
   loadForm();loadCart();
   const me=S.hub.me;
   let did=validDid(want)?want:'';
-  if(!did&&!vw&&S.hub.shops.length===1)did=S.hub.shops[0].id;   // дистрибьютор один: список выбирать не из чего
-  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым дистрибьютором
+  if(!did&&!vw&&S.hub.shops.length===1)did=S.hub.shops[0].id;   // продавец один: список выбирать не из чего
+  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым продавцом
   if(!did&&vw==='seller'&&me&&me.sells.length===1)did=me.sells[0].id;
   if(!did&&vw==='courier'&&me&&me.delivers&&me.delivers.length===1)did=me.delivers[0].id;
   S.ready=true;
