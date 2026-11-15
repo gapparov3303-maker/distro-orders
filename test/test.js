@@ -7828,7 +7828,12 @@ await t('«Смотреть как»: роли в списке, только в�
   assert.ok(/if\(!as\|\|as==='shop'\)g\.push\(\[L\('Магазин'/.test(mg), 'группа магазина: в обычном режиме и в режиме магазина');
   assert.ok(/S\.admin&&S\.did&&\(!as\|\|as==='seller'\)/.test(mg) && /S\.courier&&S\.did&&\(!as\|\|as==='courier'\)/.test(mg), 'продавец и доставка только в своих режимах');
   assert.ok(/canBase\(\)&&\(!as\|\|as==='seller'\|\|as==='agent'\)/.test(mg), 'База: продавцу и агенту');
-  assert.ok(/!as&&commOn\(\)/.test(mg) && /isOwner\(\)&&!as/.test(mg), 'комиссия и группа владельца только в обычном режиме');
+  assert.ok(/\(!as\|\|as==='seller'\)&&commOn\(\)/.test(mg) && /isOwner\(\)&&!as/.test(mg), 'комиссия: в обычном режиме и в режиме продавца, группа владельца только в обычном');
+  assert.ok(/const commOwn=\(\)=>isOwner\(\)&&viewAs\(\)!=='seller'/.test(html), 'владелец в режиме продавца смотрит комиссию как продавец');
+  const cmSrc = html.slice(html.indexOf('const commOwn='), html.indexOf('const CM_ST='));
+  assert.ok(/const commOn=\(\)=>commOwn\(\)\|\|/.test(cmSrc) && /const commBadge=\(\)=>commOwn\(\)\?/.test(cmSrc), 'пункт и значок комиссии идут по commOwn');
+  assert.ok(/if\(!S\.admin\|\|!S\.did\|\|commOwn\(\)\)return;/.test(html) && /if\(commOwn\(\)\)\{loadCommOwner\(\);loadOwnerStats\(\)\}\s*else loadCommSeller\(\)/.test(html), 'данные продавца грузятся и для владельца в режиме продавца');
+  assert.ok(/function renderComm\(\)\{\s*const own=commOwn\(\)/.test(html), 'экран комиссии выбирается по commOwn');
   assert.ok(/id="mas"/.test(html) && /id="asbar"/.test(html), 'блок в меню и полоска над экраном есть в разметке');
   const rn = fn('renderNav');
   assert.ok(/\$\('#mas'\)/.test(rn) && /\$\('#asbar'\)/.test(rn) && /as-on/.test(rn), 'меню рисует блок и полоску');
