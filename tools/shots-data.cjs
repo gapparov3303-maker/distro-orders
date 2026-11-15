@@ -31,9 +31,9 @@ const ITEMS = [
 ];
 const PROD = () => ({ cats: CATS, items: ITEMS });
 const SHOPS = [
-  { id: DID, name: 'Навои Фуд', items: 24, cats: CATS.slice(0, 3), delivery: true, minOrder: 300000, regions: [], home: '' },
-  { id: 'oltindon', name: 'Олтин Дон', items: 18, cats: [{ id: 'x1', name: 'Мука', uz: 'Un' }, { id: 'x2', name: 'Макароны', uz: 'Makaron' }], delivery: true, minOrder: 0, regions: [], home: '' },
-  { id: 'mevazor', name: 'Мевазор', items: 31, cats: [{ id: 'y1', name: 'Овощи', uz: 'Sabzavot' }, { id: 'y2', name: 'Фрукты', uz: 'Mevalar' }], delivery: false, minOrder: 0, regions: [], home: '' }
+  { id: DID, name: 'Навои Фуд', items: 24, cats: CATS.slice(0, 3), delivery: true, minOrder: 300000, regions: [], home: '', cat: 'wholesale' },
+  { id: 'oltindon', name: 'Олтин Дон', items: 18, cats: [{ id: 'x1', name: 'Мука', uz: 'Un' }, { id: 'x2', name: 'Макароны', uz: 'Makaron' }], delivery: true, minOrder: 0, regions: [], home: '', cat: 'maker' },
+  { id: 'mevazor', name: 'Мевазор', items: 31, cats: [{ id: 'y1', name: 'Овощи', uz: 'Sabzavot' }, { id: 'y2', name: 'Фрукты', uz: 'Mevalar' }], delivery: false, minOrder: 0, regions: [], home: '', cat: 'bazaar' }
 ];
 const it = (id, name, uz, qty, price, amount, unit) => ({ id, name, uz, qty, price, amount, unit });
 const SHOP_ORDERS = [
@@ -107,9 +107,9 @@ const BASE_META = { total: BASE_ITEMS.length, all: BASE_ITEMS.length, counts: { 
 
 // владелец площадки
 const OWN_SHOPS = [
-  { id: 'main', name: 'Навои Фуд', items: 24, sellers: 2, on: true, own: true, link: 'https://t.me/sarbon_optom_bot?start=d_main' },
-  { id: 'oltindon', name: 'Олтин Дон', items: 18, sellers: 1, on: true, own: true, link: 'https://t.me/sarbon_optom_bot?start=d_oltindon' },
-  { id: 'mevazor', name: 'Мевазор', items: 31, sellers: 0, on: true, own: false, link: '' }
+  { id: 'main', name: 'Навои Фуд', items: 24, sellers: 2, on: true, own: true, link: 'https://t.me/sarbon_optom_bot?start=d_main', cat: 'wholesale' },
+  { id: 'oltindon', name: 'Олтин Дон', items: 18, sellers: 1, on: true, own: true, link: 'https://t.me/sarbon_optom_bot?start=d_oltindon', cat: 'maker' },
+  { id: 'mevazor', name: 'Мевазор', items: 31, sellers: 0, on: true, own: false, link: '', cat: 'bazaar' }
 ];
 const mod = (did, dname, id, name, uz, catName, catUz, price, days) => ({ did, dname, id, name, uz, cat: 'c1', catName, catUz, ms: 'wait', mt: new Date(Date.now() - days * 864e5).toISOString(), amount: 1, unit: 'kg', price, on: true, tag: '', old: 0, pv: 'x' + id, pv2: '', pv3: '', tiers: [], blk: 0, box: 0, desc: '', descUz: '' });
 const MOD_ITEMS = [

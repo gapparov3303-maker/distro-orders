@@ -154,6 +154,7 @@ function sanitizeCfg(d) {
   s.discounts = cleanDiscounts(s.discounts);
   s.regions = cleanRegions(s.regions);
   s.home = cleanRegion(s.home);
+  s.category = cleanCat(s.category);
   return out;
 }
 
@@ -2242,7 +2243,7 @@ export class Shop {
     return {
       name: cfg.shop.name || DEFAULT.shop.name, items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
       delivery: cfg.shop.delivery !== false, minOrder: Number(cfg.shop.minOrder) || 0,
-      regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home)
+      regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home), cat: cleanCat(cfg.shop.category)
     };
   }
   /* Сообщает площадке о новом названии и составе каталога. Сбой не мешает продавцу: список обновится при следующем изменении. */
@@ -2266,6 +2267,7 @@ export class Shop {
       // площадка создаёт дистрибьютора: помечаем хранилище и ставим название
       const cfg = await this.getCfg();
       cfg.shop.name = cleanStr(b.name, 60) || DEFAULT.shop.name;
+      cfg.shop.category = cleanCat(b.cat);
       const upd = { born: 1, cfg: sanitizeCfg(cfg) };
       const pct = b.pct === undefined ? null : cleanPct(b.pct);
       if (pct !== null) upd.cpct = pct;
@@ -2283,6 +2285,13 @@ export class Shop {
     if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
     if (path === '/__/mod-photo') return await this.modPhoto(request);
     if (path === '/__/summary') return json(await this.summary());
+    if (path === '/__/set-cat') {
+      // владелец площадки поменял категорию: хранится здесь, площадка обновляет свою копию сама
+      const cfg = await this.getCfg();
+      cfg.shop.category = cleanCat(b.cat);
+      await this.st.put('cfg', sanitizeCfg(cfg));
+      return json({ ok: true, cat: cfg.shop.category });
+    }
     if (path === '/__/clients') {
       // клиенты этого дистрибьютора: площадка один раз переносит их в общую базу магазинов
       await this.ensureClients();
@@ -2485,9 +2494,22 @@ export class Shop {
         const r = await this.readBody(request, 100000);
         if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
         const cfg = sanitizeCfg(r.body.cfg);
+        // категория меняется только своими запросами: устаревшая форма настроек не должна затирать выбор владельца
+        cfg.shop.category = cleanCat((await this.getCfg()).shop.category);
         await this.st.put('cfg', cfg);
         await this.hubSync();
         return json({ cfg });
+      }
+      if (path === '/api/admin/category' && method === 'PUT') {
+        const r = await this.readBody(request, 500);
+        if (r.err || !r.body || typeof r.body !== 'object' || typeof r.body.cat !== 'string') return json({ error: 'bad_request' }, 400);
+        const cat = cleanCat(r.body.cat);
+        if (r.body.cat !== '' && !cat) return json({ error: 'bad_cat' }, 400);
+        const cfg = await this.getCfg();
+        cfg.shop.category = cat;
+        await this.st.put('cfg', sanitizeCfg(cfg));
+        await this.hubSync();
+        return json({ cat });
       }
       if (path === '/api/admin/products' && method === 'PUT') {
         const r = await this.readBody(request, PROD_BODY_MAX);
@@ -4128,10 +4150,10 @@ export class Shop {
 const newRec = (id, name, hash, sum) => ({
   id, name: cleanStr(name, 60) || DEFAULT.shop.name, on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
   items: sum && Number(sum.items) || 0, wait: sum && Number(sum.wait) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
-  regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home)
+  regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home), cat: cleanCat(sum && sum.cat)
 });
 /* Что видит клиент в списке. Код и служебные поля не уходят. */
-const pubRec = r => ({ id: r.id, name: r.name, items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home) });
+const pubRec = r => ({ id: r.id, name: r.name, items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat) });
 const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
@@ -4315,6 +4337,7 @@ export class Hub {
       rec.minOrder = Math.max(0, Math.round(Number(s.minOrder) || 0));
       rec.regions = cleanRegions(s.regions);
       rec.home = cleanRegion(s.home);
+      rec.cat = cleanCat(s.cat);
       await this.st.put('d:' + rec.id, rec);
       return json({ ok: true });
     }
@@ -5257,6 +5280,21 @@ export class Hub {
       const sc = await shopCall(this.env, b.did, '/__/comm-act', { act: b.act, id: b.id, a: b.a, note: b.note, by: au.user, origin: this.origin });
       return json(sc.data || { error: 'server' }, sc.status || 500);
     }
+    // категория дистрибьютора: владелец может поменять то, что выбрал продавец
+    const cm = path.match(/^\/api\/hub\/admin\/shops\/([a-z0-9]{2,12})\/cat$/);
+    if (cm && method === 'PUT') {
+      const rec = await this.getRec(cm[1]);
+      if (!rec) return json({ error: 'not_found' }, 404);
+      const r = await this.readBody(request, 500);
+      if (r.err || !r.body || typeof r.body !== 'object' || typeof r.body.cat !== 'string') return json({ error: 'bad_request' }, 400);
+      const cat = cleanCat(r.body.cat);
+      if (r.body.cat !== '' && !cat) return json({ error: 'bad_cat' }, 400);
+      const sc = await shopCall(this.env, rec.id, '/__/set-cat', { cat });
+      if (!sc.ok) return json({ error: 'server' }, 500);
+      rec.cat = cat;
+      await this.st.put('d:' + rec.id, rec);
+      return json({ shop: await this.ownerRec(rec) });
+    }
     const m = path.match(/^\/api\/hub\/admin\/shops\/([a-z0-9]{2,12})(\/code)?$/);
     if (m) {
       const rec = await this.getRec(m[1]);
@@ -5413,9 +5451,10 @@ export class Hub {
     if (c.err) return json({ error: c.err }, c.err === 'code_taken' ? 409 : 400);
     let id;
     do { id = 's' + randId(5).toLowerCase(); } while (idx.includes(id));
-    const init = await shopCall(this.env, id, '/__/init', { name, pct: COMM_DEFAULT });
+    const cat = cleanCat(b.cat);
+    const init = await shopCall(this.env, id, '/__/init', { name, pct: COMM_DEFAULT, cat });
     if (!init.ok) return json({ error: 'server' }, 500);
-    const rec = newRec(id, name, c.hash);
+    const rec = newRec(id, name, c.hash, { cat });
     await this.st.put({ ['d:' + id]: rec, dx: idx.concat([id]) });
     return json({ shop: await this.ownerRec(rec), code: c.code });
   }
