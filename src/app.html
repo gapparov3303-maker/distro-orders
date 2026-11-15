@@ -577,6 +577,7 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .dcard{background:var(--surface);border:1.5px solid var(--edge);border-radius:16px;padding:14px;display:grid;gap:8px;align-content:start;min-width:0}
 .dcard h2{font:700 16px/1.25 var(--f-display);overflow-wrap:anywhere}
 .dmeta{font-size:13px;color:var(--ink-2)}
+.dlegal{font-size:13px;color:var(--ink-2);margin:-4px 0 0;overflow-wrap:anywhere}
 .dcats{display:flex;flex-wrap:wrap;gap:6px}
 .dcats span{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--edge);border-radius:999px;padding:3px 9px;font-size:12px}
 .dtag{font-size:12px;font-weight:600;color:var(--tx)}
@@ -4642,7 +4643,7 @@ function shopCardHTML(r){
   else meta.push(L('есть доставка','yetkazib berish bor'));
   if(regionsOn()&&r.home&&regionName(r.home))meta.push(L('склад: ','ombor: ')+regionName(r.home));
   if(r.minOrder>0)meta.push(L('мин. заказ ','min. buyurtma ')+money(r.minOrder));
-  return '<article class="dcard"><h2>'+esc(r.name)+'</h2><div class="dmeta">'+esc(meta.join(' · '))+'</div>'
+  return '<article class="dcard"><h2>'+esc(r.name)+'</h2>'+(r.legal?'<div class="dlegal">'+esc(r.legal)+'</div>':'')+'<div class="dmeta">'+esc(meta.join(' · '))+'</div>'
     +((r.cats||[]).length?'<div class="dcats">'+r.cats.map(c=>'<span>'+esc(nm(c))+'</span>').join('')+'</div>':'')
     +'<button type="button" class="btn" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button></article>';
 }

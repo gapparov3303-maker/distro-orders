@@ -8123,7 +8123,7 @@ await t('юридическое название: продавец вводит 
   assert.equal((await cfgShop()).legal, 'ООО «Навои Фуд»', 'клиент получает его вместе с настройками');
   assert.equal((await ownerRow()).legal, 'ООО «Навои Фуд»', 'копия на площадке (список владельца)');
   const pub = (await jsonOf(await call('GET', '/api/shops', { init: iA() }))).shops.find(x => x.id === sid);
-  assert.equal(pub.legal, undefined, 'в общем списке продавцов его нет: только в каталоге');
+  assert.equal(pub.legal, 'ООО «Навои Фуд»', 'в общем списке продавцов оно есть: карточка показывает его под названием');
   cfg.shop.legal = 'Я'.repeat(200);
   assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.legal.length, 80, 'не длиннее 80');
   cfg.shop.legal = 5;
@@ -8154,7 +8154,8 @@ await t('юридическое название: экраны каталога,
   assert.ok(/data-olegal=/.test(fn('ownListHTML')) && /data-act="ownlegal"/.test(fn('ownListHTML')), 'поле и кнопка в списке владельца');
   assert.ok(/'\/api\/hub\/admin\/shops\/'\+encodeURIComponent\(id\)\+'\/legal',\{legal:v\}/.test(fn('ownLegal')), 'владелец сохраняет через площадку');
   assert.ok(/a==='ownlegal'\)ownLegal\(/.test(html) && /dataset\.olegal!==undefined\)S\.own\.legals\[/.test(html), 'нажатие и ввод');
-  assert.ok(/\.shop \.legal\{/.test(html), 'стиль подписи');
+  assert.ok(/\.shop \.legal\{/.test(html) && /\.dlegal\{/.test(html), 'стили подписи: в каталоге и в карточке');
+  assert.ok(/<h2>'\+esc\(r\.name\)\+'<\/h2>'\+\(r\.legal\?'<div class="dlegal">'\+esc\(r\.legal\)\+'<\/div>':''\)\+'<div class="dmeta">/.test(fn('shopCardHTML')), 'в карточке списка под названием, пусто — ничего');
   assert.equal(S.DEFAULT.shop.legal, '', 'в настройках по умолчанию пусто');
   assert.ok(/Юридическое название/.test(html) && /Yuridik nomi/.test(html), 'подписи на двух языках');
 });

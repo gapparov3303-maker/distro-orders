@@ -4186,7 +4186,7 @@ const newRec = (id, name, hash, sum) => ({
   regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home), cat: cleanCat(sum && sum.cat), bz: cleanCat(sum && sum.cat) === 'bazaar' ? cleanBz(sum && sum.bz) : ''
 });
 /* Что видит клиент в списке. Код и служебные поля не уходят. */
-const pubRec = r => ({ id: r.id, name: r.name, items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat), bz: cleanCat(r.cat) === 'bazaar' ? cleanBz(r.bz) : '' });
+const pubRec = r => ({ id: r.id, name: r.name, legal: cleanStr(r.legal, 80), items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat), bz: cleanCat(r.cat) === 'bazaar' ? cleanBz(r.bz) : '' });
 const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
@@ -4271,7 +4271,7 @@ export class Hub {
   }
   async link(did) { const b = await this.botName(); return b ? 'https://t.me/' + b + '?start=d_' + did : ''; }
   /* Запись дистрибьютора для владельца: всё, кроме хэша кода. */
-  async ownerRec(r) { return Object.assign(pubRec(r), { legal: cleanStr(r.legal, 80), on: r.on, sellers: r.sellers, since: r.since, own: !!r.hash, link: await this.link(r.id) }); }
+  async ownerRec(r) { return Object.assign(pubRec(r), { on: r.on, sellers: r.sellers, since: r.since, own: !!r.hash, link: await this.link(r.id) }); }
 
   /* --- вход продавцов по коду --- */
   /* Код продавца ищется среди кода владельца (ADMIN_CODE) и кодов дистрибьюторов. Ошибки считаются по человеку: 8 подряд закрывают ввод на час. */
