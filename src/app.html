@@ -1150,6 +1150,8 @@ const sellerSubs=()=>{
   const w=stockWarn(),rn=modRetN();
   return [['orders',L('Заказы','Buyurtmalar'),newCount()],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar'),dvAlerts(),'warn'],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
 };
+/* те же разделы без цифр: меню показывает их и тогда, когда компания продавца не открыта (главный экран площадки, чужой каталог): цифры берутся из открытой компании */
+const sellerTabs=()=>[['orders',L('Заказы','Buyurtmalar')],['debts',L('Долги','Qarzlar')],['dlv',L('Доставщики','Yetkazuvchilar')],['prod',L('Каталог','Katalog')],['stock',L('Остатки','Qoldiq')],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
 /* Роли человека берутся с площадки (S.hub.me): владелец, агент, продавец и доставщик у каких-то дистрибьюторов. Кроме этого он всегда магазин-клиент. */
 function myRoles(){
   const me=S.auth&&S.hub&&S.hub.me;
@@ -1198,6 +1200,10 @@ function menuGroups(){
   if(!as||as==='shop')g.push([L('Покупатель','Xaridor'),shop]);
   const work=[];
   if(S.admin&&S.did&&(!as||as==='seller')){const sb=sellerSubs();work.push(['seller',L('Продавец','Sotuvchi'),subSum(sb),'',sb,'stab'])}
+  else if(!as||as==='seller'){   // своя компания не открыта: «Продавец» всё равно виден, нажатие на раздел открывает компанию (по группе на каждую)
+    const sl=S.auth&&S.hub.me&&S.hub.me.sells||[];
+    sl.forEach((x,k)=>work.push([k?'seller:'+x.id:'seller',sl.length>1?L('Продавец · ','Sotuvchi · ')+x.name:L('Продавец','Sotuvchi'),0,'',sellerTabs().map(y=>[y[0],y[1],0]),'sof',x.id]));
+  }
   if(S.courier&&S.did&&(!as||as==='courier')){const cb=crTabs();work.push(['courier',L('Доставка','Yetkazib berish'),subSum(cb),'',cb,'ctab'])}
   if(canBase()&&(!as||as==='seller'||as==='agent'))work.push(['base',L('База','Baza')]);
   if((!as||as==='seller')&&commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
@@ -1228,7 +1234,7 @@ function renderNav(){
         h+='<button type="button" class="mi mgrp" data-act="msub" data-v="'+i[0]+'" aria-expanded="'+open+'" aria-controls="msub-'+i[0]+'"'+(parentHere(i,cur)?' data-here="1"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])
           +'<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
           +'<div class="msub" id="msub-'+i[0]+'" role="group" aria-label="'+esc(i[1])+'"'+(open?'':' hidden')+'>'
-          +i[4].map(x=>'<button type="button" class="mi" data-act="'+(i[5]||'stab')+'" data-t="'+x[0]+'"'+(subHere(i,x,cur)?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join('')+'</div>';
+          +i[4].map(x=>'<button type="button" class="mi" data-act="'+(i[5]||'stab')+'" data-t="'+x[0]+'"'+(i[6]?' data-id="'+esc(i[6])+'"':'')+(subHere(i,x,cur)?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join('')+'</div>';
       }else h+='<button type="button" class="mi" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])+'</button>';
     });
   });
@@ -4804,6 +4810,14 @@ async function enterShop(did,v,cart){
   go(v==='seller'&&S.admin?'seller':v==='courier'&&S.courier?'courier':'shop');
   return true;
 }
+/* раздел продавца из меню, когда его компания не открыта: открываем компанию и сразу нужный раздел */
+async function enterSeller(did,tab){
+  if(!(await openShop(did))){if(!S.did)S.view='shops';render();return false}
+  S.shopPlaced=null;S.shopStep='list';
+  if(!S.admin){go('shop');return false}
+  sellerOpen(tab);
+  return true;
+}
 /* Переключатель «Смотреть как»: ставит режим и открывает начальный экран выбранной роли */
 const AS_SHOP_VIEWS=['shops','shop','mine','debt','profile','about'];
 async function setViewAs(v){
@@ -6107,6 +6121,7 @@ document.addEventListener('click',e=>{
     else toast(lab);
   }
   else if(a==='stab'){sellerOpen(t.dataset.t);menuSet(false)}
+  else if(a==='sof'){menuSet(false);enterSeller(t.dataset.id,t.dataset.t)}
   else if(a==='otab'){ownOpen(t.dataset.t);menuSet(false)}
   else if(a==='rdays'){const v=Number(t.dataset.v);if(RP_DAYS.includes(v)&&v!==S.rep.days){S.rep.days=v;S.rep.sel=-1;S.rep.hov=-1;S.rep.allP=false;loadReport()}}
   else if(a==='rsel'){if(Date.now()-S.rep.skip<400)return;const i=Number(t.dataset.i);S.rep.sel=S.rep.sel===i?-1:i;S.rep.hov=-1;repShow(S.rep.sel)}
