@@ -975,9 +975,11 @@ function resetShopState(){
   Object.assign(S.cm,{d:null,err:false,a:'',note:'',busy:'',nb:0});
 }
 /* способ получения: доставка доступна, только если продавец её включил */
-const mode=()=>S.cfg.shop.delivery!==false&&S.form.mode==='delivery'?'delivery':'pickup';
+/* у продавца категории «Базар» другая форма заказа: без даты и времени, доставка до двери всегда на выбор (стоимость согласует продавец) */
+const bzShop=()=>isBzShop(S.cfg.shop);
+const mode=()=>(bzShop()||S.cfg.shop.delivery!==false)&&S.form.mode==='delivery'?'delivery':'pickup';
 const pickup=()=>pickupInfo(S.cfg,shopNow(),leadFor(S.cfg,mode()));
-function normalizeMode(){if(S.cfg.shop.delivery===false)S.form.mode='pickup'}
+function normalizeMode(){if(!bzShop()&&S.cfg.shop.delivery===false)S.form.mode='pickup'}
 /* Регион магазина запоминается на телефоне и на площадке (чтобы на другом телефоне список был тем же). */
 function loadRegion(){if(!regionsOn())return;try{S.region=cleanRegion(localStorage.getItem('sh-region'))}catch(e){}}
 function saveRegionLocal(){try{if(S.region)localStorage.setItem('sh-region',S.region);else localStorage.removeItem('sh-region')}catch(e){}}
@@ -989,7 +991,7 @@ function setRegion(id){
   if(S.view==='shops')renderShops();
 }
 /* Доставка у открытого дистрибьютора ограничена регионами: список, регион для заказа, подсказки */
-const zoneOn=()=>hasZone(S.cfg.shop.regions)&&S.cfg.shop.delivery!==false;
+const zoneOn=()=>hasZone(S.cfg.shop.regions)&&S.cfg.shop.delivery!==false&&!bzShop();
 const zone=()=>cleanRegions(S.cfg.shop.regions);
 const orderRegion=()=>{const c=cleanRegion(S.form.region);return zoneOn()?(zone().includes(c)?c:''):(c||S.region)};
 /* в форму заказа подставляем регион магазина, если дистрибьютор в него доставляет */
@@ -1442,7 +1444,7 @@ function paintShopBar(){
   const n=cartCount();
   if(!n){bar.style.display='none';bar.innerHTML='';return}
   bar.style.display='';
-  if(S.shopStep==='cart')bar.innerHTML='<div class="wrap"><div><small>'+L('Итого, оплата при получении','Jami, olganda toʻlanadi')+'</small><strong id="ctotal">'+money(cartPay())+'</strong></div><button type="button" class="btn" data-act="submitorder">'+L('Заказать','Buyurtma berish')+'</button></div>';
+  if(S.shopStep==='cart')bar.innerHTML='<div class="wrap"><div><small>'+(bzShop()?L('Итого','Jami'):L('Итого, оплата при получении','Jami, olganda toʻlanadi'))+'</small><strong id="ctotal">'+money(cartPay())+'</strong></div><button type="button" class="btn" data-act="submitorder">'+L('Заказать','Buyurtma berish')+'</button></div>';
   else bar.innerHTML='<div class="wrap"><div><small>'+L('Корзина','Savat')+': '+cartQtyText()+'</small><strong>'+money(cartTotal()-cartDisc().amount)+'</strong></div><button type="button" class="btn" data-act="opencart">'+L('Оформить заказ','Buyurtma berish')+'</button></div>';
 }
 function renderShop(){
@@ -1513,7 +1515,7 @@ function paintCartLines(){
 function paintCartSum(){
   const el=$('#csum');if(!el)return;
   const sub=cartTotal(),dc=cartDisc(),fee=cartFee(),sh=S.cfg.shop,del=mode()==='delivery',feeSet=Number(sh.deliveryFee)>0,free=Number(sh.freeDeliveryFrom)||0;
-  const showFee=del&&feeSet;
+  const showFee=del&&feeSet&&!bzShop();
   el.innerHTML=(showFee||dc.amount>0?'<div class="r"><span>'+L('Товары','Mahsulotlar')+'</span><span id="csubrow">'+money(sub)+'</span></div>':'')
     +(dc.amount>0?'<div class="r disc"><span>'+L('Скидка '+dc.pct+'%','Chegirma '+dc.pct+'%')+'</span><span id="cdiscrow">−'+money(dc.amount)+'</span></div>':'')
     +(showFee?'<div class="r"><span>'+L('Доставка','Yetkazib berish')+'</span><span id="cfeerow">'+(fee>0?money(fee):L('бесплатно','bepul'))+'</span></div>':'')
@@ -1538,16 +1540,17 @@ function refreshTotals(id){
 }
 /* Поля заказа: способ получения, имя, телефон, адрес (для доставки), дата, время, комментарий */
 function formHTML(pk){
-  const del=mode()==='delivery',canDel=S.cfg.shop.delivery!==false;
+  const del=mode()==='delivery',bz=bzShop(),canDel=bz||S.cfg.shop.delivery!==false;
   return '<div class="form">'
-    +(canDel?'<div class="full"><div class="seg" role="group" aria-label="'+esc(L('Способ получения','Olish usuli'))+'"><button type="button" data-act="mode" data-v="pickup" aria-pressed="'+(!del)+'">'+L('Самовывоз','Olib ketish')+'</button><button type="button" data-act="mode" data-v="delivery" aria-pressed="'+del+'">'+L('Доставка','Yetkazib berish')+'</button></div></div>':'')
+    +(canDel?'<div class="full"><div class="seg" role="group" aria-label="'+esc(L('Способ получения','Olish usuli'))+'"><button type="button" data-act="mode" data-v="pickup" aria-pressed="'+(!del)+'">'+(bz?L('Заберу сам в Навои','Navoiyda oʻzim olaman'):L('Самовывоз','Olib ketish'))+'</button><button type="button" data-act="mode" data-v="delivery" aria-pressed="'+del+'">'+(bz?L('Доставка до двери','Eshikkacha yetkazish'):L('Доставка','Yetkazib berish'))+'</button></div>'
+      +(bz?hintD(del?'Стоимость и время доставки согласует с вами продавец.':'Заберёте на складе в Навои, когда товар придёт.',del?'Yetkazib berish narxi va vaqtini sotuvchi siz bilan kelishadi.':'Tovar kelgach, Navoiydagi ombordan olib ketasiz.'):'')+'</div>':'')
     +(del&&zoneOn()?regionFieldHTML():'')
     +'<div><label class="lab" for="f-name">'+L('Ваше имя или название компании','Ismingiz yoki kompaniya nomi')+'</label><input type="text" id="f-name" data-f="name" value="'+esc(S.form.name)+'" autocomplete="name">'+hintD('Так продавец увидит заказ. Пример: Анвар или магазин «Зафар».','Sotuvchi buyurtmani shu nom bilan koʻradi. Masalan: Anvar yoki «Zafar» doʻkoni.')+'<div class="err" id="e-name"></div></div>'
     +'<div><label class="lab" for="f-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="f-phone" data-f="phone" value="'+esc(S.form.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel">'+hintD('По этому номеру продавец позвонит, если нужно уточнить заказ.','Buyurtmani aniqlashtirish kerak boʻlsa, sotuvchi shu raqamga qoʻngʻiroq qiladi.')+'<div class="err" id="e-phone"></div></div>'
     +(terrOn()?terrFieldHTML():'')
     +(del?'<div class="full"><label class="lab" for="f-address">'+L('Адрес доставки','Yetkazib berish manzili')+'</label><textarea id="f-address" data-f="address" rows="2" maxlength="200" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'" autocomplete="street-address">'+esc(S.form.address)+'</textarea>'+hintD('Город, улица, дом и ориентир, чтобы доставщик вас нашёл. Можно выбрать сохранённый адрес.','Yetkazuvchi sizni topishi uchun shahar, koʻcha, uy va moʻljalni yozing. Saqlangan manzilni tanlash mumkin.')+'<div class="err" id="e-address"></div>'+addrChips()+'</div>':'')
-    +'<div><label class="lab" for="f-date">'+(del?L('Дата доставки','Yetkazib berish sanasi'):L('Дата получения','Olish sanasi'))+'</label><input type="date" id="f-date" data-f="date" min="'+pk.min+'" max="'+pk.max+'" value="'+esc(S.form.date)+'">'+hintD(del?'День, когда нужно привезти заказ.':'День, когда вы заберёте заказ.',del?'Buyurtmani olib kelish kerak boʻlgan kun.':'Buyurtmani olib ketadigan kuningiz.')+'<div class="err" id="e-date"></div></div>'
-    +'<div><label class="lab" for="f-time">'+L('Время','Vaqt')+'</label><select id="f-time" data-f="time"></select>'+hintD('Время с шагом 30 минут, не раньше срока подготовки заказа.','Vaqt 30 daqiqa qadam bilan, buyurtma tayyorlanish muddatidan oldin emas.')+'<div class="err" id="e-time"></div></div>'
+    +(bz?'':'<div><label class="lab" for="f-date">'+(del?L('Дата доставки','Yetkazib berish sanasi'):L('Дата получения','Olish sanasi'))+'</label><input type="date" id="f-date" data-f="date" min="'+pk.min+'" max="'+pk.max+'" value="'+esc(S.form.date)+'">'+hintD(del?'День, когда нужно привезти заказ.':'День, когда вы заберёте заказ.',del?'Buyurtmani olib kelish kerak boʻlgan kun.':'Buyurtmani olib ketadigan kuningiz.')+'<div class="err" id="e-date"></div></div>'
+    +'<div><label class="lab" for="f-time">'+L('Время','Vaqt')+'</label><select id="f-time" data-f="time"></select>'+hintD('Время с шагом 30 минут, не раньше срока подготовки заказа.','Vaqt 30 daqiqa qadam bilan, buyurtma tayyorlanish muddatidan oldin emas.')+'<div class="err" id="e-time"></div></div>')
     +'<div class="full"><label class="lab" for="f-comment">'+L('Пожелания к заказу','Buyurtmaga istaklar')+'</label><textarea id="f-comment" data-f="comment" placeholder="'+esc(L('Как позвонить, пожелания к упаковке','Qachon qoʻngʻiroq qilish, qadoqlash boʻyicha istaklar'))+'">'+esc(S.form.comment)+'</textarea>'+hintD('Необязательно. Например: позвонить за час, мелкие товары в отдельный пакет.','Majburiy emas. Masalan: bir soat oldin qoʻngʻiroq qiling, mayda mahsulotlarni alohida paketga soling.')+'</div>'
     +'<div class="full locbox" id="locbox">'+locBoxHTML()+'</div>'
     +'</div>';
@@ -1569,6 +1572,7 @@ function fillTimes(){
   sel.innerHTML='<option value="">'+(list.length?L('Выберите время','Vaqtni tanlang'):L('На эту дату нет свободного времени','Bu sanaga boʻsh vaqt yoʻq'))+'</option>'+list.map(t=>'<option value="'+t+'"'+(t===S.form.time?' selected':'')+'>'+t+'</option>').join('');
 }
 function cartNote(){
+  if(bzShop())return L('Продавец соберёт заказ и отправит на склад в Навои. Оплату и доставку согласуете с продавцом.','Sotuvchi buyurtmani yigʻib, Navoiydagi omborga joʻnatadi. Toʻlov va yetkazib berishni sotuvchi bilan kelishasiz.');
   const sh=S.cfg.shop,addr=shopAddress(),hrs=esc(sh.openFrom)+':00–'+esc(sh.openTo)+':00;';
   if(mode()==='delivery')return L('Оплата только при получении товара. Доставка не раньше чем через '+esc(sh.deliveryLeadHours)+' ч после заказа, время доставки '+esc(sh.openFrom)+':00–'+esc(sh.openTo)+':00.',
     'Toʻlov faqat mahsulotni olganda. Yetkazib berish buyurtmadan kamida '+esc(sh.deliveryLeadHours)+' soat keyin, vaqti '+esc(sh.openFrom)+':00–'+esc(sh.openTo)+':00.');
@@ -1578,7 +1582,7 @@ function cartNote(){
 function renderCart(){
   normalizeMode();normalizeRegion();
   const pk=pickup();
-  if(!S.form.date||S.form.date<pk.min)S.form.date=pk.min;
+  if(!bzShop()&&(!S.form.date||S.form.date<pk.min))S.form.date=pk.min;
   S.shopStep='cart';
   view.innerHTML='<div class="wrap shop"><button type="button" class="btn ghost sm backlink" data-act="shoplist">← '+L('К каталогу','Katalogga')+'</button><h1>'+L('Корзина','Savat')+'</h1>'+offHTML()+'<div class="stack">'
     +'<div class="card" id="clines" style="margin-bottom:0"></div>'
@@ -1602,16 +1606,16 @@ const kgTxt=k=>nfKg.format(Number(k)||0)+' '+L('кг','kg');
 function itemRow(it){const pk=packText(it,it.qty);return '<span>'+esc(nm(it))+(weightLabel(it)?' ('+esc(weightLabel(it))+')':'')+' × '+esc(qtyStr(it,it.qty))+(pk?' ('+esc(pk)+')':'')+'</span><span>'+money(it.price*it.qty)+'</span>'}
 const discRow=(o,cls)=>o.disc>0?'<div class="'+cls+'"><span>'+L('Скидка '+o.dpct+'%','Chegirma '+o.dpct+'%')+'</span><span>−'+money(o.disc)+'</span></div>':'';
 function renderShopPlaced(){
-  const o=S.shopPlaced.order,tg=tgLink(o),del=o.mode==='delivery';
+  const o=S.shopPlaced.order,tg=tgLink(o),del=o.mode==='delivery',nw=noWhen(o);
   view.innerHTML='<div class="wrap page"><div class="stack" style="max-width:560px"><div><div class="eyebrow">'+L('Заказ отправлен','Buyurtma yuborildi')+'</div><h1>'+L('Номер ','Raqam ')+esc(o.id)+'</h1></div>'
-    +'<div class="note">'+L('Продавец получил заказ и скоро подтвердит его. Мы напишем вам в этом чате, когда статус изменится. Оплата только при получении.','Sotuvchi buyurtmani oldi va tez orada tasdiqlaydi. Holat oʻzgarganda shu chatda yozamiz. Toʻlov faqat olganda.')+'</div>'
-    +'<div class="sum"><div class="r"><span>'+(del?L('Доставка','Yetkazib berish'):L('Самовывоз','Olib ketish'))+'</span><span>'+esc(fmtWhen(o.pickupAt))+'</span></div>'
+    +'<div class="note">'+L('Продавец получил заказ и скоро подтвердит его. Мы напишем вам в этом чате, когда статус изменится. '+(nw?'Оплату и доставку согласуете с продавцом.':'Оплата только при получении.'),'Sotuvchi buyurtmani oldi va tez orada tasdiqlaydi. Holat oʻzgarganda shu chatda yozamiz. '+(nw?'Toʻlov va yetkazib berishni sotuvchi bilan kelishasiz.':'Toʻlov faqat olganda.'))+'</div>'
+    +'<div class="sum"><div class="r"><span>'+(nw?L('Получение','Olish usuli'):del?L('Доставка','Yetkazib berish'):L('Самовывоз','Olib ketish'))+'</span><span>'+esc(whenText(o))+'</span></div>'
     +(del&&o.region&&regionName(o.region)?'<div class="r"><span>'+L('Регион','Hudud')+'</span><span style="white-space:normal;text-align:right">'+esc(regionName(o.region))+'</span></div>':'')
     +(del?'<div class="r"><span>'+L('Адрес','Manzil')+'</span><span style="white-space:normal;text-align:right">'+esc(o.address)+'</span></div>':'')
     +(o.items||[]).map(it=>'<div class="r">'+itemRow(it)+'</div>').join('')
     +discRow(o,'r disc')
     +(o.fee>0?'<div class="r"><span>'+L('Стоимость доставки','Yetkazib berish narxi')+'</span><span>'+money(o.fee)+'</span></div>':'')
-    +'<div class="r t"><span>'+L('К оплате при получении','Olganda toʻlanadi')+'</span><span>'+money(o.total)+'</span></div></div>'
+    +'<div class="r t"><span>'+(nw?L('Сумма заказа','Buyurtma summasi'):L('К оплате при получении','Olganda toʻlanadi'))+'</span><span>'+money(o.total)+'</span></div></div>'
     +'<div class="row-btns">'+(tg?'<a class="btn ghost" data-act="contact" href="'+tg+'" target="_blank" rel="noopener">'+L('Написать продавцу','Sotuvchiga yozish')+'</a>':'')
     +'<button type="button" class="btn ghost" data-act="shopagain">'+L('Ещё из каталога','Katalogdan yana')+'</button>'
     +'<button type="button" class="btn ghost" data-act="nav" data-v="mine">'+L('Мои заказы','Mening buyurtmalarim')+'</button></div></div></div>';
@@ -1623,8 +1627,10 @@ function validate(){
   if(terrOn()&&!terrCur())e.terr=L('Выберите ваш район или город','Rayon yoki shahringizni tanlang');
   if(mode()==='delivery'&&zoneOn()&&!orderRegion())e.region=L('Выберите регион доставки','Yetkazib berish hududini tanlang');
   if(mode()==='delivery'&&f.address.trim().length<5)e.address=L('Укажите адрес доставки','Yetkazib berish manzilini kiriting');
-  if(!f.date)e.date=L('Выберите дату','Sanani tanlang');
-  if(f.date&&!f.time)e.time=L('Выберите время','Vaqtni tanlang');
+  if(!bzShop()){
+    if(!f.date)e.date=L('Выберите дату','Sanani tanlang');
+    if(f.date&&!f.time)e.time=L('Выберите время','Vaqtni tanlang');
+  }
   return e;
 }
 const FIELDS=['region','name','phone','terr','address','date','time'];
@@ -1664,7 +1670,7 @@ async function submitOrder(){
   const f=S.form,del=mode()==='delivery';
   const r=await api('POST','/api/order',{
     cart:lines.map(l=>({id:l.p.id,qty:l.qty})),
-    form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',region:del?orderRegion():'',terr:terrKnown()?S.hub.me.card.terr:(terrCur()==='-'?'':terrCur()),date:f.date,time:f.time,comment:f.comment.trim(),loc:f.loc||undefined},
+    form:{name:f.name.trim(),phone:f.phone.trim(),mode:mode(),address:del?f.address.trim():'',region:del?orderRegion():'',terr:terrKnown()?S.hub.me.card.terr:(terrCur()==='-'?'':terrCur()),date:bzShop()?'':f.date,time:bzShop()?'':f.time,comment:f.comment.trim(),loc:f.loc||undefined},
     lang:LANG,expectTotal:cartPay()
   });
   S.busy=false;
@@ -1816,7 +1822,7 @@ function orderCard(o,m){
   const nItems=(o.items||[]).length,fold=nItems>=4,open=fold&&!!S.ox[key];
   return '<article class="ord'+(m==='seller'&&o.status==='new'?' is-new':'')+(fold?' fold'+(open?' open':''):'')+'" data-st="'+esc(o.status)+'"><div class="otop">'+orderThumbs(o,od)+pill(o)+'</div><div class="ob">'
     +(m==='mine'&&o.shopName?'<div class="dtag">'+esc(o.shopName)+'</div>':'')
-    +'<div class="meta"><span class="oid">'+esc(o.id)+'</span><span class="when">'+esc(fmtWhen(o.pickupAt))+'</span><span class="spec">'+(del?L('Доставка: ','Yetkazib berish: ')+esc((o.region&&regionName(o.region)?regionName(o.region)+', ':'')+(o.address||'')):L('Самовывоз','Olib ketish'))+'</span></div>'
+    +'<div class="meta"><span class="oid">'+esc(o.id)+'</span><span class="when">'+esc(whenText(o))+'</span>'+(noWhen(o)&&!del?'':'<span class="spec">'+(del?(noWhen(o)?L('Адрес: ','Manzil: '):L('Доставка: ','Yetkazib berish: '))+esc((o.region&&regionName(o.region)?regionName(o.region)+', ':'')+(o.address||'')):L('Самовывоз','Olib ketish'))+'</span>')+'</div>'
     +(fold?'<button type="button" class="ptg" data-act="oitems" data-id="'+esc(o.id)+'"'+dd+' aria-expanded="'+(open?'true':'false')+'"><span>'+nItems+' '+L(nItems<5?'товара':'товаров','mahsulot')+'</span><i>'+(open?L('Свернуть','Yigʻish'):L('Показать','Koʻrsatish'))+'</i></button>':'')
     +'<div class="pls">'
     +(o.items||[]).map(it=>'<div class="pl">'+itemRow(it)+'</div>').join('')
@@ -1833,7 +1839,7 @@ function orderCard(o,m){
     +((m==='seller'||m==='courier')&&(o.loc||(o.bs&&o.bs.loc))?(l=>'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>')(o.loc||o.bs.loc):'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
     +((m==='seller'||m==='courier')&&o.debt?'<div class="note warnnote">'+L('Долг покупателя: ','Xaridor qarzi: ')+money(o.debt.bal)+(o.debt.days?' · '+L('просрочка '+o.debt.days+' дн.',o.debt.days+' kun kechikdi'):'')+'</div>':'')
-    +'<div class="tot"><b>'+money(o.total)+'</b><span>'+(o.pay?esc(payText(o)):L('оплата при получении','olganda toʻlanadi'))+'</span></div>'
+    +'<div class="tot"><b>'+money(o.total)+'</b><span>'+(o.pay?esc(payText(o)):noWhen(o)?L('оплата по договорённости','toʻlov kelishuv boʻyicha'):L('оплата при получении','olganda toʻlanadi'))+'</span></div>'
     +(acts?'<div class="acts">'+acts+'</div>':'')
     +'</div></article>';
 }
@@ -1962,7 +1968,7 @@ function ordersHTML(){
   h+='<div class="filters">'+fl.map(f=>'<button type="button" class="chip" data-act="filter" data-v="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+'</button>').join('')+'</div>';
   h+=xtoolsHTML();
   let list=all.filter(o=>S.filter==='all'?true:S.filter==='active'?act(o):o.status===S.filter);
-  if(S.filter==='active')list.sort((a,b)=>String(a.pickupAt).localeCompare(String(b.pickupAt)));
+  if(S.filter==='active')list.sort((a,b)=>String(a.pickupAt).localeCompare(String(b.pickupAt))||String(a.createdAt).localeCompare(String(b.createdAt)));
   else list.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
   if(!list.length)h+='<div class="empty"><b>'+(all.length?L('В этом списке пусто','Bu roʻyxat boʻsh'):L('Заказов пока нет','Hozircha buyurtma yoʻq'))+'</b>'+(all.length?L('Выберите другой фильтр.','Boshqa filtrni tanlang.'):L('Когда покупатель оформит заказ, он появится здесь с составом, адресом и телефоном.','Xaridor buyurtma berganda, u shu yerda tarkibi, manzili va telefoni bilan paydo boʻladi.'))+'</div>';
   else h+='<div class="ordlist">'+list.map(o=>orderCard(o,'seller')).join('')+'</div>';

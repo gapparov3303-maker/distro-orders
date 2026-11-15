@@ -171,7 +171,7 @@ function stkPublic(s,cap){
 /* Стоимость доставки: берётся только при доставке; если указан порог «бесплатно от» и сумма товаров его достигла, доставка бесплатна. */
 function deliveryFee(cfg,mode,sub){
   const sh=cfg.shop,fee=Number(sh.deliveryFee)||0,free=Number(sh.freeDeliveryFrom)||0;
-  if(mode!=='delivery'||fee<=0)return 0;
+  if(mode!=='delivery'||fee<=0||isBzShop(sh))return 0;   // у Базара доставку до двери согласует продавец, стоимости в заказе нет
   return free>0&&Number(sub)>=free?0:fee;
 }
 function mergeCfg(d){
@@ -252,6 +252,17 @@ function fmtWhen(s){
   if(LANG==='uz')return UZ_WD[d.getDay()]+', '+d.getDate()+'-'+UZ_MO[d.getMonth()]+', '+pad(d.getHours())+':'+pad(d.getMinutes());
   return d.toLocaleString('ru-RU',{weekday:'short',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
 }
+/* Заказ продавца категории «Базар» оформляется без даты и времени: вместо них хранится способ получения (самовывоз со склада в Навои или доставка до двери). */
+const isBzShop=sh=>!!sh&&sh.category==='bazaar';
+const noWhen=o=>!o.pickupAt;
+const recvName=o=>o.mode==='delivery'?L('Доставка до двери','Eshikkacha yetkazish'):L('Заберу сам в Навои','Navoiyda oʻzim olaman');
+/* «когда» заказа: дата и время, а у заказа Базара — способ получения */
+const whenText=o=>noWhen(o)?recvName(o):fmtWhen(o.pickupAt);
+/* строка «Доставка: …» / «Самовывоз: …» для сообщений */
+function whenLine(o){
+  if(noWhen(o))return L('Получение: ','Olish usuli: ')+recvName(o);
+  return (o.mode==='delivery'?L('Доставка: ','Yetkazib berish: '):L('Самовывоз: ','Olib ketish: '))+fmtWhen(o.pickupAt);
+}
 function prodLine(it){
   const w=weightLabel(it);
   const pk=packText(it,it.qty);
@@ -268,17 +279,17 @@ function orderText(o,shop,maxItems){
     const n=items.length-shown.length;
     P.push(L('… и ещё '+n+' поз. (полный список в приложении)','… va yana '+n+' ta pozitsiya (toʻliq roʻyxat ilovada)'));
   }
+  P.push(whenLine(o));
   if(o.mode==='delivery'){
-    P.push(L('Доставка: ','Yetkazib berish: ')+fmtWhen(o.pickupAt));
     if(o.region&&regionName(o.region))P.push(L('Регион: ','Hudud: ')+regionName(o.region));
     P.push(L('Адрес: ','Manzil: ')+(o.address||''));
-  }else P.push(L('Самовывоз: ','Olib ketish: ')+fmtWhen(o.pickupAt));
+  }
   P.push(L('Имя: ','Ism: ')+o.name+L(', тел.: ',', tel.: ')+o.phone);
   if(o.org)P.push(L('Организация: ','Tashkilot: ')+o.org);
   if(o.comment)P.push(L('Комментарий: ','Izoh: ')+o.comment);
   if(o.disc>0)P.push(L('Скидка '+o.dpct+'%: −','Chegirma '+o.dpct+'%: −')+money(o.disc));
   if(o.fee>0)P.push(L('Стоимость доставки: ','Yetkazib berish narxi: ')+money(o.fee));
-  P.push(L('Итого: ','Jami: ')+money(o.total)+L(', оплата при получении',', olganda toʻlanadi'));
+  P.push(L('Итого: ','Jami: ')+money(o.total)+(noWhen(o)?L(', оплата по договорённости с продавцом',', toʻlov sotuvchi bilan kelishiladi'):L(', оплата при получении',', olganda toʻlanadi')));
   return P.join('\n');
 }
 
