@@ -16,8 +16,20 @@ const STATUS_MODE={
   pickup:{ready:{name:'Готов к выдаче',uz:'Topshirishga tayyor'},done:{name:'Выдан',uz:'Topshirildi'}},
   delivery:{ready:{name:'Готов к отправке',uz:'Joʻnatishga tayyor'},done:{name:'Доставлен',uz:'Yetkazildi'}}
 };
-function stOf(status,mode){
+/* Заказ Базара (без даты и времени) идёт через склад Sarbon: название статуса показывает, где он сейчас */
+const STATUS_BZ={
+  ready:{name:'Отвезён на склад',uz:'Omborga olib borilgan'},
+  wh:{name:'Принят на складе',uz:'Omborda qabul qilindi'},
+  ship:{name:'Отправка разрешена',uz:'Joʻnatishga ruxsat berilgan'},
+  sent:{name:'Отправлен в Навои',uz:'Navoiyga joʻnatildi'}
+};
+/* o (необязательно): сам заказ; по нему у заказа Базара статус «Готов» заменяется этапом на складе */
+function stOf(status,mode,o){
   const b=STATUS[status]||STATUS.new;
+  if(o&&!o.pickupAt&&(status==='new'||status==='accepted'||status==='ready')){
+    const z=o.sent?STATUS_BZ.sent:o.ship?STATUS_BZ.ship:o.wh?STATUS_BZ.wh:status==='ready'?STATUS_BZ.ready:null;
+    if(z)return Object.assign({},b,z,{c:'ok'});
+  }
   const m=(STATUS_MODE[mode==='delivery'?'delivery':'pickup']||{})[status];
   return m?Object.assign({},b,m):b;
 }
@@ -255,6 +267,7 @@ function fmtWhen(s){
 /* Заказ продавца категории «Базар» оформляется без даты и времени: вместо них хранится способ получения (самовывоз со склада в Навои или доставка до двери). */
 const isBzShop=sh=>!!sh&&sh.category==='bazaar';
 const noWhen=o=>!o.pickupAt;
+const bzReadyBtn=()=>L('Отвёз на склад','Omborga olib bordim');
 const recvName=o=>o.mode==='delivery'?L('Доставка до двери','Eshikkacha yetkazish'):L('Заберу сам в Навои','Navoiyda oʻzim olaman');
 /* «когда» заказа: дата и время, а у заказа Базара — способ получения */
 const whenText=o=>noWhen(o)?recvName(o):fmtWhen(o.pickupAt);
