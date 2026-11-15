@@ -3278,10 +3278,10 @@ await t('площадка: продавец дистрибьютора вход�
   assert.equal(me.owner, false);
   const l = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
   assert.equal(l.shops.find(x => x.id === sid).sellers, 1);
-  // владелец при входе узнаёт про вкладку «Дистрибьюторы» и открывает свой кабинет
+  // владелец при входе узнаёт про вкладку «Продавцы» и открывает свой кабинет
   await send(adminMsg(SELLER, CODE, 52));
   const ow = lastTg('sendMessage').payload;
-  assert.ok(ow.text.includes('вы продавец') && ow.text.includes('Дистрибьюторы'));
+  assert.ok(ow.text.includes('вы продавец') && ow.text.includes('«Продавцы»'));
   assert.equal(ow.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=main&v=seller');
 });
 
@@ -3591,7 +3591,7 @@ await t('площадка: /setup подключает и реестр, пока
   tgLog = [];
   const r = await call('POST', '/setup', { body: 'code=' + encodeURIComponent(CODE), headers: { 'content-type': 'application/x-www-form-urlencoded' } });
   const page = await r.text();
-  assert.ok(page.includes('Площадка дистрибьюторов') && page.includes('дистрибьюторов: 2'));
+  assert.ok(page.includes('Площадка продавцов') && page.includes('продавцов: 2'));
   assert.ok(!page.includes('✘'));
   // без привязки HUB страница честно говорит, что делать
   const w = makeWorld();
@@ -7351,7 +7351,7 @@ await t('комиссия: продавец отзывает свой ждущи
   assert.equal(r.status, 200);
   const c = await cState(sid);
   assert.deepEqual([c.nw, c.bad, c.pays.find(p => p.id === ids[0]).st, c.pays.find(p => p.id === ids[0]).vo], [4, 0, 'void', 0]);
-  assert.ok(lastTg('editMessageText').payload.text.includes('↩️ Distribyutor toʻlovni qaytarib oldi') && lastTg('editMessageText').payload.text.includes('↩️ Дистрибьютор отозвал платёж'));
+  assert.ok(lastTg('editMessageText').payload.text.includes('↩️ Sotuvchi toʻlovni qaytarib oldi') && lastTg('editMessageText').payload.text.includes('↩️ Продавец отозвал платёж'));
   assert.equal(sentTo(DIL.id).length, 0);
   assert.equal((await callS(sid, 'POST', '/api/admin/comm/cancel', { init: iD(), body: { id: ids[0] } })).status, 200, 'повтор — не ошибка');
   assert.equal((await cPay(sid, { a: 2000 })).status, 200, 'место освободилось');
@@ -7961,6 +7961,35 @@ await t('категории дистрибьюторов: пять катего�
   // подсказки в формах
   const hints = [...html.matchAll(/hintD\('([^']*)','([^']*)'\)/g)].filter(m => /категори|kategori/i.test(m[1] + m[2]));
   assert.ok(hints.length >= 2 && hints.every(m => m[1].length <= 140 && m[2].length <= 170));
+});
+
+await t('«Продавец» вместо «дистрибьютор»: в тексте приложения и бота слово осталось только как название категории', () => {
+  // комментарии в коде остаются со старым словом: проверяем только то, что видит человек
+  const strip = src => {
+    let inb = false;
+    return src.split('\n').filter(l => {
+      const s = l.trim();
+      if (inb) { if (l.includes('*/')) inb = false; return false; }
+      if (s.startsWith('/*')) { if (!l.slice(l.indexOf('/*') + 2).includes('*/')) inb = true; return false; }
+      return !(s.startsWith('//') || s.startsWith('*'));
+    }).join('\n').replace(/\s\/\/ [^\n']*$/gm, '');
+  };
+  // допустимые места: названия категории, перечни категорий, «в «Дистрибьюторах»»
+  const cat = [/Оптовики, Дистрибьюторы/g, /Дистрибьюторы (?:или|и) Базары/g, /Дистрибьюторы, Базары/g, /Distribyutorlar(?= (?:va|yoki) Bozorlar|, Bozorlar)/g, /«Дистрибьюторах»/g, /«Distribyutorlar»(?= ichida)/g];
+  for (const file of ['src/app.html', 'src/worker-src.js']) {
+    let src = strip(fs.readFileSync(path.join(root, file), 'utf8'));
+    for (const re of cat) src = src.replace(re, '');
+    const left = src.split('\n').filter(l => /дистрибьют|distribyut/i.test(l)).map(l => l.trim().slice(0, 80));
+    assert.deepEqual(left, [], file + ': осталось слово «дистрибьютор» вне названия категории');
+  }
+  // а сама категория осталась как была
+  assert.equal(S.shopCatName('distributor'), 'Дистрибьюторы');
+  // слова-замены стоят там, где раньше был «дистрибьютор»
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  assert.ok(/\['dists',L\('Продавцы','Sotuvchilar'\)/.test(html), 'группа владельца: «Продавцы»');
+  assert.ok(/L\('Добавить продавца','Sotuvchi qoʻshish'\)/.test(html), 'подраздел «Добавить продавца»');
+  assert.ok(/L\('доступ: '\+r\.sellers\+' чел\.'/.test(html), 'в списке владельца у продавца: «доступ: N чел.», а не «продавцов: N»');
+  assert.ok(/Продавцы и магазины в одном приложении/.test(html), 'первый экран');
 });
 
 /* ---------- итог ---------- */

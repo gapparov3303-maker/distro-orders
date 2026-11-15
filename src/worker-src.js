@@ -23,8 +23,8 @@ const MAX_ADDRS = 5;
 const MAX_FAV = 100;          // товаров в избранном у одного клиента          // адресов доставки у одного клиента
 const TEXT_MAX = 4000;        // сообщение Telegram до 4096 знаков, берём с запасом
 const INIT_MAX_AGE = 2 * 24 * 3600; // initData старше двух суток не принимаем
-const MAIN = 'main';          // первый дистрибьютор: его данные лежали в хранилище ещё до появления площадки
-const MAX_SHOPS = 50;         // дистрибьюторов на площадке
+const MAIN = 'main';          // первый продавец: его данные лежали в хранилище ещё до появления площадки
+const MAX_SHOPS = 50;         // продавцов на площадке
 const MIN_CODE = 12;          // короткий код продавца не принимаем
 const HUB_TITLE = 'Sarbon';
 const validDid = d => typeof d === 'string' && /^[a-z0-9]{2,12}$/.test(d);
@@ -447,7 +447,7 @@ function commOwnerText(name, p, due, act, by) {
     else if (act === 'ok') L1.push(L('✅ Подтверждено', '✅ Tasdiqlandi') + who);
     else if (act === 'no') L1.push(L('❌ Не получено', '❌ Olinmadi') + who);
     else if (act === 'void') L1.push(L('↩️ Отменено владельцем', '↩️ Egasi bekor qildi') + who);
-    else L1.push(L('↩️ Дистрибьютор отозвал платёж', '↩️ Distribyutor toʻlovni qaytarib oldi'));
+    else L1.push(L('↩️ Продавец отозвал платёж', '↩️ Sotuvchi toʻlovni qaytarib oldi'));
     return L1.join('\n');
   });
 }
@@ -1734,8 +1734,8 @@ export class Shop {
     this.st = state.storage;
     this.env = env;
     this.origin = '';
-    this.did = MAIN;      // номер дистрибьютора: его присылает Worker в заголовке x-did
-    this.born = undefined; // хранилище создано площадкой (у первого дистрибьютора есть всегда)
+    this.did = MAIN;      // номер продавца: его присылает Worker в заголовке x-did
+    this.born = undefined; // хранилище создано площадкой (у первого продавца есть всегда)
   }
 
   /* --- хранилище --- */
@@ -2238,7 +2238,7 @@ export class Shop {
   /* Краткая карточка дистрибьютора для списка: название, сколько товаров, категории, есть ли доставка. */
   async summary() {
     const cfg = await this.getCfg(), prod = await this.getProd();
-    const ok = prod.items.filter(isApproved);   // в списке дистрибьюторов считаются только одобренные товары
+    const ok = prod.items.filter(isApproved);   // в списке продавцов считаются только одобренные товары
     const cats = prod.cats.filter(c => ok.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
     return {
       name: cfg.shop.name || DEFAULT.shop.name, items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
@@ -4134,9 +4134,9 @@ export class Shop {
       try {
         await hubCall(this.env, '/__/bot', { username: me.result.username });
         const hub = await hubCall(this.env, '/__/ensure', {});
-        steps.push(['Площадка дистрибьюторов', !!(hub && hub.ok), hub && hub.ok ? 'готова, дистрибьюторов: ' + hub.shops : 'не отвечает']);
+        steps.push(['Площадка продавцов', !!(hub && hub.ok), hub && hub.ok ? 'готова, продавцов: ' + hub.shops : 'не отвечает']);
       } catch (e) {
-        steps.push(['Площадка дистрибьюторов', false, 'не подключена: проверьте wrangler.toml (привязка HUB) и опубликуйте приложение заново']);
+        steps.push(['Площадка продавцов', false, 'не подключена: проверьте wrangler.toml (привязка HUB) и опубликуйте приложение заново']);
       }
     }
     const allOk = steps.every(s => s[1]);
@@ -5127,7 +5127,7 @@ export class Hub {
 
     if (path === '/api/hub/orders' && method === 'GET') {
       const all = await this.allRecs();
-      const list = (await this.userShops(uid)).filter(did => all.some(x => x.id === did));   // удалённые дистрибьюторы пропускаются
+      const list = (await this.userShops(uid)).filter(did => all.some(x => x.id === did));   // удалённые продавцы пропускаются
       const got = await Promise.all(list.map(async did => {
         const r = await shopCall(this.env, did, '/__/my-orders', { uid });
         const rec = all.find(x => x.id === did);
@@ -5546,8 +5546,8 @@ export class Hub {
           text: biL(() => (res.did === MAIN && res.owner ? L('Готово, вы продавец.', 'Tayyor, siz sotuvchisiz.') : L('Готово, вы продавец «' + sname + '».', 'Tayyor, siz «' + sname + '» sotuvchisisiz.'))
             + L(' Новые заказы будут приходить сюда с кнопками «Принять», «Готов», «Выдан». Каталог, цены и настройки меняются в приложении, вкладка «Продавец».',
               ' Yangi buyurtmalar bu yerga «Qabul qilish», «Tayyor», «Topshirildi» tugmalari bilan keladi. Katalog, narxlar va sozlamalar ilovada, «Sotuvchi» boʻlimida oʻzgartiriladi.')
-            + (res.owner ? L('\n\nВы также владелец площадки: дистрибьюторов можно добавлять в приложении: кнопка ☰ → «Дистрибьюторы» → «Добавить».',
-              '\n\nSiz platforma egasisiz ham: distribyutorlarni ilovada qoʻshish mumkin: ☰ tugmasi → «Distribyutorlar» → «Qoʻshish».') : '')),
+            + (res.owner ? L('\n\nВы также владелец площадки: продавцов можно добавлять в приложении: кнопка ☰ → «Продавцы» → «Добавить».',
+              '\n\nSiz platforma egasisiz ham: sotuvchilarni ilovada qoʻshish mumkin: ☰ tugmasi → «Sotuvchilar» → «Qoʻshish».') : '')),
           reply_markup: openBtn(this.origin, btn2('Ilovani ochish', 'Открыть приложение'), sellerUrl(this.origin, res.did))
         });
       } else if (res.r === 'locked') {
@@ -5626,7 +5626,7 @@ export class Hub {
     let name = shopName;
     if (!name) {
       const vis = (await this.allRecs()).filter(r => r.on && r.items > 0);
-      name = vis.length === 1 ? vis[0].name : await this.title();     // один дистрибьютор: от его имени, иначе от имени площадки
+      name = vis.length === 1 ? vis[0].name : await this.title();     // один продавец: от его имени, иначе от имени площадки
     }
     return welcomeText(lang, isAdmin, { name });
   }
