@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packOnlyText}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -8814,6 +8814,149 @@ await t('разрешение отправки на экране: кнопка �
   assert.ok(/W\.tab==='ok'\?!!o\.ship:W\.tab==='in'\?!!o\.wh&&!o\.ship:!o\.wh/.test(wf), 'три вкладки: ожидаются, на складе, разрешено');
   assert.ok(/o\.ship\?'<div class="note">✅ '\+L\('Разрешено'/.test(wf), 'у разрешённого заказа веса менять нельзя: кнопки «Изменить вес» нет');
   assert.ok(!/L\('Разрешено'[^]*способ/.test(wf) && !wf.includes('o.pay'), 'кладовщику оплата не показывается');
+});
+
+/* ---------- товары «только упаковками» ---------- */
+await t('только упаковками: поле чистится, работает лишь при такой упаковке, пропущенное остаётся, Excel-прайс его не сбрасывает', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  Object.assign(prod.items[3], { box: 48, blk: 12, only: 'box' });
+  Object.assign(prod.items[0], { box: 0, blk: 0, only: 'box' });          // упаковки нет — метка не нужна
+  Object.assign(prod.items[1], { box: 20, blk: 0, only: 'blk' });         // блока нет — метка про блок не принимается
+  Object.assign(prod.items[2], { box: 10, blk: 5, only: 'мусор' });
+  assert.equal((await putProd(prod)).status, 200);
+  let it = (await catalogNow()).items;
+  assert.deepEqual([it[0].only, it[1].only, it[2].only, it[3].only], ['', '', '', 'box']);
+  // блок вместо коробки
+  prod.items[3].only = 'blk';
+  await putProd(prod);
+  assert.equal((await catalogNow()).items[3].only, 'blk');
+  // убрали блок — метка про блок пропала сама
+  prod.items[3].blk = 0;
+  await putProd(prod);
+  assert.equal((await catalogNow()).items[3].only, '');
+  // поле не прислали (старое приложение) — остаётся как было
+  prod.items[3].blk = 12; prod.items[3].only = 'blk';
+  await putProd(prod);
+  delete prod.items[3].only;
+  await putProd(prod);
+  assert.equal((await catalogNow()).items[3].only, 'blk', 'без поля прежнее значение сохраняется');
+  // явно пустое снимает
+  prod.items[3].only = '';
+  await putProd(prod);
+  assert.equal((await catalogNow()).items[3].only, '');
+  // прайс из Excel метку не трогает, у новых товаров её нет
+  prod.items[3].only = 'box';
+  await putProd(prod);
+  assert.equal((await importReq(FIX('price-openpyxl.xlsx'), true)).status, 200);
+  it = (await catalogNow()).items;
+  assert.equal(it.find(x => x.id === 'p4').only, 'box');
+  assert.equal(it.find(x => x.name === 'Мука высшего сорта').only, '');
+  // помощники из общего кода
+  assert.deepEqual([S.packOnly({ box: 10, only: 'box' }), S.packOnly({ box: 10, only: 'blk' }), S.packOnly({ box: 1, only: 'box' }), S.packOnly({})], ['box', '', '', '']);
+  assert.deepEqual([S.packStep({ box: 10, only: 'box' }), S.packStep({ box: 10 }), S.packStep({ blk: 12, only: 'blk' })], [10, 1, 12]);
+  assert.deepEqual([13, 10, 1, 0, 25.5].map(q => S.packFit({ box: 10, only: 'box' }, q)), [20, 10, 10, 0, 30]);
+  assert.deepEqual([13, 0].map(q => S.packFit({ box: 10 }, q)), [13, 0], 'обычный товар не округляется');
+  assert.equal(S.packOnlyText({ box: 10, only: 'box' }), 'Только коробками · 10 шт');
+  assert.equal(S.packOnlyText({ blk: 12, only: 'blk' }), 'Только блоками · 12 шт');
+  assert.equal(S.packOnlyText({ box: 10 }), '');
+  S.setLang('uz');
+  assert.equal(S.packOnlyText({ box: 10, only: 'box' }), 'Faqat qutida · 10 dona');
+  assert.equal(S.packOnlyText({ blk: 12, only: 'blk' }), 'Faqat blokda · 12 dona');
+  S.setLang('ru');
+});
+
+await t('только упаковками: заказ принимается только кратно упаковке; обычные товары и товар без упаковки не затронуты', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  Object.assign(prod.items[3], { box: 12, blk: 6, only: 'box' });          // макароны только коробками по 12
+  assert.equal((await putProd(prod)).status, 200);
+  const A = newUser();
+  // 20 шт — не кратно 12: отказ, сервер сам говорит, какой шаг, и присылает свежий каталог
+  let r = await placeP(A, [{ id: 'p4', qty: 20 }]);
+  assert.equal(r.status, 409);
+  let b = await jsonOf(r);
+  assert.deepEqual([b.error, b.id, b.step], ['pack', 'p4', 12]);
+  assert.equal(b.prod.items[3].only, 'box');
+  // 1 шт — тоже отказ, а целые коробки проходят
+  assert.equal((await placeP(A, [{ id: 'p4', qty: 1 }])).status, 409);
+  r = await placeP(A, [{ id: 'p4', qty: 24 }, { id: 'p1', qty: 3 }]);
+  assert.equal(r.status, 200);
+  const o = (await jsonOf(r)).order;
+  assert.deepEqual(o.items.map(x => [x.id, x.qty]), [['p4', 24], ['p1', 3]]);
+  assert.equal(S.packText(o.items[0], 24), '2 кор. × 12 шт');
+  // другое количество блоками: только блоками по 6
+  prod.items[3].only = 'blk';
+  await putProd(prod);
+  assert.equal((await placeP(A, [{ id: 'p4', qty: 12 }])).status, 200, '12 = 2 блока');
+  assert.equal((await placeP(A, [{ id: 'p4', qty: 9 }])).status, 409);
+  // метку сняли — снова поштучно
+  prod.items[3].only = '';
+  await putProd(prod);
+  assert.equal((await placeP(A, [{ id: 'p4', qty: 7 }])).status, 200);
+  // метка осталась, а упаковку убрали — поштучно тоже можно
+  prod.items[3].only = 'box'; prod.items[3].box = 0; prod.items[3].blk = 6;
+  await putProd(prod);
+  assert.equal((await placeP(A, [{ id: 'p4', qty: 7 }])).status, 200);
+  // сумма и 500 штук: 480 = 40 коробок по 12
+  prod.items[3].box = 12;
+  await putProd(prod);
+  assert.equal((await placeP(newUser(), [{ id: 'p4', qty: 480 }])).status, 200);
+  assert.equal((await placeP(newUser(), [{ id: 'p4', qty: 500 }])).status, 409, '500 не кратно 12');
+});
+
+await t('только упаковками на экране: шаг, метка в каталоге и у продавца, округление вверх, закончилось, «Повторить», ошибка заказа', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const line = name => { const m = html.match(new RegExp('^(?:const|function) ' + name + '\\b[^]*?(?=\\n(?:const|function|/\\*|let) )', 'm')); assert.ok(m, 'нет ' + name); return m[0]; };
+  const toasts = [];
+  const mk = (cart, items) => {
+    const St = { cart, prod: { items } };
+    const src = ['soldOut', 'maxQty', 'capOf', 'pruneCart', 'cartSet'].map(line).join('\n');
+    return new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'packOnlyWord', 'saveCart', 'toast', 'L', src + '\nreturn {soldOut,maxQty,pruneCart,cartSet};')
+      (St, 500, S.packOnly, S.packStep, S.packFit, () => 'коробками', () => {}, m => toasts.push(m), (ru) => ru);
+  };
+  const bx = { id: 'a', box: 10, only: 'box', on: true };                // только коробками по 10
+  const plain = { id: 'b', box: 10, on: true };
+  let C = mk({}, [bx, plain]);
+  // шаг и округление вверх
+  assert.equal(C.cartSet('a', 1), 10); assert.equal(C.cartSet('a', 13), 20); assert.equal(C.cartSet('a', 30), 30);
+  assert.equal(C.cartSet('b', 13), 13, 'обычный товар поштучно');
+  assert.ok(toasts.some(m => m.includes('Только коробками: 20')), toasts.join('|'));
+  assert.equal(C.cartSet('a', 0), 0);
+  // остаток: берём целыми коробками, меньше одной коробки — «закончилось»
+  bx.av = 35; assert.equal(C.maxQty(bx), 30); assert.equal(C.cartSet('a', 50), 30);
+  bx.av = 9; assert.equal(C.soldOut(bx), true); assert.equal(C.maxQty(bx), 0);
+  bx.av = 10; assert.equal(C.soldOut(bx), false);
+  plain.av = 9; assert.equal(C.soldOut(plain), false, 'у обычного товара девять штук — это не «нет в наличии»');
+  assert.equal(C.maxQty(plain), 9);
+  // старая корзина: округляем вверх, но не выше остатка
+  delete bx.av; delete plain.av;
+  const St = { cart: { a: 13, b: 7 }, prod: { items: [bx, plain] } };
+  const run = new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'saveCart', 'toast', 'L', ['soldOut', 'maxQty', 'pruneCart'].map(line).join('\n') + '\nreturn pruneCart;')
+    (St, 500, S.packOnly, S.packStep, S.packFit, () => {}, () => {}, (ru) => ru);
+  run();
+  assert.deepEqual(St.cart, { a: 20, b: 7 });
+  bx.av = 25; run();
+  assert.deepEqual(St.cart, { a: 20, b: 7 });
+  bx.av = 15; run();
+  assert.deepEqual(St.cart, { a: 10, b: 7 });
+  // исходный код: кнопки «+/−» шагают упаковкой, метка и галочки есть, «Повторить заказ» и ошибка заказа знают про упаковки
+  assert.ok(/cartSet\(id,a==='pminus'\?cur-st:cur\+st\)/.test(html), '«+/−» в каталоге шагают упаковкой');
+  assert.ok(/cartSet\(id,a==='cminus'\?cur-st:cur\+st\)/.test(html), '«+/−» в корзине шагают упаковкой');
+  assert.ok(/qty0=Number\(it\.qty\)\|\|0,qty=p\?packFit\(p,qty0\):qty0/.test(html), '«Повторить заказ» округляет вверх');
+  assert.ok(html.includes("er==='price_changed'||er==='unavailable'||er==='no_delivery'||er==='pack'"), 'ошибка pack обновляет корзину');
+  assert.ok(html.includes('class="ponly">\'+esc(packOnlyText(p))'), 'метка под ценой в каталоге');
+  assert.ok(/mtag pko">'\+esc\(packOnlyText\(p\)\)/.test(html), 'метка в списке товаров продавца');
+  assert.equal((html.match(/onlyChkHTML\(p,'blk'/g) || []).length, 2, 'галочка «только блоками» в обоих редакторах');
+  assert.equal((html.match(/onlyChkHTML\(p,'box'/g) || []).length, 2, 'галочка «только коробками» в обоих редакторах');
+  assert.ok(/only:packOnly\(p\),tag:p\.tag/.test(html), 'владелец сохраняет поле');
+  // кнопка упаковки, равной шагу, не нужна; кратные нужны
+  const chips = new Function('S', 'esc', 'L', 'packSize', 'packStep', 'packWord', line('packChips') + '\nreturn packChips;')({}, x => x, (ru) => ru, (p, k) => S.packSize ? S.packSize(p, k) : Math.floor(Number(p && p[k])) >= 2 ? Math.floor(Number(p[k])) : 0, S.packStep, k => k === 'box' ? 'коробка' : 'блок');
+  const kinds = h => [...h.matchAll(/data-k="(\w+)"/g)].map(m => m[1]).join(',');
+  assert.equal(kinds(chips({ id: 'x', blk: 6, box: 12 }, 'p')), 'blk,box', 'без метки обе кнопки, как раньше');
+  assert.equal(kinds(chips({ id: 'x', blk: 6, box: 12, only: 'blk' }, 'p')), 'box', 'только блоками: коробка (кратна) осталась, блок — это «+»');
+  assert.equal(kinds(chips({ id: 'x', blk: 6, box: 12, only: 'box' }, 'p')), '', 'только коробками: ни блока (меньше), ни коробки (это «+»)');
+  assert.equal(kinds(chips({ id: 'x', blk: 5, box: 12, only: 'blk' }, 'p')), '', 'коробка не кратна блоку — кнопки нет');
 });
 
 /* ---------- итог ---------- */

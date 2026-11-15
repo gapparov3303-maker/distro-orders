@@ -127,6 +127,15 @@ const packSize=(p,k)=>{const n=Math.floor(Number(p&&p[k]));return n>=2?n:0};
 const packShort=k=>k==='box'?L('кор.','quti'):L('бл.','blok');
 const packWord=k=>k==='box'?L('коробка','quti'):L('блок','blok');
 const pcsWord=()=>L('шт','dona');
+/* «Продаётся только упаковками»: у товара поле only = 'box' | 'blk' (продавец выбирает одну). Работает, только если такая упаковка у товара есть (≥ 2 шт). */
+const packOnly=p=>{const k=p&&p.only;return (k==='box'||k==='blk')&&packSize(p,k)?k:''};
+/* Шаг количества: размер упаковки, если товар только упаковками, иначе 1 шт. */
+const packStep=p=>{const k=packOnly(p);return k?packSize(p,k):1};
+/* Округляет вверх до целой упаковки: 13 шт при упаковке 10 → 20; у обычного товара ничего не меняет. */
+const packFit=(p,q)=>{const n=packStep(p),x=Math.max(0,Math.floor(Number(q)||0));return n>1?Math.ceil(x/n)*n:x};
+const packOnlyWord=p=>packOnly(p)==='box'?L('коробками','qutida'):L('блоками','blokda');
+/* Метка товара: «Только коробками · 10 шт» (пусто, если товар продаётся и поштучно). */
+const packOnlyText=p=>{const k=packOnly(p);return k?L('Только ','Faqat ')+packOnlyWord(p)+' · '+packSize(p,k)+' '+pcsWord():''};
 /* Раскладывает штуки по упаковкам, сначала по большим: 100 шт при коробке 48 и блоке 12 → 2 кор. + 0 бл., остаток 4 шт. */
 function packSplit(p,qty){
   const parts=[];let r=Math.max(0,Math.floor(Number(qty)||0));
