@@ -24,8 +24,15 @@ function stOf(status,mode){
 
 const DEFAULT={
   v:3,
-  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],home:''}
+  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],home:'',category:''}
 };
+/* Категории дистрибьюторов на первом экране. Пустая категория — не выбрана: такой дистрибьютор показывается в «Дистрибьюторах».
+   Продавец выбирает её в настройках, владелец может поменять; ключ хранится у дистрибьютора (shop.category), площадка держит копию в списке. */
+const SHOP_CATS=['maker','importer','wholesale','distributor','bazaar'];
+const cleanCat=v=>typeof v==='string'&&SHOP_CATS.includes(v)?v:'';
+const shopCatOf=r=>cleanCat(r&&r.cat)||'distributor';
+const SHOP_CAT_NAMES={maker:['Производители','Ishlab chiqaruvchilar'],importer:['Импортеры','Importyorlar'],wholesale:['Оптовики','Ulgurji sotuvchilar'],distributor:['Дистрибьюторы','Distribyutorlar'],bazaar:['Базары','Bozorlar']};
+const shopCatName=k=>{const x=SHOP_CAT_NAMES[k];return x?(LANG==='uz'?x[1]:x[0]):''};
 const clone=o=>JSON.parse(JSON.stringify(o));
 const pad=n=>String(n).padStart(2,'0');
 const ymd=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());

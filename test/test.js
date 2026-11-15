@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -7852,6 +7852,115 @@ await t('«Смотреть как»: роли в списке, только в�
   assert.ok(/html\.as-on \.top \.wrap\{display:none\}\n\}\s*$/.test(css), 'блок для широкого экрана закрыт скобкой');
   const wi = css.indexOf('html.as-on .top{display:block}'), mi = css.lastIndexOf('@media (min-width:1000px){');
   assert.ok(wi > mi && mi > 0, 'на широком экране полоска остаётся видна, когда шапка скрыта');
+});
+
+await t('категории дистрибьюторов: продавец выбирает свою, владелец может поменять, побеждает последнее, список отдаёт категорию', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  const listRec = async () => (await jsonOf(await call('GET', '/api/shops', { init: iA() }))).shops.find(x => x.id === sid);
+  const cfgCat = async () => (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg.shop.category;
+  assert.equal((await listRec()).cat, '', 'пока не выбрана');
+  assert.equal(await cfgCat(), '');
+  // продавец выбирает
+  let r = await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: 'importer' } });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).cat, 'importer');
+  assert.equal((await listRec()).cat, 'importer', 'магазины видят категорию в списке');
+  assert.equal(await cfgCat(), 'importer');
+  // чужой не может; мусор не принимается
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iA(), body: { cat: 'maker' } })).status, 403);
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: 'zzz' } })).status, 400);
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: {} })).status, 400);
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: 5 } })).status, 400);
+  assert.equal((await listRec()).cat, 'importer', 'после отказов всё как было');
+  // владелец меняет
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid + '/cat', { init: iA(), body: { cat: 'maker' } })).status, 403, 'не владелец');
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid + '/cat', { init: iD(), body: { cat: 'maker' } })).status, 403, 'продавец через площадку не может');
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid + '/cat', { body: { cat: 'maker' } })).status, 401);
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid + '/cat', { init: iS(), body: { cat: 'zzz' } })).status, 400);
+  assert.equal((await call('PUT', '/api/hub/admin/shops/sqqqq1/cat', { init: iS(), body: { cat: 'maker' } })).status, 404);
+  r = await call('PUT', '/api/hub/admin/shops/' + sid + '/cat', { init: iS(), body: { cat: 'maker' } });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).shop.cat, 'maker');
+  assert.equal((await listRec()).cat, 'maker');
+  assert.equal(await cfgCat(), 'maker', 'выбор владельца виден и продавцу в настройках');
+  const own = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
+  assert.equal(own.shops.find(x => x.id === sid).cat, 'maker', 'в списке владельца');
+  // устаревшая форма настроек не затирает выбор владельца
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+  cfg.shop.category = 'bazaar';
+  cfg.shop.phone = '+998 90 111 22 33';
+  assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } })).status, 200);
+  assert.equal(await cfgCat(), 'maker', 'категория меняется только своими запросами');
+  assert.equal((await listRec()).cat, 'maker');
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg.shop.phone, '+998 90 111 22 33', 'остальные настройки сохранились');
+  // побеждает последнее изменение
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: 'wholesale' } })).status, 200);
+  assert.equal((await listRec()).cat, 'wholesale');
+  // сброс: категории нет, дистрибьютор остаётся в «Дистрибьюторах»
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: '' } })).status, 200);
+  assert.equal((await listRec()).cat, '');
+  assert.equal(S.shopCatOf(await listRec()), 'distributor');
+  // изменение каталога не сбрасывает категорию
+  await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: 'bazaar' } });
+  const put = await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: SAMPLE_PROD() } });
+  assert.equal(put.status, 200);
+  assert.equal((await listRec()).cat, 'bazaar');
+});
+
+await t('категории дистрибьюторов: при создании владелец может выбрать категорию, лишнее отбрасывается', async () => {
+  await hubWorld();
+  const a = await jsonOf(await createShop({ name: 'Альфа', cat: 'bazaar' }));
+  assert.equal(a.shop.cat, 'bazaar');
+  const b = await jsonOf(await createShop({ name: 'Бета', cat: 'нечто' }));
+  assert.equal(b.shop.cat, '', 'неизвестная категория не сохраняется');
+  const c = await jsonOf(await createShop({ name: 'Гамма' }));
+  assert.equal(c.shop.cat, '');
+  const cfg = (await jsonOf(await callS(a.shop.id, 'GET', '/api/config'))).cfg;
+  assert.equal(cfg.shop.category, 'bazaar', 'у нового дистрибьютора она записана и в настройках');
+  assert.equal((await jsonOf(await callS(c.shop.id, 'GET', '/api/config'))).cfg.shop.category, '');
+  const l = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
+  assert.deepEqual(l.shops.map(x => x.cat), ['', 'bazaar', '', '']);
+});
+
+await t('категории дистрибьюторов: пять категорий, справочник и экраны первого меню, продавца и владельца', () => {
+  assert.deepEqual(S.SHOP_CATS, ['maker', 'importer', 'wholesale', 'distributor', 'bazaar']);
+  assert.equal(S.cleanCat('bazaar'), 'bazaar');
+  for (const bad of ['', 'x', 5, null, undefined, {}, 'Bazaar']) assert.equal(S.cleanCat(bad), '');
+  assert.equal(S.shopCatOf({ cat: 'maker' }), 'maker');
+  assert.equal(S.shopCatOf({}), 'distributor', 'без категории — в «Дистрибьюторах»');
+  assert.equal(S.shopCatOf({ cat: 'zzz' }), 'distributor');
+  assert.equal(S.shopCatOf(null), 'distributor');
+  assert.deepEqual(S.SHOP_CATS.map(k => S.shopCatName(k)), ['Производители', 'Импортеры', 'Оптовики', 'Дистрибьюторы', 'Базары']);
+  S.setLang('uz');
+  assert.deepEqual(S.SHOP_CATS.map(k => S.shopCatName(k)), ['Ishlab chiqaruvchilar', 'Importyorlar', 'Ulgurji sotuvchilar', 'Distribyutorlar', 'Bozorlar']);
+  S.setLang('ru');
+  assert.equal(S.DEFAULT.shop.category, '', 'в настройках по умолчанию категории нет');
+  assert.equal(S.mergeCfg({ shop: { category: 'maker' } }).shop.category, 'maker');
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
+  // первый экран: карточки категорий, а не список; внутри категории список и кнопка назад
+  const rs = fn('renderShops');
+  assert.ok(/out\+=ck\?catListHTML\(ck\):catsHTML\(\)/.test(rs), 'без выбранной категории показываются категории, с выбранной — её список');
+  assert.ok(/data-act="catback"/.test(rs) && /L\('Категории','Kategoriyalar'\)/.test(rs), 'в категории есть «← Категории»');
+  assert.ok(/!ck&&sells\.length/.test(rs) && /!ck&&dels\.length/.test(rs), 'кнопки ролей только на первом экране');
+  const cs = fn('catsHTML');
+  assert.ok(/SHOP_CATS\.map/.test(cs) && /data-act="opencat"/.test(cs) && /Пока пусто/.test(cs) && /' em'/.test(cs), 'пять карточек, пустые помечены');
+  assert.ok(/shopCatOf\(r\)===k/.test(html), 'счёт и список по shopCatOf: без категории — «Дистрибьюторы»');
+  assert.ok(/Пока здесь никого нет/.test(fn('catListHTML')), 'пустая категория: сообщение');
+  assert.ok(/if\(v==='shops'\)S\.shopsCat=''/.test(fn('go')), 'любой переход на список начинается с категорий');
+  assert.ok(/a==='opencat'/.test(html) && /a==='catback'/.test(html));
+  assert.ok(/shopsListHTML\(list\)/.test(html) && /const all=list\|\|S\.hub\.shops/.test(html), 'список с фильтром по региону работает и внутри категории');
+  // настройки продавца: поле сохраняется сразу и отдельно от формы
+  const st = fn('settingsHTML');
+  assert.ok(/id="s-cat" data-catsel="1"/.test(st) && /SHOP_CATS\.map/.test(st), 'у продавца есть поле «Категория»');
+  assert.ok(/dataset\.catsel!==undefined\)catSave\(/.test(html) && /api\('PUT','\/api\/admin\/category'/.test(fn('catSave')));
+  // владелец: подраздел, выбор у каждого, выбор при создании
+  assert.ok(/\['cats',L\('Категории','Kategoriyalar'\)/.test(html) && /sec==='cats'\)h\+=ownCatsHTML\(\)/.test(html), 'подраздел «Категории»');
+  assert.ok(/'\/api\/hub\/admin\/shops\/'\+encodeURIComponent\(id\)\+'\/cat'/.test(fn('ownCat')), 'владелец меняет через площадку');
+  assert.ok(/id="o-cat" data-own="fcat"/.test(fn('ownAddHTML')) && /cleanCat\(o\.fcat\)\?\{cat:cleanCat\(o\.fcat\)\}/.test(fn('ownAdd')), 'при создании можно выбрать категорию');
+  // подсказки в формах
+  const hints = [...html.matchAll(/hintD\('([^']*)','([^']*)'\)/g)].filter(m => /категори|kategori/i.test(m[1] + m[2]));
+  assert.ok(hints.length >= 2 && hints.every(m => m[1].length <= 140 && m[2].length <= 170));
 });
 
 /* ---------- итог ---------- */

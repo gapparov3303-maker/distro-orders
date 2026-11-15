@@ -831,6 +831,21 @@ div.lgd{cursor:default}
 .masl{margin-bottom:7px;font:600 10.5px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--grp)}
 .masr{display:flex;flex-wrap:wrap;gap:6px}
 .masr .chip{height:34px;padding:0 11px;font-size:13px}
+/* категории дистрибьюторов на первом экране */
+.catgrid{display:grid;gap:10px}
+.cat{appearance:none;display:flex;align-items:center;gap:14px;width:100%;min-height:72px;padding:12px 14px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface);text-align:left;cursor:pointer;color:var(--ink)}
+.cat .cic{flex:none;width:46px;height:46px;border-radius:14px;background:var(--accent-soft);color:var(--tx);display:inline-flex;align-items:center;justify-content:center}
+.cat .ct{flex:1;min-width:0}
+.cat .ct b{display:block;font:700 16px/1.2 var(--f-display)}
+.cat .ct span{display:block;margin-top:3px;font-size:13px;color:var(--ink-2)}
+.cat .cn{flex:none;min-width:28px;height:28px;padding:0 8px;border-radius:14px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+.cat.em{background:var(--surface-2);border-style:dashed}
+.cat.em .cic{background:var(--bg);color:var(--ink-2)}
+.cat .chev{flex:none;color:var(--ink-2)}
+.srow{padding:12px 0;border-bottom:1px solid var(--line)}
+.srow:last-child{border-bottom:0}
+.srow b{display:block;margin-bottom:8px;font-size:15px}
+.srow select{width:100%}
 /* широкий экран: меню стоит слева всегда (правила стоят в конце, чтобы переопределить .bar и .toast) */
 @media (min-width:1000px){
   body{padding-left:260px}
@@ -878,7 +893,7 @@ div.lgd{cursor:default}
 const $=(s,r)=>(r||document).querySelector(s);
 const MAX_QTY=500,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
-  view:'shops',as:'',sellerTab:'orders',filter:'active',msub:null,dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
+  view:'shops',as:'',shopsCat:'',sellerTab:'orders',filter:'active',msub:null,dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
   cfg:clone(DEFAULT),
   form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:'',loc:null},
   region:'',showFar:false,regSent:false,regOnly:null,
@@ -896,7 +911,7 @@ const S={
   did:'',epoch:0,switching:false,off:false,otherCart:null,
   hub:{title:'',about:{ru:'',uz:'',phone:'',tg:'',ig:''},shops:[],me:null,terrs:[],loaded:false,err:false},
   ab:{open:null},
-  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
+  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -3777,7 +3792,7 @@ function settingsHTML(){
     +'<div><label class="lab" for="s-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="s-name" data-s="name" value="'+esc(s.name)+'" maxlength="60">'+hintD('Так вас видят клиенты в списке дистрибьюторов и в сообщениях бота. Пример: Навои Фуд.','Mijozlar sizni distribyutorlar roʻyxatida va bot xabarlarida shunday koʻradi. Masalan: Navoiy Fud.')+'</div>'
     +'<div><label class="lab" for="s-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="s-phone" data-s="phone" value="'+esc(s.phone)+'" placeholder="+998 …">'+hintD('Клиент увидит его в сообщениях бота о заказе и сможет позвонить. Пример: +998 90 123 45 67.','Mijoz uni bot xabarlarida koʻradi va qoʻngʻiroq qila oladi. Masalan: +998 90 123 45 67.')+'</div>'
     +'<div><label class="lab" for="s-tg">'+L('Telegram для вопросов по заказу, без @','Buyurtma savollari uchun Telegram, @ belgisisiz')+'</label><input type="text" id="s-tg" data-s="telegram" value="'+esc(s.telegram)+'">'+hintD('Логин без @: клиент сможет написать вам из карточки заказа. Пример: navoi_food.','Login @ belgisisiz: mijoz buyurtma kartochkasidan sizga yoza oladi. Masalan: navoi_food.')+'</div>'
-    +'<div></div>'
+    +'<div><label class="lab" for="s-cat">'+L('Категория','Kategoriya')+'</label><select id="s-cat" data-catsel="1"><option value="">'+L('Не выбрана','Tanlanmagan')+'</option>'+SHOP_CATS.map(k=>'<option value="'+k+'"'+(cleanCat(s.category)===k?' selected':'')+'>'+esc(shopCatName(k))+'</option>').join('')+'</select>'+hintD('Магазины увидят вас в этой категории. Если не выбрать, вас покажут в «Дистрибьюторах». Владелец тоже может её изменить.','Doʻkonlar sizni shu kategoriyada koʻradi. Tanlamasangiz, «Distribyutorlar» ichida koʻrsatiladi. Egasi ham oʻzgartira oladi.')+'</div>'
     +'<div><label class="lab" for="s-addr">'+L('Адрес самовывоза (по-русски)','Olib ketish manzili (ruscha)')+'</label><input type="text" id="s-addr" data-s="address" value="'+esc(s.address)+'">'+hintD('Куда клиенту приехать за заказом. Это видят клиенты в русском режиме. Пример: Навои, ул. Галаба 12.','Mijoz buyurtmani olgani qayerga kelishi. Buni ruscha rejimdagi mijozlar koʻradi. Masalan: Navoiy, Gʻalaba koʻchasi 12.')+'</div>'
     +'<div><label class="lab" for="s-addruz">'+L('Адрес самовывоза (по-узбекски)','Olib ketish manzili (oʻzbekcha)')+'</label><input type="text" id="s-addruz" data-s="addressUz" value="'+esc(s.addressUz)+'">'+hintD('То же для клиентов в узбекском режиме. Если оставить пустым, они увидят русский адрес.','Xuddi shu, oʻzbekcha rejimdagi mijozlar uchun. Boʻsh qoldirsangiz, ruscha manzil koʻrinadi.')+'</div>'
     +'<div class="full"><label class="chk"><input type="checkbox" id="s-delivery" data-s="delivery"'+(s.delivery!==false?' checked':'')+'> '+L('Доставка по адресу включена','Manzilga yetkazib berish yoqilgan')+'</label>'+hintD('Если выключить, клиенты смогут заказать только самовывоз.','Oʻchirsangiz, mijozlar faqat olib ketishni tanlay oladi.')+'</div>'
@@ -3794,6 +3809,21 @@ function settingsHTML(){
     +'</div></div>'
     +sellLinkHTML()
     +'<div class="card"><h3>'+L('Резервная копия','Zaxira nusxasi')+'</h3><div class="unit">'+L('Один файл со всем: настройки, каталог с фото, остатки, заказы и клиенты. Он придёт вам в чат с ботом. Храните его в надёжном месте: в нём телефоны и адреса клиентов. Токен бота и код продавца в файл не попадают.','Hammasi bitta faylda: sozlamalar, rasmli katalog, qoldiqlar, buyurtmalar va mijozlar. U botdagi chatingizga keladi. Uni ishonchli joyda saqlang: unda mijozlarning telefon va manzillari bor. Bot tokeni va sotuvchi kodi faylga kirmaydi.')+'</div>'+xbtn('backup')+'</div>';
+}
+/* Категория дистрибьютора меняется сразу при выборе, отдельно от остальных настроек: так устаревшая форма не затирает выбор владельца */
+async function catSave(v){
+  const prev=cleanCat(S.cfg.shop.category);
+  S.cfg.shop.category=cleanCat(v);
+  const r=await api('PUT','/api/admin/category',{cat:cleanCat(v)});
+  if(!r.ok||!r.data||typeof r.data.cat!=='string'){
+    S.cfg.shop.category=prev;
+    const el=$('#s-cat');if(el)el.value=prev;
+    toast(L('Не удалось сохранить категорию. Попробуйте ещё раз.','Kategoriyani saqlab boʻlmadi. Qayta urinib koʻring.'));
+    return;
+  }
+  S.cfg.shop.category=cleanCat(r.data.cat);
+  toast(L('Категория сохранена','Kategoriya saqlandi'));
+  loadHub();
 }
 function paintSave(){
   const el=$('#savebar');if(!el)return;
@@ -4329,8 +4359,9 @@ const ABOUT_ROLES=[
 {k:'shop',n:['Магазин','Doʻkon'],
  lead:['Вы заказываете у дистрибьюторов и производителей прямо в Telegram. Ничего скачивать не нужно: откройте бота и нажмите «Каталог». Заказы, их статусы и долги всегда под рукой.','Siz distribyutor va ishlab chiqaruvchilardan bevosita Telegramda buyurtma berasiz. Hech narsa yuklab olish shart emas: botni oching va «Katalog» tugmasini bosing. Buyurtmalar, ularning holati va qarzlar doim qoʻl ostida.'],
  secs:[
- {img:'shop-list',h:['Выбор дистрибьютора','Distribyutorni tanlash'],cap:['Главный экран: список дистрибьюторов','Bosh ekran: distribyutorlar roʻyxati'],li:[
-  ['На главном экране список дистрибьюторов: название, сколько товаров, есть ли доставка и минимальная сумма заказа.','Bosh ekranda distribyutorlar roʻyxati: nomi, tovarlar soni, yetkazib berish bor-yoʻqligi va buyurtmaning minimal summasi.'],
+ {img:'shop-list',h:['Выбор дистрибьютора','Distribyutorni tanlash'],cap:['Главный экран: категории','Bosh ekran: kategoriyalar'],li:[
+  ['На главном экране пять категорий: Производители, Импортеры, Оптовики, Дистрибьюторы и Базары. У каждой видно, сколько в ней дистрибьюторов; пустые помечены «Пока пусто».','Bosh ekranda beshta kategoriya: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar va Bozorlar. Har birida nechta distribyutor borligi koʻrinadi; boʻshlari «Hozircha boʻsh» deb belgilangan.'],
+  ['Нажмите на категорию: откроется список её дистрибьюторов (название, сколько товаров, есть ли доставка и минимальная сумма заказа). Кнопка «← Категории» вернёт назад.','Kategoriyani bosing: uning distribyutorlari roʻyxati ochiladi (nomi, tovarlar soni, yetkazib berish bor-yoʻqligi va minimal buyurtma summasi). «← Kategoriyalar» tugmasi orqaga qaytaradi.'],
   ['Нажмите «Открыть каталог» у нужного. В одной корзине бывают товары только одного дистрибьютора.','Kerakli distribyutorda «Katalogni ochish» tugmasini bosing. Bitta savatda faqat bitta distribyutorning tovarlari boʻladi.'],
   ['Все разделы лежат в меню ☰ слева вверху, язык переключается кнопками RU | UZ справа вверху.','Barcha boʻlimlar yuqori chapdagi ☰ menyuda, til yuqori oʻngdagi RU | UZ tugmalari bilan almashadi.']]},
  {img:'shop-catalog',h:['Каталог','Katalog'],cap:['Каталог: фото, цена, остаток','Katalog: rasm, narx, qoldiq'],li:[
@@ -4388,6 +4419,7 @@ const ABOUT_ROLES=[
   ['«Отчёты»: выручка по дням, неделям и месяцам, ходовые товары, лучшие клиенты, подсказка «что пора закупать» и выгрузка в Excel.','«Hisobotlar»: kunlar, haftalar va oylar boʻyicha tushum, ommabop tovarlar, eng yaxshi mijozlar, «nimani sotib olish kerak» maslahati va Excelga yuklash.'],
   ['«База»: общая база магазинов площадки с адресами, телефонами и точкой на карте. «Мои клиенты» оставляет тех, кто заказывал у вас. Заметка, группа и блокировка у каждого дистрибьютора свои, другие их не видят.','«Baza»: platformaning umumiy doʻkonlar bazasi — manzil, telefon va xaritadagi nuqta bilan. «Mening mijozlarim» sizdan buyurtma bergan doʻkonlarni qoldiradi. Izoh, guruh va bloklash har bir distribyutorda alohida, boshqalar koʻrmaydi.'],
   ['«Настройки»: минимальная сумма заказа, стоимость доставки и бесплатная доставка от суммы, часы работы, адрес самовывоза, районы доставки, ссылка на ваш каталог для клиентов, резервная копия.','«Sozlamalar»: buyurtmaning minimal summasi, yetkazib berish narxi va summadan bepul yetkazish, ish vaqti, olib ketish manzili, yetkazib berish tumanlari, mijozlar uchun katalogingiz havolasi, zaxira nusxa.'],
+  ['«Категория» в настройках: выберите, где вас увидят магазины: Производители, Импортеры, Оптовики, Дистрибьюторы или Базары. Выбор сохраняется сразу. Пока не выбрана, вас показывают в «Дистрибьюторах». Владелец площадки тоже может её поменять.','Sozlamalardagi «Kategoriya»: doʻkonlar sizni qayerda koʻrishini tanlang: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar yoki Bozorlar. Tanlov darhol saqlanadi. Tanlanmaguncha sizni «Distribyutorlar» ichida koʻrsatadi. Platforma egasi ham uni oʻzgartirishi mumkin.'],
   ['«Комиссия»: площадка ведёт учёт комиссии с выданных заказов. Накопленная сумма уменьшается, когда вы вписываете оплаченное, нажимаете «Оплатил», а владелец подтверждает.','«Komissiya»: platforma topshirilgan buyurtmalardan komissiya hisobini yuritadi. Toʻplangan summa siz toʻlanganini yozib «Toʻladim»ni bosganingizda va ega tasdiqlaganida kamayadi.']]}
  ]},
 {k:'courier',n:['Доставщик','Yetkazuvchi'],
@@ -4427,6 +4459,7 @@ const ABOUT_ROLES=[
  secs:[
  {img:'ow-dist',h:['Дистрибьюторы','Distribyutorlar'],cap:['Дистрибьюторы площадки','Platforma distribyutorlari'],li:[
   ['☰ → «Владелец» → «Дистрибьюторы» → «Добавить»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его дистрибьютору, он напишет боту /admin и код.','☰ → «Egasi» → «Distribyutorlar» → «Qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni distribyutorga yuboring, u botga /admin va kodni yozadi.'],
+  ['Подраздел «Категории»: у каждого дистрибьютора выберите категорию (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары), её видят магазины на первом экране. Продавец тоже выбирает сам; побеждает последнее изменение. Пока не выбрана, дистрибьютор в «Дистрибьюторах».','«Kategoriyalar» boʻlimi: har bir distribyutorga kategoriya tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar), doʻkonlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha distribyutor «Distribyutorlar» ichida.'],
   ['Есть «Новый код» (прежние продавцы теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого дистрибьютора, вашу компанию, удалить нельзя.','«Yangi kod» (avvalgi sotuvchilar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi distribyutorni, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
  {img:'ow-review',h:['Проверка товаров','Tovarlarni tekshirish'],cap:['Проверка товаров','Tovarlarni tekshirish'],li:[
   ['Пункт «Проверка» собирает все новые товары дистрибьюторов в одном списке с названием дистрибьютора. Число на значке — сколько товаров ждёт решения.','«Tekshiruv» boʻlimi distribyutorlarning barcha yangi tovarlarini bitta roʻyxatga distribyutor nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
@@ -4542,6 +4575,7 @@ function go(v){
   const was=S.view;
   if(was==='comm'&&v!=='comm')S.cm.nb=0;
   if(v==='base'&&was!=='base')baseResetUI();
+  if(v==='shops')S.shopsCat='';
   S.view=v;S.cc=null;S.cp=null;S.msub=null;setScrollLock();
   render();window.scrollTo(0,0);
   if(v==='mine')loadMine();
@@ -4588,8 +4622,8 @@ function regionBarHTML(){
     +'<div class="unit">'+(S.region?L('Сначала показываем тех, кто доставляет к вам или находится в вашем регионе.','Avval sizga yetkazib beradigan yoki hududingizdagi distribyutorlar koʻrsatiladi.'):L('Выберите регион, и мы покажем тех, кто доставляет к вам.','Hududni tanlang, sizga yetkazib beradiganlarni koʻrsatamiz.'))+'</div></div>';
 }
 /* Список: сначала те, кто доставляет в регион магазина или находится в нём; остальные (у них можно заказать с самовывозом) спрятаны за кнопкой */
-function shopsListHTML(){
-  const all=S.hub.shops;
+function shopsListHTML(list){
+  const all=list||S.hub.shops;
   if(!all.length)return '<div class="empty"><b>'+L('Пока нет дистрибьюторов с товарами','Hozircha mahsulotli distribyutorlar yoʻq')+'</b>'+L('Загляните позже.','Keyinroq qaytib keling.')+'</div>';
   const grid=a=>'<div class="dgrid">'+a.map(shopCardHTML).join('')+'</div>';
   if(!regionsInUse())return grid(all);
@@ -4603,23 +4637,46 @@ function shopsListHTML(){
     +(S.showFar?L('Скрыть тех, кто не доставляет к вам','Sizga yetkazib bermaydiganlarni yashirish'):L('Показать и тех, кто не доставляет к вам ('+far.length+')','Sizga yetkazib bermaydiganlarni ham koʻrsatish ('+far.length+')'))+'</button></div>'
     +(S.showFar?'<p class="lead">'+L('Эти дистрибьюторы не доставляют в ваш регион, но у них можно заказать с самовывозом.','Bu distribyutorlar sizning hududingizga yetkazib bermaydi, lekin olib ketish bilan buyurtma berish mumkin.')+'</p>'+grid(far):'');
 }
+/* Категории: первый экран показывает их карточками, внутри открывается список дистрибьюторов категории */
+const CAT_ICONS={
+  maker:'<path d="M3 20V9l6 4V9l6 4V5h3v15z"/><path d="M7 20v-3M11 20v-3M15 20v-3"/>',
+  importer:'<path d="M3 8l9-4 9 4-9 4z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/>',
+  wholesale:'<path d="M3 10l9-6 9 6"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
+  distributor:'<path d="M2 6h11v10H2z"/><path d="M13 9h4l3 3v4h-7"/><circle cx="6" cy="18" r="1.8"/><circle cx="16.5" cy="18" r="1.8"/>',
+  bazaar:'<path d="M3 9l2-5h14l2 5"/><path d="M3 9c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3"/><path d="M5 12v8h14v-8"/>'
+};
+const plDistr=n=>{const a=n%100,b=n%10;return a>=11&&a<=14?'дистрибьюторов':b===1?'дистрибьютор':b>=2&&b<=4?'дистрибьютора':'дистрибьюторов'};
+const catShops=k=>S.hub.shops.filter(r=>shopCatOf(r)===k);
+function catsHTML(){
+  const chev='<svg class="chev" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5l4.5 4.5L6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  return '<p class="lead">'+L('Выберите, у кого хотите заказать.','Kimdan buyurtma berishni tanlang.')+'</p><div class="catgrid">'+SHOP_CATS.map(k=>{
+    const n=catShops(k).length;
+    return '<button type="button" class="cat'+(n?'':' em')+'" data-act="opencat" data-k="'+k+'"><span class="cic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+CAT_ICONS[k]+'</svg></span>'
+      +'<span class="ct"><b>'+esc(shopCatName(k))+'</b><span>'+(n?esc(L(n+' '+plDistr(n),n+' ta distribyutor')):esc(L('Пока пусто','Hozircha boʻsh')))+'</span></span>'+(n?'<span class="cn">'+n+'</span>':'')+chev+'</button>';
+  }).join('')+'</div>';
+}
+function catListHTML(k){
+  const list=catShops(k);
+  if(!list.length)return '<div class="empty"><b>'+L('Пока здесь никого нет','Hozircha bu yerda hech kim yoʻq')+'</b>'+L('Загляните позже: мы добавляем новых.','Keyinroq qaytib keling: yangilarini qoʻshyapmiz.')+'</div>';
+  return shopsListHTML(list);
+}
 function renderShops(){
-  const h=S.hub,me=h.me;
-  let out='<div class="wrap page"><div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Дистрибьюторы и магазины в одном приложении','Distribyutorlar va doʻkonlar bir ilovada')+'</div></div>'
-    +'</div>';
+  const h=S.hub,me=h.me,ck=SHOP_CATS.includes(S.shopsCat)?S.shopsCat:'';
+  let out='<div class="wrap page">'+(ck?'<button type="button" class="btn ghost sm backlink" data-act="catback">← '+L('Категории','Kategoriyalar')+'</button><div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Категория','Kategoriya')+'</div><h1>'+esc(shopCatName(ck))+'</h1></div></div>'
+    :'<div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Дистрибьюторы и магазины в одном приложении','Distribyutorlar va doʻkonlar bir ilovada')+'</div></div></div>');
   if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
     out+=bannerSlot();
-    out+='<p class="lead">'+L('Выберите дистрибьютора, чтобы посмотреть каталог и заказать товары. В одной корзине товары только одного дистрибьютора.','Katalog va buyurtma uchun distribyutorni tanlang. Bitta savatda faqat bitta distribyutorning mahsulotlari boʻladi.')+'</p>';
+    if(ck)out+='<p class="lead">'+L('Выберите дистрибьютора, чтобы посмотреть каталог и заказать товары. В одной корзине товары только одного дистрибьютора.','Katalog va buyurtma uchun distribyutorni tanlang. Bitta savatda faqat bitta distribyutorning mahsulotlari boʻladi.')+'</p>';
     const pc=pendingCart();
     if(pc)out+='<div class="note" style="margin-bottom:12px">🛒 '+esc(L('В корзине '+pc.n+' поз.'+(pc.name?' · «'+pc.name+'»':''),'Savatda '+pc.n+' ta mahsulot'+(pc.name?' · «'+pc.name+'»':'')))+' <button type="button" class="btn ghost sm" data-act="opencartshop" data-id="'+esc(pc.did)+'">'+L('Открыть корзину','Savatni ochish')+'</button></div>';
     const sells=me&&me.sells||[];
     const as=viewAs();
-    if(sells.length&&(!as||as==='seller'))out+='<div class="row-btns" style="margin-bottom:14px">'+sells.map(x=>'<button type="button" class="btn ghost sm" data-act="sellerof" data-id="'+esc(x.id)+'">'+esc(L('Панель продавца: ','Sotuvchi paneli: ')+x.name)+'</button>').join('')+'</div>';
+    if(!ck&&sells.length&&(!as||as==='seller'))out+='<div class="row-btns" style="margin-bottom:14px">'+sells.map(x=>'<button type="button" class="btn ghost sm" data-act="sellerof" data-id="'+esc(x.id)+'">'+esc(L('Панель продавца: ','Sotuvchi paneli: ')+x.name)+'</button>').join('')+'</div>';
     const dels=me&&me.delivers||[];
-    if(dels.length&&(!as||as==='courier'))out+='<div class="row-btns" style="margin-bottom:14px">'+dels.map(x=>'<button type="button" class="btn ghost sm" data-act="courierof" data-id="'+esc(x.id)+'">'+esc(L('Доставка: ','Yetkazib berish: ')+x.name)+'</button>').join('')+'</div>';
-    out+=shopsListHTML();
+    if(!ck&&dels.length&&(!as||as==='courier'))out+='<div class="row-btns" style="margin-bottom:14px">'+dels.map(x=>'<button type="button" class="btn ghost sm" data-act="courierof" data-id="'+esc(x.id)+'">'+esc(L('Доставка: ','Yetkazib berish: ')+x.name)+'</button>').join('')+'</div>';
+    out+=ck?catListHTML(ck):catsHTML();
   }
   view.innerHTML=out+'</div>';
 }
@@ -5357,7 +5414,7 @@ async function commAddOwn(did){
 }
 /* раздел владельца: каждый блок на своём экране, заходят в него из меню ☰ (категория → подраздел) */
 const ownSecs=()=>[
-  ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')]]],
+  ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['cats',L('Категории','Kategoriyalar'),L('Категории дистрибьюторов','Distribyutor kategoriyalari')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')]]],
   ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
   ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База магазинов','Doʻkonlar bazasi'),L('База магазинов','Doʻkonlar bazasi')]]]
@@ -5391,17 +5448,39 @@ function ownAddHTML(){
     const full=o.shops.length>=o.max;
     h+='<div class="card"><h3>'+L('Добавить дистрибьютора','Distribyutor qoʻshish')+'</h3><div class="form">'
       +'<div><label class="lab" for="o-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="o-name" data-own="fname" maxlength="60" value="'+esc(o.fname)+'" autocomplete="off">'+hintD('Так дистрибьютор будет назван в списке. Пример: Навои Фуд.','Distribyutor roʻyxatda shunday nomlanadi. Masalan: Navoiy Fud.')+'</div>'
+      +'<div><label class="lab" for="o-cat">'+L('Категория (можно выбрать позже)','Kategoriya (keyinroq ham tanlash mumkin)')+'</label><select id="o-cat" data-own="fcat"><option value="">'+esc(L('Не выбрана (в «Дистрибьюторах»)','Tanlanmagan («Distribyutorlar» ichida)'))+'</option>'+SHOP_CATS.map(k=>'<option value="'+k+'"'+(cleanCat(o.fcat)===k?' selected':'')+'>'+esc(shopCatName(k))+'</option>').join('')+'</select>'+hintD('Магазины увидят дистрибьютора в этой категории. Продавец потом сможет выбрать её сам.','Doʻkonlar distribyutorni shu kategoriyada koʻradi. Sotuvchi keyin oʻzi tanlay oladi.')+'</div>'
       +'<div><label class="lab" for="o-code">'+L('Свой код (от 12 символов) или пусто — придумаем','Oʻz kodingiz (12 belgidan) yoki boʻsh — oʻzimiz yaratamiz')+'</label><input type="text" id="o-code" data-own="fcode" maxlength="64" value="'+esc(o.fcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Этот код дистрибьютор отправит боту командой «/admin КОД». Если оставить пустым, бот придумает код сам.','Distribyutor bu kodni botga «/admin KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div>'
       +'</div><div class="err" id="o-err" role="alert">'+esc(o.err2||'')+'</div>'
       +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="ownadd" data-act="ownadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='add'?L('Добавляем…','Qoʻshilmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
       +(full?'<div class="note" style="margin-top:10px">'+esc(ownErr('too_many'))+'</div>':'')+'</div>';
   return h;
 }
+function ownCatSel(id,cur){
+  return '<select data-ocat="'+esc(id)+'" aria-label="'+esc(L('Категория','Kategoriya'))+'"><option value="">'+esc(L('Не выбрана (в «Дистрибьюторах»)','Tanlanmagan («Distribyutorlar» ichida)'))+'</option>'
+    +SHOP_CATS.map(k=>'<option value="'+k+'"'+(cleanCat(cur)===k?' selected':'')+'>'+esc(shopCatName(k))+'</option>').join('')+'</select>';
+}
+/* Категории: у каждого дистрибьютора одна. Продавец выбирает её сам в настройках, владелец может поменять; побеждает последнее изменение. */
+function ownCatsHTML(){
+  const o=S.own;
+  let h='<p class="lead">'+L('Выберите категорию каждому: магазины увидят её на первом экране. Пока не выбрана, дистрибьютор в «Дистрибьюторах». Продавец тоже выбирает сам; побеждает последнее изменение.','Har bir distribyutorga kategoriya tanlang: doʻkonlar uni birinchi ekranda koʻradi. Kategoriya tanlanmaguncha distribyutor «Distribyutorlar» ichida koʻrsatiladi. Sotuvchi ham kategoriyani oʻz sozlamalarida tanlay oladi; oxirgi oʻzgarish kuchga kiradi.')+'</p>';
+  if(!o.shops.length)return h+'<div class="empty"><b>'+L('Дистрибьюторов пока нет','Distribyutorlar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'</div>';
+  return h+'<div class="card" style="padding-top:4px;padding-bottom:4px">'+o.shops.map(r=>'<div class="srow"><b>'+esc(r.name)+'</b>'+ownCatSel(r.id,r.cat)+'</div>').join('')+'</div>';
+}
+async function ownCat(id,v){
+  const o=S.own,rec=o.shops.find(x=>x.id===id);if(!rec||o.busy)return;
+  o.busy='cat';
+  const r=await api('PUT','/api/hub/admin/shops/'+encodeURIComponent(id)+'/cat',{cat:cleanCat(v)});
+  o.busy='';
+  if(r.ok&&r.data&&r.data.shop){o.shops=o.shops.map(x=>x.id===id?r.data.shop:x);toast(L('Категория сохранена','Kategoriya saqlandi'))}
+  else toast(ownErr(r.data&&r.data.error));
+  renderOwner();
+  loadHub();
+}
 function ownListHTML(){
   const o=S.own;let h='';
     h+=o.shops.map(r=>{
       const sure=o.rc===r.id;
-      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('продавцов: '+r.sellers,'sotuvchilar: '+r.sellers),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
+      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('продавцов: '+r.sellers,'sotuvchilar: '+r.sellers),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq'),cleanCat(r.cat)?shopCatName(cleanCat(r.cat)):L('категория не выбрана','kategoriya tanlanmagan')];
       return '<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></div>'
         +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div><div class="row-btns">'
         +'<button type="button" class="btn ghost sm" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button>'
@@ -5428,6 +5507,7 @@ function renderOwner(){
   else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
     if(sec==='dist')h+=ownMadeHTML()+ownListHTML();
+    else if(sec==='cats')h+=ownCatsHTML();
     else if(sec==='add')h+=ownMadeHTML()+ownAddHTML();
     else if(sec==='title')h+=ownTitleHTML();
     else if(sec==='about')h+=ownAboutHTML();
@@ -5443,12 +5523,12 @@ async function ownAdd(){
   if(name.length<2){o.err2=ownErr('bad_name');renderOwner();return}
   if(code&&code.length<12){o.err2=ownErr('weak_code');renderOwner();return}
   o.busy='add';o.err2='';renderOwner();
-  const r=await api('POST','/api/hub/admin/shops',code?{name,code}:{name});
+  const r=await api('POST','/api/hub/admin/shops',Object.assign({name},code?{code}:{},cleanCat(o.fcat)?{cat:cleanCat(o.fcat)}:{}));
   o.busy='';
   if(!r.ok||!r.data){o.err2=ownErr(r.data&&r.data.error);renderOwner();return}
   o.shops=o.shops.concat([r.data.shop]);
   o.made={name:r.data.shop.name,code:r.data.code,reset:false};
-  o.fname='';o.fcode='';
+  o.fname='';o.fcode='';o.fcat='';
   renderOwner();window.scrollTo(0,0);
   loadHub();
 }
@@ -5652,6 +5732,8 @@ document.addEventListener('click',e=>{
   else if(a==='viewas')setViewAs(t.dataset.v||'');
   else if(a==='msub'){const it=menuGroups().reduce((r,g)=>r.concat(g[1]),[]).find(x=>x[0]===t.dataset.v),cur=S.view==='shops'?'shop':S.view;S.msub=it&&menuSubOpen(it,cur)?'':t.dataset.v;renderNav()}
   else if(a==='shops')go('shops');
+  else if(a==='opencat'){if(SHOP_CATS.includes(t.dataset.k)){S.shopsCat=t.dataset.k;renderShops();window.scrollTo(0,0)}}
+  else if(a==='catback'){S.shopsCat='';renderShops();window.scrollTo(0,0)}
   else if(a==='owner')go('owner');
   else if(a==='hubreload'){S.hub.err=false;renderShops();loadHub()}
   else if(a==='showfar'){S.showFar=!S.showFar;renderShops()}
@@ -6123,6 +6205,8 @@ document.addEventListener('change',e=>{
     if(f)rvPhotoUp(f,t.dataset.n);
     try{t.value=''}catch(x){}
   }
+  else if(t&&t.dataset&&t.dataset.catsel!==undefined)catSave(t.value);
+  else if(t&&t.dataset&&t.dataset.ocat!==undefined)ownCat(t.dataset.ocat,t.value);
   else if(t&&t.dataset&&t.dataset.rfil!==undefined){S.rv[t.dataset.rfil]=t.value;paintReview()}
   else if(t&&t.dataset&&t.dataset.bterr!==undefined){S.base.terr=t.value;loadBase(true)}
   else if(t&&t.dataset&&t.dataset.bty!==undefined){S.base.ty=t.value;loadBase(true)}
