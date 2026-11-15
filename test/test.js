@@ -8947,8 +8947,11 @@ await t('только упаковками на экране: шаг, метка
   assert.ok(html.includes("er==='price_changed'||er==='unavailable'||er==='no_delivery'||er==='pack'"), 'ошибка pack обновляет корзину');
   assert.ok(html.includes('class="ponly">\'+esc(packOnlyText(p))'), 'метка под ценой в каталоге');
   assert.ok(/mtag pko">'\+esc\(packOnlyText\(p\)\)/.test(html), 'метка в списке товаров продавца');
-  assert.equal((html.match(/onlyChkHTML\(p,'blk'/g) || []).length, 2, 'галочка «только блоками» в обоих редакторах');
-  assert.equal((html.match(/onlyChkHTML\(p,'box'/g) || []).length, 2, 'галочка «только коробками» в обоих редакторах');
+  assert.equal((html.match(/onlyRowHTML\(p,'data-pid=/g) || []).length, 1, 'строка с галочками в редакторе продавца');
+  assert.equal((html.match(/onlyRowHTML\(p,'data-rf="only"'\)/g) || []).length, 1, 'строка с галочками в окне владельца');
+  assert.ok(/onlyChkHTML\(p,'blk',attr\)\+onlyChkHTML\(p,'box',attr\)/.test(html), 'в строке обе галочки: блоки и коробки');
+  assert.ok(!/inp\('b(?:lk|ox)',[^\n]*onlyChkHTML/.test(html), 'галочки не внутри ячеек полей: поля остаются вровень');
+  assert.ok(/\.ponly-chk\{[^}]*white-space:nowrap/.test(html), 'подпись галочки в одну строку');
   assert.ok(/only:packOnly\(p\),tag:p\.tag/.test(html), 'владелец сохраняет поле');
   // кнопка упаковки, равной шагу, не нужна; кратные нужны
   const chips = new Function('S', 'esc', 'L', 'packSize', 'packStep', 'packWord', line('packChips') + '\nreturn packChips;')({}, x => x, (ru) => ru, (p, k) => S.packSize ? S.packSize(p, k) : Math.floor(Number(p && p[k])) >= 2 ? Math.floor(Number(p[k])) : 0, S.packStep, k => k === 'box' ? 'коробка' : 'блок');
