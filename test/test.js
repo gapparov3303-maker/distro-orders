@@ -230,11 +230,12 @@ await t('бот: /start зовёт открыть каталог сразу на
   let m = lastTg('sendMessage');
   assert.equal(m.payload.chat_id, ANNA.id);
   // русскому интерфейсу: узбекский всё равно сверху, русский ниже
-  assert.ok(m.payload.text.includes('Нажмите «Каталог»') && m.payload.text.includes('«Katalog» tugmasini bosing'));
+  assert.ok(m.payload.text.includes('Нажмите «Заказать»') && m.payload.text.includes('«Buyurtma» tugmasini bosing'));
+  assert.ok(!/Каталог|Katalog/.test(m.payload.text), 'в приветствии нет слова «каталог»');
   assert.ok(m.payload.text.includes('Самовывоз или доставка. Оплата при получении заказа.'));
   assert.ok(m.payload.text.includes('Toʻlovni buyurtmangizni olganda qilasiz.'));
   assert.ok(m.payload.text.indexOf('Assalomu alaykum') < m.payload.text.indexOf('Здравствуйте'));
-  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, 'CATALOG');
+  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Заказать / Buyurtma');
   assert.equal(m.payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
   const ruText = m.payload.text;
   await send({ update_id: 2, message: { message_id: 2, from: BOB, chat: { id: BOB.id, type: 'private' }, text: 'salom' } });
@@ -242,7 +243,7 @@ await t('бот: /start зовёт открыть каталог сразу на
   // узбекскому интерфейсу то же самое: тот же текст, тот же порядок и та же кнопка
   assert.equal(m.payload.text, ruText);
   assert.ok(m.payload.text.indexOf('Assalomu alaykum') < m.payload.text.indexOf('Здравствуйте'));
-  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, 'CATALOG');
+  assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Заказать / Buyurtma');
   assert.ok(m.payload.text.split('\n').length <= 6, 'приветствие короткое');
 });
 
@@ -1017,9 +1018,9 @@ await t('настройка /setup: форма, неверный код, вер�
   assert.deepEqual(hook.allowed_updates, ['message', 'callback_query']);
   const menu = lastTg('setChatMenuButton').payload.menu_button;
   assert.equal(menu.type, 'web_app');
-  assert.equal(menu.text, '🛒 Каталог');
+  assert.equal(menu.text, '🛒 Sarbon');
   assert.equal(menu.web_app.url, HOST + '/');
-  assert.equal(lastTg('setMyCommands').payload.commands[0].description, 'Открыть каталог');
+  assert.equal(lastTg('setMyCommands').payload.commands[0].description, 'Открыть Sarbon');
 });
 
 await t('перебор кода: после 8 ошибок вход блокируется, даже верный код не проходит', async () => {
@@ -3542,22 +3543,24 @@ await t('площадка: приветствие бота зависит от �
   // виден один дистрибьютор: говорим от его имени, кнопка открывает приложение
   let m = await start(ANNA, '/start');
   assert.ok(m.text.includes('Альфа Трейд') && m.text.includes('Самовывоз или доставка'));
+  assert.ok(m.text.includes('выберите товары и оформите') && !m.text.includes('выберите продавца'), 'продавец один: выбирать из списка нечего');
   assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
   await send(adminMsg(SELLER, CODE, 70));
   assert.equal((await putProd(SAMPLE_PROD())).status, 200);
   // два: от имени площадки
   m = await start(ANNA, '/start');
-  assert.ok(m.text.includes('Sarbon') && m.text.includes('Нажмите «Каталог»') && !m.text.includes('Вы продавец'));
-  assert.equal(m.reply_markup.inline_keyboard[0][0].text, 'CATALOG');
-  // продавец видит пометку на обоих языках, узбекский сверху
+  assert.ok(m.text.includes('Sarbon') && m.text.includes('Нажмите «Заказать», выберите продавца и товары') && !m.text.includes('Вы продавец'));
+  assert.equal(m.reply_markup.inline_keyboard[0][0].text, '🛒 Заказать / Buyurtma');
+  // продавцу приветствие то же самое: строки «Вы продавец…» нет ни на одном языке
+  const annaText = m.text;
   m = await start(SELLER, '/start');
-  assert.ok(m.text.includes('Вы продавец: новые заказы придут сюда.') && m.text.includes('Siz sotuvchisiz: yangi buyurtmalar shu yerga keladi.'));
-  assert.ok(m.text.indexOf('Siz sotuvchisiz') < m.text.indexOf('Вы продавец'));
+  assert.equal(m.text, annaText, 'у продавца приветствие такое же, как у покупателя');
+  assert.ok(!m.text.includes('Вы продавец') && !m.text.includes('Siz sotuvchisiz'), 'пометки про продавца нет');
   m = await start(BOB, '/start');
-  assert.ok(m.text.includes('«Katalog» tugmasini bosing') && !m.text.includes('sotuvchisiz'));
+  assert.ok(m.text.includes('«Buyurtma» tugmasini bosing, sotuvchi va mahsulotlarni tanlang') && !m.text.includes('sotuvchisiz'));
   // ссылка на конкретного
   m = await start(ANNA, '/start d_' + sid);
-  assert.ok(m.text.includes('Альфа Трейд'));
+  assert.ok(m.text.includes('Альфа Трейд') && m.text.includes('выберите товары и оформите') && !m.text.includes('выберите продавца'), 'по ссылке на продавца выбирать продавца не нужно');
   assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=' + sid);
   m = await start(ANNA, '/start d_zzzzzz');
   assert.ok(m.text.includes('Sarbon'));

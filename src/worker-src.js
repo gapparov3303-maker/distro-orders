@@ -600,16 +600,14 @@ function customerText(o, kind, shop) {
 /* Приветствие на двух языках: сверху язык человека (по языку его Telegram), ниже второй.
    Многие в Узбекистане пользуются Telegram на русском или английском, но говорят по-узбекски. */
 const bilingual = (lang, ru, uz) => lang === 'uz' ? uz + '\n\n' + ru : ru + '\n\n' + uz;
-const SELLER_NOTE_RU = 'Вы продавец: новые заказы придут сюда.';
-const SELLER_NOTE_UZ = 'Siz sotuvchisiz: yangi buyurtmalar shu yerga keladi.';
 /* Приветствие (/start): сверху всегда узбекский, ниже русский, язык Telegram у человека не важен.
-   Текст один и для одного дистрибьютора, и для нескольких: список дистрибьюторов клиент видит в приложении. */
-function welcomeText(lang, isAdmin, shop) {
+   Один текст для всех, в том числе для продавцов (строки «Вы продавец…» нет). Если продавец один или человек пришёл по ссылке на продавца, выбирать из списка нечего: «выберите товары», иначе «выберите продавца и товары». */
+function welcomeText(lang, shop) {
   setLang(lang);
   const name = (shop && shop.name) || DEFAULT.shop.name;
-  let uz = 'Assalomu alaykum! Bu ' + name + ' 🛒\n«Katalog» tugmasini bosing, mahsulotlarni tanlang va buyurtma bering. Olib ketish yoki yetkazib berish. Toʻlovni buyurtmangizni olganda qilasiz.';
-  let ru = 'Здравствуйте! Это ' + name + ' 🛒\nНажмите «Каталог», выберите товары и оформите заказ. Самовывоз или доставка. Оплата при получении заказа.';
-  if (isAdmin) { uz += '\n\n' + SELLER_NOTE_UZ; ru += '\n\n' + SELLER_NOTE_RU; }
+  const direct = !!(shop && shop.direct);
+  const uz = 'Assalomu alaykum! Bu ' + name + ' 🛒\n«Buyurtma» tugmasini bosing, ' + (direct ? 'mahsulotlarni' : 'sotuvchi va mahsulotlarni') + ' tanlang va buyurtma bering. Olib ketish yoki yetkazib berish. Toʻlovni buyurtmangizni olganda qilasiz.';
+  const ru = 'Здравствуйте! Это ' + name + ' 🛒\nНажмите «Заказать», выберите ' + (direct ? 'товары' : 'продавца и товары') + ' и оформите заказ. Самовывоз или доставка. Оплата при получении заказа.';
   return uz + '\n\n' + ru;
 }
 const openBtn = (origin, text, url) => ({ inline_keyboard: [[{ text, web_app: { url: url || origin + '/' } }]] });
@@ -4159,9 +4157,9 @@ export class Shop {
     if (me.ok) {
       const hook = await this.tg('setWebhook', { url: this.origin + '/webhook', secret_token: await this.webhookSecret(), allowed_updates: ['message', 'callback_query'], max_connections: 10 });
       steps.push(['Приём сообщений бота', hook.ok, hook.ok ? 'подключён' : hook.description]);
-      const menu = await this.tg('setChatMenuButton', { menu_button: { type: 'web_app', text: '🛒 Каталог', web_app: { url: this.origin + '/' } } });
+      const menu = await this.tg('setChatMenuButton', { menu_button: { type: 'web_app', text: '🛒 Sarbon', web_app: { url: this.origin + '/' } } });
       steps.push(['Кнопка меню в боте', menu.ok, menu.ok ? 'установлена' : menu.description]);
-      const cmds = await this.tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть каталог' }] });
+      const cmds = await this.tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть Sarbon' }] });
       steps.push(['Команды бота', cmds.ok, cmds.ok ? 'установлены' : cmds.description]);
       // площадка дистрибьюторов: реестр создаётся при первом обращении, имя бота нужно для ссылок на каталоги
       try {
@@ -5644,7 +5642,7 @@ export class Hub {
     const text = String(msg.text || '').trim();
     const lang = String(msg.from.language_code || '').toLowerCase().startsWith('uz') ? 'uz' : 'ru';
     const cmd = text.split(/\s+/)[0].split('@')[0].toLowerCase();
-    const openText = 'CATALOG';
+    const openText = '🛒 Заказать / Buyurtma';
     const isSeller = async () => (await this.sellsOf(uid)).length > 0;
 
     if (cmd === '/admin') {
@@ -5721,7 +5719,7 @@ export class Hub {
     if (m) { const rec = await this.getRec(m[1]); if (rec && rec.on) target = rec; }
     await this.tg('sendMessage', {
       chat_id: chat,
-      text: await this.welcome(lang, await isSeller(), target ? target.name : ''),
+      text: await this.welcome(lang, target ? target.name : ''),
       reply_markup: openBtn(this.origin, openText, target ? shopUrl(this.origin, target.id) : this.origin + '/')
     });
   }
@@ -5743,12 +5741,13 @@ export class Hub {
       openBtn(this.origin, btn2('Yetkazib berishni ochish', 'Открыть доставку'), courierUrl(this.origin, did)));
   }
   /* Приветствие: если дистрибьютор один (или клиент пришёл по ссылке на него), говорим от его имени, иначе от имени площадки. */
-  async welcome(lang, isAdmin, shopName) {
-    let name = shopName;
+  async welcome(lang, shopName) {
+    let name = shopName, direct = !!shopName;
     if (!name) {
       const vis = (await this.allRecs()).filter(r => r.on && r.items > 0);
-      name = vis.length === 1 ? vis[0].name : await this.title();     // один продавец: от его имени, иначе от имени площадки
+      direct = vis.length === 1;
+      name = direct ? vis[0].name : await this.title();     // один продавец: от его имени, иначе от имени площадки
     }
-    return welcomeText(lang, isAdmin, { name });
+    return welcomeText(lang, { name, direct });
   }
 }
