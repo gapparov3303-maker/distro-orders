@@ -8113,7 +8113,11 @@ await t('базары: экраны магазина (группы и «Без �
   // магазин: в категории «Базары» сначала базары, потом продавцы; без базаров сразу продавцы
   const cl = fn('catListHTML');
   assert.ok(/k==='bazaar'/.test(cl) && /bzGroups\(\)/.test(cl) && /data-act="openbz"/.test(cl), 'внутри «Базары» показаны базары');
-  assert.ok(/if\(!g\.length\)return null/.test(fn('bzGroups')) && /id:'none'/.test(fn('bzGroups')), 'пусто — без групп; без базара — группа «none»');
+  assert.ok(/if\(!g\.length\)return null/.test(fn('bzGroups')) && /id:'none'/.test(fn('bzGroups')), 'нет базаров — без групп; без базара — группа «none»');
+  assert.ok(!/\.filter\(x=>x\.n\)/.test(fn('bzGroups')) && /if\(none\)g\.push/.test(fn('bzGroups')), 'пустые базары остаются в списке; «Без базара» только когда там есть продавцы');
+  assert.ok(/x\.n\?'':' em'/.test(cl) && /Пока пусто/.test(cl) && /Hozircha boʻsh/.test(cl), 'у пустого базара пометка «Пока пусто»');
+  assert.ok(/const none=\(\)=>/.test(cl) && !/if\(!list\.length\)return/.test(cl), 'базары показываются и когда в категории нет ни одного продавца: пустой экран только в самом конце');
+  assert.ok(/return l\.length\?shopsListHTML\(l\):none\(\)/.test(cl), 'пустой базар: сообщение «Пока здесь никого нет»');
   assert.ok(/bzOf\(r\)===\(b==='none'\?'':b\)/.test(cl), 'внутри базара только его продавцы, внутри «Без базара» — те, у кого базара нет');
   assert.ok(/const bzOf=r=>\{const b=cleanBz\(r&&r\.bz\);return b&&bzList\(\)\.some\(x=>x\.id===b\)\?b:''\}/.test(html), 'удалённый базар равен «без базара»');
   const rs = fn('renderShops');
