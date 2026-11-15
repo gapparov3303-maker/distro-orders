@@ -173,6 +173,8 @@ function normProd(d) {
 }
 /* Штук в блоке или коробке: 0 (нет такой упаковки) или от 2 до 500. */
 const cleanPack = v => { const n = Math.round(Number(v)); return n >= 2 && n <= MAX_QTY ? n : 0; };
+/* «Продаётся только упаковками»: 'box' или 'blk', и только если такая упаковка у товара есть. Поле не прислали (прайс из Excel, старое приложение) — остаётся прежнее. */
+const cleanOnly = (v, blk, box, prevOnly) => { const k = v === undefined ? prevOnly : v; return (k === 'box' && box) || (k === 'blk' && blk) ? k : ''; };
 /* Проверка товаров. У одобренного товара метки ms нет совсем (так выглядят и все прежние товары).
    ms: 'draft' — продавец добавил, но ещё не отправил на проверку; 'wait' — ждёт проверки; 'ret' — владелец вернул с причиной mc.
    mt — когда статус менялся в последний раз, ma — когда владелец одобрил. Эти поля продавец не задаёт: берутся из сохранённых данных. */
@@ -208,6 +210,7 @@ function sanitizeProd(d, old, mod) {
     seen.add(id);
     const prev = oldItems.get(id);
     const price = Math.round(clampN(o.price, 0, 1e8, 0));
+    const blk = cleanPack(o.blk), box = cleanPack(o.box);
     items.push({
       id,
       cat: cats.some(c => c.id === o.cat) ? o.cat : (cats[0] ? cats[0].id : ''),
@@ -219,8 +222,9 @@ function sanitizeProd(d, old, mod) {
       unit: UNIT_IDS.includes(o.unit) ? o.unit : 'g',
       price,
       tiers: cleanTiers(o.tiers, price),
-      blk: cleanPack(o.blk),
-      box: cleanPack(o.box),
+      blk,
+      box,
+      only: cleanOnly(o.only, blk, box, prev && prev.only),
       on: o.on !== false,
       tag: o.tag === 'sale' || o.tag === 'new' ? o.tag : '',
       old: o.tag === 'sale' ? Math.round(clampN(o.old, 0, 1e8, 0)) : 0,
@@ -305,7 +309,7 @@ function validateOrder(b, cfg, prod, stk) {
   if (!b || typeof b !== 'object' || !Array.isArray(b.cart) || !b.form || typeof b.form !== 'object') return { err: 'bad_request' };
   if (b.cart.length < 1 || b.cart.length > MAX_CART_LINES) return { err: 'bad_request' };
   const items = [], seen = new Set();
-  let total = 0, missing = false;
+  let total = 0, missing = false, packBad = null;
   for (const c of b.cart) {
     if (!c || typeof c !== 'object') return { err: 'bad_request' };
     const qty = c.qty;
@@ -317,9 +321,12 @@ function validateOrder(b, cfg, prod, stk) {
     const line = { id: it.id, name: it.name, uz: it.uz || '', amount: it.amount, unit: it.unit, price, qty };
     if (packSize(it, 'box')) line.box = packSize(it, 'box');
     if (packSize(it, 'blk')) line.blk = packSize(it, 'blk');
+    const step = packStep(it);
+    if (step > 1 && qty % step) { packBad = { id: it.id, step }; break; }   // только упаковками: количество кратно упаковке
     items.push(line);
     total += price * qty;
   }
+  if (packBad) return { err: 'pack', id: packBad.id, step: packBad.step };
   if (missing) return { err: 'unavailable' };
   // остатки: заказать можно не больше, чем свободно (на складе минус уже отложенное под другие заказы)
   const short = [];
@@ -2875,8 +2882,8 @@ export class Shop {
     const stk = await this.getStk();
     const v = validateOrder(body, cfg, prod, stk);
     if (v.err) {
-      const fresh = v.err === 'unavailable' || v.err === 'no_delivery' || v.err === 'no_region' || v.err === 'region_need' || v.err === 'stock' || v.err === 'min_order';
-      return json({ error: v.err, short: v.short, min: v.min, cfg: fresh ? cfg : undefined, prod: fresh ? publicProd(prod, stk) : undefined }, fresh ? 409 : 400);
+      const fresh = v.err === 'unavailable' || v.err === 'no_delivery' || v.err === 'no_region' || v.err === 'region_need' || v.err === 'stock' || v.err === 'min_order' || v.err === 'pack';
+      return json({ error: v.err, short: v.short, min: v.min, id: v.id, step: v.step, cfg: fresh ? cfg : undefined, prod: fresh ? publicProd(prod, stk) : undefined }, fresh ? 409 : 400);
     }
     if (body.expectTotal !== undefined && Number(body.expectTotal) !== v.total) {
       return json({ error: 'price_changed', cfg, prod: publicProd(prod, stk) }, 409);
@@ -3065,7 +3072,7 @@ export class Shop {
     if (!validId(b.id) || !b.item || typeof b.item !== 'object') return json({ error: 'bad_request' }, 400);
     const old = await this.getProd();
     if (!old.items.some(x => x.id === b.id)) return json({ error: 'not_found' }, 404);
-    const F = ['name', 'uz', 'desc', 'descUz', 'cat', 'amount', 'unit', 'price', 'tiers', 'blk', 'box', 'tag', 'old'];
+    const F = ['name', 'uz', 'desc', 'descUz', 'cat', 'amount', 'unit', 'price', 'tiers', 'blk', 'box', 'only', 'tag', 'old'];
     const patch = {};
     F.forEach(k => { if (b.item[k] !== undefined) patch[k] = b.item[k]; });
     const prod = sanitizeProd({ cats: old.cats, items: old.items.map(x => x.id === b.id ? Object.assign({}, x, patch) : x) }, old);
