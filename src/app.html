@@ -1184,7 +1184,7 @@ function menuGroups(){
   if(S.admin&&S.did&&(!as||as==='seller')){const sb=sellerSubs();work.push(['seller',L('Продавец','Sotuvchi'),subSum(sb),'',sb,'stab'])}
   if(S.courier&&S.did&&(!as||as==='courier')){const cb=crTabs();work.push(['courier',L('Доставка','Yetkazib berish'),subSum(cb),'',cb,'ctab'])}
   if(canBase()&&(!as||as==='seller'||as==='agent'))work.push(['base',L('База','Baza')]);
-  if(!as&&commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
+  if((!as||as==='seller')&&commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
   if(work.length)g.push([L('Работа','Ish'),work]);
   if(isOwner()&&!as)g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
   g.push(['',[['about',L('О нас','Biz haqimizda')]]]);   // отдельный пункт внизу меню, виден всем
@@ -1242,7 +1242,7 @@ function renderNav(){
   mbt.setAttribute('aria-label',L('Меню','Menyu')+(al?': '+al:''));
   $('#mclose').setAttribute('aria-label',L('Закрыть меню','Menyuni yopish'));
   // внутри дистрибьютора в шапке его название, на общих экранах название площадки
-  const inShop=S.did&&(S.view==='shop'||S.view==='seller'||S.view==='profile'||S.view==='courier'||(S.view==='comm'&&!isOwner()));
+  const inShop=S.did&&(S.view==='shop'||S.view==='seller'||S.view==='profile'||S.view==='courier'||(S.view==='comm'&&!commOwn()));
   const name=inShop?(S.cfg.shop.name||DEFAULT.shop.name):hubTitle();
   $('#brandName').textContent=name;
   $('#mbrand').textContent=name;
@@ -4699,6 +4699,9 @@ async function setViewAs(v){
   }else if(v==='agent'){
     if(S.view==='base')render();else go('base');
   }else render();
+  // комиссия смотрится по-разному: у продавца свой экран и свои данные, у владельца общий обзор
+  if(v==='seller')loadCommSeller();
+  else if(!v&&S.view==='comm')loadComm();
 }
 /* ---------- база магазинов ---------- */
 const BST=()=>({new:L('Новый','Yangi'),talk:L('Переговоры','Muzokara'),refuse:L('Отказался','Rad etdi')});
@@ -5169,10 +5172,12 @@ async function ownPct(id){
   loadCommOwner();loadOwnerStats();
 }
 /* ---------- комиссия: дистрибьютор отмечает оплату, владелец подтверждает ---------- */
+/* Комиссия смотрится глазами владельца (все дистрибьюторы) или продавца (один). Владелец в режиме «Смотреть как → Продавец» видит экран продавца. */
+const commOwn=()=>isOwner()&&viewAs()!=='seller';
 /* Пункт меню «Комиссия»: у владельца всегда, у продавца — если у его дистрибьютора есть процент, начисления или платежи. */
-const commOn=()=>isOwner()||!!(S.admin&&S.did&&S.cm.d&&(S.cm.d.pct>0||S.cm.d.acc>0||S.cm.d.pays.length>0));
+const commOn=()=>commOwn()||!!(S.admin&&S.did&&S.cm.d&&(S.cm.d.pct>0||S.cm.d.acc>0||S.cm.d.pays.length>0));
 /* Красный значок: у владельца — сколько платежей ждут подтверждения, у продавца — сколько платежей владелец не подтвердил или отменил (пока экран не открыт). */
-const commBadge=()=>isOwner()?(S.cm.o?S.cm.o.total.nw:0):(S.cm.d?S.cm.d.bad:0);
+const commBadge=()=>commOwn()?(S.cm.o?S.cm.o.total.nw:0):(S.cm.d?S.cm.d.bad:0);
 const CM_ST=()=>({wait:[L('Ждёт подтверждения','Tasdiqlash kutilmoqda'),'warn'],ok:[L('Подтверждён','Tasdiqlangan'),'ok'],no:[L('Не подтверждён','Tasdiqlanmagan'),'bad'],void:[L('Отменён','Bekor qilingan'),'']});
 const commErr=e=>({
   bad_amount:L('Введите сумму цифрами, например 400000 (не больше 100 000 000 000)','Summani raqamlar bilan kiriting, masalan 400000 (100 000 000 000 dan oshmasin)'),
@@ -5190,7 +5195,7 @@ function cmAmount(v){
 }
 const cmDueLab=due=>due<0?L('Аванс (переплата)','Avans (ortiqcha toʻlov)'):L('К оплате','Toʻlanishi kerak');
 async function loadCommSeller(){
-  if(!S.admin||!S.did||isOwner())return;
+  if(!S.admin||!S.did||commOwn())return;
   const did=S.did,c=S.cm,r=await api('GET','/api/admin/comm'+(S.view==='comm'?'?seen=1':''));
   if(did!==S.did)return;
   if(!r.ok||!r.data||!r.data.comm){if(!c.d){c.err=true;if(S.view==='comm')ownRefresh()}return}
@@ -5213,7 +5218,7 @@ async function loadCommOwner(){
   if(S.view==='comm')ownRefresh();
 }
 function loadComm(){
-  if(isOwner()){loadCommOwner();loadOwnerStats()}
+  if(commOwn()){loadCommOwner();loadOwnerStats()}
   else loadCommSeller();
 }
 /* одна строка платежа: сумма, статус, когда и кто, комментарий; кнопки зависят от того, кто смотрит */
@@ -5303,7 +5308,7 @@ function commOwnerHTML(){
   return h+ownStatsHTML();
 }
 function renderComm(){
-  const own=isOwner();
+  const own=commOwn();
   view.innerHTML='<div class="wrap page"><div class="eyebrow">'+L('Работа','Ish')+'</div><h1>'+L('Комиссия','Komissiya')+'</h1>'+(own?commOwnerHTML():commSellerHTML())+'</div>';
 }
 async function commSend(){
