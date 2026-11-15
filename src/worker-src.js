@@ -340,6 +340,29 @@ const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x
 
 /* ---------- клиентская база ---------- */
 const phoneOk = p => { const d = p.replace(/\D/g, '').length; return d >= 9 && d <= 15; };
+
+/* «О нас»: вступление на двух языках и контакты площадки. Правит владелец, видят все.
+   Телефон хранится как +998…, Telegram и Instagram как ник (ссылку и @ человек может вписать, лишнее отрезается). */
+const ABOUT_MAX = 1500;
+const ABOUT_EMPTY = () => ({ ru: '', uz: '', phone: '', tg: '', ig: '' });
+function cleanAbout(b) {
+  b = b && typeof b === 'object' ? b : {};
+  const txt = x => cleanStr(typeof x === 'string' ? x.replace(/\r\n?/g, '\n') : x, ABOUT_MAX, true).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+  const v = ABOUT_EMPTY();
+  v.ru = txt(b.ru); v.uz = txt(b.uz);
+  const ph = cleanStr(b.phone, 25);
+  if (ph) {
+    if (!phoneOk(ph)) return { err: 'bad_phone' };
+    const d = ph.replace(/\D/g, '');
+    v.phone = '+' + (d.length === 9 ? '998' + d : d);
+  }
+  const nick = (x, host) => cleanStr(x, 120).replace(new RegExp('^(?:https?:\\/\\/)?(?:www\\.)?(?:' + host + ')\\/', 'i'), '').replace(/^@/, '').replace(/[/?#].*$/, '');
+  const tg = nick(b.tg, 't\\.me|telegram\\.me');
+  if (tg) { if (!/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(tg)) return { err: 'bad_tg' }; v.tg = tg; }
+  const ig = nick(b.ig, 'instagram\\.com');
+  if (ig) { if (!/^[A-Za-z0-9._]{1,30}$/.test(ig)) return { err: 'bad_ig' }; v.ig = ig; }
+  return { v };
+}
 const newClient = (uid, since) => ({ uid, name: '', phone: '', org: '', addrs: [], note: '', grp: '', blocked: false, since: since || new Date().toISOString(), last: '', n: 0, ds: 0, sum: 0, tg: { username: '', name: '' }, lang: '' });
 /* то, что клиент видит о себе: заметка, группа и блокировка остаются у продавца */
 const clientPublic = c => c ? { name: c.name, phone: c.phone, org: c.org, addrs: c.addrs } : null;
@@ -1660,6 +1683,14 @@ export default {
       return new Response(APP_HTML, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' } });
     }
     if (p === '/favicon.ico') return new Response(null, { status: 204 });
+    if (p.startsWith('/about/') && request.method === 'GET') {
+      // скриншоты экрана «О нас»: лежат в самом worker, адрес с отпечатком набора (?v=), поэтому браузер хранит их долго
+      const name = p.slice(7);
+      if (!Object.prototype.hasOwnProperty.call(ABOUT_IMG, name)) return new Response('not found', { status: 404 });
+      const bin = atob(ABOUT_IMG[name]), u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return new Response(u8, { headers: { 'content-type': 'image/webp', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
+    }
     if (p === '/webhook' || p === '/api/shops' || p.startsWith('/api/hub/')) {
       if (!env.HUB) {
         // площадка не подключена (в wrangler.toml нет привязки HUB): каталог и заказы первого дистрибьютора, как раньше, и кнопки под заказами работают
@@ -4174,6 +4205,7 @@ export class Hub {
   async owners() { const o = await this.st.get('owners'); return Array.isArray(o) ? o : []; }
   async sellsOf(uid) { const a = await this.st.get('adm:' + uid); return Array.isArray(a) ? a : []; }
   async title() { return (await this.st.get('title')) || HUB_TITLE; }
+  async about() { return cleanAbout(await this.st.get('about')).v || ABOUT_EMPTY(); }
   async botName() {
     let b = await this.st.get('bot');
     if (!b) {
@@ -5027,7 +5059,7 @@ export class Hub {
   async publicList(request) {
     const recs = (await this.allRecs()).filter(r => r.on && r.items > 0);
     const terrs = (await this.terrs()).map(t => ({ id: t.id, name: t.name }));
-    const out = { title: await this.title(), shops: recs.map(pubRec), terrs };
+    const out = { title: await this.title(), about: await this.about(), shops: recs.map(pubRec), terrs };
     const au = await this.auth(request);
     if (au.user) {
       await this.touchPerson(au.user);
@@ -5166,6 +5198,15 @@ export class Hub {
       const t = cleanStr(r.body.title, 60) || HUB_TITLE;
       await this.st.put('title', t);
       return json({ title: t });
+    }
+    // «О нас»: вступление и контакты
+    if (path === '/api/hub/admin/about' && method === 'PUT') {
+      const r = await this.readBody(request, 8000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const c = cleanAbout(r.body);
+      if (c.err) return json({ error: c.err }, 400);
+      await this.st.put('about', c.v);
+      return json({ about: c.v });
     }
     // спорные записи по всем дистрибьюторам: владелец видит, где магазин и продавец не сошлись
     if (path === '/api/hub/admin/disputes' && method === 'GET') {

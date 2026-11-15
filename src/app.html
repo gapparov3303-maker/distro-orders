@@ -795,6 +795,34 @@ div.lgd{cursor:default}
 .mapbtns{display:grid;gap:10px;margin:6px 0 12px}
 .mapco{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0 10px;color:var(--ink-2)}
 @media (prefers-reduced-motion:no-preference){.chip,.seg button{transition:border-color .12s,background-color .12s}}
+/* «О нас» */
+.mgsep{height:1px;margin:10px 10px 4px;background:var(--line)}
+.abt .abhead{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.abt .abhead .eyebrow{margin-bottom:2px}
+.logo.big{width:64px;height:64px}
+.abintro{white-space:pre-line;font-size:15px;line-height:1.55;color:var(--ink)}
+.abcon{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.abnote{margin-top:8px;overflow-wrap:anywhere}
+.abtitle{font-family:var(--f-display);font-size:17px;line-height:1.25;margin:22px 0 4px}
+.abhint{margin-bottom:12px}
+.abrole{padding:0;overflow:hidden}
+.abh{appearance:none;width:100%;min-height:52px;padding:12px 14px;border:0;background:transparent;color:var(--ink);font:600 16px/1.25 var(--f-body);text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px}
+.abh .abn{flex:1;min-width:0;overflow-wrap:anywhere}
+.abh .chev{flex:none;color:var(--ink-2);transition:transform .15s}
+.abh[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.abmine{flex:none;font-size:11px;font-weight:700;letter-spacing:.02em;padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:var(--tx)}
+.abbody{padding:2px 14px 16px;border-top:1.5px solid var(--line)}
+.abbody[hidden]{display:none}
+.ablead{margin:12px 0 4px;font-size:15px;line-height:1.55}
+.absec{margin-top:20px}
+.absec h3{font-size:16px;line-height:1.3;margin-bottom:10px}
+.abfig{margin:0 0 12px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.abimg{appearance:none;padding:0;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface);overflow:hidden;cursor:zoom-in;display:block;width:260px;max-width:100%;box-shadow:0 2px 10px var(--pcsh)}
+.abimg img{display:block;width:100%;height:auto;aspect-ratio:54/102}
+.abfig figcaption{font-size:12.5px;color:var(--ink-2)}
+.abli{margin:0;padding:0 0 0 20px;display:grid;gap:9px;font-size:15px;line-height:1.5}
+.abli li::marker{color:var(--tx)}
+@media (min-width:700px){.abfig{float:right;margin:0 0 12px 18px}.abli{clear:none}}
 /* широкий экран: меню стоит слева всегда (правила стоят в конце, чтобы переопределить .bar и .toast) */
 @media (min-width:1000px){
   body{padding-left:260px}
@@ -854,8 +882,9 @@ const S={
   rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0},
   an:{days:30,sh:'',tab:'cats',sort:'sum',all:false,data:null,shops:[],err:false,seq:0},
   did:'',epoch:0,switching:false,off:false,otherCart:null,
-  hub:{title:'',shops:[],me:null,terrs:[],loaded:false,err:false},
-  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
+  hub:{title:'',about:{ru:'',uz:'',phone:'',tg:'',ig:''},shops:[],me:null,terrs:[],loaded:false,err:false},
+  ab:{open:null},
+  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -1133,6 +1162,7 @@ function menuGroups(){
   if(commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
   if(work.length)g.push([L('Работа','Ish'),work]);
   if(isOwner())g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
+  g.push(['',[['about',L('О нас','Biz haqimizda')]]]);   // отдельный пункт внизу меню, виден всем
   return g;
 }
 /* сумма оповещений на кнопке ☰: все группы и пункты, кроме каталога и заказов магазина */
@@ -1145,10 +1175,11 @@ const subHere=(i,x,cur)=>i[5]==='otab'?cur==='owner'&&S.own.sec===x[0]:i[5]==='c
 const parentHere=(i,cur)=>i[5]==='otab'?cur==='owner'&&i[4].some(x=>x[0]===S.own.sec):cur===i[0];
 const menuSubOpen=(i,cur)=>S.msub===null?parentHere(i,cur):S.msub===i[0];
 function renderNav(){
-  const cur=S.view==='shops'?'shop':S.view,groups=menuGroups(),multi=groups.length>1,nav=$('#nav');
+  const cur=S.view==='shops'?'shop':S.view,groups=menuGroups(),multi=groups.filter(gr=>gr[0]).length>1,nav=$('#nav');
   let h='';
   groups.forEach(gr=>{
-    if(multi)h+='<div class="mgh" role="presentation">'+gr[0]+'</div>';
+    if(multi&&gr[0])h+='<div class="mgh" role="presentation">'+gr[0]+'</div>';
+    else if(!gr[0])h+='<div class="mgsep" role="presentation"></div>';
     gr[1].forEach(i=>{
       if(i[4]){
         const open=menuSubOpen(i,cur);
@@ -3622,12 +3653,17 @@ function lbBack(){closeViewer()}
 function openViewer(id,pp,did){
   const p=pp||S.prod.items.find(x=>x.id===id);if(!p)return;
   const vs=phVers(p);if(!vs.length)return;
+  lbOpen(vs.map((v,i)=>({src:imgUrl(p,i+1,did),alt:nm(p)})),nm(p));
+}
+/* общий просмотр картинок на весь экран: фото товара и скриншоты в «О нас» */
+function lbOpen(items,label){
+  if(!items||!items.length)return;
   closeViewer();
-  const el=document.createElement('div');el.id='lb';el.className='lb';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label',nm(p));
-  const many=vs.length>1;
-  el.innerHTML='<div class="lb-top"><span class="lb-cnt" id="lb-cnt" aria-live="polite">'+(many?'1 / '+vs.length:'')+'</span><button type="button" class="lb-x" data-act="lbclose" aria-label="'+esc(L('Закрыть','Yopish'))+'">×</button></div>'
-    +'<div class="lb-track" id="lb-track">'+vs.map((v,i)=>'<div class="lb-slide" data-act="lbbg"><img src="'+imgUrl(p,i+1,did)+'" alt="'+esc(nm(p))+'" decoding="async" draggable="false"></div>').join('')+'</div>'
-    +(many?'<div class="lb-dots" id="lb-dots">'+vs.map((v,i)=>'<i'+(i?'':' class="on"')+'></i>').join('')+'</div>':'');
+  const el=document.createElement('div');el.id='lb';el.className='lb';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label',label||'');
+  const many=items.length>1;
+  el.innerHTML='<div class="lb-top"><span class="lb-cnt" id="lb-cnt" aria-live="polite">'+(many?'1 / '+items.length:'')+'</span><button type="button" class="lb-x" data-act="lbclose" aria-label="'+esc(L('Закрыть','Yopish'))+'">×</button></div>'
+    +'<div class="lb-track" id="lb-track">'+items.map(v=>'<div class="lb-slide" data-act="lbbg"><img src="'+esc(v.src)+'" alt="'+esc(v.alt||'')+'" decoding="async" draggable="false"></div>').join('')+'</div>'
+    +(many?'<div class="lb-dots" id="lb-dots">'+items.map((v,i)=>'<i'+(i?'':' class="on"')+'></i>').join('')+'</div>':'');
   document.body.appendChild(el);
   document.documentElement.classList.add('lb-open');
   const tr=el.querySelector('#lb-track');let raf=0;
@@ -3635,8 +3671,8 @@ function openViewer(id,pp,did){
     if(raf)return;
     raf=requestAnimationFrame(()=>{
       raf=0;
-      const i=Math.max(0,Math.min(vs.length-1,Math.round(tr.scrollLeft/(tr.clientWidth||1))));
-      const c=el.querySelector('#lb-cnt');if(c&&many)c.textContent=(i+1)+' / '+vs.length;
+      const i=Math.max(0,Math.min(items.length-1,Math.round(tr.scrollLeft/(tr.clientWidth||1))));
+      const c=el.querySelector('#lb-cnt');if(c&&many)c.textContent=(i+1)+' / '+items.length;
       el.querySelectorAll('#lb-dots i').forEach((d,k)=>d.classList.toggle('on',k===i));
     });
   },{passive:true});
@@ -3648,6 +3684,7 @@ function closeViewer(){
   document.documentElement.classList.remove('lb-open');
   if(S.lbTg){S.lbTg=false;try{S.tg.BackButton.offClick(lbBack);S.tg.BackButton.hide()}catch(e){}}
 }
+document.addEventListener('error',e=>{const t=e.target;if(t&&t.tagName==='IMG'&&t.dataset&&t.dataset.abimg){const f=t.closest('figure');if(f)f.remove()}},true);
 document.addEventListener('keydown',e=>{
   const el=document.getElementById('lb');if(!el)return;
   if(e.key==='Escape')closeViewer();
@@ -4242,6 +4279,202 @@ function rvClose(){
   if(v.loaded)paintReview();
 }
 
+/* ---------- «О нас»: вступление и контакты правит владелец, подробные описания ролей вшиты сюда ---------- */
+/* Скриншоты лежат в самом приложении (/about/<имя>-<язык>.webp), их делает tools/shots.cjs; отпечаток набора подставляет сборка. */
+const ABOUT_V='/*ABOUTV*/dev';
+const ABOUT_SHOT={w:540,h:1020};
+const ABOUT_DEF=()=>({
+  ru:'Sarbon — оптовая площадка в Telegram для Навои. Она соединяет дистрибьюторов, производителей и магазины: магазины заказывают прямо в Telegram, а дистрибьюторы получают заказы, учёт долгов и контроль доставки в одном месте.\n\nНаши агенты ходят по магазинам, супермаркетам, HoReCa и фастфуду, продвигают всех продавцов на площадке и приводят новых клиентов. Ничего скачивать не нужно.',
+  uz:'Sarbon — Navoiy uchun Telegramdagi ulgurji savdo maydonchasi. U distribyutorlar, ishlab chiqaruvchilar va doʻkonlarni birlashtiradi: doʻkonlar bevosita Telegramda buyurtma beradi, distribyutorlar esa buyurtmalar, qarzlar hisobi va yetkazib berish nazoratini bir joyda oladi.\n\nAgentlarimiz doʻkonlar, supermarketlar, HoReCa va fast-fud nuqtalarini aylanib, maydonchadagi barcha sotuvchilarni targʻib qiladi va yangi mijozlar olib keladi. Hech narsa yuklab olish shart emas.'
+});
+/* Роли: lead — вступление, secs — разделы (img — имя скриншота без языка и расширения, li — шаги). Пары [рус, узб]. */
+const ABOUT_ROLES=[
+{k:'shop',n:['Магазин','Doʻkon'],
+ lead:['Вы заказываете у дистрибьюторов и производителей прямо в Telegram. Ничего скачивать не нужно: откройте бота и нажмите «Каталог». Заказы, их статусы и долги всегда под рукой.','Siz distribyutor va ishlab chiqaruvchilardan bevosita Telegramda buyurtma berasiz. Hech narsa yuklab olish shart emas: botni oching va «Katalog» tugmasini bosing. Buyurtmalar, ularning holati va qarzlar doim qoʻl ostida.'],
+ secs:[
+ {img:'shop-list',h:['Выбор дистрибьютора','Distribyutorni tanlash'],cap:['Главный экран: список дистрибьюторов','Bosh ekran: distribyutorlar roʻyxati'],li:[
+  ['На главном экране список дистрибьюторов: название, сколько товаров, есть ли доставка и минимальная сумма заказа.','Bosh ekranda distribyutorlar roʻyxati: nomi, tovarlar soni, yetkazib berish bor-yoʻqligi va buyurtmaning minimal summasi.'],
+  ['Нажмите «Открыть каталог» у нужного. В одной корзине бывают товары только одного дистрибьютора.','Kerakli distribyutorda «Katalogni ochish» tugmasini bosing. Bitta savatda faqat bitta distribyutorning tovarlari boʻladi.'],
+  ['Все разделы лежат в меню ☰ слева вверху, язык переключается кнопками RU | UZ справа вверху.','Barcha boʻlimlar yuqori chapdagi ☰ menyuda, til yuqori oʻngdagi RU | UZ tugmalari bilan almashadi.']]},
+ {img:'shop-catalog',h:['Каталог','Katalog'],cap:['Каталог: фото, цена, остаток','Katalog: rasm, narx, qoldiq'],li:[
+  ['В карточке товара: фото (нажмите, и оно откроется на весь экран; листайте свайпом), название, вес, цена и описание. Когда товаров больше восьми, вверху появляется поиск.','Tovar kartochkasida: rasm (bossangiz, butun ekranga ochiladi; suring), nomi, ogʻirligi, narxi va tavsifi. Tovarlar sakkiztadan koʻp boʻlsa, tepada qidiruv paydo boʻladi.'],
+  ['Метки «Акция» (старая цена зачёркнута, рядом скидка в процентах) и «Новинка». Сердечко кладёт товар в избранное.','«Aksiya» (eski narx chizilgan, yoniga foiz yozilgan) va «Yangilik» belgilari. Yurakcha tovarni sevimlilarga qoʻshadi.'],
+  ['«Мало (осталось N)» значит, что товар заканчивается, «Нет в наличии» — серая карточка. Больше остатка в корзину положить нельзя.','«Oz qoldi (N ta)» tovar tugayotganini bildiradi, «Mavjud emas» — kulrang kartochka. Qoldiqdan ortiq tovarni savatga qoʻshib boʻlmaydi.'],
+  ['Если у товара есть цена от количества, на карточке видны ступени: чем больше берёте, тем ниже цена.','Agar tovarda miqdorga qarab narx boʻlsa, kartochkada pogʻonalar koʻrinadi: koʻproq olsangiz, narx arzonlashadi.'],
+  ['Нажмите «В корзину», затем «−» и «+» или введите число с клавиатуры (до 500 штук одного товара). Внизу всегда видна сумма и кнопка «Оформить заказ».','«Savatga» tugmasini bosing, soʻng «−» va «+» bilan yoki raqamni klaviaturadan kiriting (bitta tovardan 500 tagacha). Pastda doim summa va «Buyurtma berish» tugmasi koʻrinadi.']]},
+ {img:'shop-cart',h:['Оформление заказа','Buyurtma berish'],cap:['Корзина и оформление','Savat va buyurtma berish'],li:[
+  ['Выберите «Самовывоз» или «Доставка». Для доставки впишите адрес; по желанию можно отметить своё местоположение на карте.','«Olib ketish» yoki «Yetkazib berish»ni tanlang. Yetkazib berish uchun manzilni yozing; xohlasangiz, joylashuvingizni xaritada belgilashingiz mumkin.'],
+  ['Укажите дату и время (в часы работы дистрибьютора; для доставки нужен запас по времени) и пожелания к заказу.','Sana va vaqtni (distribyutorning ish vaqtida; yetkazib berish uchun vaqt zaxirasi kerak) hamda buyurtmaga istaklaringizni yozing.'],
+  ['Имя, телефон и адрес запоминаются, при следующих заказах вводить их заново не нужно. При первом заказе выберите свой район или город.','Ism, telefon va manzil eslab qolinadi, keyingi buyurtmalarda qayta yozish shart emas. Birinchi buyurtmada oʻz tumaningiz yoki shahringizni tanlang.'],
+  ['Оплата только при получении: наличные, карта или перечисление. Взять товар в долг можно только по договорённости: способ оплаты отмечает дистрибьютор при выдаче.','Toʻlov faqat qabul qilishda: naqd, karta yoki pul oʻtkazish. Tovarni qarzga faqat kelishuv boʻyicha olish mumkin: toʻlov usulini distribyutor topshirishda belgilaydi.'],
+  ['Если у дистрибьютора есть минимальная сумма, скидка от суммы или бесплатная доставка от суммы, корзина подскажет, сколько осталось.','Distribyutorda minimal summa, summaga qarab chegirma yoki bepul yetkazib berish boʻlsa, savat nechta qolganini aytib turadi.']]},
+ {img:'shop-orders',h:['Заказы','Buyurtmalar'],cap:['Мои заказы','Mening buyurtmalarim'],li:[
+  ['Здесь все ваши заказы со статусом: «Новый», «В работе», «Готов», «Выдан» или «Доставлен», «Отменён». Новый заказ можно отменить самому. Каждый шаг приходит и сообщением в Telegram.','Bu yerda barcha buyurtmalaringiz holati bilan: «Yangi», «Ishlanmoqda», «Tayyor», «Topshirildi» yoki «Yetkazildi», «Bekor qilindi». Yangi buyurtmani oʻzingiz bekor qila olasiz. Har bir qadam Telegramga xabar boʻlib ham keladi.'],
+  ['«Повторить заказ» кладёт в корзину всё из прошлого заказа, что сейчас есть в продаже, по сегодняшним ценам и остаткам.','«Buyurtmani takrorlash» oldingi buyurtmadan hozir sotuvda bor hamma narsani bugungi narx va qoldiq boʻyicha savatga soladi.']]},
+ {img:'shop-debt',h:['Мой долг и профиль','Mening qarzim va profil'],cap:['Мой долг','Mening qarzim'],li:[
+  ['Если вы взяли товар в долг, вверху каталога появляется плашка «Ваш долг …» (красная, когда есть просрочка), а в меню ☰ пункт «Мой долг»: сколько вы должны, что просрочено, ближайший срок. Нажмите на заказ, и откроется его состав.','Agar tovarni qarzga olgan boʻlsangiz, katalog tepasida «Sizning qarzingiz …» chizigʻi paydo boʻladi (muddat oʻtgan boʻlsa, qizil), ☰ menyuda esa «Mening qarzim» boʻlimi: qancha qarzingiz bor, nima muddati oʻtgan, eng yaqin muddat. Buyurtmani bossangiz, uning tarkibi ochiladi.'],
+  ['Когда дистрибьютор записывает долг или принимает оплату, вам приходит сообщение в Telegram с кнопками «Верно» и «Не так». Нажмите «Не так», если запись неверна: спор увидят дистрибьютор и владелец площадки.','Distribyutor qarz yozganda yoki toʻlov qabul qilganda, Telegramga «Toʻgʻri» va «Notoʻgʻri» tugmali xabar keladi. Yozuv xato boʻlsa, «Notoʻgʻri»ni bosing: bahsni distribyutor va platforma egasi koʻradi.'],
+  ['«Профиль»: имя, телефон, организация и до пяти адресов доставки. Всё подставляется в заказ само.','«Profil»: ism, telefon, tashkilot va beshtagacha yetkazib berish manzili. Hammasi buyurtmaga oʻzi qoʻyiladi.']]}
+ ]},
+{k:'seller',n:['Дистрибьютор и производитель','Distribyutor va ishlab chiqaruvchi'],
+ lead:['Вы продаёте напрямую магазинам и точкам общепита. Вход по личному коду от владельца площадки: откройте бота и отправьте /admin и ваш код. Бот удалит сообщение с кодом, а в меню ☰ появится группа «Продавец». Производители работают здесь же.','Siz doʻkonlar va umumiy ovqatlanish nuqtalariga bevosita sotasiz. Kirish platforma egasi bergan shaxsiy kod bilan: botni oching va /admin va kodingizni yuboring. Bot kodli xabarni oʻchiradi, ☰ menyuda esa «Sotuvchi» guruhi paydo boʻladi. Ishlab chiqaruvchilar ham shu yerda ishlaydi.'],
+ secs:[
+ {img:'sel-orders',h:['Заказы','Buyurtmalar'],cap:['Заказы продавца','Sotuvchining buyurtmalari'],li:[
+  ['Новые заказы приходят в чат с ботом и в «Продавец → Заказы»: состав, сумма, самовывоз или доставка с адресом, время, имя и телефон клиента, комментарий. Число на значке меню держится, пока заказ не принят или не отменён.','Yangi buyurtmalar bot chatiga va «Sotuvchi → Buyurtmalar»ga keladi: tarkibi, summa, olib ketish yoki manzil bilan yetkazib berish, vaqt, mijozning ismi va telefoni, izoh. Menyudagi raqam buyurtma qabul qilinmaguncha yoki bekor qilinmaguncha turadi.'],
+  ['Кнопки по порядку: «Принять в работу» → «Готов к выдаче» (при доставке «Готов к отправке») → «Выдан клиенту». На каждом шаге клиент получает сообщение. Отмена просит подтверждение.','Tugmalar ketma-ket: «Ishga qabul qilish» → «Topshirishga tayyor» (yetkazib berishda «Joʻnatishga tayyor») → «Mijozga topshirildi». Har bir qadamda mijozga xabar boradi. Bekor qilish tasdiq soʻraydi.'],
+  ['Вверху счётчики «Новые», «В работе», «На сегодня» и фильтры «Активные», «Завершены», «Отменены».','Tepada «Yangi», «Ishlanmoqda», «Bugunga» hisoblagichlari va «Faol», «Yakunlangan», «Bekor qilingan» filtrlari bor.'],
+  ['«Сборочный лист» показывает, сколько чего достать со склада для всех заказов сразу. Заказы можно выгрузить в Excel: файл придёт в чат с ботом.','«Yigʻish roʻyxati» barcha buyurtmalar uchun ombordan nima va qancha olish kerakligini birdaniga koʻrsatadi. Buyurtmalarni Excelga yuklash mumkin: fayl bot chatiga keladi.']]},
+ {img:'sel-pay',h:['Выдача и оплата','Topshirish va toʻlov'],cap:['Выбор способа оплаты при выдаче','Topshirishda toʻlov usulini tanlash'],li:[
+  ['Когда нажимаете «Выдан клиенту», приложение спрашивает, как заплатил клиент: наличные, карта, перечисление или в долг.','«Mijozga topshirildi»ni bossangiz, ilova mijoz qanday toʻlaganini soʻraydi: naqd, karta, pul oʻtkazish yoki qarzga.'],
+  ['В долг вы выдаёте любому магазину по своему решению и ставите срок: 3, 7, 14, 30 дней или своё число. Можно взять часть суммы сразу, остальное в долг.','Qarzga istalgan doʻkonga oʻz xohishingizga koʻra berasiz va muddat qoʻyasiz: 3, 7, 14, 30 kun yoki oʻz sonizni. Summaning bir qismini darhol olib, qolganini qarzga qoldirish mumkin.'],
+  ['Магазин получает сообщение и подтверждает «Верно» или оспаривает «Не так». Так деньги не держатся на доверии: каждую запись проверяет вторая сторона.','Doʻkon xabar oladi va «Toʻgʻri» deb tasdiqlaydi yoki «Notoʻgʻri» deb bahslashadi. Shunday qilib pul ishonchga tayanmaydi: har bir yozuvni ikkinchi tomon tekshiradi.'],
+  ['В заказе всегда видно, как он оплачен; при долге клиент получает сообщение со сроком оплаты.','Buyurtmada u qanday toʻlangani doim koʻrinadi; qarz boʻlsa, mijoz toʻlov muddati yozilgan xabar oladi.']]},
+ {img:'sel-catalog',h:['Каталог','Katalog'],cap:['Редактор товара','Tovar muharriri'],li:[
+  ['Создайте категории и товары: название по-русски и по-узбекски, вес или объём, цена и до трёх фото. Приложение само уменьшает фото, обычных снимков с телефона достаточно.','Kategoriya va tovarlarni yarating: rus va oʻzbek tilida nomi, ogʻirligi yoki hajmi, narxi va 3 tagacha rasm. Ilova rasmni oʻzi kichraytiradi, telefondagi oddiy suratlar yetarli.'],
+  ['Метки «Акция» (со старой ценой) и «Новинка», цены от количества, блоки и коробки, скидка на заказ от суммы. Прайс можно выгрузить в Excel, поправить цены и загрузить обратно: перед применением вы увидите, что изменится.','«Aksiya» (eski narx bilan) va «Yangilik» belgilari, miqdorga qarab narx, blok va qutilar, summaga qarab chegirma. Prays-listni Excelga yuklab, narxlarni tuzatib, qaytarib yuklash mumkin: qoʻllashdan oldin nima oʻzgarishini koʻrasiz.'],
+  ['Новый товар сначала «Черновик». Нажмите «Отправить на проверку»: владелец площадки одобрит товар или вернёт с причиной, что исправить. Правки уже одобренных товаров проверки не требуют.','Yangi tovar avval «Qoralama» boʻladi. «Tekshiruvga yuborish»ni bosing: platforma egasi tovarni tasdiqlaydi yoki nimani tuzatish kerakligini sabab bilan qaytaradi. Tasdiqlangan tovarlarni oʻzgartirish tekshiruvsiz amalga oshadi.'],
+  ['Пока товар не одобрен, магазины видят его серым с надписью «На модерации».','Tovar tasdiqlanmaguncha doʻkonlar uni «Tekshiruvda» yozuvli kulrang koʻrinishda koʻradi.']]},
+ {img:'sel-stock',h:['Остатки','Qoldiq'],cap:['Остатки на складе','Ombor qoldigʻi'],li:[
+  ['Учёт включается по каждому товару: введите, сколько единиц на складе. Приложение показывает «На складе», «В заказах» (отложено под принятые заказы) и «Свободно». Магазин может заказать только свободное.','Hisob har bir tovar uchun alohida yoqiladi: omborda necha birlik borligini kiriting. Ilova «Omborda», «Buyurtmalarda» (qabul qilingan buyurtmalarga ajratilgan) va «Boʻsh»ni koʻrsatadi. Doʻkon faqat boʻsh qoldiqni buyurtma qila oladi.'],
+  ['Когда приезжает товар, нажмите «+ Приход»; после пересчёта на складе поправьте число кнопкой «Задать остаток». Выдача заказа списывает товар сама, отмена возвращает.','Tovar kelganda «+ Kirim»ni bosing; ombor qayta sanalgach, sonni «Qoldiqni belgilash» tugmasi bilan tuzating. Buyurtma topshirilganda tovar oʻzi hisobdan chiqadi, bekor qilinsa qaytadi.'],
+  ['Укажите порог «Предупредить, когда меньше»: когда товар на исходе, вам придёт сообщение в Telegram, а магазины увидят «Мало (осталось N)».','«Bundan kam qolsa ogohlantirish» chegarasini belgilang: tovar tugayotganda Telegramga xabar keladi, doʻkonlar esa «Oz qoldi (N ta)»ni koʻradi.']]},
+ {img:'sel-debts',h:['Долги','Qarzlar'],cap:['Долги магазинов','Doʻkonlar qarzlari'],li:[
+  ['Вверху «Всего должны», «Просрочено» и число должников. Ниже магазины: просроченные первыми.','Tepada «Jami qarz», «Muddati oʻtgan» va qarzdorlar soni. Pastda doʻkonlar: muddati oʻtganlar birinchi.'],
+  ['«Принять оплату» принимает любую сумму, в том числе часть долга. Оплата закрывает самые старые долги первыми. Ошибочную оплату отменяет только продавец и только с причиной.','«Toʻlovni qabul qilish» istalgan summani, jumladan qarzning bir qismini qabul qiladi. Toʻlov eng eski qarzlarni birinchi yopadi. Xato toʻlovni faqat sotuvchi va faqat sabab bilan bekor qiladi.'],
+  ['«Напомнить в Telegram» отправляет магазину напоминание. Каждое утро в 9:00 вам приходит сводка просрочки. «Акт сверки» отправляет магазину выписку за выбранный период, а долги выгружаются в Excel.','«Telegramda eslatish» doʻkonga eslatma yuboradi. Har kuni ertalab soat 9:00 da sizga muddati oʻtgan qarzlar xulosasi keladi. «Solishtirma dalolatnoma» doʻkonga tanlangan davr uchun koʻchirma yuboradi, qarzlar esa Excelga yuklanadi.'],
+  ['Спорные записи подсвечены красным. Закройте спор кнопкой «Закрыть спор» с комментарием: магазин его получит.','Bahsli yozuvlar qizil rangda. Bahsni izoh bilan «Bahsni yopish» tugmasi orqali yoping: doʻkon izohni oladi.']]},
+ {img:'sel-couriers',h:['Доставщики','Yetkazuvchilar'],cap:['Доставщики и касса','Yetkazuvchilar va kassa'],li:[
+  ['Откройте «Доставщики», впишите имя и нажмите «Получить ссылку». Отправьте ссылку человеку: она действует 7 дней и срабатывает один раз.','«Yetkazuvchilar»ni oching, ismni yozing va «Havolani olish»ni bosing. Havolani odamga yuboring: u 7 kun amal qiladi va bir marta ishlaydi.'],
+  ['У заказа с доставкой «Готов к отправке» открывает выбор: конкретный доставщик или «Всем, кто первый». «Доставлен клиенту» нажимает только доставщик.','Yetkazib berish buyurtmasida «Joʻnatishga tayyor» tanlovni ochadi: aniq yetkazuvchi yoki «Hammaga, kim birinchi boʻlsa». «Mijozga yetkazildi»ni faqat yetkazuvchi bosadi.'],
+  ['Наличные копятся у каждого доставщика «на руках». Сдачу денег вы записываете в карточке доставщика, а он подтверждает её кнопкой «Верно». Для каждого можно задать «Срок сдачи».','Naqd pul har bir yetkazuvchining «qoʻlida» yigʻiladi. Pul topshirilishini yetkazuvchi kartochkasida yozasiz, u esa «Toʻgʻri» tugmasi bilan tasdiqlaydi. Har biriga «Topshirish muddati»ni belgilash mumkin.']]},
+ {h:['Отчёты, база и настройки','Hisobotlar, baza va sozlamalar'],li:[
+  ['«Отчёты»: выручка по дням, неделям и месяцам, ходовые товары, лучшие клиенты, подсказка «что пора закупать» и выгрузка в Excel.','«Hisobotlar»: kunlar, haftalar va oylar boʻyicha tushum, ommabop tovarlar, eng yaxshi mijozlar, «nimani sotib olish kerak» maslahati va Excelga yuklash.'],
+  ['«База»: общая база магазинов площадки с адресами, телефонами и точкой на карте. «Мои клиенты» оставляет тех, кто заказывал у вас. Заметка, группа и блокировка у каждого дистрибьютора свои, другие их не видят.','«Baza»: platformaning umumiy doʻkonlar bazasi — manzil, telefon va xaritadagi nuqta bilan. «Mening mijozlarim» sizdan buyurtma bergan doʻkonlarni qoldiradi. Izoh, guruh va bloklash har bir distribyutorda alohida, boshqalar koʻrmaydi.'],
+  ['«Настройки»: минимальная сумма заказа, стоимость доставки и бесплатная доставка от суммы, часы работы, адрес самовывоза, районы доставки, ссылка на ваш каталог для клиентов, резервная копия.','«Sozlamalar»: buyurtmaning minimal summasi, yetkazib berish narxi va summadan bepul yetkazish, ish vaqti, olib ketish manzili, yetkazib berish tumanlari, mijozlar uchun katalogingiz havolasi, zaxira nusxa.'],
+  ['«Комиссия»: площадка ведёт учёт комиссии с выданных заказов. Накопленная сумма уменьшается, когда вы вписываете оплаченное, нажимаете «Оплатил», а владелец подтверждает.','«Komissiya»: platforma topshirilgan buyurtmalardan komissiya hisobini yuritadi. Toʻplangan summa siz toʻlanganini yozib «Toʻladim»ni bosganingizda va ega tasdiqlaganida kamayadi.']]}
+ ]},
+{k:'courier',n:['Доставщик','Yetkazuvchi'],
+ lead:['Вы возите заказы дистрибьютора. Вход по ссылке-приглашению от продавца: нажмите её, и бот подтвердит, что вы доставщик. В меню ☰ появится группа «Доставка».','Siz distribyutor buyurtmalarini yetkazasiz. Kirish sotuvchi bergan taklif havolasi orqali: uni bosing, bot sizni yetkazuvchi deb tasdiqlaydi. ☰ menyuda «Yetkazib berish» guruhi paydo boʻladi.'],
+ secs:[
+ {img:'cr-today',h:['Сегодня','Bugun'],cap:['Заказы на сегодня','Bugungi buyurtmalar'],li:[
+  ['Список заказов на доставку: адрес, сумма, телефон, время. Свободный заказ берите кнопкой «Взял». Если продавец назначил заказ вам, придёт сообщение «Вам назначен заказ».','Yetkazib berish buyurtmalari roʻyxati: manzil, summa, telefon, vaqt. Boʻsh buyurtmani «Oldim» tugmasi bilan oling. Sotuvchi buyurtmani sizga tayinlasa, «Sizga buyurtma tayinlandi» xabari keladi.'],
+  ['В заказе видны данные магазина из общей базы: название, другие номера телефона, адрес и точка на карте. Нажмите «На карте», чтобы открыть Яндекс.Карты или Google Maps; «Позвонить» звонит магазину.','Buyurtmada umumiy bazadagi doʻkon maʼlumotlari koʻrinadi: nomi, boshqa telefon raqamlari, manzil va xaritadagi nuqta. Yandex Xarita yoki Google Maps ochish uchun «Xaritada»ni bosing; «Qoʻngʻiroq» doʻkonga qoʻngʻiroq qiladi.'],
+  ['Когда привезли, нажмите «Доставлен клиенту» и выберите оплату: наличные, карта, перечисление или в долг (если продавец это разрешил). Часть суммы можно взять сразу, остальное записать в долг.','Yetkazganingizda «Mijozga yetkazildi»ni bosing va toʻlovni tanlang: naqd, karta, pul oʻtkazish yoki qarzga (sotuvchi ruxsat bergan boʻlsa). Summaning bir qismini darhol olib, qolganini qarzga yozish mumkin.']]},
+ {img:'cr-debts',h:['Должники','Qarzdorlar'],cap:['Должники на маршруте','Marshrutdagi qarzdorlar'],li:[
+  ['Здесь все должники дистрибьютора с адресом и телефоном: «Позвонить» и «Копировать адрес». Можно принять оплату, в том числе частично, и нажать «Напомнить в Telegram».','Bu yerda distribyutorning barcha qarzdorlari manzil va telefon bilan: «Qoʻngʻiroq» va «Manzilni nusxalash». Toʻlovni, jumladan qisman, qabul qilish va «Telegramda eslatish»ni bosish mumkin.'],
+  ['Отменять записи и менять долги доставщик не может: это делает только продавец. Магазин получит сообщение об оплате и подтвердит её.','Yozuvlarni bekor qilish va qarzlarni oʻzgartirish yetkazuvchi qoʻlidan kelmaydi: buni faqat sotuvchi qiladi. Doʻkon toʻlov haqida xabar oladi va uni tasdiqlaydi.']]},
+ {img:'cr-cash',h:['Касса','Kassa'],cap:['Касса доставщика','Yetkazuvchi kassasi'],li:[
+  ['Наличные, принятые при доставке и при оплате долгов, копятся у вас «на руках». Карта и перечисление в кассу не попадают: их проверяет продавец.','Yetkazishda va qarz toʻlovlarida qabul qilingan naqd pul sizning «qoʻlingizda» yigʻiladi. Karta va pul oʻtkazish kassaga tushmaydi: ularni sotuvchi tekshiradi.'],
+  ['Срок сдачи денег задаёт продавец (обычно в тот же день). Когда продавец записывает вашу сдачу, вам приходит сообщение с кнопками «Верно» и «Не так»: подтвердите, если сумма совпадает.','Pulni topshirish muddatini sotuvchi belgilaydi (odatda shu kunning oʻzida). Sotuvchi topshirgan pulingizni yozganda, sizga «Toʻgʻri» va «Notoʻgʻri» tugmali xabar keladi: summa toʻgʻri boʻlsa, tasdiqlang.'],
+  ['Если срок сдачи прошёл, на значке меню появляется число. Всё записывается в журнал, ничего не стирается.','Topshirish muddati oʻtib ketsa, menyudagi belgida raqam paydo boʻladi. Hamma narsa jurnalga yoziladi, hech narsa oʻchirilmaydi.']]}
+ ]},
+{k:'agent',n:['Агент','Agent'],
+ lead:['Вы ходите по точкам: магазины, мини-маркеты, супермаркеты, HoReCa, фастфуд. Рассказываете о Sarbon, добавляете и проверяете магазины в общей базе и отмечаете их на карте. Вход: отправьте боту /agent и ваш код (его выдаёт владелец). В меню ☰ появится «База».','Siz nuqtalarni aylanasiz: doʻkonlar, minimarketlar, supermarketlar, HoReCa, fast-fud. Sarbon haqida aytasiz, umumiy bazaga doʻkonlarni qoʻshasiz, tekshirasiz va xaritada belgilaysiz. Kirish: botga /agent va kodingizni yuboring (kodni ega beradi). ☰ menyuda «Baza» paydo boʻladi.'],
+ secs:[
+ {img:'ag-base',h:['База магазинов','Doʻkonlar bazasi'],cap:['База магазинов','Doʻkonlar bazasi'],li:[
+  ['Список магазинов вашей территории с поиском. Значки показывают статус: нажмите на значок, и останутся магазины с этим статусом.','Hududingizdagi doʻkonlar roʻyxati qidiruv bilan. Belgilar holatni koʻrsatadi: belgini bossangiz, shu holatdagi doʻkonlar qoladi.'],
+  ['«Фильтры» открывают панель: статус, район, порядок («По названию», «Сначала новые», «Ближайшие»). «Ближайшие» показывает магазины от ближних к дальним с расстоянием от вас.','«Filtrlar» panelni ochadi: holat, tuman, tartib («Nomi boʻyicha», «Avval yangilari», «Eng yaqinlari»). «Eng yaqinlari» doʻkonlarni yaqinidan uzogʻiga, sizdan masofa bilan koʻrsatadi.'],
+  ['У каждого агента есть личная ссылка. Магазин, который впервые открыл бота по ней, закрепляется за вами.','Har bir agentning shaxsiy havolasi bor. Botni birinchi marta shu havola orqali ochgan doʻkon sizga biriktiriladi.']]},
+ {img:'ag-form',h:['Новый магазин и проверка данных','Yangi doʻkon va maʼlumotlarni tekshirish'],cap:['Данные магазина','Doʻkon maʼlumotlari'],li:[
+  ['«+ Добавить» открывает форму: название, телефон, адрес, район и «Тип» точки: «Магазин», «Супермаркет», «Оптом» или HoReCa.','«+ Qoʻshish» shaklni ochadi: nomi, telefon, manzil, tuman va nuqta «Turi»: «Doʻkon», «Supermarket», «Ulgurji» yoki HoReCa.'],
+  ['Приложение не даёт добавить магазин второй раз: если он уже в базе, покажет какой.','Ilova doʻkonni ikkinchi marta qoʻshishga yoʻl qoʻymaydi: u bazada bor boʻlsa, qaysi ekanini koʻrsatadi.'],
+  ['После визита проверьте данные, исправьте ошибки и нажмите «Проверено».','Tashrifdan keyin maʼlumotlarni tekshiring, xatolarni tuzating va «Tekshirildi»ni bosing.'],
+  ['Точку на карте обновляете вы (агент своей территории) и владелец, дистрибьюторы её только видят. У магазина один основной телефон и до пяти дополнительных: «Сделать основным» меняет их местами.','Xaritadagi nuqtani siz (oʻz hududingiz agenti) va ega yangilaysiz, distribyutorlar uni faqat koʻradi. Doʻkonning bitta asosiy telefoni va beshtagacha qoʻshimcha raqami boʻladi: «Asosiy qilish» ularning oʻrnini almashtiradi.']]},
+ {img:'ag-merge',h:['Объединение дублей','Dublikatlarni birlashtirish'],cap:['Объединение дублей','Dublikatlarni birlashtirish'],li:[
+  ['Если один магазин попал в базу дважды, откройте «Данные магазина» и нажмите «Объединить с дублем…».','Agar bitta doʻkon bazaga ikki marta tushgan boʻlsa, doʻkon maʼlumotlarini oching va «Dublikat bilan birlashtirish…»ni bosing.'],
+  ['Найдите дубль по названию, адресу или телефону. Приложение покажет, что получится: что останется, какие номера добавятся. Подтвердите, и записи сольются.','Dublikatni nomi, manzili yoki telefoni boʻyicha toping. Ilova nima chiqishini koʻrsatadi: nima qoladi, qaysi raqamlar qoʻshiladi. Tasdiqlang, yozuvlar birlashadi.'],
+  ['Агент объединяет только свои магазины и магазины своих территорий.','Agent faqat oʻz doʻkonlarini va oʻz hududlaridagi doʻkonlarni birlashtiradi.']]}
+ ]},
+{k:'owner',n:['Владелец','Ega'],only:'owner',
+ lead:['Вы управляете площадкой: дистрибьюторами, агентами, проверкой товаров и деньгами. Группа «Владелец» в меню ☰ видна только вам.','Siz platformani boshqarasiz: distribyutorlar, agentlar, tovarlarni tekshirish va pul. ☰ menyudagi «Egasi» guruhi faqat sizga koʻrinadi.'],
+ secs:[
+ {img:'ow-dist',h:['Дистрибьюторы','Distribyutorlar'],cap:['Дистрибьюторы площадки','Platforma distribyutorlari'],li:[
+  ['☰ → «Владелец» → «Дистрибьюторы» → «Добавить»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его дистрибьютору, он напишет боту /admin и код.','☰ → «Egasi» → «Distribyutorlar» → «Qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni distribyutorga yuboring, u botga /admin va kodni yozadi.'],
+  ['Есть «Новый код» (прежние продавцы теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого дистрибьютора, вашу компанию, удалить нельзя.','«Yangi kod» (avvalgi sotuvchilar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi distribyutorni, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
+ {img:'ow-review',h:['Проверка товаров','Tovarlarni tekshirish'],cap:['Проверка товаров','Tovarlarni tekshirish'],li:[
+  ['Пункт «Проверка» собирает все новые товары дистрибьюторов в одном списке с названием дистрибьютора. Число на значке — сколько товаров ждёт решения.','«Tekshiruv» boʻlimi distribyutorlarning barcha yangi tovarlarini bitta roʻyxatga distribyutor nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
+  ['Исправьте ошибки в карточке сами или нажмите «Вернуть» и напишите причину: продавец её увидит. «Одобрить» открывает товар магазинам. Ваши товары одобряются сразу.','Kartochkadagi xatolarni oʻzingiz tuzating yoki «Qaytarish»ni bosib sababini yozing: sotuvchi uni koʻradi. «Tasdiqlash» tovarni doʻkonlarga ochadi. Oʻzingizning tovarlaringiz darhol tasdiqlanadi.']]},
+ {img:'ow-people',h:['Люди, агенты и территории','Odamlar, agentlar va hududlar'],cap:['Люди и территории','Odamlar va hududlar'],li:[
+  ['«Территории»: создайте районы и города, по которым работают агенты. «Агенты»: имя, территории и личный код (он показывается один раз); у каждого агента своя ссылка.','«Hududlar»: agentlar ishlaydigan tuman va shaharlarni yarating. «Agentlar»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi); har bir agentning oʻz havolasi bor.'],
+  ['«Люди»: все, кто открывал приложение или писал боту, и их роли: владелец, продавец, агент, доставщик или магазин.','«Odamlar»: ilovani ochgan yoki botga yozgan hamma va ularning rollari: ega, sotuvchi, agent, yetkazuvchi yoki doʻkon.']]},
+ {h:['Деньги, аналитика и площадка','Pul, tahlil va platforma'],li:[
+  ['«Деньги → Спорные записи»: спорные записи по всем дистрибьюторам, закрываются с комментарием.','«Pul → Bahsli yozuvlar»: barcha distribyutorlar boʻyicha bahsli yozuvlar, izoh bilan yopiladi.'],
+  ['«Комиссия»: сводка по дистрибьюторам, накопленное и оплаченное; оплаты дистрибьюторов вы подтверждаете. Процент можно задать каждому отдельно.','«Komissiya»: distribyutorlar boʻyicha xulosa, toʻplangan va toʻlangan; distribyutorlar toʻlovlarini siz tasdiqlaysiz. Foizni har biriga alohida belgilash mumkin.'],
+  ['«Аналитика»: продажи по категориям, товарам и магазинам за выбранный период, по всем дистрибьюторам или по одному.','«Tahlil»: tanlangan davr uchun kategoriyalar, tovarlar va doʻkonlar boʻyicha sotuvlar — barcha distribyutorlar yoki bittasi boʻyicha.'],
+  ['«Площадка»: название, этот экран «О нас» с контактами и «База магазинов» (перенос клиентов дистрибьюторов в общую базу).','«Platforma»: nomi, kontaktlar bilan shu «Biz haqimizda» ekrani va «Doʻkonlar bazasi» (distribyutorlar mijozlarini umumiy bazaga koʻchirish).']]}
+ ]}
+];
+const aboutUrl=(img)=>'/about/'+img+'-'+(LANG==='uz'?'uz':'ru')+'.webp?v='+ABOUT_V;
+/* роли человека в порядке важности; магазином он является всегда */
+function aboutMine(){
+  const me=S.auth&&S.hub&&S.hub.me,r=[];
+  if(me){if(me.owner)r.push('owner');if((me.sells||[]).length)r.push('seller');if((me.delivers||[]).length)r.push('courier');if(me.agent)r.push('agent')}
+  r.push('shop');
+  return r;
+}
+const aboutOpenKey=()=>S.ab.open===null?aboutMine()[0]:S.ab.open;
+function aboutContactsHTML(a){
+  let b='',n=[];
+  if(a.phone){b+='<a class="btn" href="tel:'+esc(a.phone)+'">'+L('Позвонить','Qoʻngʻiroq qilish')+'</a>';n.push(esc(a.phone))}
+  if(a.tg){b+='<a class="btn ghost" data-act="contact" href="https://t.me/'+encodeURIComponent(a.tg)+'" target="_blank" rel="noopener">'+L('Написать в Telegram','Telegramda yozish')+'</a>';n.push('@'+esc(a.tg))}
+  if(a.ig){b+='<a class="btn ghost" href="https://www.instagram.com/'+encodeURIComponent(a.ig)+'/" target="_blank" rel="noopener">Instagram</a>';n.push('instagram.com/'+esc(a.ig))}
+  return b?'<div class="abcon">'+b+'</div><div class="unit abnote">'+n.join(' · ')+'</div>':'';
+}
+function aboutRoleHTML(r,open,mine){
+  const own=mine.includes(r.k)&&(r.k!=='shop'||mine.length===1),id='ab-'+r.k;
+  let h='<div class="card abrole"><button type="button" class="abh" data-act="abrole" data-v="'+r.k+'" aria-expanded="'+open+'" aria-controls="'+id+'"><span class="abn">'+esc(L(r.n[0],r.n[1]))+'</span>'+(own?'<span class="abmine">'+L('Ваша роль','Sizning rolingiz')+'</span>':'')
+    +'<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
+  h+='<div class="abbody" id="'+id+'" role="region"'+(open?'':' hidden')+'>';
+  if(open){
+    h+='<p class="ablead">'+esc(L(r.lead[0],r.lead[1]))+'</p>';
+    r.secs.forEach(s=>{
+      h+='<section class="absec"><h3>'+esc(L(s.h[0],s.h[1]))+'</h3>';
+      if(s.img){const cap=L(s.cap[0],s.cap[1]);h+='<figure class="abfig"><button type="button" class="abimg" data-act="abshot" data-src="'+esc(aboutUrl(s.img))+'" data-alt="'+esc(cap)+'" aria-label="'+esc(L('Открыть картинку на весь экран: ','Rasmni butun ekranga ochish: ')+cap)+'"><img data-abimg="1" src="'+esc(aboutUrl(s.img))+'" alt="'+esc(cap)+'" width="'+ABOUT_SHOT.w+'" height="'+ABOUT_SHOT.h+'" loading="lazy" decoding="async"></button><figcaption>'+esc(cap)+'</figcaption></figure>'}
+      h+='<ul class="abli">'+s.li.map(x=>'<li>'+esc(L(x[0],x[1]))+'</li>').join('')+'</ul></section>';
+    });
+  }
+  return h+'</div></div>';
+}
+function renderAbout(){
+  const a=S.hub.about||{},d=ABOUT_DEF(),intro=(LANG==='uz'?a.uz:a.ru)||(LANG==='uz'?d.uz:d.ru),mine=aboutMine(),ok=aboutOpenKey();
+  let h='<div class="wrap page abt"><div class="abhead"><span class="logo big" role="img" aria-label="Sarbon"></span><div><div class="eyebrow">'+L('Оптовая площадка в Telegram','Telegramdagi ulgurji savdo maydonchasi')+'</div><h1>'+L('О нас','Biz haqimizda')+'</h1></div></div>';
+  h+='<div class="card"><p class="abintro">'+esc(intro)+'</p>'+aboutContactsHTML(a)+'</div>';
+  h+='<h2 class="abtitle">'+L('Что умеет приложение: по ролям','Ilova nimalarga qodir: rollar boʻyicha')+'</h2><div class="unit abhint">'+L('Нажмите на свою роль, чтобы прочитать подробно. Нажмите на картинку, чтобы открыть её на весь экран.','Batafsil oʻqish uchun oʻz rolingizni bosing. Rasmni butun ekranga ochish uchun uni bosing.')+'</div>';
+  ABOUT_ROLES.filter(r=>!r.only||(r.only==='owner'&&isOwner())).forEach(r=>{h+=aboutRoleHTML(r,ok===r.k,mine)});
+  view.innerHTML=h+'</div>';
+}
+function aboutToggle(k){
+  S.ab.open=aboutOpenKey()===k?'':k;
+  renderAbout();
+  const b=document.querySelector('.abh[data-v="'+k+'"]');
+  if(b&&S.ab.open===k)b.scrollIntoView({block:'start',behavior:'smooth'});
+}
+/* владелец правит вступление и контакты; пока поле не тронуто, в нём то, что сохранено (или стандартный текст) */
+function ownAboutHTML(){
+  const o=S.own,a=S.hub.about||{},d=ABOUT_DEF();
+  const v=(k,cur,def)=>o[k]===null?(cur||def||''):o[k];
+  let h='<div class="card"><h3>'+L('Вступление','Kirish matni')+'</h3><div class="unit">'+L('Показывается наверху экрана «О нас». Если поле пустое, показывается стандартный текст.','«Biz haqimizda» ekranining tepasida koʻrsatiladi. Maydon boʻsh boʻlsa, standart matn koʻrsatiladi.')+'</div><div class="form">'
+    +'<div class="full"><label class="lab" for="o-abru">'+L('По-русски','Ruscha')+' <span class="ltag">RU</span></label><textarea id="o-abru" data-own="faRu" rows="7" maxlength="1500">'+esc(v('faRu',a.ru,d.ru))+'</textarea>'+hintD('До 1500 знаков. Пустая строка делит текст на абзацы.','1500 belgigacha. Boʻsh qator matnni abzaslarga ajratadi.')+'</div>'
+    +'<div class="full"><label class="lab" for="o-abuz">'+L('По-узбекски','Oʻzbekcha')+' <span class="ltag">UZ</span></label><textarea id="o-abuz" data-own="faUz" rows="7" maxlength="1500">'+esc(v('faUz',a.uz,d.uz))+'</textarea></div></div></div>'
+    +'<div class="card"><h3>'+L('Контакты','Kontaktlar')+'</h3><div class="unit">'+L('Под текстом появятся кнопки. Пустое поле — кнопки нет.','Matn ostida tugmalar paydo boʻladi. Maydon boʻsh boʻlsa, tugma boʻlmaydi.')+'</div><div class="form">'
+    +'<div class="full"><label class="lab" for="o-abph">'+L('Телефон','Telefon')+'</label><input type="tel" id="o-abph" data-own="faPhone" inputmode="tel" maxlength="25" placeholder="+998 90 123 45 67" value="'+esc(v('faPhone',a.phone))+'">'+hintD('Кнопка «Позвонить».','«Qoʻngʻiroq qilish» tugmasi.')+'</div>'
+    +'<div class="full"><label class="lab" for="o-abtg">Telegram</label><input type="text" id="o-abtg" data-own="faTg" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="120" placeholder="sarbon_optom_bot" value="'+esc(v('faTg',a.tg))+'">'+hintD('Ник без @ или ссылка t.me. Кнопка «Написать в Telegram».','@ siz nik yoki t.me havolasi. «Telegramda yozish» tugmasi.')+'</div>'
+    +'<div class="full"><label class="lab" for="o-abig">Instagram</label><input type="text" id="o-abig" data-own="faIg" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="120" placeholder="sarbon.navoi" value="'+esc(v('faIg',a.ig))+'">'+hintD('Ник без @ или ссылка на профиль.','@ siz nik yoki profil havolasi.')+'</div></div>'
+    +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="ownabout"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button><button type="button" class="btn ghost" data-act="nav" data-v="about">'+L('Открыть «О нас»','«Biz haqimizda»ni ochish')+'</button></div></div>';
+  return h;
+}
+async function ownAbout(){
+  const o=S.own;if(o.busy)return;
+  const a=S.hub.about||{},g=(k,cur)=>o[k]===null?(cur||''):o[k];
+  const body={ru:g('faRu',a.ru),uz:g('faUz',a.uz),phone:g('faPhone',a.phone),tg:g('faTg',a.tg),ig:g('faIg',a.ig)};
+  o.busy='ab';renderOwner();
+  const r=await api('PUT','/api/hub/admin/about',body);
+  o.busy='';
+  if(r.ok&&r.data&&r.data.about){S.hub.about=r.data.about;o.faRu=o.faUz=o.faPhone=o.faTg=o.faIg=null;toast(L('Сохранено','Saqlandi'))}
+  else toast(ownErr(r.data&&r.data.error));
+  renderOwner();
+}
+
 /* ---------- views ---------- */
 function render(){
   renderNav();
@@ -4255,6 +4488,7 @@ function render(){
   else if(S.view==='review')renderReview();
   else if(S.view==='analytics')renderAnalytics();
   else if(S.view==='comm')renderComm();
+  else if(S.view==='about')renderAbout();
   else if(S.view==='courier')renderCourier();
   else renderSeller();
 }
@@ -4282,6 +4516,7 @@ function go(v){
   if(v==='base')loadBase(true);
   if(v==='analytics')loadAnalytics();
   if(v==='comm')loadComm();
+  if(v==='about')loadHub();
   if(v==='review'){S.rv.ret=null;S.rv.edit=null;loadReview()}
 }
 /* ---------- дистрибьюторы: список, переход, раздел владельца ---------- */
@@ -4356,7 +4591,8 @@ async function loadHub(){
     return false;
   }
   const d=r.data,h=S.hub;
-  const next={title:d.title||'',shops:Array.isArray(d.shops)?d.shops:[],me:d.me||null,terrs:Array.isArray(d.terrs)?d.terrs:[]};
+  const ab=d.about&&typeof d.about==='object'?d.about:{};
+  const next={title:d.title||'',about:{ru:String(ab.ru||''),uz:String(ab.uz||''),phone:String(ab.phone||''),tg:String(ab.tg||''),ig:String(ab.ig||'')},shops:Array.isArray(d.shops)?d.shops:[],me:d.me||null,terrs:Array.isArray(d.terrs)?d.terrs:[]};
   if(d.me){
     S.auth=true;S.uid=d.me.id;
     // регион: что выбрано на этом телефоне, то главнее; если здесь пусто, берём с площадки
@@ -4364,11 +4600,12 @@ async function loadHub(){
     if(sr&&!S.region){S.region=sr;saveRegionLocal()}
     else if(S.region&&sr!==S.region&&!S.regSent){S.regSent=true;api('PUT','/api/hub/region',{region:S.region})}
   }
-  const same=h.loaded&&JSON.stringify([h.title,h.shops,h.me,h.terrs])===JSON.stringify([next.title,next.shops,next.me,next.terrs]);
+  const same=h.loaded&&JSON.stringify([h.title,h.about,h.shops,h.me,h.terrs])===JSON.stringify([next.title,next.about,next.shops,next.me,next.terrs]);
   Object.assign(h,next,{loaded:true,err:false});
   if(same)return true;
   renderNav();
   if(S.view==='shops')renderShops();
+  else if(S.view==='about')renderAbout();
   return true;
 }
 /* Открывает каталог дистрибьютора: всё, что относилось к прежнему, сбрасывается. Возвращает true, если получилось. */
@@ -4739,7 +4976,10 @@ const ownErr=e=>({
   bad_pct:L('Процент — число от 0 до 50','Foiz — 0 dan 50 gacha son'),
   weak_code:L('Код должен быть не короче 12 символов','Kod kamida 12 belgidan iborat boʻlsin'),
   code_taken:L('Такой код уже занят, придумайте другой','Bu kod band, boshqasini oʻylab toping'),
-  forbidden:L('Раздел только для владельца','Boʻlim faqat egasi uchun')
+  forbidden:L('Раздел только для владельца','Boʻlim faqat egasi uchun'),
+  bad_phone:L('Телефон: от 9 цифр, например +998 90 123 45 67','Telefon: kamida 9 raqam, masalan +998 90 123 45 67'),
+  bad_tg:L('Telegram: ник из 5–32 знаков (латиница, цифры, _), например sarbon_optom_bot','Telegram: 5–32 belgili nik (lotin harflari, raqamlar, _), masalan sarbon_optom_bot'),
+  bad_ig:L('Instagram: ник до 30 знаков (латиница, цифры, точка, _)','Instagram: 30 belgigacha nik (lotin harflari, raqamlar, nuqta, _)')
 }[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
 /* перерисовывает раздел владельца, но не сбивает того, кто сейчас печатает в поле */
 const ownRender=()=>S.view==='comm'?renderComm():renderOwner();
@@ -5057,7 +5297,7 @@ const ownSecs=()=>[
   ['dists',L('Дистрибьюторы','Distribyutorlar'),[['dist',L('Список','Roʻyxat'),L('Дистрибьюторы','Distribyutorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить дистрибьютора','Distribyutor qoʻshish')]]],
   ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
-  ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['clients',L('База магазинов','Doʻkonlar bazasi'),L('База магазинов','Doʻkonlar bazasi')]]]
+  ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База магазинов','Doʻkonlar bazasi'),L('База магазинов','Doʻkonlar bazasi')]]]
 ];
 function ownSecInfo(sec){
   for(const g of ownSecs()){const x=g[2].find(y=>y[0]===sec);if(x)return {group:g[1],title:x[2]}}
@@ -5127,6 +5367,7 @@ function renderOwner(){
     if(sec==='dist')h+=ownMadeHTML()+ownListHTML();
     else if(sec==='add')h+=ownMadeHTML()+ownAddHTML();
     else if(sec==='title')h+=ownTitleHTML();
+    else if(sec==='about')h+=ownAboutHTML();
     else if(sec==='disp')h+=ownDispHTML();
     else if(sec==='people')h+=ownWhoHTML();
     else h+=ownPeopleHTML(sec);
@@ -5358,6 +5599,9 @@ document.addEventListener('click',e=>{
   else if(a==='ownadd')ownAdd();
   else if(a==='owntoggle')ownToggle(t.dataset.id);
   else if(a==='owntitle')ownTitle();
+  else if(a==='ownabout')ownAbout();
+  else if(a==='abrole')aboutToggle(t.dataset.v);
+  else if(a==='abshot')lbOpen([{src:t.dataset.src,alt:t.dataset.alt||''}],t.dataset.alt||'');
   else if(a==='ownper'){S.own.period=t.dataset.v;ownRender();loadOwnerStats()}
   else if(a==='commreload'){S.cm.err=false;renderComm();loadComm()}
   else if(a==='commpay')commSend();
@@ -5941,13 +6185,14 @@ function tick(){
   const me=S.hub.me;
   let did=validDid(want)?want:'';
   if(!did&&!vw&&S.hub.shops.length===1)did=S.hub.shops[0].id;   // дистрибьютор один: список выбирать не из чего
-  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым дистрибьютором
+  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым дистрибьютором
   if(!did&&vw==='seller'&&me&&me.sells.length===1)did=me.sells[0].id;
   if(!did&&vw==='courier'&&me&&me.delivers&&me.delivers.length===1)did=me.delivers[0].id;
   S.ready=true;
   let v='shops';
-  if(did&&await openShop(did))v=vw==='review'&&isOwner()?'review':vw==='comm'&&(isOwner()||S.admin)?'comm':vw==='seller'&&S.admin?'seller':vw==='courier'&&S.courier?'courier':vw==='mine'?'mine':vw==='debt'?'debt':'shop';
+  if(did&&await openShop(did))v=vw==='review'&&isOwner()?'review':vw==='comm'&&(isOwner()||S.admin)?'comm':vw==='seller'&&S.admin?'seller':vw==='courier'&&S.courier?'courier':vw==='mine'?'mine':vw==='debt'?'debt':vw==='about'?'about':'shop';
   else if(vw==='mine')v='mine';
+  else if(vw==='about')v='about';
   else if(vw==='debt')v='debt';
   else if(vw==='owner'&&isOwner())v='owner';
   else if(vw==='base'&&canBase())v='base';
