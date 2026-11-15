@@ -1842,6 +1842,7 @@ function orderCard(o,m){
     +(o.ship?'<div class="note">✅ '+(m==='mine'?L('Продавец разрешил отправку в Навои','Sotuvchi Navoiyga joʻnatishga ruxsat berdi'):L('Отправка в Навои разрешена','Navoiyga joʻnatishga ruxsat berilgan'))+(o.ship.m==='later'?' · '+L('оплата при получении','olganda toʻlanadi'):'')+'</div>':'')
     +(o.sent?'<div class="note">🚚 '+L('Отправлен в Навои · ','Navoiyga joʻnatildi · ')+esc(fmtWhen(o.sent.at))+'</div>':'')
     +(o.got&&o.status!=='done'?'<div class="note">📥 '+(m==='mine'?L('Вы отметили, что получили заказ','Siz buyurtmani olganingizni belgiladingiz'):L('Покупатель получил заказ. Закройте заказ и отметьте оплату.','Xaridor buyurtmani oldi. Buyurtmani yoping va toʻlovni belgilang.'))+' · '+esc(fmtWhen(o.got.at))+'</div>':'')
+    +(m==='seller'&&o.got&&o.status==='done'?'<div class="note">🤝 '+(del?L('Доставлен покупателю','Xaridorga yetkazildi'):L('Выдан покупателю','Xaridorga topshirildi'))+' · '+esc(fmtWhen(o.got.at))+'</div>':'')
     +((m==='seller'||m==='courier')?orderBaseHTML(o):'')
     +((m==='seller'||m==='courier')&&(o.loc||(o.bs&&o.bs.loc))?(l=>'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>')(o.loc||o.bs.loc):'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')

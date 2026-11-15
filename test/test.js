@@ -9314,6 +9314,7 @@ await t('склад, часть 3 на экране: «Отвёз на скла�
   assert.ok(/unshipBtn=m==='seller'&&o\.ship&&!o\.sent&&!\(o\.pay&&o\.pay\.m==='credit'\)&&NEXT_LIVE\.includes\(o\.status\)/.test(oc), '«Снять разрешение»: до отправки и не для долга');
   assert.ok(/gotBtn=m==='mine'&&o\.sent&&!o\.got&&NEXT_LIVE\.includes\(o\.status\)/.test(oc) && /Получил/.test(oc) && /Oldim/.test(oc), '«Получил» у покупателя после отправки');
   assert.ok(/o\.sent\?'<div class="note">🚚/.test(oc) && /o\.got&&o\.status!=='done'/.test(oc), 'в карточке виден этап');
+  assert.ok(/m==='seller'&&o\.got&&o\.status==='done'\?'<div class="note">🤝 '\+\(del\?L\('Доставлен покупателю','Xaridorga yetkazildi'\):L\('Выдан покупателю','Xaridorga topshirildi'\)\)\+' · '\+esc\(fmtWhen\(o\.got\.at\)\)/.test(oc), 'у продавца после «Получил» в карточке строка «Доставлен покупателю · время» (самовывоз: «Выдан покупателю»)');
   const wf = html.slice(html.indexOf('function whFiltered('), html.indexOf('function renderWh('));
   assert.ok(/data-act="whsent"/.test(wf) && /Отправлен в Навои/.test(wf) && /data-act="whunsent"/.test(wf) && /Вернуть из отправленных/.test(wf), 'кнопки кладовщика');
   const rw = html.slice(html.indexOf('function renderWh('), html.indexOf('async function whRecv('));
