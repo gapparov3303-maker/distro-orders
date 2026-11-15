@@ -7675,6 +7675,128 @@ await t('меню: значки по одному правилу: пункт —
   assert.ok(/if\(!same\)renderNav\(\);\s*if\(same\|\|S\.view!=='courier'\)return/.test(cl), 'меню перерисовывается, когда число долгов изменилось');
 });
 
+/* ---------- «О нас» ---------- */
+await t('«О нас»: вступление и контакты хранит площадка, правит только владелец, ввод приводится к одному виду', async () => {
+  await hubWorld();
+  const empty = { ru: '', uz: '', phone: '', tg: '', ig: '' };
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops'))).about, empty, 'пока ничего не заполнено: пустые поля, экран подставит стандартный текст');
+  const put = (body, init) => call('PUT', '/api/hub/admin/about', { init: init === undefined ? iS() : init, body });
+  assert.equal((await put({ ru: 'X' }, iA())).status, 403, 'обычный пользователь не может');
+  assert.ok([401, 403].includes((await put({ ru: 'X' }, null)).status), 'без входа тоже нельзя');
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops'))).about, empty, 'отказ ничего не записал');
+  assert.equal((await call('PUT', '/api/hub/admin/about', { init: iS(), body: 'строка' })).status, 400);
+  const r = await put({ ru: '  Привет  \r\n\r\n\r\n\r\nмир \n', uz: 'Salom', phone: '90 123 45 67', tg: '@sarbon_optom_bot', ig: 'https://www.instagram.com/sarbon.navoi/?igsh=1' });
+  assert.equal(r.status, 200);
+  const a = (await jsonOf(r)).about;
+  assert.equal(a.ru, 'Привет\n\nмир', 'переводы строк приведены к \\n, лишние пустые строки схлопнуты, края обрезаны');
+  assert.equal(a.uz, 'Salom');
+  assert.equal(a.phone, '+998901234567', 'девять цифр дополняются кодом страны');
+  assert.equal(a.tg, 'sarbon_optom_bot', '@ убран');
+  assert.equal(a.ig, 'sarbon.navoi', 'из ссылки на Instagram остался только ник');
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops'))).about, a, 'то же самое видит любой посетитель на главном экране');
+  // другие способы записать контакты
+  const b = (await jsonOf(await put({ ru: '', uz: '', phone: '+998 (91) 555-33-22', tg: 'https://t.me/Sarbon_Navoi?start=1', ig: '@sarbon_navoi' }))).about;
+  assert.equal(b.phone, '+998915553322');
+  assert.equal(b.tg, 'Sarbon_Navoi', 'из ссылки Telegram остался ник');
+  assert.equal(b.ig, 'sarbon_navoi');
+  // ошибки: ничего не сохраняется, ответ называет поле
+  for (const [body, err] of [[{ phone: 'abc' }, 'bad_phone'], [{ phone: '12345' }, 'bad_phone'], [{ tg: 'ab' }, 'bad_tg'], [{ tg: 'with space' }, 'bad_tg'], [{ ig: 'bad!' }, 'bad_ig']]) {
+    const e = await put(body);
+    assert.equal(e.status, 400, JSON.stringify(body));
+    assert.equal((await jsonOf(e)).error, err, JSON.stringify(body));
+  }
+  assert.deepEqual((await jsonOf(await call('GET', '/api/shops'))).about, b, 'после ошибок сохранено прежнее');
+  // длинный текст обрезается, а не отвергается
+  const long = (await jsonOf(await put({ ru: 'а'.repeat(3000), uz: 'b'.repeat(3000) }))).about;
+  assert.ok(long.ru.length <= 1500 && long.uz.length <= 1500 && long.ru.length > 1000, 'текст не длиннее 1500 знаков: ' + long.ru.length);
+  // очистка возвращает стандартный вид
+  assert.deepEqual((await jsonOf(await put({}))).about, empty);
+});
+
+await t('«О нас»: скриншоты лежат в worker и отдаются с долгим кэшем только по точному имени', async () => {
+  const dir = path.join(root, 'src/about');
+  const names = fs.readdirSync(dir).filter(f => f.endsWith('.webp'));
+  assert.ok(names.length >= 40, 'скриншотов в src/about: ' + names.length);
+  const r = await call('GET', '/about/' + names[0]);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/webp');
+  assert.ok(/immutable/.test(r.headers.get('cache-control')) && /max-age=31536000/.test(r.headers.get('cache-control')), 'кэш на год: адрес с отпечатком ?v= меняется при новых картинках');
+  const got = new Uint8Array(await r.arrayBuffer()), disk = new Uint8Array(fs.readFileSync(path.join(dir, names[0])));
+  assert.equal(got.length, disk.length, 'worker отдаёт тот же файл, что лежит в репозитории');
+  assert.ok(got.every((x, i) => x === disk[i]));
+  assert.equal(String.fromCharCode(...got.slice(0, 4)) + String.fromCharCode(...got.slice(8, 12)), 'RIFFWEBP', 'это настоящий WebP');
+  for (const bad of ['/about/nope-ru.webp', '/about/', '/about/..%2Fworker.js', '/about/constructor', '/about/__proto__', '/about/' + names[0] + '.png']) {
+    assert.equal((await call('GET', bad)).status, 404, bad);
+  }
+  const page = await (await call('GET', '/')).text();
+  const v = /const ABOUT_V='([^']*)'/.exec(page);
+  assert.ok(v && /^[0-9a-f]{8}$/.test(v[1]), 'в страницу вписан отпечаток набора картинок: ' + (v && v[1]));
+  assert.ok(!page.includes('/*ABOUTV*/'), 'метка сборки заменена');
+});
+
+await t('«О нас»: пункт меню последний и виден всем, роли раскрываются по одной, «Владелец» только владельцу', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  const mg = fn('menuGroups');
+  assert.ok(/g\.push\(\['',\[\['about',L\('О нас','Biz haqimizda'\)\]\]\]\);\s*\/\/[^\n]*\n\s*return g;/.test(mg), 'пункт «О нас» добавляется последним, без заголовка группы, для всех ролей');
+  assert.ok(mg.indexOf("g.push(['',[['about'") > mg.lastIndexOf('if(isOwner())g.push('), '«О нас» стоит после группы владельца и остальных групп');
+  assert.ok(/\.mgsep/.test(html), 'перед ним тонкая черта, не заголовок группы');
+  assert.ok(/else if\(S\.view==='about'\)renderAbout\(\)/.test(fn('render')) && /if\(v==='about'\)loadHub\(\)/.test(fn('go')), 'экран открывается и подгружает данные площадки');
+  assert.ok(/v==='about'/.test(html.slice(html.indexOf("QS.get('v')"), html.indexOf("QS.get('v')") + 800)) || /'about'/.test(html.slice(html.indexOf("vw=QS.get('v')"))), 'открывается по ссылке ?v=about');
+  // тексты ролей
+  const i0 = html.indexOf('const ABOUT_ROLES=['), i1 = html.indexOf('\n];', i0);
+  const ROLES = new Function('return ' + html.slice(i0 + 'const ABOUT_ROLES='.length, i1 + 2))();
+  assert.deepEqual(ROLES.map(x => x.k), ['shop', 'seller', 'courier', 'agent', 'owner'], 'пять блоков в этом порядке');
+  assert.equal(ROLES.filter(x => x.only === 'owner').map(x => x.k).join(), 'owner', 'только «Владелец» скрыт от остальных');
+  const pair = x => Array.isArray(x) && x.length === 2 && x.every(y => typeof y === 'string' && y.trim().length > 1);
+  let imgs = 0, text = 0;
+  for (const r of ROLES) {
+    assert.ok(pair(r.n) && pair(r.lead), r.k + ': название и вступление на двух языках');
+    assert.ok(r.secs.length >= 2, r.k + ': разделов ' + r.secs.length);
+    for (const sc of r.secs) {
+      assert.ok(pair(sc.h), r.k + ': заголовок раздела на двух языках');
+      assert.ok(sc.li.length >= 2 && sc.li.every(pair), r.k + '/' + sc.h[0] + ': шаги на двух языках');
+      if (!sc.img) { text++; continue; }   // раздел без снимка: только текст
+      assert.ok(pair(sc.cap), r.k + '/' + sc.img + ': подпись под снимком на двух языках');
+      assert.ok(/^[a-z0-9-]+$/.test(sc.img), 'имя скриншота ' + sc.img);
+      imgs++;
+      for (const lang of ['ru', 'uz']) assert.ok(fs.existsSync(path.join(root, 'src/about', sc.img + '-' + lang + '.webp')), 'нет файла ' + sc.img + '-' + lang + '.webp (запустите tools/shots.cjs)');
+    }
+  }
+  assert.equal(imgs, 20, 'двадцать экранов со снимками');
+  assert.equal(text, 2, 'два текстовых раздела: «Отчёты, база и настройки» у продавца и «Деньги, аналитика и площадка» у владельца');
+  // комиссия в блоке продавца описана без процента
+  assert.ok(!/\d\s*%/.test(JSON.stringify(ROLES.find(x => x.k === 'seller'))), 'в блоке продавца нет числа процентов');
+  // каждый снимок используется: лишних файлов нет
+  const used = new Set(ROLES.flatMap(r => r.secs.flatMap(sc => [sc.img + '-ru.webp', sc.img + '-uz.webp'])));
+  const extra = fs.readdirSync(path.join(root, 'src/about')).filter(f => f.endsWith('.webp') && !used.has(f));
+  assert.deepEqual(extra, [], 'лишние файлы в src/about: ' + extra.join(', '));
+  // стили вставлены до незакрытого блока @media широкого экрана
+  assert.ok(html.indexOf('.abrole{') > 0 && html.indexOf('.abrole{') < html.indexOf('/* широкий экран'), 'стили «О нас» стоят до блока для широкого экрана');
+  // просмотр на весь экран общий с фото товаров
+  assert.ok(/function lbOpen\(/.test(html) && /data-act==='abshot'|a==='abshot'/.test(html), 'нажатие на скриншот открывает просмотр на весь экран');
+});
+
+await t('«О нас»: снимки одного размера, как ждёт экран, и вместе укладываются в предел Cloudflare', () => {
+  const dir = path.join(root, 'src/about');
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const m = /const ABOUT_SHOT=\{w:(\d+),h:(\d+)\}/.exec(html);
+  assert.ok(m, 'в экране задан размер снимка');
+  let total = 0;
+  for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.webp'))) {
+    const b = fs.readFileSync(path.join(dir, f));
+    total += b.length;
+    assert.ok(b.length < 100 * 1024, f + ': не тяжелее 100 КБ (' + Math.round(b.length / 1024) + ' КБ)');
+    // размер из заголовка WebP (с потерями, «VP8 »)
+    assert.equal(b.slice(12, 16).toString(), 'VP8 ', f + ': WebP с потерями');
+    const w = b.readUInt16LE(26) & 0x3fff, h = b.readUInt16LE(28) & 0x3fff;
+    assert.equal(w + 'x' + h, m[1] + 'x' + m[2], f + ': размер ' + w + 'x' + h + ', экран ждёт ' + m[1] + 'x' + m[2]);
+  }
+  assert.ok(total < 2.5 * 1024 * 1024, 'все снимки вместе ' + Math.round(total / 1024) + ' КБ: worker с ними не должен выйти за 3 МБ в сжатом виде');
+  const worker = fs.readFileSync(path.join(root, 'dist/worker.js'));
+  assert.ok(zlib.gzipSync(worker).length < 2.6 * 1024 * 1024, 'worker в сжатом виде: ' + Math.round(zlib.gzipSync(worker).length / 1024) + ' КБ');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
