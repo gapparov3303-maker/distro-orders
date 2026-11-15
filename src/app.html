@@ -487,14 +487,11 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .pf .avail{display:flex;align-items:flex-end;padding-bottom:10px}
 .chk{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
 .pact{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.crow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;padding:10px 0 6px}
-.crow+.crow{border-top:1px solid var(--line)}
-.crow .x{appearance:none;border:0;background:transparent;font-size:22px;line-height:1;color:var(--ink-2);cursor:pointer;width:36px;height:36px;border-radius:10px;margin-bottom:7px}
-@media (max-width:480px){
-  .crow{grid-template-columns:minmax(0,1fr) auto}
-  .crow .x{grid-column:2;grid-row:1/3;align-self:center;margin-bottom:0}
-  .crow>div{grid-column:1}
-}
+.crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;padding:8px 6px 8px 10px;margin:0 0 10px;background:var(--bg);border:1.5px solid var(--edge);border-radius:14px}
+.crow .cf{display:flex;align-items:center;gap:8px;min-width:0}
+.crow .cf .ltag{margin:0;flex:0 0 auto;width:28px;text-align:center;padding:1px 0}
+.crow .cf input{padding:7px 10px;font-size:15px;background:var(--surface);border-color:var(--line);border-radius:9px}
+.crow .x{grid-column:2;grid-row:1/3;appearance:none;border:0;background:transparent;font-size:22px;line-height:1;color:var(--ink-2);cursor:pointer;width:34px;height:34px;border-radius:10px;align-self:center}
 @media (max-width:560px){
   .pfbody{grid-template-columns:minmax(0,1fr)}
   .pslots{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;max-width:288px}
@@ -3174,7 +3171,7 @@ function prodHTML(){
   h+='<div class="card"><h3>'+L('Категории','Kategoriyalar')+'</h3><div class="unit">'+L('Каждая категория называется на двух языках: клиент видит название на языке своего приложения. Если узбекское пустое, покажется русское. Удалить можно только пустую категорию.','Har bir kategoriya ikki tilda nomlanadi: mijoz oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
   P.cats.forEach(c=>{
     const id=esc(c.id);
-    h+='<div class="crow"><div><label class="lab" for="cn-'+id+'">'+L('Название по-русски','Ruscha nomi')+'<span class="ltag">RU</span></label><input type="text" id="cn-'+id+'" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" placeholder="'+esc(L('Например: Консервы','Masalan: Консервы'))+'"></div><div><label class="lab" for="cu-'+id+'">'+L('Название по-узбекски','Oʻzbekcha nomi')+'<span class="ltag uz">UZ</span></label><input type="text" id="cu-'+id+'" data-cid="'+id+'" data-cp="uz" value="'+esc(c.uz||'')+'" maxlength="40" placeholder="'+esc(L('Например: Konservalar','Masalan: Konservalar'))+'"></div><button type="button" class="x" data-act="cdel" data-id="'+id+'" aria-label="'+esc(L('Удалить категорию','Kategoriyani oʻchirish'))+'">×</button></div>';
+    h+='<div class="crow"><div class="cf"><span class="ltag">RU</span><input type="text" id="cn-'+id+'" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" aria-label="'+esc(L('Название по-русски','Ruscha nomi'))+'" placeholder="'+esc(L('Например: Консервы','Masalan: Консервы'))+'"></div><div class="cf"><span class="ltag uz">UZ</span><input type="text" id="cu-'+id+'" data-cid="'+id+'" data-cp="uz" value="'+esc(c.uz||'')+'" maxlength="40" aria-label="'+esc(L('Название по-узбекски','Oʻzbekcha nomi'))+'" placeholder="'+esc(L('Например: Konservalar','Masalan: Konservalar'))+'"></div><button type="button" class="x" data-act="cdel" data-id="'+id+'" aria-label="'+esc(L('Удалить категорию','Kategoriyani oʻchirish'))+'">×</button></div>';
   });
   h+='<div style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="cadd">'+L('+ Добавить категорию','+ Kategoriya qoʻshish')+'</button></div></div>';
   h+='<div class="card"><h3>'+L('Товары','Mahsulotlar')+' · '+P.items.length+'</h3>';

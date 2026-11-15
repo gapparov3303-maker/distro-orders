@@ -6868,9 +6868,11 @@ await t('форма товара и категорий: поля подписа�
   // новые товар и категория создаются с обоими названиями, независимо от языка интерфейса
   assert.ok(/name:'Новый товар',uz:'Yangi mahsulot'/.test(html) && /name:'Новая категория',uz:'Yangi kategoriya'/.test(html), 'названия по умолчанию на обоих языках');
   assert.ok(!/name:L\('Новый товар'/.test(html) && !/name:L\('Новая категория'/.test(html), 'русское название не зависит от языка интерфейса');
-  // строка категории: у каждого поля подпись с меткой языка
-  const crow = html.slice(html.indexOf('class="crow"><div><label'), html.indexOf('class="crow"><div><label') + 900);
-  assert.ok(/data-cp="name"/.test(crow) && /data-cp="uz"/.test(crow) && (crow.match(/class="ltag/g) || []).length === 2, 'в строке категории две подписанные колонки RU и UZ');
+  // строка категории: отдельная рамка, у каждого поля значок языка вместо длинной подписи, подпись для чтения с экрана остаётся
+  const crow = html.slice(html.indexOf('class="crow"><div class="cf">'), html.indexOf('class="crow"><div class="cf">') + 1100);
+  assert.ok(/data-cp="name"/.test(crow) && /data-cp="uz"/.test(crow) && (crow.match(/class="ltag/g) || []).length === 2, 'в строке категории два поля с значками RU и UZ');
+  assert.ok(!/<label/.test(crow) && /aria-label="'\+esc\(L\('Название по-русски','Ruscha nomi'\)\)/.test(crow) && /aria-label="'\+esc\(L\('Название по-узбекски','Oʻzbekcha nomi'\)\)/.test(crow), 'длинных подписей нет, но у полей есть aria-label на двух языках');
+  assert.ok(/\.crow\{[^}]*border:1\.5px solid var\(--edge\);border-radius:14px/.test(html) && /\.crow\{[^}]*margin:0 0 10px/.test(html), 'каждая категория в своей рамке с отступом');
 });
 
 /* ---------- подсказки под полями во всех формах ---------- */
