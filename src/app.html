@@ -4494,7 +4494,7 @@ const ABOUT_ROLES=[
  {img:'ow-dist',h:['Продавцы','Sotuvchilar'],cap:['Продавцы площадки','Platforma sotuvchilari'],li:[
   ['☰ → «Владелец» → «Продавцы» → «Добавить»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его продавцу, он напишет боту /admin и код.','☰ → «Egasi» → «Sotuvchilar» → «Qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni sotuvchiga yuboring, u botga /admin va kodni yozadi.'],
   ['Подраздел «Категории»: выберите категорию каждому продавцу (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары), её видят магазины на первом экране. Продавец может выбрать её и сам; побеждает последнее изменение. Пока категории нет, продавец в «Дистрибьюторах».','«Kategoriyalar» boʻlimi: har bir sotuvchiga kategoriya tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar), doʻkonlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha sotuvchi «Distribyutorlar» ichida.'],
-  ['Подраздел «Базары»: добавьте базары (название по-русски и по-узбекски, хватит одного), переименуйте или удалите. Продавец категории «Базары» сам выбирает свой базар, а вы можете перевести его в «Категориях». Если удалить базар, его продавцы остаются в «Базарах» без базара.','«Bozorlar» boʻlimi: bozorlarni qoʻshing (nomi ruscha va oʻzbekcha, bittasi yetarli), nomini oʻzgartiring yoki oʻchiring. «Bozorlar» kategoriyasidagi sotuvchi oʻz bozorini oʻzi tanlaydi, siz esa uni «Kategoriyalar»da boshqasiga oʻtkaza olasiz. Bozor oʻchirilsa, uning sotuvchilari «Bozorlar»da bozorsiz qoladi.'],
+  ['Подраздел «Базары»: добавьте базары (название по-русски и по-узбекски, хватит одного), переименуйте или удалите. Продавец категории «Базары» сам выбирает свой базар, а вы можете перевести его в «Категориях». Магазины видят все ваши базары, и пустые тоже. Если удалить базар, его продавцы остаются в «Базарах» без базара.','«Bozorlar» boʻlimi: bozorlarni qoʻshing (nomi ruscha va oʻzbekcha, bittasi yetarli), nomini oʻzgartiring yoki oʻchiring. «Bozorlar» kategoriyasidagi sotuvchi oʻz bozorini oʻzi tanlaydi, siz esa uni «Kategoriyalar»da boshqasiga oʻtkaza olasiz. Doʻkonlar barcha bozorlaringizni, boʻshlarini ham koʻradi. Bozor oʻchirilsa, uning sotuvchilari «Bozorlar»da bozorsiz qoladi.'],
   ['Есть «Новый код» (вошедшие по прежнему коду теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого продавца, вашу компанию, удалить нельзя.','«Yangi kod» (eski kod bilan kirganlar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi sotuvchini, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
  {img:'ow-review',h:['Проверка товаров','Tovarlarni tekshirish'],cap:['Проверка товаров','Tovarlarni tekshirish'],li:[
   ['Пункт «Проверка» собирает все новые товары продавцов в одном списке с названием продавца. Число на значке — сколько товаров ждёт решения.','«Tekshiruv» boʻlimi sotuvchilarning barcha yangi tovarlarini bitta roʻyxatga sotuvchi nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
@@ -4690,13 +4690,13 @@ function catsHTML(){
       +'<span class="ct"><b>'+esc(shopCatName(k))+'</b><span>'+(n?esc(L(n+' '+plDistr(n),n+' ta sotuvchi')):esc(L('Пока пусто','Hozircha boʻsh')))+'</span></span>'+(n?'<span class="cn">'+n+'</span>':'')+chev+'</button>';
   }).join('')+'</div>';
 }
-/* Базары: внутри категории «Базары» продавцы разложены по базарам, список ведёт владелец. Без базара (или с удалённым) — группа «Без базара».
-   Если в базарах пока никого нет, группы не нужны: сразу список продавцов. */
+/* Базары: внутри категории «Базары» продавцы разложены по базарам, список ведёт владелец. Магазин видит все базары владельца, и пустые тоже (с пометкой «Пока пусто»).
+   Без базара (или с удалённым) — группа «Без базара», но только когда в ней есть продавцы. Если владелец не добавил ни одного базара, групп нет: сразу список продавцов. */
 const bzList=()=>S.hub.bazaars||[];
 const bzOf=r=>{const b=cleanBz(r&&r.bz);return b&&bzList().some(x=>x.id===b)?b:''};
 const bzSel=()=>{const v=S.shopsBz;return v==='none'||bzList().some(x=>x.id===v)?v:''};
 function bzGroups(){
-  const all=catShops('bazaar'),g=bzList().map(b=>({id:b.id,name:bzName(b),n:all.filter(r=>bzOf(r)===b.id).length})).filter(x=>x.n);
+  const all=catShops('bazaar'),g=bzList().map(b=>({id:b.id,name:bzName(b),n:all.filter(r=>bzOf(r)===b.id).length}));
   if(!g.length)return null;
   const none=all.filter(r=>!bzOf(r)).length;
   if(none)g.push({id:'none',name:L('Без базара','Bozor koʻrsatilmagan'),n:none});
@@ -4704,18 +4704,18 @@ function bzGroups(){
 }
 function catListHTML(k){
   const list=catShops(k);
-  if(!list.length)return '<div class="empty"><b>'+L('Пока здесь никого нет','Hozircha bu yerda hech kim yoʻq')+'</b>'+L('Загляните позже: мы добавляем новых.','Keyinroq qaytib keling: yangilarini qoʻshyapmiz.')+'</div>';
+  const none=()=>'<div class="empty"><b>'+L('Пока здесь никого нет','Hozircha bu yerda hech kim yoʻq')+'</b>'+L('Загляните позже: мы добавляем новых.','Keyinroq qaytib keling: yangilarini qoʻshyapmiz.')+'</div>';
   if(k==='bazaar'){
     const b=bzSel();
-    if(b)return shopsListHTML(list.filter(r=>bzOf(r)===(b==='none'?'':b)));
+    if(b){const l=list.filter(r=>bzOf(r)===(b==='none'?'':b));return l.length?shopsListHTML(l):none()}
     const g=bzGroups();
     if(g){
       const chev='<svg class="chev" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5l4.5 4.5L6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      return '<p class="lead">'+L('Выберите базар.','Bozorni tanlang.')+'</p><div class="catgrid">'+g.map(x=>'<button type="button" class="cat" data-act="openbz" data-b="'+esc(x.id)+'"><span class="cic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+CAT_ICONS.bazaar+'</svg></span>'
-        +'<span class="ct"><b>'+esc(x.name)+'</b><span>'+esc(L(x.n+' '+plDistr(x.n),x.n+' ta sotuvchi'))+'</span></span><span class="cn">'+x.n+'</span>'+chev+'</button>').join('')+'</div>';
+      return '<p class="lead">'+L('Выберите базар.','Bozorni tanlang.')+'</p><div class="catgrid">'+g.map(x=>'<button type="button" class="cat'+(x.n?'':' em')+'" data-act="openbz" data-b="'+esc(x.id)+'"><span class="cic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+CAT_ICONS.bazaar+'</svg></span>'
+        +'<span class="ct"><b>'+esc(x.name)+'</b><span>'+(x.n?esc(L(x.n+' '+plDistr(x.n),x.n+' ta sotuvchi')):esc(L('Пока пусто','Hozircha boʻsh')))+'</span></span>'+(x.n?'<span class="cn">'+x.n+'</span>':'')+chev+'</button>').join('')+'</div>';
     }
   }
-  return shopsListHTML(list);
+  return list.length?shopsListHTML(list):none();
 }
 function renderShops(){
   const h=S.hub,me=h.me,ck=SHOP_CATS.includes(S.shopsCat)?S.shopsCat:'';
