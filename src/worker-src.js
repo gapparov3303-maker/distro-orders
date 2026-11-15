@@ -7,7 +7,7 @@
 */
 
 const TG_API = 'https://api.telegram.org/bot';
-const MAX_NEW_PER_USER = 5;   // сколько неподтверждённых заказов может висеть у одного клиента
+const MAX_NEW_PER_USER = 5;   // сколько неподтверждённых заказов может висеть у одного покупателя
 const MAX_ACTIVE = 300;       // защита от переполнения: столько активных заказов на весь склад
 const HIST_CAP = 150;         // сколько завершённых заказов показывать в панели
 const PROD_PHOTO_MAX = 300000; // фото товара: до 300 КБ (после сжатия на телефоне обычно 50-150 КБ)
@@ -18,9 +18,9 @@ const MAX_QTY = 500;          // штук одного товара в зака�
 const PROD_BODY_MAX = 400000; // размер каталога, который принимает сервер (символов)
 const MAX_STOCK = 1000000;    // предел для остатка и порога
 const JR_CAP = 200;           // сколько последних движений остатков хранить в журнале
-const MAX_CLIENTS = 3000;     // клиентов в базе
+const MAX_CLIENTS = 3000;     // покупателей в базе
 const MAX_ADDRS = 5;
-const MAX_FAV = 100;          // товаров в избранном у одного клиента          // адресов доставки у одного клиента
+const MAX_FAV = 100;          // товаров в избранном у одного покупателя          // адресов доставки у одного покупателя
 const TEXT_MAX = 4000;        // сообщение Telegram до 4096 знаков, берём с запасом
 const INIT_MAX_AGE = 2 * 24 * 3600; // initData старше двух суток не принимаем
 const MAIN = 'main';          // первый продавец: его данные лежали в хранилище ещё до появления площадки
@@ -496,7 +496,7 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
     const st = stOf(o.status, o.mode);
     const tail = '\n\n' + (cLines ? cLines + '\n' : '') + (dLine ? dLine + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
       + '\n' + L('Статус: ', 'Holat: ') + L(st.name, st.uz) + (o.crn ? '\n' + L('🚚 Доставщик: ', '🚚 Yetkazuvchi: ') + o.crn : o.mode === 'delivery' && o.status === 'ready' && hasCr ? '\n' + L('🚚 Ждёт доставщика', '🚚 Yetkazuvchi kutilmoqda') : '') + (o.pay ? '\n' + payLine(o.pay) : '');
-    const ask = confirm === 'pay' ? '\n\n' + L('Как клиент оплатил заказ? К оплате: ', 'Mijoz buyurtma uchun qanday toʻladi? Toʻlanadi: ') + money(o.total)
+    const ask = confirm === 'pay' ? '\n\n' + L('Как покупатель оплатил заказ? К оплате: ', 'Xaridor buyurtma uchun qanday toʻladi? Toʻlanadi: ') + money(o.total)
       : confirm === 'days' ? '\n\n' + L('На сколько дней записать долг?', 'Qarzni necha kunga yozamiz?') : '';
     return STATUS_ICON[o.status] + ' ' + orderText(o, shop, k) + tail + ask;
   });
@@ -522,7 +522,7 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
     if (o.status === 'new') rows.push([btn(btn2('✅ Ishga olish', '✅ Принять в работу'), 's:' + px + o.id + ':accepted')]);
     if (o.status === 'accepted') rows.push([btn(del ? btn2('📦 Joʻnatishga tayyor', '📦 Готов к отправке') : btn2('📦 Topshirishga tayyor', '📦 Готов к выдаче'), 's:' + px + o.id + ':ready')]);
     // доставку закрывает доставщик; продавцу кнопка нужна, только если доставщиков нет (или самовывоз)
-    if (o.status === 'ready' && !(del && hasCr)) rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен клиенту') : btn2('🤝 Topshirildi', '🤝 Выдан клиенту'), 's:' + px + o.id + ':done')]);
+    if (o.status === 'ready' && !(del && hasCr)) rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен покупателю') : btn2('🤝 Topshirildi', '🤝 Выдан покупателю'), 's:' + px + o.id + ':done')]);
     if (NEXT[o.status]) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
     const ml = orderLoc(o);
     if (ml) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', ml) }, { text: '📍 Google Maps', url: mapUrl('g', ml) }]);
@@ -727,10 +727,10 @@ const payX = k => PAY_X[k] ? L(PAY_X[k][0], PAY_X[k][1]) : '';
 function ordersSheets(orders, lang) {
   setLang(XL_LANG(lang));
   const list = orders.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const rows = [[L('№ заказа', 'Buyurtma №'), L('Создан', 'Yaratilgan'), L('Статус', 'Holat'), L('Получение', 'Olish usuli'), L('Когда', 'Qachon'), L('Клиент', 'Mijoz'), L('Телефон', 'Telefon'),
+  const rows = [[L('№ заказа', 'Buyurtma №'), L('Создан', 'Yaratilgan'), L('Статус', 'Holat'), L('Получение', 'Olish usuli'), L('Когда', 'Qachon'), L('Покупатель', 'Xaridor'), L('Телефон', 'Telefon'),
     L('Организация', 'Tashkilot'), 'Telegram', L('Адрес доставки', 'Yetkazib berish manzili'), L('Комментарий', 'Izoh'), L('Товары, сум', 'Mahsulotlar, soʻm'), L('Скидка, сум', 'Chegirma, soʻm'),
     L('Доставка, сум', 'Yetkazib berish, soʻm'), L('Итого, сум', 'Jami, soʻm'), L('Позиций', 'Pozitsiyalar'), L('Оплата', 'Toʻlov'), L('Доставщик', 'Yetkazuvchi')]];
-  const items = [[L('№ заказа', 'Buyurtma №'), L('Статус', 'Holat'), L('Когда', 'Qachon'), L('Клиент', 'Mijoz'), L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'),
+  const items = [[L('№ заказа', 'Buyurtma №'), L('Статус', 'Holat'), L('Когда', 'Qachon'), L('Покупатель', 'Xaridor'), L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'),
     L('Количество', 'Soni'), L('В упаковках', 'Qadoqlarda'), L('Цена, сум', 'Narx, soʻm'), L('Сумма, сум', 'Summa, soʻm')]];
   list.forEach(o => {
     const fee = Number(o.fee) || 0, total = Number(o.total) || 0, disc = Number(o.disc) || 0, so = stOf(o.status, o.mode), st = L(so.name, so.uz), when = String(o.pickupAt || '').replace('T', ' ');
@@ -747,27 +747,27 @@ function clientsSheets(clients, lang, types) {
   setLang(XL_LANG(lang));
   const list = clients.slice().sort((a, b) => String(b.last || b.since).localeCompare(String(a.last || a.since)));
   const rows = [[L('Имя', 'Ism'), L('Телефон', 'Telefon'), L('Организация', 'Tashkilot'), L('Тип', 'Turi'), L('Группа', 'Guruh'), L('Адреса доставки', 'Yetkazib berish manzillari'), L('Заметка', 'Eslatma'), L('Заказов', 'Buyurtmalar'),
-    L('Завершено', 'Yakunlangan'), L('Сумма завершённых, сум', 'Yakunlanganlar summasi, soʻm'), L('Клиент с', 'Mijoz boʻlgan sana'), L('Последний заказ', 'Oxirgi buyurtma'), 'Telegram', L('Язык', 'Til'), L('Заблокирован', 'Bloklangan')]];
+    L('Завершено', 'Yakunlangan'), L('Сумма завершённых, сум', 'Yakunlanganlar summasi, soʻm'), L('Покупатель с', 'Xaridor boʻlgan sana'), L('Последний заказ', 'Oxirgi buyurtma'), 'Telegram', L('Язык', 'Til'), L('Заблокирован', 'Bloklangan')]];
   list.forEach(c => rows.push([c.name || '', c.phone || '', c.org || '', baseTypeName((types || {})[c.uid]), c.grp || '', (c.addrs || []).join(' | '), c.note || '', Number(c.n) || 0, Number(c.ds) || 0, Number(c.sum) || 0,
     shopTime(c.since), shopTime(c.last), c.tg && c.tg.username ? '@' + c.tg.username : '', c.lang === 'uz' ? L('узбекский', 'oʻzbekcha') : c.lang === 'ru' ? L('русский', 'ruscha') : '', c.blocked ? L('да', 'ha') : '']));
-  return [{ name: L('Клиенты', 'Mijozlar'), w: [22, 17, 22, 14, 14, 40, 34, 9, 10, 18, 17, 17, 16, 11, 13], money: [9], rows }];
+  return [{ name: L('Покупатели', 'Xaridorlar'), w: [22, 17, 22, 14, 14, 40, 34, 9, 10, 18, 17, 17, 16, 11, 13], money: [9], rows }];
 }
 
 /* Долги в Excel. list — строки debtRow, logs — их журналы (в том же порядке). Лист «Долги» по магазинам, лист «История» по всем записям журнала. */
 const CF_X = { ok: ['подтвердил', 'tasdiqladi'], wait: ['ждём ответа', 'javob kutilmoqda'], no: ['ответил «Не так»', '«Notoʻgʻri» deb javob berdi'], na: ['не получил сообщение', 'xabarni olmadi'] };
 function debtsSheets(list, logs, lang) {
   setLang(XL_LANG(lang));
-  const head = [[L('Магазин', 'Doʻkon'), L('Организация', 'Tashkilot'), L('Телефон', 'Telefon'), L('Адрес', 'Manzil'), L('Долг, сум', 'Qarz, soʻm'), L('Ближайший срок', 'Eng yaqin muddat'), L('Просрочено, сум', 'Muddati oʻtgan, soʻm'),
-    L('Дней просрочки', 'Kechikish kunlari'), L('Спорных записей', 'Bahsli yozuvlar'), L('Ждут ответа магазина', 'Doʻkon javobini kutayotgan'), L('Последняя оплата', 'Oxirgi toʻlov'), L('Статус', 'Holat')]];
-  const hist = [[L('Магазин', 'Doʻkon'), L('Телефон', 'Telefon'), L('Дата', 'Sana'), L('Запись', 'Yozuv'), L('№ записи', 'Yozuv №'), L('№ заказа', 'Buyurtma №'), L('Сумма, сум', 'Summa, soʻm'), L('Способ', 'Usul'),
-    L('Срок оплаты', 'Toʻlov muddati'), L('Ответ магазина', 'Doʻkon javobi'), L('Записал', 'Kim yozgan'), L('Комментарий', 'Izoh'), L('Отменена', 'Bekor qilingan')]];
+  const head = [[L('Покупатель', 'Xaridor'), L('Организация', 'Tashkilot'), L('Телефон', 'Telefon'), L('Адрес', 'Manzil'), L('Долг, сум', 'Qarz, soʻm'), L('Ближайший срок', 'Eng yaqin muddat'), L('Просрочено, сум', 'Muddati oʻtgan, soʻm'),
+    L('Дней просрочки', 'Kechikish kunlari'), L('Спорных записей', 'Bahsli yozuvlar'), L('Ждут ответа покупателя', 'Xaridor javobini kutayotgan'), L('Последняя оплата', 'Oxirgi toʻlov'), L('Статус', 'Holat')]];
+  const hist = [[L('Покупатель', 'Xaridor'), L('Телефон', 'Telefon'), L('Дата', 'Sana'), L('Запись', 'Yozuv'), L('№ записи', 'Yozuv №'), L('№ заказа', 'Buyurtma №'), L('Сумма, сум', 'Summa, soʻm'), L('Способ', 'Usul'),
+    L('Срок оплаты', 'Toʻlov muddati'), L('Ответ покупателя', 'Xaridor javobi'), L('Записал', 'Kim yozgan'), L('Комментарий', 'Izoh'), L('Отменена', 'Bekor qilingan')]];
   list.forEach((x, i) => {
     const lg = logs[i] || { rows: [] }, rows = Array.isArray(lg.rows) ? lg.rows : [];
     const voided = new Set(rows.filter(r => r.k === 'rv').map(r => r.of));
     const nm = x.name || ('ID ' + x.uid);
     const pays = rows.filter(r => r.k === 'pay' && !voided.has(r.n));
     const last = pays.length ? pays[pays.length - 1].t : '';
-    const st = x.bal < 0 ? L('Аванс (магазин переплатил)', 'Avans (doʻkon ortiqcha toʻlagan)') : x.days > 0 ? L('Просрочен', 'Muddati oʻtgan') : x.bal > 0 ? L('Должен в срок', 'Muddatida qarzdor') : L('Долга нет, есть записи без ответа', 'Qarz yoʻq, javobsiz yozuvlar bor');
+    const st = x.bal < 0 ? L('Аванс (покупатель переплатил)', 'Avans (xaridor ortiqcha toʻlagan)') : x.days > 0 ? L('Просрочен', 'Muddati oʻtgan') : x.bal > 0 ? L('Должен в срок', 'Muddatida qarzdor') : L('Долга нет, есть записи без ответа', 'Qarz yoʻq, javobsiz yozuvlar bor');
     head.push([nm, x.org || '', x.phone || '', x.addr || '', x.bal, dmy(x.due), x.over || 0, x.days || 0, x.fl || 0, x.wt || 0, last ? shopTime(last).slice(0, 10) : '', st + (x.fl > 0 ? L(' · спорные записи', ' · bahsli yozuvlar') : '')]);
     if (lg.base) hist.push([nm, x.phone || '', '', L('Ранние записи свёрнуты', 'Dastlabki yozuvlar jamlangan'), '', '', lg.base.d, '', dmy(lg.base.due), '', '', L('Остаток по старым записям, подробностей нет', 'Eski yozuvlar boʻyicha qoldiq, tafsilotlar yoʻq'), '']);
     rows.forEach(r => {
@@ -1315,14 +1315,14 @@ function morningText(shopName, late) {
   return biL(() => {
     const over = late.reduce((t, x) => t + (Number(x.over) || 0), 0);
     const lines = late.slice(0, MORNING_ROWS).map((x, i) => (i + 1) + '. ' + cleanStr(x.name || x.org || ('ID ' + x.uid), 40) + ': ' + money(x.over) + ', ' + x.days + L(' дн.', ' kun'));
-    return '⏰ ' + cleanStr(shopName || '', 60) + L(': просрочка на сегодня\nМагазинов: ', ': bugungi kechikishlar\nDoʻkonlar: ') + late.length + L(', просрочено ', ', muddati oʻtgan ') + money(over) + '\n\n' + lines.join('\n')
+    return '⏰ ' + cleanStr(shopName || '', 60) + L(': просрочка на сегодня\nПокупателей: ', ': bugungi kechikishlar\nXaridorlar: ') + late.length + L(', просрочено ', ', muddati oʻtgan ') + money(over) + '\n\n' + lines.join('\n')
       + (late.length > MORNING_ROWS ? L('\nи ещё ', '\nva yana ') + (late.length - MORNING_ROWS) : '');
   });
 }
 function debtLine(h, today) {
   if (!h || !(h.bal > 0)) return '';
   const d = lgDue(h.open, today);
-  return L('⚠️ Долг магазина: ', '⚠️ Doʻkon qarzi: ') + money(h.bal) + (d.days ? L(', просрочка ' + d.days + ' дн.', ', kechikish ' + d.days + ' kun') : d.due ? L(', срок ', ', muddat ') + dmy(d.due) : '');
+  return L('⚠️ Долг покупателя: ', '⚠️ Xaridor qarzi: ') + money(h.bal) + (d.days ? L(', просрочка ' + d.days + ' дн.', ', kechikish ' + d.days + ' kun') : d.due ? L(', срок ', ', muddat ') + dmy(d.due) : '');
 }
 /* Напоминание магазину. ords — состав заказов {номер: заказ}; по каждому неоплаченному заказу пишем дату, товары, сумму и остаток.
    Если текст не влезает в одно сообщение Telegram, заказов и позиций показываем меньше. */
@@ -1400,7 +1400,7 @@ function actBuild(h, lg, per, today, ords, shop) {
   const build = compact => {
     const blocks = [];
     blocks.push(L('📄 Акт сверки', '📄 Hisob-kitoblarni solishtirish dalolatnomasi') + ' — ' + cleanStr(shop.name || DEFAULT.shop.name, 60)
-      + (who ? '\n' + L('Магазин: ', 'Doʻkon: ') + who : '')
+      + (who ? '\n' + L('Покупатель: ', 'Xaridor: ') + who : '')
       + '\n' + L('Период: ', 'Davr: ') + (f ? dmy(f) : L('с начала записей', 'yozuvlar boshidan')) + ' – ' + dmy(e));
     blocks.push((early ? L('Остаток на начало записей: ', 'Yozuvlar boshidagi qoldiq: ') : L('Остаток на ', 'Qoldiq ') + (f ? dmy(f) : L('начало', 'boshida')) + ': ') + bal(ob)
       + (early ? '\n' + L('Более ранние записи объединены в этот остаток.', 'Oldingi yozuvlar shu qoldiqqa birlashtirilgan.') : ''));
@@ -1631,12 +1631,12 @@ function reportSheets(r, lang) {
   days.push([L('Итого', 'Jami'), r.tot.n, r.tot.sum]);
   const months = [[L('Месяц', 'Oy'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.months.map(x => [ruMonth(x.m), x.n, x.sum]));
   const prods = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Продано, шт', 'Sotildi, dona'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.prods.map(x => [nmx(x), wx(x), x.qty, x.sum]));
-  const cl = [[L('Клиент', 'Mijoz'), L('Организация', 'Tashkilot'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.cl.map(x => [x.name, x.org || '', x.n, x.sum]));
+  const cl = [[L('Покупатель', 'Xaridor'), L('Организация', 'Tashkilot'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.cl.map(x => [x.name, x.org || '', x.n, x.sum]));
   const buy = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Свободно, шт', 'Boʻsh, dona'), L('Продаётся в день, шт', 'Kuniga sotiladi, dona'), L('Хватит на, дней', 'Necha kunga yetadi'),
     L('Докупить на ' + r.buy.cover + ' дн., шт', r.buy.cover + ' kunga sotib olish, dona')]].concat(r.buy.list.map(x => [nmx(x), wx(x), x.avail, x.daily, x.left, x.need]));
   const head = [L('Отчёт за ' + ruDay(r.from) + ' — ' + ruDay(r.to), 'Hisobot: ' + ruDay(r.from) + ' — ' + ruDay(r.to)),
     L('Учёт продаж ведётся с ' + ruDay(r.since) + '. В отчёт входят заказы со статусом «выдан» и «доставлен».', 'Savdo hisobi ' + ruDay(r.since) + ' dan yuritiladi. Hisobotga «topshirildi» va «yetkazildi» holatidagi buyurtmalar kiradi.'),
-    L('Сумма товара считается по ценам в заказе, до скидки на весь заказ. Сумма заказа — то, что заплатил клиент (со скидкой и доставкой).', 'Mahsulot summasi buyurtmadagi narxlar boʻyicha, butun buyurtmaga chegirmagacha hisoblanadi. Buyurtma summasi — mijoz toʻlagan summa (chegirma va yetkazib berish bilan).'),
+    L('Сумма товара считается по ценам в заказе, до скидки на весь заказ. Сумма заказа — то, что заплатил покупатель (со скидкой и доставкой).', 'Mahsulot summasi buyurtmadagi narxlar boʻyicha, butun buyurtmaga chegirmagacha hisoblanadi. Buyurtma summasi — xaridor toʻlagan summa (chegirma va yetkazib berish bilan).'),
     L('Заказов: ' + r.tot.n + '. Сумма: ' + num(r.tot.sum) + ' сум. Скидки: ' + num(r.tot.disc) + ' сум. Доставка: ' + num(r.tot.fee) + ' сум. Средний заказ: ' + num(r.tot.avg) + ' сум.',
       'Buyurtmalar: ' + r.tot.n + '. Summa: ' + num(r.tot.sum) + ' soʻm. Chegirmalar: ' + num(r.tot.disc) + ' soʻm. Yetkazib berish: ' + num(r.tot.fee) + ' soʻm. Oʻrtacha buyurtma: ' + num(r.tot.avg) + ' soʻm.')];
   return [
@@ -1644,7 +1644,7 @@ function reportSheets(r, lang) {
     { name: L('По дням', 'Kunlar boʻyicha'), w: [14, 11, 16], money: [2], rows: days },
     { name: L('По месяцам', 'Oylar boʻyicha'), w: [20, 11, 16], money: [2], rows: months },
     { name: L('Товары', 'Mahsulotlar'), w: [38, 14, 14, 16], money: [3], rows: prods },
-    { name: L('Клиенты', 'Mijozlar'), w: [30, 26, 11, 16], money: [3], rows: cl },
+    { name: L('Покупатели', 'Xaridorlar'), w: [30, 26, 11, 16], money: [3], rows: cl },
     { name: L('Что закупать', 'Nimani sotib olish'), w: [38, 14, 14, 20, 16, 24], rows: buy }
   ];
 }
@@ -2095,13 +2095,13 @@ export class Shop {
     };
     const shopN = (data.cfg.shop && data.cfg.shop.name) || '';
     setLang(XL_LANG(lang));
-    const readme = L('Резервная копия магазина «' + shopN + '»\r\nСоздана: ' + shopTime(at) + ' (время склада)\r\n\r\n'
-      + 'backup.json — настройки, каталог, остатки, заказы, клиенты.\r\nphotos/ — фото товаров (' + photos.length + ' из ' + withPhoto.length + ').\r\n\r\n'
-      + 'Файл не содержит токена бота и кода продавца. Храните его в надёжном месте: в нём телефоны и адреса клиентов.\r\n'
+    const readme = L('Резервная копия продавца «' + shopN + '»\r\nСоздана: ' + shopTime(at) + ' (время склада)\r\n\r\n'
+      + 'backup.json — настройки, каталог, остатки, заказы, покупатели.\r\nphotos/ — фото товаров (' + photos.length + ' из ' + withPhoto.length + ').\r\n\r\n'
+      + 'Файл не содержит токена бота и кода продавца. Храните его в надёжном месте: в нём телефоны и адреса покупателей.\r\n'
       + 'Чтобы вернуть данные, передайте этот файл разработчику бота.\r\n',
-      '«' + shopN + '» doʻkonining zaxira nusxasi\r\nYaratilgan: ' + shopTime(at) + ' (ombor vaqti)\r\n\r\n'
-      + 'backup.json — sozlamalar, katalog, qoldiqlar, buyurtmalar, mijozlar.\r\nphotos/ — mahsulot rasmlari (' + withPhoto.length + ' tadan ' + photos.length + ' tasi).\r\n\r\n'
-      + 'Fayl bot tokenini va sotuvchi kodini oʻz ichiga olmaydi. Uni ishonchli joyda saqlang: unda mijozlarning telefon raqamlari va manzillari bor.\r\n'
+      '«' + shopN + '» sotuvchisining zaxira nusxasi\r\nYaratilgan: ' + shopTime(at) + ' (ombor vaqti)\r\n\r\n'
+      + 'backup.json — sozlamalar, katalog, qoldiqlar, buyurtmalar, xaridorlar.\r\nphotos/ — mahsulot rasmlari (' + withPhoto.length + ' tadan ' + photos.length + ' tasi).\r\n\r\n'
+      + 'Fayl bot tokenini va sotuvchi kodini oʻz ichiga olmaydi. Uni ishonchli joyda saqlang: unda xaridorlarning telefon raqamlari va manzillari bor.\r\n'
       + 'Maʼlumotlarni tiklash uchun bu faylni bot dasturchisiga bering.\r\n');
     setLang('ru');
     return {
@@ -2149,13 +2149,13 @@ export class Shop {
       // тип точки живёт в общей базе (Hub); если она недоступна, колонка остаётся пустой, выгрузка не ломается
       let types = {};
       try { const r = await hubCall(this.env, '/__/types', { uids: list.map(c => c.uid) }); if (r && r.ty && typeof r.ty === 'object') types = r.ty; } catch (e) { console.error('types failed', e && e.message || e); }
-      return { name: 'clients-' + day + '.xlsx', bytes: xlsxBuild(clientsSheets(list, lang, types)), mime: XLSX_MIME, n: list.length, caption: uz ? 'Mijozlar: ' + list.length + '. Excelda oching.' : 'Клиенты: ' + list.length + '. Откройте в Excel.' };
+      return { name: 'clients-' + day + '.xlsx', bytes: xlsxBuild(clientsSheets(list, lang, types)), mime: XLSX_MIME, n: list.length, caption: uz ? 'Xaridorlar: ' + list.length + '. Excelda oching.' : 'Покупатели: ' + list.length + '. Откройте в Excel.' };
     }
     if (kind === 'backup') {
       const bk = await this.backupFiles(lang);
       return { name: 'backup-' + day + '.zip', bytes: zipStore(bk.files), mime: 'application/zip', n: bk.info.orders,
-        caption: uz ? 'Zaxira nusxasi: buyurtmalar ' + bk.info.orders + ', mijozlar ' + bk.info.clients + ', rasmlar ' + bk.info.photos + (bk.info.photos < bk.info.photosOf ? ' (' + bk.info.photosOf + ' tadan)' : '') + '. Faylni ishonchli joyda saqlang.'
-          : 'Резервная копия: заказов ' + bk.info.orders + ', клиентов ' + bk.info.clients + ', фото ' + bk.info.photos + (bk.info.photos < bk.info.photosOf ? ' из ' + bk.info.photosOf : '') + '. Сохраните файл в надёжном месте.' };
+        caption: uz ? 'Zaxira nusxasi: buyurtmalar ' + bk.info.orders + ', xaridorlar ' + bk.info.clients + ', rasmlar ' + bk.info.photos + (bk.info.photos < bk.info.photosOf ? ' (' + bk.info.photosOf + ' tadan)' : '') + '. Faylni ishonchli joyda saqlang.'
+          : 'Резервная копия: заказов ' + bk.info.orders + ', покупателей ' + bk.info.clients + ', фото ' + bk.info.photos + (bk.info.photos < bk.info.photosOf ? ' из ' + bk.info.photosOf : '') + '. Сохраните файл в надёжном месте.' };
     }
     if (kind === 'catalog') {
       const prod = await this.getProd();
@@ -2177,8 +2177,8 @@ export class Shop {
       const map = await this.getMany(list.map(x => 'lg:' + x.uid));
       const owe = list.filter(x => x.bal > 0);
       return { name: 'debts-' + day + '.xlsx', bytes: xlsxBuild(debtsSheets(list, list.map(x => map.get('lg:' + x.uid) || null), lang)), mime: XLSX_MIME, n: list.length,
-        caption: uz ? 'Qarzlar (' + (f === 'over' ? 'muddati oʻtgan' : f === 'fl' ? 'bahsli' : 'hammasi') + '): doʻkonlar ' + list.length + ', qarzdor ' + num(owe.reduce((t, x) => t + x.bal, 0)) + ' soʻm, muddati oʻtgan ' + num(owe.reduce((t, x) => t + x.over, 0)) + ' soʻm. Excelda oching.'
-          : 'Долги (' + (f === 'over' ? 'просроченные' : f === 'fl' ? 'спорные' : 'все') + '): магазинов ' + list.length + ', должны ' + num(owe.reduce((t, x) => t + x.bal, 0)) + ' сум, просрочено ' + num(owe.reduce((t, x) => t + x.over, 0)) + ' сум. Откройте в Excel.' };
+        caption: uz ? 'Qarzlar (' + (f === 'over' ? 'muddati oʻtgan' : f === 'fl' ? 'bahsli' : 'hammasi') + '): xaridorlar ' + list.length + ', qarzdor ' + num(owe.reduce((t, x) => t + x.bal, 0)) + ' soʻm, muddati oʻtgan ' + num(owe.reduce((t, x) => t + x.over, 0)) + ' soʻm. Excelda oching.'
+          : 'Долги (' + (f === 'over' ? 'просроченные' : f === 'fl' ? 'спорные' : 'все') + '): покупателей ' + list.length + ', должны ' + num(owe.reduce((t, x) => t + x.bal, 0)) + ' сум, просрочено ' + num(owe.reduce((t, x) => t + x.over, 0)) + ' сум. Откройте в Excel.' };
     }
     if (kind === 'pick') {
       const p = await this.pickOrders(b || {});
@@ -2470,7 +2470,7 @@ export class Shop {
       if (path === '/api/admin/orders' && method === 'GET') {
         const act = (await this.st.get('act')) || [], hist = (await this.st.get('hist')) || [];
         const raw = await this.getOrders(act.concat(hist));
-        const orders = (await this.withBs(raw, o => NEXT[o.status])).map(adminOrder);   // данные магазина из базы нужны только заказам в работе
+        const orders = (await this.withBs(raw, o => NEXT[o.status])).map(adminOrder);   // данные покупателя из базы нужны только заказам в работе
         // у заказов в работе показываем долг магазина: продавец видит его до выдачи
         const live = raw.map((o, i) => [o, i]).filter(([o]) => o.uid && NEXT[o.status]);
         if (live.length) {
@@ -2829,7 +2829,7 @@ export class Shop {
     };
     if (cl0 && cl0.org) order.org = cl0.org;
     if (v.mode === 'delivery' && v.region) order.region = v.region;
-    if (v.loc) order.loc = v.loc;   // только в заказе: в базу магазинов точка попадает после подтверждения агентом
+    if (v.loc) order.loc = v.loc;   // только в заказе: в базу покупателей точка попадает после подтверждения агентом
     if (v.fee > 0 || v.disc > 0) order.sub = v.sub;
     if (v.disc > 0) { order.disc = v.disc; order.dpct = v.dpct; }
     if (v.fee > 0) order.fee = v.fee;
@@ -3768,8 +3768,8 @@ export class Shop {
   async disputeNotify(uid, rows, hdr) {
     if (!this.env.BOT_TOKEN) return;
     const who = hdr.name || hdr.org || '', bn = (rows.find(r => r.bn) || {}).bn || '';
-    const text = tail => biL(() => '⚠️ ' + (who || L('Магазин', 'Doʻkon')) + L(' отметил запись «Не так»: ', ' yozuvni «Notoʻgʻri» deb belgiladi: ') + rowDesc(rows) + (bn ? L('. Записал: ', '. Yozgan: ') + bn : '') + '.'
-      + (tail ? '\n' + L('Откройте «Долги» и разберитесь с магазином.', '«Qarzlar» boʻlimini oching va doʻkon bilan hal qiling.') : ''));
+    const text = tail => biL(() => '⚠️ ' + (who || L('Покупатель', 'Xaridor')) + L(' отметил запись «Не так»: ', ' yozuvni «Notoʻgʻri» deb belgiladi: ') + rowDesc(rows) + (bn ? L('. Записал: ', '. Yozgan: ') + bn : '') + '.'
+      + (tail ? '\n' + L('Откройте «Долги» и разберитесь с покупателем.', '«Qarzlar» boʻlimini oching va xaridor bilan hal qiling.') : ''));
     await this.notifyAdmins(text(true));
     const cid = (rows.find(r => r.cid) || {}).cid, c = cid ? await this.crGet(cid) : null;
     if (c && c.uid) {
@@ -4004,8 +4004,8 @@ export class Shop {
       }
       await this.st.put(res.put);
       await this.askConfirm(uid, res.ns[0]);
-      if (cour) await this.notifyAdmins(biL(() => L('💰 Доставщик ' + cour.name + ' принял оплату долга: ' + (who || 'магазин') + ', ' + money(amount) + ' (' + payN2(body.m) + ').',
-        '💰 Yetkazuvchi ' + cour.name + ' qarz toʻlovini qabul qildi: ' + (who || 'doʻkon') + ', ' + money(amount) + ' (' + payN2(body.m) + ').')));
+      if (cour) await this.notifyAdmins(biL(() => L('💰 Доставщик ' + cour.name + ' принял оплату долга: ' + (who || 'покупатель') + ', ' + money(amount) + ' (' + payN2(body.m) + ').',
+        '💰 Yetkazuvchi ' + cour.name + ' qarz toʻlovini qabul qildi: ' + (who || 'xaridor') + ', ' + money(amount) + ' (' + payN2(body.m) + ').')));
       return await this.debtOne(uid);
     }
     if (cour) return json({ error: 'forbidden' }, 403);
@@ -4046,7 +4046,7 @@ export class Shop {
       try {
         setLang(lh.lang === 'uz' ? 'uz' : 'ru');
         await this.tg('sendMessage', { chat_id: uid, text: L('❌ Запись об оплате ' + money(row.a) + ' отменена продавцом.\nПричина: ' + why, '❌ ' + money(row.a) + ' toʻlov yozuvi sotuvchi tomonidan bekor qilindi.\nSabab: ' + why), reply_markup: openBtn(this.origin, L('Мой долг', 'Mening qarzim'), this.origin + '/?v=debt') });
-        if (c && c.uid) await this.tg('sendMessage', { chat_id: c.uid, text: biL(() => L('❌ Продавец отменил принятую вами оплату: ' + (who || 'магазин') + ', ' + money(row.a) + '.\nПричина: ' + why, '❌ Sotuvchi siz qabul qilgan toʻlovni bekor qildi: ' + (who || 'doʻkon') + ', ' + money(row.a) + '.\nSabab: ' + why)) });
+        if (c && c.uid) await this.tg('sendMessage', { chat_id: c.uid, text: biL(() => L('❌ Продавец отменил принятую вами оплату: ' + (who || 'покупатель') + ', ' + money(row.a) + '.\nПричина: ' + why, '❌ Sotuvchi siz qabul qilgan toʻlovni bekor qildi: ' + (who || 'xaridor') + ', ' + money(row.a) + '.\nSabab: ' + why)) });
       } catch (e) { console.error('void notify failed', e && e.message || e); }
     }
     return await this.debtOne(uid);
@@ -4072,7 +4072,7 @@ export class Shop {
       if (toCr) { if (o.cr) await this.afterAssign(o, null, true); else await this.notifyCouriers(o, cfg); }
     } else if (by === 'customer') {
       for (const aid of (await this.st.get('admins')) || []) {
-        await this.tg('sendMessage', { chat_id: aid, text: biL(() => L('❌ Клиент отменил заказ ' + o.id + ' (' + o.name + ').', '❌ Mijoz ' + o.id + ' buyurtmasini bekor qildi (' + o.name + ').')) });
+        await this.tg('sendMessage', { chat_id: aid, text: biL(() => L('❌ Покупатель отменил заказ ' + o.id + ' (' + o.name + ').', '❌ Xaridor ' + o.id + ' buyurtmasini bekor qildi (' + o.name + ').')) });
       }
     }
   }
@@ -4116,7 +4116,7 @@ export class Shop {
       return answer(ans2('Доставленным заказ отмечает доставщик', 'Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'), true);
     }
     // «Выдан клиенту» сначала спрашивает, как оплатил клиент (нажатия в старых сообщениях тоже придут сюда)
-    if (kind === 's' && to === 'done' && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'pay')); return answer(ans2('Как оплатил клиент?', 'Mijoz qanday toʻladi?')); }
+    if (kind === 's' && to === 'done' && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'pay')); return answer(ans2('Как оплатил покупатель?', 'Xaridor qanday toʻladi?')); }
     if (kind === 'p' && to === 'credit' && !days && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'days')); return answer(ans2('На сколько дней в долг?', 'Necha kunga qarzga?')); }
     if (kind === 's' || kind === 'p') {
       const pay = kind === 'p' ? (to === 'credit' ? { m: 'credit', days: Number(days) } : { m: to }) : undefined;
@@ -5698,9 +5698,9 @@ export class Hub {
         await this.tg('sendMessage', {
           chat_id: chat,
           text: biL(() => L('Готово, вы агент «' + res.ag.name + '».' + (names.length ? ' Территории: ' + names.join(', ') + '.' : '')
-            + '\n\nВ приложении откройте вкладку «База»: там можно проверять данные магазинов после визита, исправлять ошибки и добавлять тех, кого ещё нет. Свою ссылку для магазинов вы найдёте там же.',
+            + '\n\nВ приложении откройте вкладку «База»: там можно проверять данные покупателей после визита, исправлять ошибки и добавлять тех, кого ещё нет. Свою ссылку для покупателей вы найдёте там же.',
             'Tayyor, siz «' + res.ag.name + '» agentisiz.' + (names.length ? ' Hududlar: ' + names.join(', ') + '.' : '')
-            + '\n\nIlovada «Baza» boʻlimini oching: u yerda tashrifdan keyin doʻkon maʼlumotlarini tekshirish, xatolarni tuzatish va hali yoʻqlarini qoʻshish mumkin. Doʻkonlar uchun oʻz havolangizni ham shu yerdan topasiz.')),
+            + '\n\nIlovada «Baza» boʻlimini oching: u yerda tashrifdan keyin xaridor maʼlumotlarini tekshirish, xatolarni tuzatish va hali yoʻqlarini qoʻshish mumkin. Xaridorlar uchun oʻz havolangizni ham shu yerdan topasiz.')),
           reply_markup: openBtn(this.origin, btn2('Bazani ochish', 'Открыть базу'), this.origin + '/?v=base')
         });
       } else if (res.r === 'locked') await this.tg('sendMessage', { chat_id: chat, text: biU('Слишком много неверных попыток. Попробуйте через час.', 'Juda koʻp notoʻgʻri urinish. Bir soatdan keyin urinib koʻring.') });
