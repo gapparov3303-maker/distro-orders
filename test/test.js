@@ -7739,7 +7739,7 @@ await t('«О нас»: пункт меню последний и виден в�
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
   const mg = fn('menuGroups');
   assert.ok(/g\.push\(\['',\[\['about',L\('О нас','Biz haqimizda'\)\]\]\]\);\s*\/\/[^\n]*\n\s*return g;/.test(mg), 'пункт «О нас» добавляется последним, без заголовка группы, для всех ролей');
-  assert.ok(mg.indexOf("g.push(['',[['about'") > mg.lastIndexOf('if(isOwner())g.push('), '«О нас» стоит после группы владельца и остальных групп');
+  assert.ok(mg.indexOf("g.push(['',[['about'") > mg.lastIndexOf('if(isOwner()&&!as)g.push('), '«О нас» стоит после группы владельца и остальных групп');
   assert.ok(/\.mgsep/.test(html), 'перед ним тонкая черта, не заголовок группы');
   assert.ok(/else if\(S\.view==='about'\)renderAbout\(\)/.test(fn('render')) && /if\(v==='about'\)loadHub\(\)/.test(fn('go')), 'экран открывается и подгружает данные площадки');
   assert.ok(/v==='about'/.test(html.slice(html.indexOf("QS.get('v')"), html.indexOf("QS.get('v')") + 800)) || /'about'/.test(html.slice(html.indexOf("vw=QS.get('v')"))), 'открывается по ссылке ?v=about');
@@ -7795,6 +7795,58 @@ await t('«О нас»: снимки одного размера, как ждё�
   assert.ok(total < 2.5 * 1024 * 1024, 'все снимки вместе ' + Math.round(total / 1024) + ' КБ: worker с ними не должен выйти за 3 МБ в сжатом виде');
   const worker = fs.readFileSync(path.join(root, 'dist/worker.js'));
   assert.ok(zlib.gzipSync(worker).length < 2.6 * 1024 * 1024, 'worker в сжатом виде: ' + Math.round(zlib.gzipSync(worker).length / 1024) + ' КБ');
+});
+
+await t('«Смотреть как»: роли в списке, только владельцу, режим не запоминается', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const i0 = html.indexOf('function asRoles()'), i1 = html.indexOf('/* Правило значков в меню:');
+  assert.ok(i0 > 0 && i1 > i0, 'блок «Смотреть как» на месте');
+  const mk = S => new Function('S', 'L', html.slice(i0, i1) + '; return {asRoles,viewAs,asName};')(S, (ru) => ru);
+  const hub = me => ({ auth: true, hub: { me }, as: '' });
+  // не владелец: ни списка, ни режима, даже если значение подсунуть
+  for (const me of [{ owner: false, sells: [{ id: 'a' }], delivers: [], agent: null }, { owner: false, sells: [], delivers: [{ id: 'a' }], agent: { id: 'x' } }, null]) {
+    const S = hub(me); S.as = 'shop';
+    const f = mk(S);
+    assert.deepEqual(f.asRoles(), [], 'не владелец: списка ролей нет');
+    assert.equal(f.viewAs(), '', 'не владелец: режим не включается');
+  }
+  assert.deepEqual(mk({ auth: false, hub: { me: { owner: true, sells: [], delivers: [] } }, as: '' }).asRoles(), [], 'не вошёл: списка нет');
+  // владелец: только роли, которые у него есть, в порядке магазин, продавец, доставщик, агент
+  const keys = me => mk(hub(me)).asRoles().map(x => x[0]).join();
+  assert.equal(keys({ owner: true, sells: [], delivers: [], agent: null }), 'shop', 'владелец без других ролей: только магазин');
+  assert.equal(keys({ owner: true, sells: [{ id: 'a' }], delivers: [], agent: { id: 'x' } }), 'shop,seller,agent', 'доставщика нет — кнопки нет');
+  assert.equal(keys({ owner: true, sells: [{ id: 'a' }], delivers: [{ id: 'a' }], agent: { id: 'x' } }), 'shop,seller,courier,agent', 'все четыре роли в этом порядке');
+  // режим на роль, которой нет (или которую отобрали), не действует
+  const S2 = hub({ owner: true, sells: [], delivers: [], agent: null }); S2.as = 'courier';
+  assert.equal(mk(S2).viewAs(), '', 'роли нет — режим не действует');
+  S2.as = 'shop'; assert.equal(mk(S2).viewAs(), 'shop');
+  assert.equal(mk(S2).asName('shop'), 'Магазин');
+  // вид: меню, полоска, «О нас»
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  const mg = fn('menuGroups');
+  assert.ok(/const g=\[\],as=viewAs\(\)/.test(mg), 'меню учитывает режим');
+  assert.ok(/if\(!as\|\|as==='shop'\)g\.push\(\[L\('Магазин'/.test(mg), 'группа магазина: в обычном режиме и в режиме магазина');
+  assert.ok(/S\.admin&&S\.did&&\(!as\|\|as==='seller'\)/.test(mg) && /S\.courier&&S\.did&&\(!as\|\|as==='courier'\)/.test(mg), 'продавец и доставка только в своих режимах');
+  assert.ok(/canBase\(\)&&\(!as\|\|as==='seller'\|\|as==='agent'\)/.test(mg), 'База: продавцу и агенту');
+  assert.ok(/!as&&commOn\(\)/.test(mg) && /isOwner\(\)&&!as/.test(mg), 'комиссия и группа владельца только в обычном режиме');
+  assert.ok(/id="mas"/.test(html) && /id="asbar"/.test(html), 'блок в меню и полоска над экраном есть в разметке');
+  const rn = fn('renderNav');
+  assert.ok(/\$\('#mas'\)/.test(rn) && /\$\('#asbar'\)/.test(rn) && /as-on/.test(rn), 'меню рисует блок и полоску');
+  assert.ok(/data-act="viewas" data-v="">'\+esc\(L\('Вернуться'/.test(rn), 'в полоске кнопка «Вернуться»');
+  assert.ok(/L\('Смотреть как'/.test(rn) && /L\('Все мои роли'/.test(rn), 'подписи блока');
+  assert.ok(/else if\(a==='viewas'\)setViewAs\(/.test(html), 'нажатие обрабатывается');
+  const am = fn('aboutMine');
+  assert.ok(/if\(as\)return as==='shop'\?\['shop'\]:\[as,'shop'\]/.test(am), '«О нас» подсвечивает выбранную роль');
+  assert.ok(/isOwner\(\)&&!viewAs\(\)/.test(html), 'блок «Владелец» в «О нас» скрыт в режиме роли');
+  // не запоминается: нигде не пишется в хранилище, на старте пусто
+  const sv = fn('setViewAs') ? html.slice(html.indexOf('async function setViewAs('), html.indexOf('/* ---------- база магазинов')) : '';
+  assert.ok(sv.length > 100 && !/localStorage|sessionStorage|document\.cookie/.test(sv), 'режим не пишется в хранилище');
+  assert.ok(!/sh-as|sh-viewas/.test(html) && /view:'shops',as:'',/.test(html), 'на каждом запуске режим пустой');
+  // стили: скобки таблицы стилей сходятся, правила широкого экрана внутри своего блока
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.ok(/html\.as-on \.top \.wrap\{display:none\}\n\}\s*$/.test(css), 'блок для широкого экрана закрыт скобкой');
+  const wi = css.indexOf('html.as-on .top{display:block}'), mi = css.lastIndexOf('@media (min-width:1000px){');
+  assert.ok(wi > mi && mi > 0, 'на широком экране полоска остаётся видна, когда шапка скрыта');
 });
 
 /* ---------- итог ---------- */
