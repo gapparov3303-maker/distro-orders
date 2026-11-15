@@ -1214,7 +1214,8 @@ const menuIsOpen=()=>document.documentElement.classList.contains('mn-open');
 /* раздел, где мы сейчас: у «Продавца» это вкладка продавца, у владельца — подраздел площадки */
 const subHere=(i,x,cur)=>i[5]==='otab'?cur==='owner'&&S.own.sec===x[0]:i[5]==='ctab'?cur==='courier'&&S.cr.tab===x[0]:cur==='seller'&&S.sellerTab===x[0];
 const parentHere=(i,cur)=>i[5]==='otab'?cur==='owner'&&i[4].some(x=>x[0]===S.own.sec):cur===i[0];
-const menuSubOpen=(i,cur)=>S.msub===null?parentHere(i,cur):S.msub===i[0];
+/* Пока человек ничего не нажимал в меню (S.msub===null), раскрыта группа, где он сейчас. У продавца «Продавец» раскрыт сразу, если он не внутри другой группы (доставки, владельца). */
+const menuSubOpen=(i,cur,gs)=>S.msub===null?parentHere(i,cur)||(i[0]==='seller'&&!(gs||menuGroups()).some(g=>g[1].some(x=>x[4]&&x[0]!=='seller'&&parentHere(x,cur)))):S.msub===i[0];
 function renderNav(){
   const cur=S.view==='shops'?'shop':S.view,groups=menuGroups(),multi=groups.filter(gr=>gr[0]).length>1,nav=$('#nav');
   let h='';
@@ -1223,7 +1224,7 @@ function renderNav(){
     else if(!gr[0])h+='<div class="mgsep" role="presentation"></div>';
     gr[1].forEach(i=>{
       if(i[4]){
-        const open=menuSubOpen(i,cur);
+        const open=menuSubOpen(i,cur,groups);
         h+='<button type="button" class="mi mgrp" data-act="msub" data-v="'+i[0]+'" aria-expanded="'+open+'" aria-controls="msub-'+i[0]+'"'+(parentHere(i,cur)?' data-here="1"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])
           +'<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
           +'<div class="msub" id="msub-'+i[0]+'" role="group" aria-label="'+esc(i[1])+'"'+(open?'':' hidden')+'>'
