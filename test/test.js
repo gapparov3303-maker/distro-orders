@@ -8621,6 +8621,99 @@ await t('склад: кладовщик видит заказы продавцо
   assert.ok(!(await list(iW())).some(o => o.id === oU.id), 'отменённый из списка ушёл');
 });
 
+await t('склад: продавец разрешает отправку после приёма и записывает оплату; кладовщик видит только «Разрешено», долг идёт в учёт', async () => {
+  await hubWorld();
+  const bz = (await jsonOf(await adm('POST', '/bazaars', { name: 'Урикзор', uz: 'Oʻrikzor' }))).id;
+  const sA = await mkBazaarShop('Рынок Один', bz, 30);
+  const wk = await jsonOf(await adm('POST', '/wh', { name: 'Салим' }));
+  await send(whMsg(WHK, wk.code, 40));
+  const ship = (sid, init, body) => callS(sid, 'POST', '/api/admin/ship', { init, body });
+  const recv = (id, kg) => call('POST', '/api/hub/wh/receive', { init: iW(), body: { did: sA, id, kg } });
+  const whList = async () => (await jsonOf(await call('GET', '/api/hub/wh', { init: iW() }))).orders;
+  const mine = async (u, id) => (await jsonOf(await call('GET', '/api/hub/orders', { init: u.init() }))).orders.find(o => o.id === id);
+  const A = newUser(), B = newUser(), C = newUser(), D = newUser();
+  const place = async u => (await ordBase(sA, u, { name: 'Магазин ' + u.u.id })).order;
+  const oCash = await place(A), oLater = await place(B), oCredit = await place(C), oCard = await place(D);
+  // до приёма на складе разрешить нельзя
+  let r = await ship(sA, iD(), { id: oCash.id, pay: { m: 'cash' } });
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'not_received');
+  for (const o of [oCash, oLater, oCredit, oCard]) assert.equal((await recv(o.id, 10)).status, 200);
+  // права: покупатель и кладовщик не разрешают; без входа нельзя
+  assert.equal((await ship(sA, A.init(), { id: oCash.id, pay: { m: 'cash' } })).status, 403);
+  assert.equal((await ship(sA, iW(), { id: oCash.id, pay: { m: 'cash' } })).status, 403);
+  assert.equal((await callS(sA, 'POST', '/api/admin/ship', { body: { id: oCash.id, pay: { m: 'cash' } } })).status, 401);
+  // неверные данные
+  const bad = [undefined, null, 'cash', {}, { m: 'crypto' }, { m: 'credit' }, { m: 'credit', days: 0 }, { m: 'credit', days: 91 }, { m: 'credit', days: 7, paid: 1394000, pm: 'cash' }, { m: 'credit', days: 7, paid: 100, pm: 'gold' }];
+  for (const pay of bad) assert.equal((await ship(sA, iD(), { id: oCash.id, pay })).status, 400, 'оплата ' + JSON.stringify(pay));
+  assert.equal((await ship(sA, iD(), { id: 'bad id', pay: { m: 'cash' } })).status, 400);
+  assert.equal((await ship(sA, iD(), { id: 'Z-NOPE1', pay: { m: 'cash' } })).status, 404);
+  assert.ok(!(await whList()).some(o => o.ship), 'после неудачных попыток ничего не разрешено');
+  // наличные: оплата записана, покупателю написано, кладовщик видит «Разрешено» без способа оплаты
+  tgLog = [];
+  r = await ship(sA, iD(), { id: oCash.id, pay: { m: 'cash' } });
+  assert.equal(r.status, 200);
+  let d = await jsonOf(r);
+  assert.deepEqual([d.order.pay, d.order.ship.m, d.order.status], [{ m: 'cash' }, 'cash', 'new'], 'статус заказа не меняется');
+  assert.ok(!('shu' in d.order) && !('uid' in d.order), 'внутренних полей нет');
+  const msg = tgAll('sendMessage', p => p.chat_id === A.u.id).map(x => x.payload.text.replace(/\s/g, ' '));
+  assert.equal(msg.length, 1, 'покупателю одно сообщение');
+  assert.ok(msg[0].includes('Заказ ' + oCash.id + ': продавец разрешил отправку в Навои') && msg[0].includes('Наличные') && /Перевозка в Навои 5\s000 сум платится водителю/.test(msg[0]), msg[0]);
+  assert.ok(!tgAll('sendMessage', p => p.chat_id === A.u.id && p.reply_markup && JSON.stringify(p.reply_markup).includes('Верно')).length, 'про наличные подтверждение долга не просят');
+  const w1 = (await whList()).find(o => o.id === oCash.id);
+  assert.equal(w1.ship, true);
+  assert.ok(!('pay' in w1) && !JSON.stringify(w1).includes('cash'), 'способ оплаты кладовщику не виден');
+  assert.deepEqual([(await mine(A, oCash.id)).pay, (await mine(A, oCash.id)).ship.m], [{ m: 'cash' }, 'cash'], 'покупатель видит оплату и разрешение');
+  assert.ok(!JSON.stringify(await mine(A, oCash.id)).includes('shu'));
+  // второй раз нельзя; вес после разрешения не меняется
+  r = await ship(sA, iD(), { id: oCash.id, pay: { m: 'card' } });
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'already');
+  r = await recv(oCash.id, 11);
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'shipping_allowed');
+  assert.equal((await whList()).find(o => o.id === oCash.id).wh.kg, 10, 'вес остался прежним');
+  // «при получении»: способ ещё не известен
+  tgLog = [];
+  d = await jsonOf(await ship(sA, iD(), { id: oLater.id, pay: { m: 'later' } }));
+  assert.equal(d.order.pay, undefined); assert.equal(d.order.ship.m, 'later');
+  assert.ok(tgAll('sendMessage', p => p.chat_id === B.u.id)[0].payload.text.includes('при получении в Навои'));
+  // карта: записана как оплата
+  d = await jsonOf(await ship(sA, iD(), { id: oCard.id, pay: { m: 'card' } }));
+  assert.deepEqual(d.order.pay, { m: 'card' });
+  const debts0 = await jsonOf(await callS(sA, 'GET', '/api/admin/debts', { init: iD() }));
+  assert.equal(debts0.n, 0, 'наличные, карта и «при получении» долгом не становятся');
+  // в долг на 7 дней с частью картой: долг в журнале, покупатель подтверждает запись
+  tgLog = [];
+  d = await jsonOf(await ship(sA, iD(), { id: oCredit.id, pay: { m: 'credit', days: 7, paid: 400000, pm: 'card' } }));
+  assert.deepEqual(d.order.pay, { m: 'credit', days: 7, due: plusDays(shopDay(), 7), paid: 400000, pm: 'card' });
+  const cm = tgAll('sendMessage', p => p.chat_id === C.u.id);
+  assert.equal(cm.length, 2, 'покупателю: «разрешено» и вопрос «Всё верно?»');
+  assert.ok(cm.some(x => x.payload.reply_markup && JSON.stringify(x.payload.reply_markup).includes('Верно')), 'есть кнопки «Верно» / «Не так»');
+  const debts = await jsonOf(await callS(sA, 'GET', '/api/admin/debts', { init: iD() }));
+  assert.equal(debts.n, 1); assert.equal(debts.total, 994000);
+  const row = await jsonOf(await callS(sA, 'GET', '/api/admin/debts/' + C.u.id, { init: iD() }));
+  assert.deepEqual(row.debt.rows.map(x => [x.k, x.d, x.m || '']), [['pay', -400000, 'card'], ['ch', 1394000, '']]);
+  // после долга заказ уже нельзя отменить ни продавцу, ни покупателю; после карты можно
+  r = await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oCredit.id, to: 'cancelled' } });
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'shipping_allowed');
+  r = await callS(sA, 'POST', '/api/cancel', { init: C.init(), body: { id: oCredit.id } });
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'not_cancellable', 'покупатель тоже не отменяет заказ, записанный в долг');
+  assert.equal((await mine(C, oCredit.id)).status, 'new', 'заказ в долг остался на месте');
+  assert.equal((await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oCard.id, to: 'cancelled' } })).status, 200, 'заказ с оплатой картой отменить можно');
+  // выдача после разрешения не пишет оплату второй раз
+  for (const to of ['accepted', 'ready']) assert.equal((await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oCredit.id, to } })).status, 200);
+  d = await jsonOf(await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oCredit.id, to: 'done', pay: { m: 'cash' } } }));
+  assert.equal(d.order.pay.m, 'credit', 'при выдаче остаётся оплата, записанная при разрешении');
+  const after = await jsonOf(await callS(sA, 'GET', '/api/admin/debts/' + C.u.id, { init: iD() }));
+  assert.deepEqual(after.debt.rows.map(x => [x.k, x.d]), [['pay', -400000], ['ch', 1394000]], 'в журнале по-прежнему две записи');
+  assert.equal((await jsonOf(await callS(sA, 'GET', '/api/admin/debts', { init: iD() }))).total, 994000);
+  // «при получении» закрывается обычным выбором способа
+  for (const to of ['accepted', 'ready']) assert.equal((await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oLater.id, to } })).status, 200);
+  d = await jsonOf(await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oLater.id, to: 'done', pay: { m: 'bank' } } }));
+  assert.equal(d.order.pay.m, 'bank', 'способ выбран при выдаче');
+  // отменённый или закрытый заказ разрешить нельзя
+  r = await ship(sA, iD(), { id: oCard.id, pay: { m: 'cash' } });
+  assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'closed');
+});
+
 await t('базар: текст «Как это работает» (два языка) правит только владелец, лишнее обрезается, пустой убирает его, переименование его не стирает', async () => {
   await hubWorld();
   const add = await jsonOf(await adm('POST', '/bazaars', { name: 'Урикзор', uz: 'Oʻrikzor', how: 'Как заказать\r\n\r\n1 шаг\n  2 шаг  \n', howUz: 'Qanday buyurtma' }));
@@ -8690,6 +8783,37 @@ await t('склад на экране: блок «Как это работает
   assert.ok(/\(o\.wh\?'<div class="note">📦 '/.test(html) && /kgTxt\(o\.wh\.kg\)/.test(html) && /money\(o\.wh\.fee\)/.test(html), 'в карточке заказа есть вес и перевозка');
   assert.ok(/\{name,uz,how,howUz\}/.test(html) && /data-bze="how"/.test(html) && /data-bze="howUz"/.test(html), 'владелец правит текст в редакторе базара');
   assert.ok(/\['wh',L\('Склад','Ombor'\),L\('Склад','Ombor'\)\]/.test(html) && /data-act="whadd"/.test(html), 'у владельца есть раздел «Склад»');
+});
+
+await t('разрешение отправки на экране: кнопка только у принятого на складе заказа, окно оплаты с «при получении», выдача без повторного вопроса, вкладка кладовщика', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const oc = html.slice(html.indexOf('function orderCard('), html.indexOf('function renderMine('));
+  assert.ok(/shipBtn=m==='seller'&&o\.wh&&!o\.ship&&NEXT_LIVE\.includes\(o\.status\)/.test(oc), 'кнопка: свой заказ продавца, принят на складе, ещё не разрешён, не закрыт');
+  assert.ok(/m==='seller'\?\(shipOpen\?payBlockHTML\(o\):sellerActs\(o\)\+shipBtn\)/.test(oc), 'окно оплаты заменяет кнопки заказа');
+  assert.ok(/Разрешить отправку/.test(oc) && /Joʻnatishga ruxsat/.test(oc), 'надпись на двух языках');
+  assert.ok(/o\.ship\?'<div class="note">✅/.test(oc), 'в карточке видно, что отправка разрешена');
+  const pb = html.slice(html.indexOf('function payBlockHTML('), html.indexOf('function payRestTxt('));
+  assert.ok(/ship\?\['cash','card','bank','later','credit'\]:\['cash','card','bank','credit'\]/.test(pb), 'при разрешении добавлен способ «При получении», при выдаче его нет');
+  assert.ok(/Разрешить в долг/.test(pb) && /Склад увидит только «Разрешено»/.test(pb), 'кнопка долга и подсказка про склад');
+  const pm = html.slice(html.indexOf('function payMethod('), html.indexOf('function payGo('));
+  assert.ok(/p\.mode==='ship'&&PAYN\[m\]\)\{shipAllow\(p\.id,\{m\}\);return\}/.test(pm) && /m!=='later'/.test(pm), 'способ в режиме разрешения идёт в shipAllow, «при получении» не уходит в выдачу');
+  assert.ok(/p\.mode==='ship'\)\{shipAllow\(o\.id,pay\);return\}/.test(html), 'долг со сроком тоже');
+  const po = html.slice(html.indexOf('function payOpen('), html.indexOf('const curPay='));
+  assert.ok(/mode!=='ship'&&o0&&o0\.ship&&o0\.pay\)\{setStatus\(id,'done'\);return\}/.test(po), 'выдача заказа, оплаченного при разрешении, не спрашивает способ второй раз');
+  const sa = html.slice(html.indexOf('function shipAllow('), html.indexOf('/* ---------- «Мой долг»'));
+  assert.ok(sa.indexOf('askConfirm(') > 0 && sa.indexOf('askConfirm(') < sa.indexOf("'/api/admin/ship'"), 'перед разрешением спрашиваем');
+  assert.ok(/if\(!o\|\|S\.shipBusy\)return/.test(sa), 'двойное нажатие не шлёт второй запрос');
+  for (const e of ['bad_pay', 'not_received', 'already', 'closed']) assert.ok(sa.includes("e==='" + e + "'"), 'ошибка ' + e);
+  const pay = (m, extra) => Object.assign({ m }, extra || {});
+  const ask = new Function('L', 'payName', 'money', 'return ' + html.match(/const payAskTxt=.*\n/)[0].replace(/^const payAskTxt=/, '').replace(/;\s*$/, ''))((ru) => ru, m => ({ cash: 'Наличные', card: 'Карта', credit: 'В долг' }[m] || m), v => v + ' сум');
+  assert.equal(ask(pay('later'), 1000), 'при получении в Навои');
+  assert.equal(ask(pay('card'), 1000), 'Карта');
+  assert.equal(ask(pay('credit', { days: 14, paid: 400, pm: 'card' }), 1000), 'Карта 400 сум + В долг 600 сум · 14 дн.');
+  // кладовщик
+  const wf = html.slice(html.indexOf('function whFiltered('), html.indexOf('function paintWhList('));
+  assert.ok(/W\.tab==='ok'\?!!o\.ship:W\.tab==='in'\?!!o\.wh&&!o\.ship:!o\.wh/.test(wf), 'три вкладки: ожидаются, на складе, разрешено');
+  assert.ok(/o\.ship\?'<div class="note">✅ '\+L\('Разрешено'/.test(wf), 'у разрешённого заказа веса менять нельзя: кнопки «Изменить вес» нет');
+  assert.ok(!/L\('Разрешено'[^]*способ/.test(wf) && !wf.includes('o.pay'), 'кладовщику оплата не показывается');
 });
 
 /* ---------- итог ---------- */

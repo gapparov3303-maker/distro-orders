@@ -1584,6 +1584,7 @@ const tgLink=o=>{
   if(!h)return '';
   return 'https://t.me/'+encodeURIComponent(h)+'?text='+encodeURIComponent(L('Здравствуйте! Вопрос по заказу ','Assalomu alaykum! Buyurtma boʻyicha savol: ')+o.id);
 };
+const NEXT_LIVE=['new','accepted','ready'];
 const nfKg=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
 const kgTxt=k=>nfKg.format(Number(k)||0)+' '+L('кг','kg');
 function itemRow(it){const pk=packText(it,it.qty);return '<span>'+esc(nm(it))+(weightLabel(it)?' ('+esc(weightLabel(it))+')':'')+' × '+it.qty+(pk?' ('+esc(pk)+')':'')+'</span><span>'+money(it.price*it.qty)+'</span>'}
@@ -1794,7 +1795,9 @@ function orderBaseHTML(o){
 function orderCard(o,m){
   const od=o.did||S.did,key=okey(o.id,od),dd=m==='mine'?' data-d="'+esc(od)+'"':'';
   const rep=m==='mine'?'<button type="button" class="btn ghost sm" data-act="repeat" data-id="'+esc(o.id)+'"'+dd+'>'+L('Повторить заказ','Buyurtmani takrorlash')+'</button>':'';
-  const acts=m==='seller'?sellerActs(o):m==='courier'?courierActs(o):rep+(o.status==='new'?'<button type="button" class="btn ghost sm" data-act="mycancel" data-id="'+esc(o.id)+'"'+dd+'>'+(S.cc===key?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить заказ','Buyurtmani bekor qilish'))+'</button>':'');
+  const shipOpen=m==='seller'&&S.pay&&S.pay.mode==='ship'&&S.pay.key===okey(o.id,S.did);
+  const shipBtn=m==='seller'&&o.wh&&!o.ship&&NEXT_LIVE.includes(o.status)?'<button type="button" class="btn sm" data-act="shipopen" data-id="'+esc(o.id)+'">'+L('Разрешить отправку','Joʻnatishga ruxsat')+'</button>':'';
+  const acts=m==='seller'?(shipOpen?payBlockHTML(o):sellerActs(o)+shipBtn):m==='courier'?courierActs(o):rep+(o.status==='new'?'<button type="button" class="btn ghost sm" data-act="mycancel" data-id="'+esc(o.id)+'"'+dd+'>'+(S.cc===key?L('Точно отменить?','Aniq bekor qilinsinmi?'):L('Отменить заказ','Buyurtmani bekor qilish'))+'</button>':'');
   // картинки товаров есть только у открытого сейчас дистрибьютора
   const del=o.mode==='delivery';
   const nItems=(o.items||[]).length,fold=nItems>=4,open=fold&&!!S.ox[key];
@@ -1812,6 +1815,7 @@ function orderCard(o,m){
     +(m==='seller'&&del&&o.status==='ready'&&!o.crn&&S.crs.length?'<div class="note">🚚 '+L('Ждёт доставщика','Yetkazuvchi kutilmoqda')+'</div>':'')
     +(m==='seller'&&o.status==='done'&&o.crn?'<div class="note">🚚 '+L('Доставил: ','Yetkazdi: ')+esc(o.crn)+'</div>':'')
     +(o.wh?'<div class="note">📦 '+L('На складе Sarbon · ','Sarbon omborida · ')+kgTxt(o.wh.kg)+' · '+L('перевозка в Навои ','Navoiyga tashish ')+money(o.wh.fee)+L(' (платится водителю)',' (haydovchiga toʻlanadi)')+'</div>':'')
+    +(o.ship?'<div class="note">✅ '+(m==='mine'?L('Продавец разрешил отправку в Навои','Sotuvchi Navoiyga joʻnatishga ruxsat berdi'):L('Отправка в Навои разрешена','Navoiyga joʻnatishga ruxsat berilgan'))+(o.ship.m==='later'?' · '+L('оплата при получении','olganda toʻlanadi'):'')+'</div>':'')
     +((m==='seller'||m==='courier')?orderBaseHTML(o):'')
     +((m==='seller'||m==='courier')&&(o.loc||(o.bs&&o.bs.loc))?(l=>'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>')(o.loc||o.bs.loc):'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
@@ -1952,8 +1956,8 @@ function ordersHTML(){
   return h;
 }
 /* ---------- оплата при выдаче и долги ---------- */
-const PAYN={cash:['Наличные','Naqd'],card:['Карта','Karta'],bank:['Перечисление','Oʻtkazma'],credit:['В долг','Qarzga']};
-const PAYI={cash:'💵',card:'💳',bank:'🏦',credit:'📒'};
+const PAYN={cash:['Наличные','Naqd'],card:['Карта','Karta'],bank:['Перечисление','Oʻtkazma'],credit:['В долг','Qarzga'],later:['При получении','Olganda']};
+const PAYI={cash:'💵',card:'💳',bank:'🏦',credit:'📒',later:'🤝'};
 const payName=m=>(PAYI[m]||'')+' '+(PAYN[m]?L(PAYN[m][0],PAYN[m][1]):'');
 /* как оплачен выданный заказ: способ, а при долге срок и сколько оплачено сразу */
 function payText(o){
@@ -1964,24 +1968,27 @@ function payText(o){
 }
 const lateTxt=d=>d.days?L('просрочка '+d.days+' дн.',d.days+' kun kechikdi'):d.due?L('срок '+fDay(d.due),'muddat '+fDay(d.due)):L('без срока','muddatsiz');
 /* «Выдан клиенту»: сначала спрашиваем, как оплатил клиент. Наличные, карта и перечисление записываются одним нажатием, «в долг» просит срок и позволяет отметить часть, оплаченную сразу. */
-function payOpen(id){
-  S.pay={id,key:okey(id,S.did),step:'m',days:'7',paid:'',pm:'cash'};
+function payOpen(id,mode){
+  // отправка уже разрешена с оплатой: при выдаче способ не спрашиваем, сервер берёт записанный
+  const o0=curOrder(id);
+  if(mode!=='ship'&&o0&&o0.ship&&o0.pay){setStatus(id,'done');return}
+  S.pay={id,key:okey(id,S.did),step:'m',days:'7',paid:'',pm:'cash',mode:mode||''};
   paintSeller();
 }
 const curPay=()=>S.view==='courier'?S.cr.pay:S.pay;
 const curOrder=id=>(S.view==='courier'?S.cr.orders:S.allOrders).find(x=>x.id===id);
 function payBlockHTML(o){
-  const p=curPay();
-  let h='<div class="payb"><div class="pt">'+L('Как оплатил покупатель?','Xaridor qanday toʻladi?')+'</div><div class="pmute">'+L('К оплате: ','Toʻlanadi: ')+money(o.total)+'</div>';
+  const p=curPay(),ship=p.mode==='ship';
+  let h='<div class="payb"><div class="pt">'+(ship?L('Как договорились об оплате?','Toʻlov haqida qanday kelishdingiz?'):L('Как оплатил покупатель?','Xaridor qanday toʻladi?'))+'</div><div class="pmute">'+L('К оплате: ','Toʻlanadi: ')+money(o.total)+'</div>';
   if(p.step==='m'){
-    h+='<div class="pyrow">'+['cash','card','bank','credit'].filter(k=>k!=='credit'||S.view!=='courier'||S.courier.credit!==false).map(k=>'<button type="button" class="chip" data-act="paym" data-m="'+k+'"'+(S.cr.busy&&S.view==='courier'?' disabled':'')+'>'+esc(payName(k))+'</button>').join('')+'</div>';
+    h+='<div class="pyrow">'+(ship?['cash','card','bank','later','credit']:['cash','card','bank','credit']).filter(k=>k!=='credit'||S.view!=='courier'||S.courier.credit!==false).map(k=>'<button type="button" class="chip" data-act="paym" data-m="'+k+'"'+(S.cr.busy&&S.view==='courier'?' disabled':'')+'>'+esc(payName(k))+'</button>').join('')+'</div>'+(ship?hintD('Склад увидит только «Разрешено». Оплата и долг запишутся в учёт, покупатель получит сообщение.','Ombor faqat «Ruxsat berilgan»ni koʻradi. Toʻlov va qarz hisobga yoziladi, xaridorga xabar boradi.'):'');
   }else{
     h+='<div class="pyrow"><label for="pd-days">'+L('В долг на (дней)','Qarzga (kun)')+'</label><input type="number" id="pd-days" inputmode="numeric" min="1" max="90" step="1" value="'+esc(p.days)+'">'
       +[3,7,14,30].map(n=>'<button type="button" class="chip" data-act="paydays" data-n="'+n+'" aria-pressed="'+(String(p.days)===String(n))+'">'+n+'</button>').join('')+'</div>'+hintD('Через сколько дней покупатель должен вернуть деньги. Пример: 7.','Xaridor pulni necha kundan keyin qaytarishi kerak. Masalan: 7.')+''
       +'<div class="pyrow"><label for="pd-paid">'+L('Оплачено сразу (необязательно)','Darhol toʻlangan (ixtiyoriy)')+'</label><input type="number" id="pd-paid" inputmode="numeric" min="0" step="1" value="'+esc(p.paid)+'" placeholder="0">'
       +['cash','card','bank'].map(k=>'<button type="button" class="chip" data-act="paypm" data-v="'+k+'" aria-pressed="'+(p.pm===k)+'">'+esc(payName(k))+'</button>').join('')+'</div>'+hintD('Часть суммы, которую покупатель отдал сразу, и как он заплатил. Остальное запишется в долг.','Xaridor darhol bergan summa qismi va qanday toʻlagani. Qolgani qarzga yoziladi.')+''
       +'<div class="pmute" id="pd-rest">'+payRestTxt(o)+'</div>'
-      +'<div class="pyrow"><button type="button" class="btn sm" data-act="paygo">'+L('Выдать в долг','Qarzga topshirish')+'</button></div>';
+      +'<div class="pyrow"><button type="button" class="btn sm" data-act="paygo">'+(ship?L('Разрешить в долг','Qarzga ruxsat berish'):L('Выдать в долг','Qarzga topshirish'))+'</button></div>';
   }
   return h+'<div class="pyrow"><button type="button" class="btn ghost sm" data-act="payback">'+L('Назад','Orqaga')+'</button></div></div>';
 }
@@ -1993,7 +2000,8 @@ function payMethod(m){
   const p=curPay(),cr=S.view==='courier';
   if(!p)return;
   if(m==='credit'){p.step='credit';if(cr)paintCourier();else paintSeller();return}
-  if(PAYN[m]){if(cr)crDone(p.id,{m});else setStatus(p.id,'done',{m})}
+  if(p.mode==='ship'&&PAYN[m]){shipAllow(p.id,{m});return}
+  if(PAYN[m]&&m!=='later'){if(cr)crDone(p.id,{m});else setStatus(p.id,'done',{m})}
 }
 function payGo(){
   const p=curPay(),o=p&&curOrder(p.id),cr=S.view==='courier';
@@ -2007,9 +2015,30 @@ function payGo(){
     if(pEl)pEl.focus();return;
   }
   const pay=paid>0?{m:'credit',days,paid,pm:p.pm}:{m:'credit',days};
+  if(p.mode==='ship'){shipAllow(o.id,pay);return}
   if(cr)crDone(o.id,pay);else setStatus(o.id,'done',pay);
 }
 
+/* «Разрешить отправку»: продавец после согласования записывает способ оплаты, склад видит «Разрешено», покупатель получает сообщение. */
+const payAskTxt=(pay,total)=>pay.m==='later'?L('при получении в Навои','Navoiyda olganda'):pay.m==='credit'?(pay.paid?payName(pay.pm)+' '+money(pay.paid)+' + ':'')+payName('credit')+' '+money(Math.max(0,total-(pay.paid||0)))+' · '+pay.days+L(' дн.',' kun'):payName(pay.m);
+function shipAllow(id,pay){
+  const o=curOrder(id);
+  if(!o||S.shipBusy)return;
+  askConfirm(L('Разрешить отправку заказа '+id+'? Оплата: '+payAskTxt(pay,Number(o.total)||0)+'. Склад увидит «Разрешено», изменить это потом нельзя.','Buyurtma '+id+' joʻnatishga ruxsat berilsinmi? Toʻlov: '+payAskTxt(pay,Number(o.total)||0)+'. Ombor «Ruxsat berilgan»ni koʻradi, buni keyin oʻzgartirib boʻlmaydi.'),async()=>{
+    S.shipBusy=true;
+    const r=await api('POST','/api/admin/ship',{id,pay});
+    S.shipBusy=false;
+    if(r.ok&&r.data&&r.data.order){
+      S.pay=null;applyOrder(r.data.order);loadDebts();
+      toast(L('Отправка разрешена. Покупатель получил сообщение','Joʻnatishga ruxsat berildi. Xaridorga xabar yuborildi'));
+      return;
+    }
+    const e=r.data&&r.data.error;
+    toast(e==='bad_pay'?L('Проверьте способ оплаты, срок и сумму','Toʻlov usuli, muddat va summani tekshiring'):e==='not_received'?L('Заказ ещё не принят на складе','Buyurtma hali omborga qabul qilinmagan'):e==='already'?L('Отправка уже разрешена','Joʻnatishga allaqachon ruxsat berilgan'):e==='closed'?L('Заказ уже закрыт или отменён','Buyurtma yopilgan yoki bekor qilingan'):L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
+    if(r.data&&r.data.order)applyOrder(r.data.order);
+    S.pay=null;paintSeller();
+  });
+}
 /* ---------- «Мой долг»: что видит сам магазин ---------- */
 function newMyDebt(){return {ok:false,full:false,list:[],total:0,over:0,late:0,n:0,ask:0,busy:false,ex:{}}}
 async function loadMyDebt(full){
@@ -4687,23 +4716,23 @@ async function loadWh(){
 }
 function whFiltered(){
   const W=S.wh,q=W.q.trim().toLowerCase().replace(/^#/,'');
-  let l=W.orders.filter(o=>W.tab==='in'?!!o.wh:!o.wh);
+  let l=W.orders.filter(o=>W.tab==='ok'?!!o.ship:W.tab==='in'?!!o.wh&&!o.ship:!o.wh);
   if(q)l=l.filter(o=>[o.id,o.shopName,o.name,o.org,o.phone].filter(Boolean).some(v=>String(v).toLowerCase().includes(q)));
-  if(W.tab==='in')l=l.slice().sort((a,b)=>String(b.wh.upd||b.wh.at).localeCompare(String(a.wh.upd||a.wh.at)));
+  if(W.tab!=='wait')l=l.slice().sort((a,b)=>String(b.wh.upd||b.wh.at).localeCompare(String(a.wh.upd||a.wh.at)));
   return l;
 }
 function whCardHTML(o){
-  const W=S.wh,k=whKey(o),w=o.wh,edit=!w||!!W.ed[k],open=!!W.open[k],busy=W.busy===k;
+  const W=S.wh,k=whKey(o),w=o.wh,edit=!w||(!!W.ed[k]&&!o.ship),open=!!W.open[k],busy=W.busy===k;
   const bz=bzList().find(x=>x.id===o.bz),n=(o.items||[]).length;
   const kv=W.kg[k]!==undefined?W.kg[k]:(w?String(w.kg).replace('.',','):'');
   const fee=whKgOf(kv)?Math.round(whKgOf(kv)*W.rate):0;
-  return '<div class="bcard whc"><div class="bh"><h3>'+esc(o.id)+'</h3>'+(w?'<span class="dtag">'+L('на складе','omborda')+'</span>':'')+'</div>'
+  return '<div class="bcard whc"><div class="bh"><h3>'+esc(o.id)+'</h3>'+(o.ship?'<span class="dtag">✅ '+L('разрешено','ruxsat berilgan')+'</span>':w?'<span class="dtag">'+L('на складе','omborda')+'</span>':'')+'</div>'
     +'<div class="dmeta">'+esc([o.shopName,bz?bzName(bz):'',fmtWhen(o.createdAt)].filter(Boolean).join(' · '))+'</div>'
     +'<div class="cust"><b>'+esc(o.name)+'</b>'+(o.org?' <span>'+esc(o.org)+'</span>':'')+(o.phone?' <a href="tel:'+esc(String(o.phone).replace(/[^+\d]/g,''))+'">'+esc(o.phone)+'</a>':'')+'</div>'
     +'<button type="button" class="ptg whtg" data-act="whitems" data-k="'+esc(k)+'" aria-expanded="'+open+'"><span>'+n+' '+L(n<5?'товара':'товаров','mahsulot')+' · '+money(o.total)+'</span><i>'+(open?L('Свернуть','Yigʻish'):L('Показать','Koʻrsatish'))+'</i></button>'
     +(open?'<div class="sum">'+(o.items||[]).map(it=>'<div class="r">'+itemRow(it)+'</div>').join('')+'</div>':'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
-    +(w&&!edit?'<div class="note">⚖️ '+kgTxt(w.kg)+' · '+L('перевозка ','tashish ')+money(w.fee)+'</div><div class="row-btns"><button type="button" class="btn ghost sm" data-act="whedit" data-k="'+esc(k)+'">'+L('Изменить вес','Ogʻirlikni oʻzgartirish')+'</button></div>'
+    +(w&&!edit?'<div class="note">⚖️ '+kgTxt(w.kg)+' · '+L('перевозка ','tashish ')+money(w.fee)+'</div>'+(o.ship?'<div class="note">✅ '+L('Разрешено','Ruxsat berilgan')+'</div>':'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="whedit" data-k="'+esc(k)+'">'+L('Изменить вес','Ogʻirlikni oʻzgartirish')+'</button></div>')
       :'<div><label class="lab" for="whk-'+esc(k)+'">'+L('Вес заказа, кг','Buyurtma ogʻirligi, kg')+'</label><input type="text" inputmode="decimal" id="whk-'+esc(k)+'" data-whkg="'+esc(k)+'" maxlength="8" value="'+esc(kv)+'" placeholder="'+esc(L('Например 12,5','Masalan 12,5'))+'" autocomplete="off"></div>'
         +'<div class="unit" data-whfee="'+esc(k)+'">'+(fee?L('Перевозка в Навои: ','Navoiyga tashish: ')+money(fee):L('Введите вес — покажем перевозку','Ogʻirlikni kiriting — tashishni koʻrsatamiz'))+'</div>'
         +'<div class="row-btns"><button type="button" class="btn" data-act="whrecv" data-k="'+esc(k)+'"'+(busy?' disabled':'')+'>'+(busy?L('Сохраняем…','Saqlanmoqda…'):w?L('Сохранить вес','Ogʻirlikni saqlash'):L('Принят на складе','Omborga qabul qilindi'))+'</button>'
@@ -4713,17 +4742,17 @@ function whCardHTML(o){
 function paintWhList(){
   const el=$('#wh-list');if(!el)return;
   const W=S.wh,l=whFiltered();
-  el.innerHTML=l.length?l.map(whCardHTML).join(''):'<div class="empty"><b>'+(W.q.trim()?L('Ничего не нашли','Hech narsa topilmadi'):W.tab==='in'?L('Пока ничего не принято','Hozircha hech narsa qabul qilinmagan'):L('Новых заказов нет','Yangi buyurtmalar yoʻq'))+'</b>'+(W.q.trim()?L('Измените поиск.','Qidiruvni oʻzgartiring.'):W.tab==='in'?L('Принятые заказы появятся здесь.','Qabul qilingan buyurtmalar shu yerda paydo boʻladi.'):L('Когда продавец базара получит заказ, он появится здесь.','Bozor sotuvchisi buyurtma olganda, u shu yerda paydo boʻladi.'))+'</div>';
+  el.innerHTML=l.length?l.map(whCardHTML).join(''):'<div class="empty"><b>'+(W.q.trim()?L('Ничего не нашли','Hech narsa topilmadi'):W.tab==='ok'?L('Пока ничего не разрешено','Hozircha hech narsa ruxsat berilmagan'):W.tab==='in'?L('Пока ничего не принято','Hozircha hech narsa qabul qilinmagan'):L('Новых заказов нет','Yangi buyurtmalar yoʻq'))+'</b>'+(W.q.trim()?L('Измените поиск.','Qidiruvni oʻzgartiring.'):W.tab==='ok'?L('Когда продавец разрешит отправку, заказ появится здесь.','Sotuvchi joʻnatishga ruxsat bergach, buyurtma shu yerda paydo boʻladi.'):W.tab==='in'?L('Принятые заказы появятся здесь.','Qabul qilingan buyurtmalar shu yerda paydo boʻladi.'):L('Когда продавец базара получит заказ, он появится здесь.','Bozor sotuvchisi buyurtma olganda, u shu yerda paydo boʻladi.'))+'</div>';
 }
 function renderWh(){
-  const W=S.wh,wait=W.orders.filter(o=>!o.wh).length,inn=W.orders.length-wait;
+  const W=S.wh,wait=W.orders.filter(o=>!o.wh).length,okn=W.orders.filter(o=>o.ship).length,inn=W.orders.length-wait-okn;
   let h='<div class="wrap page"><div class="hrow"><div><div class="eyebrow">'+L('Склад Sarbon','Sarbon ombori')+'</div><h1>'+L('Склад','Ombor')+'</h1></div></div>';
   if(!W.ok)h+=W.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="whreload">'+L('Повторить','Qayta urinish')+'</button></div>'
     :'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else{
     const bz=W.info&&W.info.bz?bzList().find(x=>x.id===W.info.bz):null;
     h+='<p class="lead">'+L('Заказы продавцов из категории «Базары»'+(bz?' · '+bzName(bz):'')+'. Проверьте заказ, взвесьте и нажмите «Принят на складе»: покупатель получит сообщение о весе и перевозке ('+num(W.rate)+' сум за 1 кг).','«Bozorlar» kategoriyasidagi sotuvchilarning buyurtmalari'+(bz?' · '+bzName(bz):'')+'. Buyurtmani tekshiring, tortib «Omborga qabul qilindi» tugmasini bosing: xaridor ogʻirlik va tashish haqida xabar oladi (1 kg uchun '+num(W.rate)+' soʻm).')+'</p>'
-      +'<div class="filters">'+[['wait',L('Ожидаются','Kutilmoqda'),wait],['in',L('На складе','Omborda'),inn]].map(f=>'<button type="button" class="chip" data-act="whtab" data-v="'+f[0]+'" aria-pressed="'+(W.tab===f[0])+'">'+f[1]+' · '+f[2]+'</button>').join('')+'</div>'
+      +'<div class="filters">'+[['wait',L('Ожидаются','Kutilmoqda'),wait],['in',L('На складе','Omborda'),inn],['ok',L('Разрешено','Ruxsat'),okn]].map(f=>'<button type="button" class="chip" data-act="whtab" data-v="'+f[0]+'" aria-pressed="'+(W.tab===f[0])+'">'+f[1]+' · '+f[2]+'</button>').join('')+'</div>'
       +'<div class="who-s"><input type="search" id="wh-q" data-whq="1" value="'+esc(W.q)+'" placeholder="'+esc(L('Номер, продавец или покупатель','Raqam, sotuvchi yoki xaridor'))+'" aria-label="'+esc(L('Поиск заказов','Buyurtmalarni qidirish'))+'" autocomplete="off" maxlength="60"></div>'
       +'<div id="wh-list"></div>';
   }
@@ -4749,6 +4778,7 @@ async function whRecv(k){
       return;
     }
     if(r.status===403){loadHub();go('shops');return}
+    if(r.status===409&&r.data&&r.data.error==='shipping_allowed'){toast(L('Продавец уже разрешил отправку: вес менять нельзя','Sotuvchi joʻnatishga ruxsat berdi: ogʻirlikni oʻzgartirib boʻlmaydi'));loadWh();return}
     if(r.status===404||r.status===409){toast(L('Заказ уже отменён, закрыт или недоступен','Buyurtma bekor qilingan, yopilgan yoki mavjud emas'));loadWh();paintWhList();return}
     toast(L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
     paintWhList();
@@ -6212,7 +6242,8 @@ document.addEventListener('click',e=>{
     const tt=S.own.ppl&&S.own.ppl.terr.find(x=>x.id===t.dataset.id);
     if(tt)askConfirm(L('Удалить территорию «'+tt.name+'»?','«'+tt.name+'» hududini oʻchirasizmi?'),()=>peopleCall('DELETE','/terr/'+encodeURIComponent(tt.id)));
   }
-  else if(a==='whtab'){S.wh.tab=t.dataset.v==='in'?'in':'wait';renderWh()}
+  else if(a==='shipopen')payOpen(t.dataset.id,'ship')
+  else if(a==='whtab'){S.wh.tab=t.dataset.v==='ok'?'ok':t.dataset.v==='in'?'in':'wait';renderWh()}
   else if(a==='whitems'){const W=S.wh,k=t.dataset.k;if(W.open[k])delete W.open[k];else W.open[k]=1;paintWhList()}
   else if(a==='whedit'){S.wh.ed[t.dataset.k]=1;paintWhList()}
   else if(a==='whcancel'){const W=S.wh;delete W.ed[t.dataset.k];delete W.kg[t.dataset.k];paintWhList()}

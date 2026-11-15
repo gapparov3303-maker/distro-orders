@@ -338,10 +338,12 @@ function validateOrder(b, cfg, prod, stk) {
   return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt, loc: fm.loc };
 }
 
-const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; delete x.cm; delete x.cr; delete x.crAt; delete x.whu; return x; };
-const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; delete x.rs; delete x.cm; delete x.whu; return x; };
+const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; delete x.cm; delete x.cr; delete x.crAt; delete x.whu; delete x.shu; return x; };
+const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; delete x.rs; delete x.cm; delete x.whu; delete x.shu; return x; };
 /* Заказ для кладовщика: состав и данные покупателя, чтобы сверить привезённое; без внутренних полей. */
-const whOrder = o => ({ id: o.id, createdAt: o.createdAt, status: o.status, mode: o.mode, name: o.name, org: o.org || '', phone: o.phone, items: o.items || [], total: o.total, comment: o.comment || '', wh: o.wh || null });
+const whOrder = o => ({ id: o.id, createdAt: o.createdAt, status: o.status, mode: o.mode, name: o.name, org: o.org || '', phone: o.phone, items: o.items || [], total: o.total, comment: o.comment || '', wh: o.wh || null, ship: !!o.ship });
+/* Отправка разрешена и записана в долг: заказ уже нельзя отменить (долг в журнале расчётов закрывается оплатой, а не отменой заказа). */
+const shipLocked = o => !!(o && o.ship && o.pay && o.pay.m === 'credit');
 const fmtKg = (kg, lang) => String(Math.round(Number(kg) * 100) / 100).replace('.', ',') + (lang === 'uz' ? ' kg' : ' кг');
 
 /* ---------- клиентская база ---------- */
@@ -600,6 +602,13 @@ function customerText(o, kind, shop) {
       if (!first) return L('⚖️ Заказ ' + o.id + ': вес уточнён.' + body, '⚖️ Buyurtma ' + o.id + ': ogʻirlik aniqlashtirildi.' + body);
       return L('📦 Заказ ' + o.id + ' принят на складе Sarbon.' + body + '\nСпособ оплаты согласуйте с продавцом' + (contact ? ': ' + contact : '') + '.\nПосле оплаты склад отправит груз в Навои.',
         '📦 Buyurtma ' + o.id + ' Sarbon omboriga qabul qilindi.' + body + '\nToʻlov usulini sotuvchi bilan kelishib oling' + (contact ? ': ' + contact : '') + '.\nToʻlovdan keyin ombor yukni Navoiyga joʻnatadi.');
+    }
+    case 'shipok': {
+      const later = !o.pay, w = o.wh || {};
+      const pn = later ? L('при получении в Навои', 'Navoiyda olganda') : payLine(o.pay).replace(/^(Оплата|Toʻlov): /, '');
+      const fee = w.fee ? L('\nПеревозка в Навои ' + money(w.fee) + ' платится водителю.', '\nNavoiygacha yuk tashish ' + money(w.fee) + ' haydovchiga toʻlanadi.') : '';
+      return L('✅ Заказ ' + o.id + ': продавец разрешил отправку в Навои.\nОплата: ' + pn + '.' + fee + (contact ? '\nВопросы: ' + contact : ''),
+        '✅ Buyurtma ' + o.id + ': sotuvchi Navoiyga joʻnatishga ruxsat berdi.\nToʻlov: ' + pn + '.' + fee + (contact ? '\nSavollar: ' + contact : ''));
     }
     case 'cancelled': return L(
       '❌ Заказ ' + o.id + ' отменён продавцом.' + (contact ? '\nВопросы: ' + contact : ''),
@@ -2522,6 +2531,16 @@ export class Shop {
         if (res.changed) { await this.afterChange(res.order, 'admin'); if (res.ask) await this.askConfirm(res.ask.uid, res.ask.n); }
         return json({ order: adminOrder(await this.bs1(res.order)), stats: res.stats || (await this.st.get('stats')) || { doneSum: 0, doneCount: 0 } });
       }
+      // продавец разрешает отправку заказа, принятого на складе Sarbon, и записывает способ оплаты
+      if (path === '/api/admin/ship' && method === 'POST') {
+        const r = await this.readBody(request, 2000);
+        if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
+        const res = await this.whAllow({ id: r.body.id, pay: r.body.pay, uid, name: whoName(u) });
+        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(await this.bs1(res.order)) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_pay' || res.err === 'bad_request' ? 400 : 409);
+        await this.afterShip(res.order);
+        if (res.ask) await this.askConfirm(res.ask.uid, res.ask.n);
+        return json({ order: adminOrder(await this.bs1(res.order)) });
+      }
       // продавец назначает или меняет доставщика у готового заказа на доставку; пустой cid — вернуть заказ всем доставщикам
       if (path === '/api/admin/order-courier' && method === 'POST') {
         const r = await this.readBody(request, 1000);
@@ -2818,6 +2837,7 @@ export class Shop {
     const o = await this.st.get('o:' + id);
     if (!o) return json({ error: 'not_found' }, 404);
     if (!NEXT[o.status]) return json({ error: 'closed', order: whOrder(o) }, 409);
+    if (o.ship) return json({ error: 'shipping_allowed', order: whOrder(o) }, 409);
     const first = !o.wh, now = new Date().toISOString();
     o.wh = { at: first ? now : o.wh.at, kg, rate, fee: Math.round(kg * rate), bn: cleanStr(b.name, 60) };
     if (!first) o.wh.upd = now;
@@ -3169,11 +3189,59 @@ export class Shop {
   async cancelMine(uid, id) {
     const o = await this.st.get('o:' + id);
     if (!o || o.uid !== uid) return json({ error: 'not_found' }, 404);
-    if (o.status !== 'new') return json({ error: 'not_cancellable', order: publicOrder(o) }, 409);
+    if (o.status !== 'new' || shipLocked(o)) return json({ error: 'not_cancellable', order: publicOrder(o) }, 409);
     const res = await this.changeStatus(id, 'cancelled');
     if (res.err) return json({ error: res.err }, 409);
     await this.afterChange(res.order, 'customer');
     return json({ order: publicOrder(res.order) });
+  }
+
+  /* Выдача в долг (и часть, оплаченная сразу) в журнал расчётов магазина; магазин подтверждает запись в Telegram (cf «wait»). Возвращает put и номера записей. */
+  async lgCredit(o, payRec, by, cour) {
+    const total = Number(o.total) || 0;
+    const mk = r => Object.assign(r, { by: by ? by.id : 0, bn: by ? by.name : '', cf: 'wait' }, cour ? { cid: cour.id } : {});
+    const adds = [mk({ k: 'ch', d: total, a: total, ref: o.id, due: payRec.due })];
+    if (payRec.paid) adds.push(mk({ k: 'pay', d: -payRec.paid, a: payRec.paid, m: payRec.pm, ref: o.id }));
+    if (cour && payRec.paid && payRec.pm !== 'cash') adds[1].vr = 'wait';
+    const snap = {};
+    if (o.name) snap.name = o.name;
+    if (o.org) snap.org = o.org;
+    if (o.phone) snap.phone = o.phone;
+    if (o.mode === 'delivery' && o.address) snap.addr = o.address;
+    if (o.lang) snap.lang = o.lang;
+    return await this.lgAdd(o.uid, adds, snap);
+  }
+
+  /* Продавец разрешает отправку заказа со склада и записывает, как договорились об оплате: наличные, карта, перечисление, «при получении» (m 'later': способ
+     запишется при выдаче) или в долг (срок и часть, оплаченная сразу). Работает только для принятого на складе заказа, один раз. Оплата попадает в o.pay, долг в журнал расчётов. */
+  async whAllow(b) {
+    const id = String(b.id || '');
+    if (!validId(id)) return { err: 'bad_request' };
+    const o = await this.st.get('o:' + id);
+    if (!o) return { err: 'not_found' };
+    if (!NEXT[o.status]) return { err: 'closed', order: o };
+    if (!o.wh) return { err: 'not_received', order: o };
+    if (o.ship) return { err: 'already', order: o };
+    const p = b.pay;
+    if (!p || typeof p !== 'object') return { err: 'bad_pay', order: o };
+    const nowIso = new Date().toISOString(), total = Number(o.total) || 0;
+    const later = p.m === 'later';
+    const payRec = later ? null : p.m === undefined ? null : cleanPay(p, total, dayOf(nowIso));
+    if (!later && !payRec) return { err: 'bad_pay', order: o };
+    o.ship = { at: nowIso, m: later ? 'later' : payRec.m };
+    o.shu = Number(b.uid) || 0;
+    const upd = { ['o:' + id]: o };
+    let ask = null;
+    if (payRec) {
+      o.pay = payRec;
+      if (payRec.m === 'credit' && o.uid && total > 0) {
+        const lr = await this.lgCredit(o, payRec, { id: Number(b.uid) || 0, name: cleanStr(b.name, 60) }, null);
+        Object.assign(upd, lr.put);
+        ask = { uid: o.uid, n: lr.ns[0] };
+      }
+    }
+    await this.st.put(upd);
+    return { order: o, ask };
   }
 
   /* Меняет статус без обращений к сети между чтением и записью. */
@@ -3184,12 +3252,15 @@ export class Shop {
     if (!o) return { err: 'not_found' };
     if (o.status === to) return { order: o, same: true };
     if (!(NEXT[o.status] || []).includes(to)) return { err: 'bad_transition', order: o };
+    if (to === 'cancelled' && shipLocked(o)) return { err: 'shipping_allowed', order: o };
     // доставщик закрывает только свой заказ на доставку
     if (cour && (o.mode !== 'delivery' || o.cr !== cour.id || to !== 'done')) return { err: 'not_yours', order: o };
     // продавец не закрывает доставку, если есть доставщики: «Доставлен клиенту» нажимает доставщик
     if (!cour && to === 'done' && o.mode === 'delivery' && (await this.crActive()).length) return { err: 'use_courier', order: o };
     const nowIso = new Date().toISOString();
-    const payRec = to === 'done' ? cleanPay(pay, Number(o.total) || 0, dayOf(nowIso)) : null;
+    // отправка со склада уже разрешена с оплатой: она записана тогда, при выдаче повторно не пишется
+    const prepaid = to === 'done' && !!(o.ship && o.pay);
+    const payRec = to === 'done' ? (prepaid ? o.pay : cleanPay(pay, Number(o.total) || 0, dayOf(nowIso))) : null;
     if (to === 'done' && !payRec) return { err: 'bad_pay', order: o };
     o.status = to;
     o.statusAt = nowIso;
@@ -3229,24 +3300,13 @@ export class Shop {
       if (to === 'done') {
         o.pay = payRec;
         const total = Number(o.total) || 0;
-        if (payRec.m === 'credit' && o.uid && total > 0) {
-          // кто записал; магазин подтверждает запись в Telegram (cf «wait»)
-          const mk = r => Object.assign(r, { by: by ? by.id : 0, bn: by ? by.name : '', cf: 'wait' }, cour ? { cid: cour.id } : {});
-          const adds = [mk({ k: 'ch', d: total, a: total, ref: o.id, due: payRec.due })];
-          if (payRec.paid) adds.push(mk({ k: 'pay', d: -payRec.paid, a: payRec.paid, m: payRec.pm, ref: o.id }));
-          if (cour && payRec.paid && payRec.pm !== 'cash') adds[1].vr = 'wait';
-          const snap = {};
-          if (o.name) snap.name = o.name;
-          if (o.org) snap.org = o.org;
-          if (o.phone) snap.phone = o.phone;
-          if (o.mode === 'delivery' && o.address) snap.addr = o.address;
-          if (o.lang) snap.lang = o.lang;
-          const lr = await this.lgAdd(o.uid, adds, snap);
+        if (!prepaid && payRec.m === 'credit' && o.uid && total > 0) {
+          const lr = await this.lgCredit(o, payRec, by, cour);
           Object.assign(upd, lr.put);
           ask = { uid: o.uid, n: lr.ns[0], pn: payRec.paid && cour && payRec.pm !== 'cash' ? lr.ns[1] : 0 };
         }
-        // наличные, которые доставщик принял у клиента, оседают в его кассе до сдачи продавцу
-        if (cour) {
+        // наличные, которые доставщик принял у клиента, оседают в его кассе до сдачи продавцу (оплаченное при разрешении отправки сюда не попадает)
+        if (cour && !prepaid) {
           const cashIn = payRec.m === 'cash' ? total : payRec.m === 'credit' && payRec.pm === 'cash' ? (payRec.paid || 0) : 0;
           // карта и перечисление не попадают в наличные доставщика: они ждут сверки продавцом с банком
           const nvIn = payRec.m === 'card' || payRec.m === 'bank' ? total : payRec.m === 'credit' && payRec.paid && payRec.pm !== 'cash' ? payRec.paid : 0;
@@ -4103,6 +4163,15 @@ export class Shop {
   }
 
   /* Обновляет карточки продавца и пишет клиенту. */
+  /* Отправка разрешена: карточки заказа у персонала обновляются, покупателю пишем, что разрешено и как записана оплата. */
+  async afterShip(o) {
+    await this.afterChange(o, 'ship');
+    if (!this.env.BOT_TOKEN || !o.uid) return;
+    try {
+      const cfg = await this.getCfg();
+      await this.tg('sendMessage', { chat_id: o.uid, text: customerText(o, 'shipok', cfg.shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
+    } catch (e) { console.error('ship notify failed', e && e.message || e); }
+  }
   async afterChange(o, by, extraMsg) {
     const cfg = await this.getCfg();
     const card = await this.card(o, cfg.shop, false);
