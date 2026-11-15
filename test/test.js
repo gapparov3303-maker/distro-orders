@@ -9032,6 +9032,92 @@ await t('единица количества на экране: нижняя с�
   assert.ok(!/L\('шт\.','dona'\)\+'<\/small><strong>/.test(html), 'нижняя строка не пишет «шт.» жёстко');
 });
 
+await t('форма Базара: заказ без даты и времени, доставка до двери без региона и стоимости, у остальных продавцов всё как было', async () => {
+  await hubWorld();
+  const bz = (await jsonOf(await adm('POST', '/bazaars', { name: 'Урикзор', uz: 'Oʻrikzor' }))).id;
+  const sA = await mkBazaarShop('Рынок Один', bz, 60);
+  const sC = await mkBazaarShop('Обычная база', undefined, 61);
+  // у обоих платная доставка, регион и «доставки нет»: у Базара это не должно мешать
+  for (const sid of [sA, sC]) {
+    const c = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+    Object.assign(c.shop, { deliveryFee: 25000, freeDeliveryFrom: 0, regions: ['tk'], delivery: sid === sC });   // у Базара доставка выключена, у обычного включена
+    assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg: c } })).status, 200);
+  }
+  assert.equal(S.mergeCfg((await jsonOf(await callS(sA, 'GET', '/api/config'))).cfg).shop.category, 'bazaar', 'покупатель видит категорию продавца');
+  const form = (over, mode) => ({ name: 'Магазин Навои', phone: '+998 91 555 44 33', mode: mode || 'pickup', comment: 'Позвоните за час', ...over });
+  const put = async (sid, f, u) => callS(sid, 'POST', '/api/order', { init: (u || newUser()).init(), body: { cart: CART, form: f, lang: 'ru', expectTotal: 1394000 } });
+
+  // самовывоз со склада в Навои: ни даты, ни времени
+  tgLog = [];
+  let r = await put(sA, form());
+  assert.equal(r.status, 200);
+  let o = (await jsonOf(r)).order;
+  assert.equal(o.pickupAt, '', 'времени у заказа Базара нет');
+  assert.equal(o.mode, 'pickup'); assert.equal(o.total, 1394000);
+  const cust = lastTg('sendMessage', p => String(p.text).startsWith('Заказ ' + o.id)).payload.text;
+  assert.ok(cust.includes('Получение: Заберу сам в Навои') && cust.includes('Оплату и доставку согласуете с продавцом.'), cust);
+  assert.ok(!cust.includes('при получении') && !cust.includes('Самовывоз:'), 'про оплату при получении и дату не пишем');
+  const card = tgAll('sendMessage').map(x => x.payload.text).find(x => x.includes('Заберу сам в Навои') && x.includes('Jami')) || '';
+  assert.ok(card.includes('оплата по договорённости с продавцом') && card.includes('Olish usuli: Navoiyda oʻzim olaman'), card);
+
+  // доставка до двери: нужен только адрес, регион и стоимость не требуются, «доставка выключена» не мешает
+  assert.equal((await put(sA, form({}, 'delivery'))).status, 400, 'адрес для доставки нужен');
+  assert.equal((await put(sA, form({ address: 'Дом' }, 'delivery'))).status, 400, 'слишком короткий адрес');
+  tgLog = [];
+  r = await put(sA, form({ address: 'Навои, ул. Галаба 12, склад 3', date: 'мусор', time: 'мусор' }, 'delivery'));
+  assert.equal(r.status, 200);
+  o = (await jsonOf(r)).order;
+  assert.equal(o.pickupAt, ''); assert.equal(o.mode, 'delivery'); assert.equal(o.address, 'Навои, ул. Галаба 12, склад 3');
+  assert.equal(o.total, 1394000, 'стоимости доставки в заказе нет'); assert.ok(!o.fee && !o.region);
+  const cd = lastTg('sendMessage', p => String(p.text).startsWith('Заказ ' + o.id)).payload.text;
+  assert.ok(cd.includes('Получение: Доставка до двери') && cd.includes('Адрес доставки: Навои, ул. Галаба 12, склад 3'), cd);
+
+  // сборочный лист и Excel показывают способ получения вместо даты
+  const pk = await jsonOf(await callS(sA, 'POST', '/api/admin/pick', { init: iD(), body: { ids: [o.id] } }));
+  assert.ok(pk.html.includes('Получение:</b> Доставка до двери') && !pk.html.includes('Доставить:'), 'сборочный лист');
+
+  // у обычного продавца без даты и времени заказ не принимают, доставка платная
+  assert.equal((await put(sC, form())).status, 400);
+  const pkC = S.pickupInfo(S.DEFAULT, S.shopNow(), S.leadFor(S.DEFAULT, 'delivery'));
+  const dateC = { date: pkC.min, time: pkC.slots(pkC.min)[0] };
+  r = await callS(sC, 'POST', '/api/order', { init: newUser().init(), body: { cart: CART, form: form({ address: 'Навои, ул. Галаба 12, склад 3', region: 'tk', ...dateC }, 'delivery'), lang: 'ru', expectTotal: 1394000 + 25000 } });
+  assert.equal(r.status, 200);
+  o = (await jsonOf(r)).order;
+  assert.ok(o.pickupAt.startsWith(dateC.date) && o.fee === 25000);
+});
+
+await t('форма Базара на экране: две кнопки получения, подсказки, без даты и времени, новая заметка и сообщения на двух языках', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const slice = (a, b) => { const i = html.indexOf(a); assert.ok(i >= 0, a); return html.slice(i, html.indexOf(b, i)); };
+  const fm = slice('function formHTML(pk){', '/* сохранённые адреса');
+  assert.ok(fm.includes('bzShop()') && fm.includes('Заберу сам в Навои') && fm.includes('Доставка до двери'), 'кнопки получения Базара');
+  assert.ok(fm.includes('Заберёте на складе в Навои, когда товар придёт.') && fm.includes('Стоимость и время доставки согласует с вами продавец.'), 'подсказки под кнопками');
+  assert.ok(/\(bz\?'':'<div><label class="lab" for="f-date">/.test(fm) && fm.includes('id="e-time"></div></div>\')'), 'дата и время скрыты у Базара');
+  assert.ok(fm.includes('f-address') && fm.includes('locBoxHTML()'), 'адрес и «моё местоположение» остаются');
+  const note = slice('function cartNote(){', 'function renderCart(){');
+  assert.ok(note.startsWith('function cartNote(){\n  if(bzShop())return L(\'Продавец соберёт заказ и отправит на склад в Навои. Оплату и доставку согласуете с продавцом.\''), 'нижняя заметка Базара');
+  const val = slice('function validate(){', 'const FIELDS=');
+  assert.ok(/if\(!bzShop\(\)\)\{[^}]*f\.date[^}]*f\.time/.test(val.replace(/\n/g, '')), 'клиент не требует дату и время у Базара');
+  // помощники: тексты на двух языках, оба способа
+  const w = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8') + '\n;return {setLang,isBzShop,noWhen,recvName,whenText,whenLine,deliveryFee,orderText,DEFAULT}')();
+  assert.ok(w.isBzShop({ category: 'bazaar' }) && !w.isBzShop({ category: 'distributor' }) && !w.isBzShop(null));
+  const pick = { mode: 'pickup', pickupAt: '' }, del = { mode: 'delivery', pickupAt: '', address: 'Навои, Галаба 12' };
+  w.setLang('ru');
+  assert.deepEqual([w.recvName(pick), w.recvName(del), w.whenText(pick), w.whenLine(del)], ['Заберу сам в Навои', 'Доставка до двери', 'Заберу сам в Навои', 'Получение: Доставка до двери']);
+  w.setLang('uz');
+  assert.deepEqual([w.recvName(pick), w.recvName(del), w.whenLine(pick)], ['Navoiyda oʻzim olaman', 'Eshikkacha yetkazish', 'Olish usuli: Navoiyda oʻzim olaman']);
+  assert.ok(w.noWhen(pick) && !w.noWhen({ pickupAt: '2026-11-20T10:00' }));
+  // доставка у Базара всегда бесплатна в заказе, у остальных считается как раньше
+  const cfg = JSON.parse(JSON.stringify(w.DEFAULT)); cfg.shop.deliveryFee = 25000;
+  assert.equal(w.deliveryFee(cfg, 'delivery', 100000), 25000);
+  cfg.shop.category = 'bazaar';
+  assert.equal(w.deliveryFee(cfg, 'delivery', 100000), 0);
+  // экраны заказа: у заказа Базара вместо даты способ получения
+  const placed = slice('function renderShopPlaced(){', 'function validate(){');
+  assert.ok(placed.includes('whenText(o)') && placed.includes('Сумма заказа') && placed.includes('Оплату и доставку согласуете с продавцом.'), 'экран «Заказ отправлен»');
+  assert.ok(html.includes('<span class="when">\'+esc(whenText(o))+\'</span>'), 'карточка заказа');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {

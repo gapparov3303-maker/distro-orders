@@ -283,18 +283,23 @@ function validateForm(f, cfg) {
   const comment = cleanStr(f.comment, 500, true);
   if (!name || digits < 9 || digits > 15) return { err: 'bad_request' };
   const mode = f.mode === 'delivery' ? 'delivery' : 'pickup';
+  // продавец категории «Базар»: покупатель в Навои, товар едет на склад в Навои. Дата и время не нужны, доставку до двери согласует продавец
+  const bz = isBzShop(cfg.shop);
   let address = '', region = '';
   if (mode === 'delivery') {
-    if (cfg.shop.delivery === false) return { err: 'no_delivery' };
+    if (!bz && cfg.shop.delivery === false) return { err: 'no_delivery' };
     // доставка только в отмеченные регионы: регион нужен, и он должен быть из списка. Самовывоз не ограничен.
-    region = cleanRegion(f.region);
-    if (hasZone(cfg.shop.regions)) {
-      if (!region) return { err: 'region_need' };
-      if (!cleanRegions(cfg.shop.regions).includes(region)) return { err: 'no_region' };
+    if (!bz) {
+      region = cleanRegion(f.region);
+      if (hasZone(cfg.shop.regions)) {
+        if (!region) return { err: 'region_need' };
+        if (!cleanRegions(cfg.shop.regions).includes(region)) return { err: 'no_region' };
+      }
     }
     address = cleanStr(f.address, 200);
     if (address.length < 5) return { err: 'bad_request' };
   }
+  if (bz) return { name, phone, comment, mode, address, region: '', pickupAt: '', bz: true, loc: cleanLoc(f.loc) };
   const date = typeof f.date === 'string' ? f.date : '', time = typeof f.time === 'string' ? f.time : '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return { err: 'pickup' };
   // час запаса, чтобы не спорить с клиентскими часами
@@ -547,7 +552,7 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
 function courierCard(o, shop, origin, did, state) {
   const px = cbPrefix(did), bx = bsExtra(o);
   let text = biL(() => {
-    const when = fmtWhen(o.pickupAt);
+    const when = whenText(o);
     const head = state === 'given' ? L('🚚 Вам назначен заказ ', '🚚 Sizga buyurtma tayinlandi: ') : state === 'mine' ? L('🚚 Вы взяли заказ ', '🚚 Siz buyurtmani oldingiz: ') : state ? L('✔ Заказ ', '✔ Buyurtma ') : L('🚚 Готов к доставке: заказ ', '🚚 Yetkazishga tayyor: buyurtma ');
     return head + o.id + (state && state !== 'mine' && state !== 'given' ? L(' уже взял ' + state, ' allaqachon olingan: ' + state) : '')
       + '\n\n' + (o.org ? o.org + ' · ' : '') + o.name + '\n' + L('Телефон: ', 'Telefon: ') + o.phone
@@ -571,20 +576,20 @@ function courierCard(o, shop, origin, did, state) {
 function customerText(o, kind, shop) {
   setLang(o.lang === 'uz' ? 'uz' : 'ru');
   const del = o.mode === 'delivery';
-  const when = fmtWhen(o.pickupAt);
-  const whenL = del ? L('Доставка: ', 'Yetkazib berish: ') : L('Самовывоз: ', 'Olib ketish: ');
-  const addr = L(shop.address, shop.addressUz || shop.address);
+  const wl = whenLine(o);
+  const bzo = noWhen(o);   // заказ Базара: самовывоз со склада в Навои, адрес продавца не показываем
+  const addr = bzo ? '' : L(shop.address, shop.addressUz || shop.address);
   const contact = (shop.telegram ? '@' + shop.telegram : '') + (shop.phone ? (shop.telegram ? ', ' : '') + shop.phone : '');
   const place = del ? L('\nАдрес доставки: ', '\nYetkazib berish manzili: ') + o.address
     : (addr ? L('\nАдрес: ', '\nManzil: ') + addr : '');
   const name = shop.name || DEFAULT.shop.name;
   switch (kind) {
     case 'placed': return L(
-      'Заказ ' + o.id + ' отправлен продавцу. Когда он подтвердит, напишем сюда.\n' + whenL + when + place + '\nК оплате при получении: ' + money(o.total),
-      'Buyurtma ' + o.id + ' sotuvchiga yuborildi. U tasdiqlagach, shu yerga yozamiz.\n' + whenL + when + place + '\nOlganda toʻlanadi: ' + money(o.total));
+      'Заказ ' + o.id + ' отправлен продавцу. Когда он подтвердит, напишем сюда.\n' + wl + place + (bzo ? '\nСумма заказа: ' + money(o.total) + '. Оплату и доставку согласуете с продавцом.' : '\nК оплате при получении: ' + money(o.total)),
+      'Buyurtma ' + o.id + ' sotuvchiga yuborildi. U tasdiqlagach, shu yerga yozamiz.\n' + wl + place + (bzo ? '\nBuyurtma summasi: ' + money(o.total) + '. Toʻlov va yetkazib berishni sotuvchi bilan kelishasiz.' : '\nOlganda toʻlanadi: ' + money(o.total)));
     case 'accepted': return L(
-      '🛠 Заказ ' + o.id + ' принят в работу.\n' + whenL + when + place,
-      '🛠 Buyurtma ' + o.id + ' ishga qabul qilindi.\n' + whenL + when + place);
+      '🛠 Заказ ' + o.id + ' принят в работу.\n' + wl + place,
+      '🛠 Buyurtma ' + o.id + ' ishga qabul qilindi.\n' + wl + place);
     case 'ready': return del ? L(
       '📦 Заказ ' + o.id + ' собран и скоро будет доставлен.\nОплата при получении: ' + money(o.total) + place,
       '📦 Buyurtma ' + o.id + ' yigʻildi va tez orada yetkaziladi.\nOlganda toʻlanadi: ' + money(o.total) + place) : L(
@@ -759,7 +764,7 @@ function ordersSheets(orders, lang) {
     L('Количество', 'Soni'), L('В упаковках', 'Qadoqlarda'), L('Цена, сум', 'Narx, soʻm'), L('Сумма, сум', 'Summa, soʻm')]];
   list.forEach(o => {
     const fee = Number(o.fee) || 0, total = Number(o.total) || 0, disc = Number(o.disc) || 0, so = stOf(o.status, o.mode), st = L(so.name, so.uz), when = String(o.pickupAt || '').replace('T', ' ');
-    rows.push([o.id, shopTime(o.createdAt), st, o.mode === 'delivery' ? L('Доставка', 'Yetkazib berish') : L('Самовывоз', 'Olib ketish'), when, o.name || '', o.phone || '', o.org || '',
+    rows.push([o.id, shopTime(o.createdAt), st, noWhen(o) ? recvName(o) : o.mode === 'delivery' ? L('Доставка', 'Yetkazib berish') : L('Самовывоз', 'Olib ketish'), when, o.name || '', o.phone || '', o.org || '',
       o.tg && o.tg.username ? '@' + o.tg.username : '', o.mode === 'delivery' ? (o.address || '') : '', o.comment || '', total - fee + disc, disc, fee, total, (o.items || []).length, payPlain(o.pay), o.crn || '']);
     (o.items || []).forEach(it => items.push([o.id, st, when, o.name || '', nm(it) || '', weightLabel(it), Number(it.qty) || 0, packText(it, it.qty), Number(it.price) || 0, (Number(it.price) || 0) * (Number(it.qty) || 0)]));
   });
@@ -860,7 +865,8 @@ function pickHtml(orders, shop, prod, cut, lang) {
   list.forEach(o => {
     const del = o.mode === 'delivery', fee = Number(o.fee) || 0, disc = Number(o.disc) || 0;
     h += '<section class="ord"><h2><span class="id">' + esc(o.id) + '</span><span class="tag">' + (del ? L('Доставка', 'Yetkazib berish') : L('Самовывоз', 'Olib ketish')) + '</span><span class="tag">' + esc(L(stOf(o.status, o.mode).name, stOf(o.status, o.mode).uz)) + '</span></h2>'
-      + '<div class="row"><b>' + (del ? L('Доставить', 'Yetkazish') : L('Выдать', 'Topshirish')) + ':</b> ' + esc(whenDay(o.pickupAt)) + '</div>'
+      + (noWhen(o) ? '<div class="row"><b>' + L('Получение', 'Olish usuli') + ':</b> ' + esc(recvName(o)) + '</div>'
+        : '<div class="row"><b>' + (del ? L('Доставить', 'Yetkazish') : L('Выдать', 'Topshirish')) + ':</b> ' + esc(whenDay(o.pickupAt)) + '</div>')
       + '<div class="row"><b>' + esc(o.name || '') + '</b>' + (o.org ? ' · ' + esc(o.org) : '') + ' · ' + esc(o.phone || '') + '</div>'
       + (del && o.address ? '<div class="row"><b>' + L('Адрес', 'Manzil') + ':</b> ' + esc(o.address) + '</div>' : '')
       + (o.comment ? '<div class="cm">' + esc(o.comment) + '</div>' : '')
