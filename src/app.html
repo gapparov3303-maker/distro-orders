@@ -909,7 +909,7 @@ const S={
   fav:[],favT:null,favSeq:0,imp:null,impBusy:false,
   rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0},
   an:{days:30,sh:'',tab:'cats',sort:'sum',all:false,data:null,shops:[],err:false,seq:0},
-  did:'',epoch:0,switching:false,off:false,otherCart:null,
+  did:'',epoch:0,switching:false,leaving:false,off:false,otherCart:null,
   hub:{title:'',about:{ru:'',uz:'',phone:'',tg:'',ig:''},shops:[],me:null,terrs:[],bazaars:[],loaded:false,err:false},
   ab:{open:null},
   own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
@@ -3818,8 +3818,13 @@ function settingsHTML(){
     +num('to',L('Время работы до, часов','Ish vaqti: gacha, soat'),'openTo',1,23,['До этого часа включительно. Пример: 20.','Shu soatgacha, shu soat ham kiradi. Masalan: 20.'])
     +'</div></div>'
     +sellLinkHTML()
-    +'<div class="card"><h3>'+L('Резервная копия','Zaxira nusxasi')+'</h3><div class="unit">'+L('Один файл со всем: настройки, каталог с фото, остатки, заказы и покупатели. Он придёт вам в чат с ботом. Храните его в надёжном месте: в нём телефоны и адреса покупателей. Токен бота и код продавца в файл не попадают.','Hammasi bitta faylda: sozlamalar, rasmli katalog, qoldiqlar, buyurtmalar va xaridorlar. U botdagi chatingizga keladi. Uni ishonchli joyda saqlang: unda xaridorlarning telefon va manzillari bor. Bot tokeni va sotuvchi kodi faylga kirmaydi.')+'</div>'+xbtn('backup')+'</div>';
+    +'<div class="card"><h3>'+L('Резервная копия','Zaxira nusxasi')+'</h3><div class="unit">'+L('Один файл со всем: настройки, каталог с фото, остатки, заказы и покупатели. Он придёт вам в чат с ботом. Храните его в надёжном месте: в нём телефоны и адреса покупателей. Токен бота и код продавца в файл не попадают.','Hammasi bitta faylda: sozlamalar, rasmli katalog, qoldiqlar, buyurtmalar va xaridorlar. U botdagi chatingizga keladi. Uni ishonchli joyda saqlang: unda xaridorlarning telefon va manzillari bor. Bot tokeni va sotuvchi kodi faylga kirmaydi.')+'</div>'+xbtn('backup')+'</div>'
+    +leaveRoleHTML();
 }
+/* Выход из роли продавца этой компании: внизу настроек, отдельной карточкой, чтобы не нажать случайно */
+const leaveRoleHTML=()=>'<div class="card"><h3>'+L('Выйти из роли продавца','Sotuvchi rolidan chiqish')+'</h3><div class="unit">'+L('Вы перестанете быть продавцом этой компании на всех своих устройствах. Компания, каталог, заказы и другие продавцы останутся как есть. Вернуться можно по коду продавца.','Siz bu kompaniyada barcha qurilmalaringizda sotuvchi boʻlmay qolasiz. Kompaniya, katalog, buyurtmalar va boshqa sotuvchilar oʻz holicha qoladi. Qaytish uchun sotuvchi kodi kerak.')+'</div><button type="button" class="btn ghost sm dangerbtn" id="leaverole" data-act="leaverole"'+(S.leaving?' disabled':'')+'>'+leaveLab()+'</button></div>';
+const leaveLab=()=>S.leaving?L('Подождите…','Kuting…'):L('Выйти из роли продавца','Sotuvchi rolidan chiqish');
+function paintLeave(){const b=$('#leaverole');if(b){b.disabled=!!S.leaving;b.textContent=leaveLab()}}
 /* Категория дистрибьютора меняется сразу при выборе, отдельно от остальных настроек: так устаревшая форма не затирает выбор владельца */
 async function catSave(v){
   const prev=cleanCat(S.cfg.shop.category);
@@ -4817,6 +4822,50 @@ async function enterSeller(did,tab){
   if(!S.admin){go('shop');return false}
   sellerOpen(tab);
   return true;
+}
+/* Выйти из роли продавца открытой компании. Доступ теряет только этот человек; компания, данные и другие продавцы не меняются.
+   Сначала сохраняется то, что вы правили, потом сервер говорит, один ли вы продавец (тогда предупреждение жёстче), и только после «да» выход. */
+async function leaveRole(){
+  const did=S.did;
+  if(!did||!S.admin||S.leaving)return;
+  S.leaving=true;paintLeave();
+  let c=null;
+  try{
+    await flushSave();
+    c=await api('POST','/api/hub/leave',{did,check:true});
+  }finally{S.leaving=false;paintLeave()}
+  if(S.did!==did)return;
+  if(c&&c.status===404){leaveDone(did,'');return}      // роли там уже нет (сняли с другого телефона): показываем итог без вопросов
+  if(!c||!c.ok||!c.data||typeof c.data.alone!=='boolean'){
+    toast(L('Не удалось выйти. Проверьте соединение.','Chiqib boʻlmadi. Ulanishni tekshiring.'));
+    return;
+  }
+  const nm=c.data.name||(S.cfg.shop&&S.cfg.shop.name)||shopNameOf(did);
+  const msg=c.data.alone
+    ?L('Вы единственный продавец «'+nm+'». После выхода управлять компанией и получать заказы будет некому, пока кто-нибудь снова не войдёт по коду. Выйти?','Siz «'+nm+'» ning yagona sotuvchisisiz. Chiqsangiz, kompaniyani boshqaradigan va buyurtma oladigan hech kim qolmaydi, toki kimdir kod bilan qayta kirmaguncha. Chiqamizmi?')
+    :L('Выйти из роли продавца «'+nm+'»? Остальные продавцы продолжат работу. Вернуться можно по коду продавца.','«'+nm+'» sotuvchisi rolidan chiqamizmi? Boshqa sotuvchilar ishlashda davom etadi. Qaytish uchun sotuvchi kodi kerak.');
+  askConfirm(msg,()=>leaveGo(did,nm));
+}
+async function leaveGo(did,nm){
+  if(S.leaving||S.did!==did)return;
+  S.leaving=true;paintLeave();
+  let r=null;
+  try{r=await api('POST','/api/hub/leave',{did})}finally{S.leaving=false;paintLeave()}
+  // 404: роли у вас там уже нет (вышли с другого телефона) — для вас это тот же результат
+  if(!r||!(r.ok||r.status===404)){
+    toast(L('Не удалось выйти. Проверьте соединение.','Chiqib boʻlmadi. Ulanishni tekshiring.'));
+    return;
+  }
+  leaveDone(did,nm);
+}
+/* Роли больше нет: компания закрывается как открытая, меню и список ролей обновляются, показывается главный экран */
+async function leaveDone(did,nm){
+  S.epoch++;resetShopState();S.did='';
+  await loadHub();
+  if(S.as&&!asRoles().some(x=>x[0]===S.as))S.as='';
+  go('shops');
+  nm=nm||shopNameOf(did);
+  toast(nm?L('Вы вышли из роли продавца «'+nm+'»','Siz «'+nm+'» sotuvchisi rolidan chiqdingiz'):L('Вы вышли из роли продавца','Siz sotuvchi rolidan chiqdingiz'));
 }
 /* Переключатель «Смотреть как»: ставит режим и открывает начальный экран выбранной роли */
 const AS_SHOP_VIEWS=['shops','shop','mine','debt','profile','about'];
@@ -6122,6 +6171,7 @@ document.addEventListener('click',e=>{
   }
   else if(a==='stab'){sellerOpen(t.dataset.t);menuSet(false)}
   else if(a==='sof'){menuSet(false);enterSeller(t.dataset.id,t.dataset.t)}
+  else if(a==='leaverole'){leaveRole()}
   else if(a==='otab'){ownOpen(t.dataset.t);menuSet(false)}
   else if(a==='rdays'){const v=Number(t.dataset.v);if(RP_DAYS.includes(v)&&v!==S.rep.days){S.rep.days=v;S.rep.sel=-1;S.rep.hov=-1;S.rep.allP=false;loadReport()}}
   else if(a==='rsel'){if(Date.now()-S.rep.skip<400)return;const i=Number(t.dataset.i);S.rep.sel=S.rep.sel===i?-1:i;S.rep.hov=-1;repShow(S.rep.sel)}

@@ -2353,6 +2353,15 @@ export class Shop {
       if (!admins.includes(uid)) { admins.push(uid); await this.st.put('admins', admins); }
       return json({ ok: true, admins });
     }
+    // выход одного продавца: убирается только он, остальные продавцы и все данные остаются
+    if (path === '/__/admin-remove') {
+      const uid = Number(b.uid);
+      if (!Number.isSafeInteger(uid)) return json({ error: 'bad_request' }, 400);
+      const admins = (await this.st.get('admins')) || [];
+      const rest = admins.filter(x => x !== uid);
+      if (rest.length !== admins.length) await this.st.put('admins', rest);
+      return json({ ok: true, admins: rest, was: admins.length !== rest.length });
+    }
     if (path === '/__/admin-clear') {
       const admins = (await this.st.get('admins')) || [];
       await this.st.put('admins', []);
@@ -5249,6 +5258,25 @@ export class Hub {
       const sc = await shopCall(this.env, b.did, '/__/my-confirm', { uid, n: Number(b.n), ok: b.ok });
       if (!sc.ok) return json({ error: (sc.data && sc.data.error) || 'server' }, sc.status || 500);
       return json({ debt: sc.data.debt ? Object.assign({}, sc.data.debt, { did: b.did, shopName: (await this.getRec(b.did)).name }) : null });
+    }
+
+    // выход из роли продавца: человек теряет доступ только к одной компании; компания, данные и другие продавцы не меняются
+    // check:true только сообщает, останется ли компания без продавцов (для предупреждения в окне подтверждения)
+    if (path === '/api/hub/leave' && method === 'POST') {
+      const r = await this.readBody(request, 500);
+      const b = r.body && typeof r.body === 'object' ? r.body : null;
+      if (r.err || !b || !validDid(b.did)) return json({ error: 'bad_request' }, 400);
+      if (!(await this.sellsOf(uid)).includes(b.did)) return json({ error: 'not_found' }, 404);
+      const rec = await this.getRec(b.did);
+      if (!rec) { await this.setSeller(uid, b.did, false); return json({ ok: true, alone: false, name: '' }); }
+      const cur = await shopCall(this.env, b.did, '/__/admins', {});
+      if (!cur.ok || !cur.data || !Array.isArray(cur.data.admins)) return json({ error: 'server' }, 502);
+      const alone = !cur.data.admins.some(x => x !== uid);
+      if (b.check === true) return json({ alone, name: rec.name });
+      const res = await shopCall(this.env, b.did, '/__/admin-remove', { uid });
+      if (!res.ok || !res.data) return json({ error: 'server' }, 502);
+      await this.setSeller(uid, b.did, false, res.data.admins);
+      return json({ ok: true, alone, name: rec.name });
     }
 
     // регион магазина: запоминается, чтобы на другом телефоне список был тем же
