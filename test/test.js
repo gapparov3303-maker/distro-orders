@@ -8267,6 +8267,33 @@ await t('«Покупатель» вместо «магазин» и «клие�
   assert.ok(/baseTypeName = k => \(\{ shop: L\('Магазин', 'Doʻkon'\)/.test(fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8')), 'тип точки «Магазин» остался');
 });
 
+await t('меню: у продавца «Продавец» раскрыт сразу, если он не внутри другой группы; нажатие по-прежнему сворачивает', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const line = name => { const m = html.match(new RegExp('^const ' + name + '=.*$', 'm')); assert.ok(m, 'нет ' + name); return m[0]; };
+  const mk = st => new Function('S', 'menuGroups', line('parentHere') + '\n' + line('menuSubOpen') + '\nreturn menuSubOpen;')(st, () => { throw new Error('группы переданы'); });
+  const seller = ['seller', 'Продавец', 0, '', [['orders', 'Заказы']], 'stab'];
+  const courier = ['courier', 'Доставка', 0, '', [['today', 'Сегодня']], 'ctab'];
+  const owner = ['o_dists', 'Продавцы', 0, '', [['dists', 'Список']], 'otab'];
+  const base = ['base', 'База'];
+  const gs = [['Покупатель', [['shop', 'Каталог']]], ['Работа', [seller, courier, base]], ['Владелец', [owner]]];
+  const st = { msub: null, own: { sec: 'dists' }, cr: { tab: 'today' }, sellerTab: 'orders' };
+  const open = mk(st);
+  assert.equal(open(seller, 'shop', gs), true, 'каталог: «Продавец» раскрыт сразу');
+  assert.equal(open(seller, 'seller', gs), true, 'в панели продавца раскрыт');
+  assert.equal(open(courier, 'shop', gs), false, 'доставка сама не раскрывается');
+  assert.equal(open(courier, 'courier', gs), true, 'в доставке раскрыта доставка');
+  assert.equal(open(seller, 'courier', gs), false, 'в доставке «Продавец» не раскрывается');
+  assert.equal(open(owner, 'owner', gs), true, 'у владельца раскрыт его раздел');
+  assert.equal(open(seller, 'owner', gs), false, 'в разделе владельца «Продавец» не раскрывается');
+  st.msub = '';
+  assert.equal(open(seller, 'shop', gs), false, 'нажали «Продавец»: всё свёрнуто');
+  st.msub = 'seller';
+  assert.equal(open(seller, 'shop', gs), true, 'раскрыли «Продавец» руками');
+  assert.equal(open(courier, 'shop', gs), false, 'руками раскрыта одна группа');
+  assert.ok(/const open=menuSubOpen\(i,cur,groups\);/.test(html), 'меню рисуется по тому же правилу');
+  assert.ok(/S\.msub=it&&menuSubOpen\(it,cur\)\?'':t\.dataset\.v/.test(html), 'нажатие переключает по тому же правилу');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
