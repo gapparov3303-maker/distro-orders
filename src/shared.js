@@ -126,7 +126,16 @@ const PACK_KEYS=['box','blk'];
 const packSize=(p,k)=>{const n=Math.floor(Number(p&&p[k]));return n>=2?n:0};
 const packShort=k=>k==='box'?L('кор.','quti'):L('бл.','blok');
 const packWord=k=>k==='box'?L('коробка','quti'):L('блок','blok');
-const pcsWord=()=>L('шт','dona');
+/* Чем считается количество товара. У товара «1 кг» или «1 л» одна штука — это 1 кг (1 л), поэтому пишем «кг» / «л»;
+   у остальных «шт» (мешок 25 кг, пачка 400 г, банка 5 л считаются штуками). Работает и с товаром из каталога, и со строкой заказа (amount, unit). */
+const qtyKind=p=>{const a=Number(p&&p.amount),u=p&&p.unit;return a===1&&(u==='kg'||u==='l')?u:'pc'};
+const pcsWord=p=>{const k=qtyKind(p);return k==='pc'?L('шт','dona'):L(UNITS[k].ru,UNITS[k].uz)};
+/* «10 кг» у товара на вес и просто «10» у остальных: количество в строке заказа и на кнопках упаковок */
+const qtyStr=(p,n)=>qtyKind(p)==='pc'?String(n):n+' '+pcsWord(p);
+/* то же для узбекских фраз «осталось 8 ta» → «8 kg» у товара на вес */
+const qtyTa=(p,n)=>qtyKind(p)==='pc'?n+' ta':n+' '+pcsWord(p);
+/* «от 10 кг» / «10 kg dan» (у штучных «от 10 шт» / «10 donadan») */
+const qtyFrom=(p,n)=>L('от '+n+' '+pcsWord(p),qtyKind(p)==='pc'?n+' donadan':n+' '+pcsWord(p)+' dan');
 /* «Продаётся только упаковками»: у товара поле only = 'box' | 'blk' (продавец выбирает одну). Работает, только если такая упаковка у товара есть (≥ 2 шт). */
 const packOnly=p=>{const k=p&&p.only;return (k==='box'||k==='blk')&&packSize(p,k)?k:''};
 /* Шаг количества: размер упаковки, если товар только упаковками, иначе 1 шт. */
@@ -135,7 +144,7 @@ const packStep=p=>{const k=packOnly(p);return k?packSize(p,k):1};
 const packFit=(p,q)=>{const n=packStep(p),x=Math.max(0,Math.floor(Number(q)||0));return n>1?Math.ceil(x/n)*n:x};
 const packOnlyWord=p=>packOnly(p)==='box'?L('коробками','qutida'):L('блоками','blokda');
 /* Метка товара: «Только коробками · 10 шт» (пусто, если товар продаётся и поштучно). */
-const packOnlyText=p=>{const k=packOnly(p);return k?L('Только ','Faqat ')+packOnlyWord(p)+' · '+packSize(p,k)+' '+pcsWord():''};
+const packOnlyText=p=>{const k=packOnly(p);return k?L('Только ','Faqat ')+packOnlyWord(p)+' · '+packSize(p,k)+' '+pcsWord(p):''};
 /* Раскладывает штуки по упаковкам, сначала по большим: 100 шт при коробке 48 и блоке 12 → 2 кор. + 0 бл., остаток 4 шт. */
 function packSplit(p,qty){
   const parts=[];let r=Math.max(0,Math.floor(Number(qty)||0));
@@ -146,8 +155,8 @@ function packSplit(p,qty){
 function packText(p,qty){
   const {parts,rest}=packSplit(p,qty);
   if(!parts.length)return '';
-  if(parts.length===1&&!rest)return parts[0].c+' '+packShort(parts[0].k)+' × '+parts[0].n+' '+pcsWord();
-  return parts.map(x=>x.c+' '+packShort(x.k)).concat(rest?[rest+' '+pcsWord()]:[]).join(' + ');
+  if(parts.length===1&&!rest)return parts[0].c+' '+packShort(parts[0].k)+' × '+parts[0].n+' '+pcsWord(p);
+  return parts.map(x=>x.c+' '+packShort(x.k)).concat(rest?[rest+' '+pcsWord(p)]:[]).join(' + ');
 }
 
 /* Остаток товара s = {q: на складе, r: отложено под заказы, low: порог «мало»}; нет записи — учёт не ведётся.
@@ -246,7 +255,7 @@ function fmtWhen(s){
 function prodLine(it){
   const w=weightLabel(it);
   const pk=packText(it,it.qty);
-  return '• '+nm(it)+(w?' ('+w+')':'')+' × '+it.qty+(pk?' ('+pk+')':'')+' = '+money(it.price*it.qty);
+  return '• '+nm(it)+(w?' ('+w+')':'')+' × '+qtyStr(it,it.qty)+(pk?' ('+pk+')':'')+' = '+money(it.price*it.qty);
 }
 /* Текст заказа для Telegram. maxItems: если список очень длинный, показываем первые позиции и пишем, сколько скрыто. */
 function orderText(o,shop,maxItems){

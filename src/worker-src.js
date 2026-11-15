@@ -853,7 +853,7 @@ function pickHtml(orders, shop, prod, cut, lang) {
     rows.forEach(a => {
       const cid = catOf.get(a.id), cn = catName.get(cid) || L('Другое', 'Boshqa');
       if (cn !== lastCat) { h += '<tr><td colspan="4" style="padding:10px 6px 2px;border-bottom:0"><h3 style="margin:0">' + esc(cn) + '</h3></td></tr>'; lastCat = cn; }
-      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(a.name) + (a.w ? '<small>' + esc(a.w) + '</small>' : '') + '</td>', '<td class="q">' + a.qty + (packText(a.pk, a.qty) ? '<small>' + esc(packText(a.pk, a.qty)) + '</small>' : '') + '</td>', '<td class="p">' + a.n + '</td>']);
+      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(a.name) + (a.w ? '<small>' + esc(a.w) + '</small>' : '') + '</td>', '<td class="q">' + esc(qtyStr(a.pk, a.qty)) + (packText(a.pk, a.qty) ? '<small>' + esc(packText(a.pk, a.qty)) + '</small>' : '') + '</td>', '<td class="p">' + a.n + '</td>']);
     });
     h += '</tbody></table></section>';
   }
@@ -867,7 +867,7 @@ function pickHtml(orders, shop, prod, cut, lang) {
       + '<table><thead>' + tr(['<th class="c"></th>', '<th>' + L('Товар', 'Mahsulot') + '</th>', '<th class="q">' + L('Кол-во', 'Soni') + '</th>', '<th class="p">' + L('Цена', 'Narx') + '</th>', '<th class="s">' + L('Сумма', 'Summa') + '</th>']) + '</thead><tbody>';
     (o.items || []).forEach(it => {
       const w = weightLabel(it);
-      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(nm(it)) + (w ? '<small>' + esc(w) + '</small>' : '') + '</td>', '<td class="q">' + (Number(it.qty) || 0) + (packText(it, it.qty) ? '<small>' + esc(packText(it, it.qty)) + '</small>' : '') + '</td>', '<td class="p">' + num(it.price) + '</td>', '<td class="s">' + num((Number(it.price) || 0) * (Number(it.qty) || 0)) + '</td>']);
+      h += tr(['<td class="c"><input type="checkbox"></td>', '<td>' + esc(nm(it)) + (w ? '<small>' + esc(w) + '</small>' : '') + '</td>', '<td class="q">' + esc(qtyStr(it, Number(it.qty) || 0)) + (packText(it, it.qty) ? '<small>' + esc(packText(it, it.qty)) + '</small>' : '') + '</td>', '<td class="p">' + num(it.price) + '</td>', '<td class="s">' + num((Number(it.price) || 0) * (Number(it.qty) || 0)) + '</td>']);
     });
     h += '</tbody><tfoot>' + (disc > 0 ? tr(['<td></td>', '<td colspan="3">' + L('Скидка ', 'Chegirma ') + (Number(o.dpct) || 0) + '%</td>', '<td class="s">−' + num(disc) + '</td>']) : '') + (fee > 0 ? tr(['<td></td>', '<td colspan="3">' + L('Доставка', 'Yetkazib berish') + '</td>', '<td class="s">' + num(fee) + '</td>']) : '')
       + tr(['<td></td>', '<td colspan="3">' + L('Итого', 'Jami') + '</td>', '<td class="s">' + num(o.total) + '</td>']) + '</tfoot></table>'
@@ -1482,7 +1482,7 @@ function debtRemindText(h, shop, today, ords) {
     if (!q.ref) return L('Прежние долги: ', 'Oldingi qarzlar: ') + money(q.r);
     if (!o) return q.ref + ' · ' + L('осталось ', 'qoldi ') + money(q.r) + (q.due ? ' · ' + L('срок ', 'muddat ') + dmy(q.due) : '');
     const items = Array.isArray(o.items) ? o.items : [];
-    const lines = items.slice(0, maxItems).map(it => '• ' + (L(it.name, it.uz || it.name)) + (weightLabel(it) ? ' (' + weightLabel(it) + ')' : '') + ' × ' + it.qty);
+    const lines = items.slice(0, maxItems).map(it => '• ' + (L(it.name, it.uz || it.name)) + (weightLabel(it) ? ' (' + weightLabel(it) + ')' : '') + ' × ' + qtyStr(it, it.qty));
     if (items.length > maxItems) lines.push(L('…и ещё ' + (items.length - maxItems) + ' поз.', '…yana ' + (items.length - maxItems) + ' ta'));
     const paidPart = o.total > q.r ? ', ' + L('осталось ', 'qoldi ') + money(q.r) : '';
     return o.id + ' · ' + dmy(dayOf(o.at)) + '\n' + (lines.length ? lines.join('\n') + '\n' : '')
@@ -1655,10 +1655,10 @@ function reportSheets(r, lang) {
   const days = [[L('Дата', 'Sana'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.series.map(x => [ruDay(x.d), x.n, x.sum]));
   days.push([L('Итого', 'Jami'), r.tot.n, r.tot.sum]);
   const months = [[L('Месяц', 'Oy'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.months.map(x => [ruMonth(x.m), x.n, x.sum]));
-  const prods = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Продано, шт', 'Sotildi, dona'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.prods.map(x => [nmx(x), wx(x), x.qty, x.sum]));
+  const prods = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Продано (шт, кг или л)', 'Sotildi (dona, kg yoki l)'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.prods.map(x => [nmx(x), wx(x), x.qty, x.sum]));
   const cl = [[L('Покупатель', 'Xaridor'), L('Организация', 'Tashkilot'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.cl.map(x => [x.name, x.org || '', x.n, x.sum]));
-  const buy = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Свободно, шт', 'Boʻsh, dona'), L('Продаётся в день, шт', 'Kuniga sotiladi, dona'), L('Хватит на, дней', 'Necha kunga yetadi'),
-    L('Докупить на ' + r.buy.cover + ' дн., шт', r.buy.cover + ' kunga sotib olish, dona')]].concat(r.buy.list.map(x => [nmx(x), wx(x), x.avail, x.daily, x.left, x.need]));
+  const buy = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Свободно (шт, кг или л)', 'Boʻsh (dona, kg yoki l)'), L('Продаётся в день (шт, кг или л)', 'Kuniga sotiladi (dona, kg yoki l)'), L('Хватит на, дней', 'Necha kunga yetadi'),
+    L('Докупить на ' + r.buy.cover + ' дн. (шт, кг или л)', r.buy.cover + ' kunga sotib olish (dona, kg yoki l)')]].concat(r.buy.list.map(x => [nmx(x), wx(x), x.avail, x.daily, x.left, x.need]));
   const head = [L('Отчёт за ' + ruDay(r.from) + ' — ' + ruDay(r.to), 'Hisobot: ' + ruDay(r.from) + ' — ' + ruDay(r.to)),
     L('Учёт продаж ведётся с ' + ruDay(r.since) + '. В отчёт входят заказы со статусом «выдан» и «доставлен».', 'Savdo hisobi ' + ruDay(r.since) + ' dan yuritiladi. Hisobotga «topshirildi» va «yetkazildi» holatidagi buyurtmalar kiradi.'),
     L('Сумма товара считается по ценам в заказе, до скидки на весь заказ. Сумма заказа — то, что заплатил покупатель (со скидкой и доставкой).', 'Mahsulot summasi buyurtmadagi narxlar boʻyicha, butun buyurtmaga chegirmagacha hisoblanadi. Buyurtma summasi — xaridor toʻlagan summa (chegirma va yetkazib berish bilan).'),
@@ -2026,7 +2026,7 @@ export class Shop {
         if (!hit(x)) continue;
         const t = uz ? x.titleUz || x.title : x.title;
         if (x.after === 0) lines.push(L('🚫 ' + t + ': свободного остатка нет (на складе ' + x.q + ', в заказах ' + x.r + ').', '🚫 ' + t + ': boʻsh qoldiq yoʻq (omborda ' + x.q + ', buyurtmalarda ' + x.r + ').'));
-        else lines.push(L('⚠️ ' + t + ': осталось ' + x.after + ' (порог ' + x.low + ').', '⚠️ ' + t + ': ' + x.after + ' ta qoldi (chegara ' + x.low + ').'));
+        else lines.push(L('⚠️ ' + t + ': осталось ' + qtyStr(x.p, x.after) + ' (порог ' + x.low + ').', '⚠️ ' + t + ': ' + qtyTa(x.p, x.after) + ' qoldi (chegara ' + x.low + ').'));
       }
       return L('Остатки на складе:\n', 'Ombordagi qoldiqlar:\n') + lines.join('\n');
     });
@@ -2920,7 +2920,7 @@ export class Shop {
       const before = stkAvail(s);
       s.r += it.qty;
       (order.rs = order.rs || {})[it.id] = it.qty;
-      low.push({ title: ruTitle(it), titleUz: uzTitle(it), before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
+      low.push({ title: ruTitle(it), titleUz: uzTitle(it), p: it, before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
     });
     if (order.rs) upd.stk = stk;
     // клиентская база: заказ создаёт клиента, а у существующего дополняет только пустые поля и добавляет новый адрес
@@ -3148,7 +3148,7 @@ export class Shop {
       s.q = b.op === 'in' ? Math.min(MAX_STOCK, s.q + n) : n;
       if (lw !== null) s.low = lw;
       rows.push(row(!s0 ? 'start' : b.op === 'in' ? 'in' : 'fix', s.q - q0, s.q));
-      if (s0) low.push({ title: ruTitle(it), titleUz: uzTitle(it), before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
+      if (s0) low.push({ title: ruTitle(it), titleUz: uzTitle(it), p: it, before, after: stkAvail(s), low: s.low, q: s.q, r: s.r });
     } else return json({ error: 'bad_request' }, 400);
     const upd = { stk };
     if (rows.length) upd.jr = await this.jrWith(rows);
