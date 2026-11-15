@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packOnlyText}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -7211,8 +7211,8 @@ await t('Excel по-узбекски: отчёт — листы, заголов�
   assert.equal(x['Kunlar boʻyicha'][x['Kunlar boʻyicha'].length - 1][0], 'Jami');
   assert.ok(/^(yanvar|fevral|mart|aprel|may|iyun|iyul|avgust|sentyabr|oktyabr|noyabr|dekabr) \d{4}$/.test(x['Oylar boʻyicha'][1][0]), x['Oylar boʻyicha'][1][0]);
   assert.deepEqual(x['Mahsulotlar'][1].slice(0, 3), ['Makaron', '400 g', 50]);
-  assert.deepEqual(x['Nimani sotib olish'][0].slice(0, 5), ['Mahsulot', 'Ogʻirlik / hajm', 'Boʻsh, dona', 'Kuniga sotiladi, dona', 'Necha kunga yetadi']);
-  assert.equal(x['Nimani sotib olish'][0][5], '14 kunga sotib olish, dona');
+  assert.deepEqual(x['Nimani sotib olish'][0].slice(0, 5), ['Mahsulot', 'Ogʻirlik / hajm', 'Boʻsh (dona, kg yoki l)', 'Kuniga sotiladi (dona, kg yoki l)', 'Necha kunga yetadi']);
+  assert.equal(x['Nimani sotib olish'][0][5], '14 kunga sotib olish (dona, kg yoki l)');
   assert.deepEqual(x['Nimani sotib olish'][1].slice(0, 2), ['Makaron', '400 g']);
   noRuCells(x['Xulosa'].concat(x['Kunlar boʻyicha'], x['Oylar boʻyicha'], x['Mahsulotlar'], x['Nimani sotib olish']), []);
   tgLog = [];
@@ -8912,8 +8912,8 @@ await t('только упаковками на экране: шаг, метка
   const mk = (cart, items) => {
     const St = { cart, prod: { items } };
     const src = ['soldOut', 'maxQty', 'capOf', 'pruneCart', 'cartSet'].map(line).join('\n');
-    return new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'packOnlyWord', 'saveCart', 'toast', 'L', src + '\nreturn {soldOut,maxQty,pruneCart,cartSet};')
-      (St, 500, S.packOnly, S.packStep, S.packFit, () => 'коробками', () => {}, m => toasts.push(m), (ru) => ru);
+    return new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'packOnlyWord', 'pcsWord', 'qtyStr', 'qtyTa', 'saveCart', 'toast', 'L', src + '\nreturn {soldOut,maxQty,pruneCart,cartSet};')
+      (St, 500, S.packOnly, S.packStep, S.packFit, () => 'коробками', S.pcsWord, S.qtyStr, S.qtyTa, () => {}, m => toasts.push(m), (ru) => ru);
   };
   const bx = { id: 'a', box: 10, only: 'box', on: true };                // только коробками по 10
   const plain = { id: 'b', box: 10, on: true };
@@ -8954,12 +8954,82 @@ await t('только упаковками на экране: шаг, метка
   assert.ok(/\.ponly-chk\{[^}]*white-space:nowrap/.test(html), 'подпись галочки в одну строку');
   assert.ok(/only:packOnly\(p\),tag:p\.tag/.test(html), 'владелец сохраняет поле');
   // кнопка упаковки, равной шагу, не нужна; кратные нужны
-  const chips = new Function('S', 'esc', 'L', 'packSize', 'packStep', 'packWord', line('packChips') + '\nreturn packChips;')({}, x => x, (ru) => ru, (p, k) => S.packSize ? S.packSize(p, k) : Math.floor(Number(p && p[k])) >= 2 ? Math.floor(Number(p[k])) : 0, S.packStep, k => k === 'box' ? 'коробка' : 'блок');
+  const chips = new Function('S', 'esc', 'L', 'packSize', 'packStep', 'packWord', 'pcsWord', 'qtyStr', line('packChips') + '\nreturn packChips;')({}, x => x, (ru) => ru, (p, k) => S.packSize ? S.packSize(p, k) : Math.floor(Number(p && p[k])) >= 2 ? Math.floor(Number(p[k])) : 0, S.packStep, k => k === 'box' ? 'коробка' : 'блок', S.pcsWord, S.qtyStr);
   const kinds = h => [...h.matchAll(/data-k="(\w+)"/g)].map(m => m[1]).join(',');
   assert.equal(kinds(chips({ id: 'x', blk: 6, box: 12 }, 'p')), 'blk,box', 'без метки обе кнопки, как раньше');
   assert.equal(kinds(chips({ id: 'x', blk: 6, box: 12, only: 'blk' }, 'p')), 'box', 'только блоками: коробка (кратна) осталась, блок — это «+»');
   assert.equal(kinds(chips({ id: 'x', blk: 6, box: 12, only: 'box' }, 'p')), '', 'только коробками: ни блока (меньше), ни коробки (это «+»)');
   assert.equal(kinds(chips({ id: 'x', blk: 5, box: 12, only: 'blk' }, 'p')), '', 'коробка не кратна блоку — кнопки нет');
+});
+
+/* ---------- единица количества: «кг» и «л» вместо «шт» у товаров на вес ---------- */
+await t('единица количества: у товара «1 кг» и «1 л» пишем «кг» и «л», у остальных «шт»; помощники и тексты на двух языках', () => {
+  const kg = { amount: 1, unit: 'kg' }, lt = { amount: 1, unit: 'l' };
+  const bag = { amount: 25, unit: 'kg' }, mac = { amount: 400, unit: 'g' }, half = { amount: 0.5, unit: 'kg' }, can = { amount: 5, unit: 'l' };
+  assert.deepEqual([kg, lt, bag, mac, half, can, {}, null].map(p => S.qtyKind(p)), ['kg', 'l', 'pc', 'pc', 'pc', 'pc', 'pc', 'pc']);
+  assert.deepEqual([kg, lt, bag, mac].map(p => S.pcsWord(p)), ['кг', 'л', 'шт', 'шт']);
+  assert.equal(S.pcsWord(), 'шт', 'без товара — «шт», как раньше');
+  assert.deepEqual([S.qtyStr(kg, 10), S.qtyStr(lt, 3), S.qtyStr(bag, 3), S.qtyStr(mac, 3)], ['10 кг', '3 л', '3', '3']);
+  assert.deepEqual([S.qtyFrom(kg, 10), S.qtyFrom(bag, 10)], ['от 10 кг', 'от 10 шт']);
+  // упаковки: подпись и разбивка в тех же единицах
+  const t = { amount: 1, unit: 'kg', box: 10, blk: 5, only: 'box' };
+  assert.equal(S.packOnlyText(t), 'Только коробками · 10 кг');
+  assert.equal(S.packText(t, 20), '2 кор. × 10 кг');
+  assert.equal(S.packText(t, 15), '1 кор. + 1 бл.');
+  assert.equal(S.packText(t, 23), '2 кор. + 3 кг');
+  assert.equal(S.packText({ amount: 400, unit: 'g', box: 12, only: 'box' }, 24), '2 кор. × 12 шт');
+  S.setLang('uz');
+  assert.deepEqual([kg, lt, bag].map(p => S.pcsWord(p)), ['kg', 'l', 'dona']);
+  assert.deepEqual([S.qtyFrom(kg, 10), S.qtyFrom(lt, 10), S.qtyFrom(bag, 10)], ['10 kg dan', '10 l dan', '10 donadan']);
+  assert.deepEqual([S.qtyTa(kg, 8), S.qtyTa(bag, 8)], ['8 kg', '8 ta']);
+  assert.equal(S.packOnlyText(t), 'Faqat qutida · 10 kg');
+  assert.equal(S.packText(t, 20), '2 quti × 10 kg');
+  S.setLang('ru');
+});
+
+await t('единица количества: заказ, сообщение продавцу, сборочный лист и предупреждение об остатке пишут «кг» у товара на вес', async () => {
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  prod.items.push({ id: 'p5', cat: 'groats', name: 'Чай зелёный', uz: 'Yashil choy', desc: '', descUz: '', amount: 1, unit: 'kg', price: 58000, on: true, box: 10, only: 'box' });
+  assert.equal((await putProd(prod)).status, 200);
+  await setSt('p5', 30, 10);
+  tgLog = [];
+  const r = await placeP(newUser(), [{ id: 'p5', qty: 20 }, { id: 'p2', qty: 1 }]);
+  assert.equal(r.status, 200);
+  const o = (await jsonOf(r)).order;
+  const msg = tgAll('sendMessage', p => String(p.text).includes(o.id)).map(x => x.payload.text).join('\n');
+  assert.ok(msg.includes('Чай зелёный (1 кг) × 20 кг (2 кор. × 10 кг)'), msg);
+  assert.ok(msg.includes('Рис (25 кг) × 1 ='), 'у мешка «шт» не дописывается: ' + msg);
+  const al = stockAlerts().map(x => x.payload.text).join('\n');
+  assert.ok(al.includes('Чай зелёный, 1 кг: осталось 10 кг (порог 10)'), al);
+  // сборочный лист
+  const pk = await jsonOf(await call('POST', '/api/admin/pick', { init: iS(), body: { ids: [o.id] } }));
+  assert.ok(pk.html.includes('<td class="q">20 кг<small>2 кор. × 10 кг</small>'), 'в листе «20 кг» и упаковки');
+  assert.ok(/<td class="q">1<\/td>/.test(pk.html), 'у мешка просто число');
+  // Excel: упаковки тоже в кг, количество остаётся числом
+  await exportReq('orders');
+  const it = readXlsx(lastDoc().file.bytes)['Товары в заказах'];
+  const row = it.find(x => x[0] === o.id && x[4] === 'Чай зелёный');
+  assert.equal(row[6], 20);
+  assert.equal(row[7], '2 кор. × 10 кг');
+});
+
+await t('единица количества на экране: нижняя строка корзины, «кг» в каталоге, ступенях, остатке и заказе (исходный код и запуск)', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const m = html.match(new RegExp('^function ' + name + '\\b[\\s\\S]*?\\n\\}', 'm')); assert.ok(m, 'нет ' + name); return m[0]; };
+  const mk = lines => new Function('cartLines', 'qtyKind', 'pcsWord', 'L', fn('cartQtyText') + '\nreturn cartQtyText;')(() => lines, S.qtyKind, S.pcsWord, (ru) => ru)();
+  const kg = { amount: 1, unit: 'kg' }, lt = { amount: 1, unit: 'l' }, pc = { amount: 25, unit: 'kg' };
+  assert.equal(mk([{ p: kg, qty: 1 }]), '1 кг');
+  assert.equal(mk([{ p: kg, qty: 10 }, { p: pc, qty: 3 }]), '10 кг · 3 шт.');
+  assert.equal(mk([{ p: pc, qty: 3 }, { p: lt, qty: 2 }, { p: kg, qty: 4 }, { p: kg, qty: 6 }]), '10 кг · 2 л · 3 шт.', 'кг, потом л, потом шт; одинаковые складываются');
+  assert.equal(mk([{ p: pc, qty: 3 }]), '3 шт.');
+  // в исходнике не осталось жёстко вписанных «шт» там, где известен товар
+  assert.ok(html.includes("<small>'+L('Корзина','Savat')+': '+cartQtyText()+'</small>"), 'нижняя строка корзины');
+  assert.ok(html.includes("qtyFrom(p,x.n)+' — '+money(x.price)"), 'ступени цены на карточке');
+  assert.ok(html.includes("esc(qtyStr(it,it.qty))"), 'строка заказа');
+  assert.ok(html.includes("esc(qtyStr(p,num(s.q)))"), 'остаток на складе');
+  assert.ok(html.includes("const packLab=(p,k)=>"), 'подписи полей упаковки по единице');
+  assert.ok(!/L\('шт\.','dona'\)\+'<\/small><strong>/.test(html), 'нижняя строка не пишет «шт.» жёстко');
 });
 
 /* ---------- итог ---------- */

@@ -1118,6 +1118,12 @@ function pruneCart(){
 }
 const cartLines=()=>S.prod.items.filter(p=>S.cart[p.id]>0).map(p=>({p,qty:S.cart[p.id]}));
 const cartCount=()=>cartLines().reduce((s,l)=>s+l.qty,0);
+/* Что в корзине одной строкой: «10 кг · 3 шт.»; товары на вес («1 кг», «1 л») считаются в кг и л, остальные в штуках. */
+function cartQtyText(){
+  const g={};
+  cartLines().forEach(l=>{const k=qtyKind(l.p);g[k]=(g[k]||0)+l.qty});
+  return ['kg','l','pc'].filter(k=>g[k]).map(k=>g[k]+' '+(k==='pc'?L('шт.','dona'):pcsWord({amount:1,unit:k}))).join(' · ');
+}
 /* цена за штуку зависит от количества (ступени), скидка от суммы, доставка: всё считается так же, как на сервере (общие функции unitPrice, orderDiscount, deliveryFee) */
 const cartTotal=()=>cartLines().reduce((s,l)=>s+l.qty*unitPrice(l.p,l.qty),0);
 const cartDisc=()=>orderDiscount(S.cfg,cartTotal());
@@ -1128,16 +1134,16 @@ const minOrder=()=>Number(S.cfg.shop.minOrder)||0;
 function cartSet(id,q){
   const p=S.prod.items.find(x=>x.id===id),cap=p?maxQty(p):MAX_QTY;
   q=Math.max(0,Math.floor(q)||0);
-  if(p&&q){const f=packFit(p,q);if(f!==q){q=f;if(f<=cap)toast(L('Только '+packOnlyWord(p)+': '+f+' шт','Faqat '+packOnlyWord(p)+': '+f+' dona'))}}
+  if(p&&q){const f=packFit(p,q);if(f!==q){q=f;if(f<=cap)toast(L('Только '+packOnlyWord(p)+': '+f+' '+pcsWord(p),'Faqat '+packOnlyWord(p)+': '+f+' '+pcsWord(p)))}}
   if(q>cap){
     q=cap;
-    if(p&&typeof p.av==='number'&&p.av<MAX_QTY)toast(p.av>0?L('Осталось только '+p.av,'Faqat '+p.av+' ta qoldi'):L('Товар закончился','Mahsulot tugadi'));
+    if(p&&typeof p.av==='number'&&p.av<MAX_QTY)toast(p.av>0?L('Осталось только '+qtyStr(p,p.av),'Faqat '+qtyTa(p,p.av)+' qoldi'):L('Товар закончился','Mahsulot tugadi'));
   }
   if(q)S.cart[id]=q;else delete S.cart[id];
   saveCart();
   return q;
 }
-const lowTxt=n=>L('Мало (осталось '+n+')','Oz qoldi ('+n+' ta)');
+const lowTxt=(n,p)=>L('Мало (осталось '+qtyStr(p,n)+')','Oz qoldi ('+qtyTa(p,n)+')');
 const shopAddress=()=>L(S.cfg.shop.address,S.cfg.shop.addressUz||S.cfg.shop.address);
 function activeMine(){return S.myOrders.filter(o=>o.status!=='done'&&o.status!=='cancelled').length}
 function newCount(){return S.allOrders.filter(o=>o.status==='new').length}
@@ -1354,8 +1360,8 @@ function qtyHTML(id,q,small){
 function packChips(p,pre){
   const st=packStep(p);   // у товара «только упаковками» кнопка этой упаковки не нужна (то же, что «+»), а прочие нужны, только если кратны ей
   const out=['blk','box'].filter(k=>packSize(p,k)&&(st===1||(packSize(p,k)!==st&&packSize(p,k)%st===0))).map(k=>{
-    const n=packSize(p,k),lab=L('Добавить: '+packWord(k)+' ('+n+' шт)','Qoʻshish: '+packWord(k)+' ('+n+' dona)');
-    return '<button type="button" class="chip" data-act="'+pre+'pack" data-id="'+esc(p.id)+'" data-k="'+k+'" aria-label="'+esc(lab)+'">+ '+esc(packWord(k))+' · '+n+'</button>';
+    const n=packSize(p,k),lab=L('Добавить: '+packWord(k)+' ('+n+' '+pcsWord(p)+')','Qoʻshish: '+packWord(k)+' ('+n+' '+pcsWord(p)+')');
+    return '<button type="button" class="chip" data-act="'+pre+'pack" data-id="'+esc(p.id)+'" data-k="'+k+'" aria-label="'+esc(lab)+'">+ '+esc(packWord(k))+' · '+esc(qtyStr(p,n))+'</button>';
   }).join('');
   return out?'<div class="ppack">'+out+'</div>':'';
 }
@@ -1373,7 +1379,7 @@ function tiersHTML(p,q){
   const t=tiersOf(p);
   if(!t.length)return '';
   let act=-1;t.forEach((x,i)=>{if(q>=x.n)act=i});
-  return t.map((x,i)=>'<span class="ptier'+(i===act?' on':'')+'">'+L('от '+x.n+' шт — ',x.n+' donadan — ')+money(x.price)+'</span>').join('');
+  return t.map((x,i)=>'<span class="ptier'+(i===act?' on':'')+'">'+qtyFrom(p,x.n)+' — '+money(x.price)+'</span>').join('');
 }
 function priceHTML(p){
   const q=S.cart[p.id]||0,eff=unitPrice(p,q||1),tier=eff<Number(p.price);
@@ -1390,7 +1396,7 @@ function pendCard(p){
 function productCard(p){
   if(isPend(p))return pendCard(p);
   const off=soldOut(p),d=prodDesc(p),w=weightLabel(p);
-  const status=off?'':(p.lw&&typeof p.av==='number'?'<div class="pst low">'+esc(lowTxt(p.av))+'</div>':'<div class="pst">'+L('В наличии','Mavjud')+'</div>');
+  const status=off?'':(p.lw&&typeof p.av==='number'?'<div class="pst low">'+esc(lowTxt(p.av,p))+'</div>':'<div class="pst">'+L('В наличии','Mavjud')+'</div>');
   const np=phVers(p).length;
   return '<article class="pcard'+(off?' off':'')+(!off&&S.cart[p.id]>0?' incart':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg'+(np?' zm':'')+'"'+(np?' data-act="pzoom" data-id="'+esc(p.id)+'"':'')+'>'+pimg(p)+(np>1?'<span class="pcnt" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>'+np+' '+L('фото','rasm')+'</span>':'')+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
     +'<div class="pbody"><div class="pname">'+esc(nm(p))+'</div>'+(w?'<div class="pw">'+esc(w)+'</div>':'')+status
@@ -1437,7 +1443,7 @@ function paintShopBar(){
   if(!n){bar.style.display='none';bar.innerHTML='';return}
   bar.style.display='';
   if(S.shopStep==='cart')bar.innerHTML='<div class="wrap"><div><small>'+L('Итого, оплата при получении','Jami, olganda toʻlanadi')+'</small><strong id="ctotal">'+money(cartPay())+'</strong></div><button type="button" class="btn" data-act="submitorder">'+L('Заказать','Buyurtma berish')+'</button></div>';
-  else bar.innerHTML='<div class="wrap"><div><small>'+L('Корзина','Savat')+': '+n+' '+L('шт.','dona')+'</small><strong>'+money(cartTotal()-cartDisc().amount)+'</strong></div><button type="button" class="btn" data-act="opencart">'+L('Оформить заказ','Buyurtma berish')+'</button></div>';
+  else bar.innerHTML='<div class="wrap"><div><small>'+L('Корзина','Savat')+': '+cartQtyText()+'</small><strong>'+money(cartTotal()-cartDisc().amount)+'</strong></div><button type="button" class="btn" data-act="opencart">'+L('Оформить заказ','Buyurtma berish')+'</button></div>';
 }
 function renderShop(){
   if(S.shopPlaced)return renderShopPlaced();
@@ -1490,7 +1496,7 @@ function paintShopCtl(id){
 function cartInfoHTML(p,q){
   const w=weightLabel(p),eff=unitPrice(p,q),nt=nextTier(p,q),pk=packText(p,q);
   return '<small>'+(w?esc(w)+' · ':'')+(eff<Number(p.price)?'<span class="pold">'+money(p.price)+'</span>':'')+money(eff)+'</small>'
-    +(nt?'<small class="tiernext">'+esc(L('Ещё '+packFit(p,nt.left)+' шт — цена '+money(nt.price)+' за шт','Yana '+packFit(p,nt.left)+' dona — narx '+money(nt.price)))+'</small>':'')
+    +(nt?'<small class="tiernext">'+esc(L('Ещё '+packFit(p,nt.left)+' '+pcsWord(p)+' — цена '+money(nt.price)+' за '+pcsWord(p),'Yana '+packFit(p,nt.left)+' '+pcsWord(p)+' — narx '+money(nt.price)))+'</small>':'')
     +(pk?'<small class="packtxt">'+esc(pk)+'</small>':'');
 }
 function paintCartLines(){
@@ -1498,7 +1504,7 @@ function paintCartLines(){
   el.innerHTML=cartLines().map(l=>{
     const p=l.p;
     return '<div class="cline" id="cl-'+esc(p.id)+'"><div class="cth">'+pimg(p)+'</div><div class="cn"><b>'+esc(nm(p))+'</b><div id="ci-'+esc(p.id)+'">'+cartInfoHTML(p,l.qty)+'</div>'
-      +(p.lw&&typeof p.av==='number'?'<small class="lowtxt">'+esc(lowTxt(p.av))+'</small>':'')+'</div>'
+      +(p.lw&&typeof p.av==='number'?'<small class="lowtxt">'+esc(lowTxt(p.av,p))+'</small>':'')+'</div>'
       +'<div class="cr">'+qtyHTML(p.id,l.qty,true)+'<div class="cs">'+money(l.qty*unitPrice(p,l.qty))+'</div></div>'+packChips(p,'c')+'</div>';
   }).join('');
   paintCartSum();
@@ -1593,7 +1599,7 @@ const tgLink=o=>{
 const NEXT_LIVE=['new','accepted','ready'];
 const nfKg=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
 const kgTxt=k=>nfKg.format(Number(k)||0)+' '+L('кг','kg');
-function itemRow(it){const pk=packText(it,it.qty);return '<span>'+esc(nm(it))+(weightLabel(it)?' ('+esc(weightLabel(it))+')':'')+' × '+it.qty+(pk?' ('+esc(pk)+')':'')+'</span><span>'+money(it.price*it.qty)+'</span>'}
+function itemRow(it){const pk=packText(it,it.qty);return '<span>'+esc(nm(it))+(weightLabel(it)?' ('+esc(weightLabel(it))+')':'')+' × '+esc(qtyStr(it,it.qty))+(pk?' ('+esc(pk)+')':'')+'</span><span>'+money(it.price*it.qty)+'</span>'}
 const discRow=(o,cls)=>o.disc>0?'<div class="'+cls+'"><span>'+L('Скидка '+o.dpct+'%','Chegirma '+o.dpct+'%')+'</span><span>−'+money(o.disc)+'</span></div>':'';
 function renderShopPlaced(){
   const o=S.shopPlaced.order,tg=tgLink(o),del=o.mode==='delivery';
@@ -1671,7 +1677,7 @@ async function submitOrder(){
       const short=Array.isArray(r.data.short)?r.data.short:[];
       const what=short.slice(0,3).map(s=>{
         const p=S.prod.items.find(x=>x.id===s.id),n=Number(s.avail)||0;
-        return (p?nm(p):'')+': '+(n>0?L('осталось '+n,'faqat '+n+' ta qoldi'):L('нет в наличии','mavjud emas'));
+        return (p?nm(p):'')+': '+(n>0?L('осталось '+qtyStr(p,n),'faqat '+qtyTa(p,n)+' qoldi'):L('нет в наличии','mavjud emas'));
       }).join('; ')+(short.length>3?'…':'');
       short.forEach(s=>{
         const n=Number(s.avail)||0;
@@ -2975,10 +2981,10 @@ function tiersEditHTML(p){
   const rows=[0,1,2].map(i=>{
     const x=t[i]||{};
     return '<div class="trow"><span>'+L('от','dan')+'</span><input type="number" id="ptn-'+id+'-'+i+'" data-pid="'+id+'" data-pp="tn" data-ti="'+i+'" inputmode="numeric" min="2" max="500" step="1" value="'+(x.n||'')+'" placeholder="'+(i===0?'10':'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': от скольких штук','Pogʻona '+(i+1)+': necha donadan'))+'">'
-      +'<span>'+L('шт — цена','dona — narx')+'</span><input type="number" id="ptp-'+id+'-'+i+'" data-pid="'+id+'" data-pp="tp" data-ti="'+i+'" inputmode="numeric" min="1" step="100" value="'+(x.price||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': цена за штуку, сум','Pogʻona '+(i+1)+': bir dona narxi, soʻm'))+'"><span>'+L('сум','soʻm')+'</span></div>';
+      +'<span>'+pcsWord(p)+L(' — цена',' — narx')+'</span><input type="number" id="ptp-'+id+'-'+i+'" data-pid="'+id+'" data-pp="tp" data-ti="'+i+'" inputmode="numeric" min="1" step="100" value="'+(x.price||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': цена за штуку, сум','Pogʻona '+(i+1)+': bir dona narxi, soʻm'))+'"><span>'+L('сум','soʻm')+'</span></div>';
   }).join('');
   return '<div class="full"><span class="lab">'+L('Цена от количества (оптовые ступени)','Miqdorga qarab narx (ulgurji pogʻonalar)')+'</span><div class="tiers">'+rows+'</div><div class="err" id="ptw-'+id+'" role="status"></div>'
-    +'<div class="unit" style="margin:2px 0 0">'+L('Пример: от 10 шт — 7 000 сум. Когда покупатель берёт столько штук этого товара, цена действует на все штуки. Цена ступени должна быть ниже обычной, а следующая — ещё ниже. Пустые строки не нужны.','Misol: 10 dona — 7 000 soʻm. Xaridor shuncha dona olsa, narx barcha donalarga qoʻllanadi. Pogʻona narxi odatdagidan, keyingisi esa undan ham past boʻlishi kerak. Boʻsh qatorlar kerak emas.')+'</div></div>';
+    +'<div class="unit" style="margin:2px 0 0">'+L('Пример: '+qtyFrom(p,10)+' — 7 000 сум. Когда покупатель берёт не меньше этого количества, цена действует на всё количество. Цена ступени должна быть ниже обычной, а следующая — ещё ниже. Пустые строки не нужны.','Misol: '+qtyFrom(p,10)+' — 7 000 soʻm. Xaridor shuncha yoki undan koʻp olsa, narx butun miqdorga qoʻllanadi. Pogʻona narxi odatdagidan, keyingisi esa undan ham past boʻlishi kerak. Boʻsh qatorlar kerak emas.')+'</div></div>';
 }
 function syncTiers(p){
   const rows=[];
@@ -3096,6 +3102,12 @@ const hintD=(ru,uz)=>'<div class="hint">'+esc(L(ru,uz))+'</div>';
 const PF_FULL=['name','uz','desc','descUz','cat'];
 /* Галочка «Продаётся только блоками/коробками» под полем размера упаковки. attr — атрибуты, по которым обработчик находит товар.
    Показывается, только если такая упаковка указана (≥ 2 шт). Отметить можно одну из двух: вторая снимается. */
+/* подпись поля размера упаковки: «Штук в блоке», у товара на вес «Кг в блоке», «Литров в коробке» */
+const packLab=(p,k)=>{
+  const kd=qtyKind(p),b=k==='blk';
+  return L((kd==='kg'?'Кг':kd==='l'?'Литров':'Штук')+(b?' в блоке (0 — нет блока)':' в коробке (0 — нет коробки)'),
+    (b?'Blokda':'Qutida')+' necha '+(kd==='pc'?'dona':UNITS[kd].uz)+(b?' (0 — blok yoʻq)':' (0 — quti yoʻq)'));
+};
 const onlyLab=k=>k==='box'?L('Продаётся только коробками','Faqat qutida sotiladi'):L('Продаётся только блоками','Faqat blokda sotiladi');
 const onlyChkHTML=(p,k,attr)=>'<label class="chk ponly-chk" data-onlyk="'+k+'"'+(packSize(p,k)?'':' hidden')+'><input type="checkbox" '+attr+' data-k="'+k+'"'+(packOnly(p)===k?' checked':'')+'> '+esc(onlyLab(k))+'</label>';
 /* Строка с обеими галочками на всю ширину под полями блока и коробки: поля остаются вровень, подпись в одну строку. */
@@ -3173,11 +3185,11 @@ function prodBody(p){
     +'<div class="avail"><label class="chk"><input type="checkbox" data-pid="'+id+'" data-pp="on"'+(p.on!==false?' checked':'')+'> '+L('В наличии','Mavjud')+'</label></div>'
     +pfHintRow('old')
     +tiersEditHTML(p)
-    +fld('blk',L('Штук в блоке (0 — нет блока)','Blokda necha dona (0 — blok yoʻq)'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
-    +fld('box',L('Штук в коробке (0 — нет коробки)','Qutida necha dona (0 — quti yoʻq)'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
+    +fld('blk',packLab(p,'blk'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
+    +fld('box',packLab(p,'box'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
     +onlyRowHTML(p,'data-pid="'+id+'" data-pp="only"')
-    +'<div class="full unit" style="margin:0">'+L('Блок и коробка — для удобства: цена и остаток всегда считаются в штуках. Если указать, у покупателя появятся кнопки «+ блок» и «+ коробка», а в заказах будет видно, сколько это коробок. Допустимо от 2 до 500 штук. Галочка «Продаётся только…» — покупатель сможет взять товар лишь целыми упаковками (10, 20, 30 шт).','Blok va quti — qulaylik uchun: narx va qoldiq doim donada hisoblanadi. Koʻrsatilsa, xaridorda «+ blok» va «+ quti» tugmalari paydo boʻladi, buyurtmalarda esa necha quti ekani koʻrinadi. 2 dan 500 donagacha. «Faqat … sotiladi» belgisi — xaridor mahsulotni faqat butun qadoqda oladi (10, 20, 30 dona).')+'</div>'
-    +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' шт. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' dona. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
+    +'<div class="full unit" style="margin:0">'+L('Блок и коробка — для удобства: цена и остаток всегда считаются в штуках. Если указать, у покупателя появятся кнопки «+ блок» и «+ коробка», а в заказах будет видно, сколько это коробок. Допустимо от 2 до 500 штук. Галочка «Продаётся только…» — покупатель сможет взять товар лишь целыми упаковками (10, 20, 30 '+pcsWord(p)+').','Blok va quti — qulaylik uchun: narx va qoldiq doim donada hisoblanadi. Koʻrsatilsa, xaridorda «+ blok» va «+ quti» tugmalari paydo boʻladi, buyurtmalarda esa necha quti ekani koʻrinadi. 2 dan 500 donagacha. «Faqat … sotiladi» belgisi — xaridor mahsulotni faqat butun qadoqda oladi (10, 20, 30 '+pcsWord(p)+').')+'</div>'
+    +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
     +'<div class="full pact"><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="-1" aria-label="'+esc(L('Выше','Yuqoriga'))+'">▲</button><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="1" aria-label="'+esc(L('Ниже','Pastga'))+'">▼</button>'
     +'<button type="button" class="btn ghost sm" data-act="pdel" data-id="'+id+'">'+(S.cd===p.id?L('Точно удалить?','Aniq oʻchirilsinmi?'):L('Удалить товар','Mahsulotni oʻchirish'))+'</button>'
     +'<button type="button" class="btn ghost sm pfi pfoldbtn" data-act="pfold" data-id="'+id+'" title="'+esc(L('Свернуть','Yigʻish'))+'" aria-label="'+esc(L('Свернуть','Yigʻish'))+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button></div>'
@@ -3295,7 +3307,7 @@ function statsHTML(){
 function stockUnitSel(p){
   const ks=['blk','box'].filter(k=>packSize(p,k));
   if(!ks.length)return '';
-  return '<select id="su-'+esc(p.id)+'" aria-label="'+esc(L('В чём вводите количество','Miqdor nimada kiritiladi'))+'"'+(S.sbusy[p.id]?' disabled':'')+'><option value="pc">'+L('шт','dona')+'</option>'+ks.map(k=>'<option value="'+k+'">'+esc(packWord(k))+' ('+packSize(p,k)+' '+pcsWord()+')</option>').join('')+'</select>';
+  return '<select id="su-'+esc(p.id)+'" aria-label="'+esc(L('В чём вводите количество','Miqdor nimada kiritiladi'))+'"'+(S.sbusy[p.id]?' disabled':'')+'><option value="pc">'+pcsWord(p)+'</option>'+ks.map(k=>'<option value="'+k+'">'+esc(packWord(k))+' ('+packSize(p,k)+' '+pcsWord(p)+')</option>').join('')+'</select>';
 }
 const stockUnit=id=>{const el=document.getElementById('su-'+id);return el&&el.value&&el.value!=='pc'?el.value:''};
 const pkSmall=(p,n)=>{const t=packText(p,n);return t?'<small class="pk">'+esc(t)+'</small>':''};
@@ -3315,7 +3327,7 @@ function stockRowHTML(p){
       +'<button type="button" class="btn sm" data-act="sstart" data-id="'+id+'"'+dis+'>'+L('Начать учёт','Hisobni boshlash')+'</button></div>'+lowIn+'</div>';
   }
   return '<div class="srow" id="srow-'+id+'">'+head
-    +'<div class="snum"><div><small>'+L('На складе','Omborda')+'</small><b>'+num(s.q)+'</b>'+pkSmall(p,s.q)+'</div><div><small>'+L('В заказах','Buyurtmalarda')+'</small><b>'+num(s.r)+'</b>'+pkSmall(p,s.r)+'</div><div class="fr '+st+'"><small>'+L('Свободно','Boʻsh')+'</small><b>'+num(stkAvail(s))+'</b>'+pkSmall(p,stkAvail(s))+'</div></div>'
+    +'<div class="snum"><div><small>'+L('На складе','Omborda')+'</small><b>'+esc(qtyStr(p,num(s.q)))+'</b>'+pkSmall(p,s.q)+'</div><div><small>'+L('В заказах','Buyurtmalarda')+'</small><b>'+esc(qtyStr(p,num(s.r)))+'</b>'+pkSmall(p,s.r)+'</div><div class="fr '+st+'"><small>'+L('Свободно','Boʻsh')+'</small><b>'+esc(qtyStr(p,num(stkAvail(s))))+'</b>'+pkSmall(p,stkAvail(s))+'</div></div>'
     +'<div class="sact'+(packSize(p,'blk')||packSize(p,'box')?' haspk':'')+'">'+numIn('sn',L('Количество','Miqdori'),L('Количество','Miqdori'),'')+stockUnitSel(p)
     +'<button type="button" class="btn sm" data-act="sin" data-id="'+id+'"'+dis+'>'+L('+ Приход','+ Kirim')+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="sset" data-id="'+id+'"'+dis+'>'+L('Задать остаток','Qoldiqni belgilash')+'</button></div>'
@@ -3332,8 +3344,8 @@ function jrDate(t){
 function jrHTML(){
   if(!S.jr.length)return '<div class="unit" style="padding:8px 0">'+L('Записей пока нет.','Hozircha yozuv yoʻq.')+'</div>';
   return S.jr.slice(0,60).map(x=>{
-    const k=JR_KIND[x.kind]||['',''],d=Number(x.d)||0;
-    const dd=x.kind==='off'?'—<small>'+L('было ','boʻlgan ')+num(x.q)+'</small>':(d>0?'+'+num(d):d<0?'−'+num(-d):'0')+'<small>'+L('стало ','boʻldi ')+num(x.q)+'</small>';
+    const k=JR_KIND[x.kind]||['',''],d=Number(x.d)||0,pj=S.prod.items.find(y=>y.id===x.id),qs=n=>esc(qtyStr(pj,n));
+    const dd=x.kind==='off'?'—<small>'+L('было ','boʻlgan ')+qs(num(x.q))+'</small>':(d>0?'+'+qs(num(d)):d<0?'−'+qs(num(-d)):'0')+'<small>'+L('стало ','boʻldi ')+qs(num(x.q))+'</small>';
     return '<div class="jrow"><div class="jn"><b>'+esc(x.name)+'</b><small>'+esc(L(k[0],k[1]))+(x.ref?' '+esc(x.ref):'')+' · '+esc(jrDate(x.t))+(x.by?' · '+esc(x.by):'')+'</small></div><div class="jd'+(x.kind!=='off'&&d>0?' plus':x.kind!=='off'&&d<0?' minus':'')+'">'+dd+'</div></div>';
   }).join('');
 }
@@ -3514,8 +3526,8 @@ function buyHTML(r){
     const cls=left<=3?'bad':left<=7?'warn':'info',lab=left<1?L('меньше 1 дня','1 kundan kam'):L('хватит на '+Math.floor(left)+' дн.',Math.floor(left)+' kunga yetadi');
     const pk=p&&x.need>0?packText(p,x.need):'';
     return '<div class="rbuy"><div class="rh"><b>'+esc(p?nm(p):x.name)+(wl?' <small>'+esc(wl)+'</small>':'')+'</b><span class="st '+cls+'">'+esc(lab)+'</span></div>'
-      +'<small>'+L('Свободно '+num(x.avail)+' шт, продаётся ≈ '+amountStr(x.daily)+' шт в день','Boʻsh '+num(x.avail)+' dona, kuniga ≈ '+amountStr(x.daily)+' dona sotiladi')+'</small>'
-      +(x.need>0?'<small>'+L('Докупить ≈ '+num(x.need)+' шт','Sotib olish ≈ '+num(x.need)+' dona')+(pk?' ('+esc(pk)+')':'')+'</small>':'')+'</div>';
+      +'<small>'+L('Свободно '+num(x.avail)+' '+pcsWord(p)+', продаётся ≈ '+amountStr(x.daily)+' '+pcsWord(p)+' в день','Boʻsh '+num(x.avail)+' '+pcsWord(p)+', kuniga ≈ '+amountStr(x.daily)+' '+pcsWord(p)+' sotiladi')+'</small>'
+      +(x.need>0?'<small>'+L('Докупить ≈ '+num(x.need)+' '+pcsWord(p),'Sotib olish ≈ '+num(x.need)+' '+pcsWord(p))+(pk?' ('+esc(pk)+')':'')+'</small>':'')+'</div>';
   }).join('')+'</div></div>';
   return h;
 }
@@ -3539,7 +3551,7 @@ function repHTML(){
   h+='<div class="card"><h3>'+(r.days<=30?L('Выручка по дням','Kunlar boʻyicha tushum'):r.days<=90?L('Выручка по неделям','Haftalar boʻyicha tushum'):L('Выручка по месяцам','Oylar boʻyicha tushum'))+'</h3>'+chartHTML(r)+'</div>';
   const pr=R.allP?r.prods:r.prods.slice(0,8);
   h+='<div class="card"><h3>'+L('Ходовые товары','Ommabop mahsulotlar')+'</h3><div class="unit">'+L('По выручке за период.','Davr tushumi boʻyicha.')+'</div>'
-    +rankHTML(pr.map(x=>{const p=S.prod.items.find(y=>y.id===x.id),pk=p?packText(p,x.qty):'',w=p?weightLabel(p):'';return {t:p?nm(p):x.name,s:(w?w+' · ':'')+L('продано ','sotildi ')+num(x.qty)+' '+pcsWord()+(pk?' ('+pk+')':''),v:x.sum}}))
+    +rankHTML(pr.map(x=>{const p=S.prod.items.find(y=>y.id===x.id),pk=p?packText(p,x.qty):'',w=p?weightLabel(p):'';return {t:p?nm(p):x.name,s:(w?w+' · ':'')+L('продано ','sotildi ')+num(x.qty)+' '+pcsWord(p)+(pk?' ('+pk+')':''),v:x.sum}}))
     +(r.prods.length>8?'<button type="button" class="btn ghost sm" data-act="rall">'+(R.allP?L('Свернуть','Yigʻish'):L('Показать все ('+r.prods.length+')','Hammasini koʻrsatish ('+r.prods.length+')'))+'</button>':'')+'</div>';
   if(r.cl.length)h+='<div class="card"><h3>'+L('Лучшие покупатели','Eng yaxshi xaridorlar')+'</h3><div class="unit">'+L('По сумме заказов за период.','Davrdagi buyurtmalar summasi boʻyicha.')+'</div>'
     +rankHTML(r.cl.map(c=>({t:(c.name||L('Без имени','Nomsiz'))+(c.org?' · '+c.org:''),s:ordTxt(c.n),v:c.sum})))+'</div>';
@@ -4239,11 +4251,11 @@ function rvFiltersHTML(){
 }
 function rvCard(p){
   const did=esc(p.did),id=esc(p.id),np=phVers(p).length,w=weightLabel(p),seg=S.rv.seg;
-  const meta=[catLabel(p),w,p.box>1?L('коробка '+p.box+' шт','quti '+p.box+' dona'):'',p.blk>1?L('блок '+p.blk+' шт','blok '+p.blk+' dona'):'',packOnlyText(p)].filter(Boolean).join(' · ');
+  const meta=[catLabel(p),w,p.box>1?L('коробка '+p.box+' '+pcsWord(p),'quti '+p.box+' '+pcsWord(p)):'',p.blk>1?L('блок '+p.blk+' '+pcsWord(p),'blok '+p.blk+' '+pcsWord(p)):'',packOnlyText(p)].filter(Boolean).join(' · ');
   const warn=[];
   if(!p.pv)warn.push(L('нет фото','rasm yoʻq'));
   if(!String(p.uz||'').trim())warn.push(L('нет названия по-узбекски','oʻzbekcha nomi yoʻq'));
-  const tiers=tiersOf(p).map(x=>'<span>'+L('от '+x.n+' шт — ',x.n+' donadan — ')+money(x.price)+'</span>').join('');
+  const tiers=tiersOf(p).map(x=>'<span>'+qtyFrom(p,x.n)+' — '+money(x.price)+'</span>').join('');
   const btn=(act,cls,lab)=>'<button type="button" class="btn'+cls+'" data-act="'+act+'" data-did="'+did+'" data-id="'+id+'">'+lab+'</button>';
   return '<article class="rcard" id="rc-'+did+'-'+id+'"><div class="rtop"><button type="button" class="dpill" data-act="rdist" data-did="'+did+'" aria-label="'+esc(L('Показать только: ','Faqat shuni koʻrsatish: ')+p.dname)+'">'+esc(p.dname)+'</button><span class="rtime">'+esc(rvWhen(seg==='ok'?p.ma:p.mt))+'</span></div>'
     +'<div class="rbody"><div class="rth'+(np?' zm':'')+'"'+(np?' data-act="rzoom" data-did="'+did+'" data-id="'+id+'"':'')+'>'+(p.pv?'<img src="'+imgUrl(p,1,p.did)+'" alt="" loading="lazy" decoding="async">':'<span class="ph" aria-hidden="true">📦</span>')+(np>1?'<span class="pcnt" aria-hidden="true">'+np+' '+L('фото','rasm')+'</span>':'')+'</div>'
@@ -4359,7 +4371,7 @@ function rvEditHTML(e){
   const inp=(k,type,val,extra)=>'<input type="'+type+'" id="rf-'+k+'" data-rf="'+k+'" value="'+esc(val)+'"'+(extra||'')+'>';
   const ta=(k,val)=>'<textarea id="rf-'+k+'" data-rf="'+k+'" maxlength="300" rows="2">'+esc(val)+'</textarea>';
   const t=tiersOf(p);
-  const tiers=[0,1,2].map(i=>{const x=t[i]||{};return '<div class="trow"><span>'+L('от','dan')+'</span><input type="number" id="rtn-'+i+'" data-rf="tn" inputmode="numeric" min="2" max="500" step="1" value="'+(x.n||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': от скольких штук','Pogʻona '+(i+1)+': necha donadan'))+'"><span>'+L('шт — цена','dona — narx')+'</span><input type="number" id="rtp-'+i+'" data-rf="tp" inputmode="numeric" min="1" step="100" value="'+(x.price||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': цена за штуку, сум','Pogʻona '+(i+1)+': bir dona narxi, soʻm'))+'"><span>'+L('сум','soʻm')+'</span></div>'}).join('');
+  const tiers=[0,1,2].map(i=>{const x=t[i]||{};return '<div class="trow"><span>'+L('от','dan')+'</span><input type="number" id="rtn-'+i+'" data-rf="tn" inputmode="numeric" min="2" max="500" step="1" value="'+(x.n||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': от скольких штук','Pogʻona '+(i+1)+': necha donadan'))+'"><span>'+pcsWord(p)+L(' — цена',' — narx')+'</span><input type="number" id="rtp-'+i+'" data-rf="tp" inputmode="numeric" min="1" step="100" value="'+(x.price||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': цена за штуку, сум','Pogʻona '+(i+1)+': bir dona narxi, soʻm'))+'"><span>'+L('сум','soʻm')+'</span></div>'}).join('');
   return '<div class="fs-bg" data-act="rsx"></div><div class="fs" role="dialog" aria-modal="true" aria-label="'+esc(L('Изменить товар','Mahsulotni tuzatish'))+'"><div class="fs-grab"></div>'
     +'<div class="fs-head"><h2>'+L('Изменить товар','Mahsulotni tuzatish')+'</h2><button type="button" class="lnk" data-act="rsx">'+L('Закрыть','Yopish')+'</button></div>'
     +'<div class="fs-body"><div class="rsum"><span class="dpill static">'+esc(e.dname)+'</span>'+modTag(p)+'</div>'
@@ -4379,8 +4391,8 @@ function rvEditHTML(e){
     +fld('old',L('Старая цена для акции, сум','Aksiya uchun eski narx, soʻm'),inp('old','number',p.old||0,' inputmode="numeric" step="500" min="0"'))
     +pfHintRow('oldS')
     +'<div class="full"><span class="lab">'+L('Цена от количества (оптовые ступени)','Miqdorga qarab narx (ulgurji pogʻonalar)')+'</span><div class="tiers">'+tiers+'</div><div class="err" id="rtw" role="status"></div></div>'
-    +fld('blk',L('Штук в блоке (0 — нет блока)','Blokda necha dona (0 — blok yoʻq)'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
-    +fld('box',L('Штук в коробке (0 — нет коробки)','Qutida necha dona (0 — quti yoʻq)'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
+    +fld('blk',packLab(p,'blk'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
+    +fld('box',packLab(p,'box'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
     +onlyRowHTML(p,'data-rf="only"')
     +'</div></div>'
     +'<div class="fs-foot"><div class="err" id="rerr" role="alert"></div><button type="button" class="btn" id="rsave" data-act="rsave">'+L('Сохранить','Saqlash')+'</button></div></div>';
@@ -6434,7 +6446,7 @@ document.addEventListener('click',e=>{
     if(n===null)return;
     const body={op:a==='sin'?'in':'set',n},u=stockUnit(id),pr=S.prod.items.find(x=>x.id===id);
     if(u)body.u=u;
-    const pcs=u&&pr?n*packSize(pr,u):0,ex=pcs?' ('+(a==='sin'?'+':'= ')+pcs+' '+pcsWord()+')':'';
+    const pcs=u&&pr?n*packSize(pr,u):0,ex=pcs?' ('+(a==='sin'?'+':'= ')+pcs+' '+pcsWord(pr)+')':'';
     stockDo(id,body,(a==='sin'?L('Приход записан','Kirim yozildi'):L('Остаток исправлен','Qoldiq tuzatildi'))+ex);
   }
   else if(a==='sstart'){
