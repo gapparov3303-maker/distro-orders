@@ -155,6 +155,7 @@ function sanitizeCfg(d) {
   s.regions = cleanRegions(s.regions);
   s.home = cleanRegion(s.home);
   s.category = cleanCat(s.category);
+  s.bazaar = s.category === 'bazaar' ? cleanBz(s.bazaar) : '';   // базар выбирается только в категории «Базары»
   return out;
 }
 
@@ -2243,8 +2244,14 @@ export class Shop {
     return {
       name: cfg.shop.name || DEFAULT.shop.name, items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
       delivery: cfg.shop.delivery !== false, minOrder: Number(cfg.shop.minOrder) || 0,
-      regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home), cat: cleanCat(cfg.shop.category)
+      regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home), cat: cleanCat(cfg.shop.category), bz: cleanBz(cfg.shop.bazaar)
     };
+  }
+  /* Есть ли такой базар в списке площадки (без площадки базаров нет). */
+  async hubHasBz(id) {
+    if (!this.env.HUB) return false;
+    try { const h = await hubCall(this.env, '/__/bz-has', { id }); return !!(h && h.ok); }
+    catch (e) { return false; }
   }
   /* Сообщает площадке о новом названии и составе каталога. Сбой не мешает продавцу: список обновится при следующем изменении. */
   async hubSync() {
@@ -2268,6 +2275,7 @@ export class Shop {
       const cfg = await this.getCfg();
       cfg.shop.name = cleanStr(b.name, 60) || DEFAULT.shop.name;
       cfg.shop.category = cleanCat(b.cat);
+      cfg.shop.bazaar = cfg.shop.category === 'bazaar' ? cleanBz(b.bz) : '';
       const upd = { born: 1, cfg: sanitizeCfg(cfg) };
       const pct = b.pct === undefined ? null : cleanPct(b.pct);
       if (pct !== null) upd.cpct = pct;
@@ -2289,8 +2297,11 @@ export class Shop {
       // владелец площадки поменял категорию: хранится здесь, площадка обновляет свою копию сама
       const cfg = await this.getCfg();
       cfg.shop.category = cleanCat(b.cat);
-      await this.st.put('cfg', sanitizeCfg(cfg));
-      return json({ ok: true, cat: cfg.shop.category });
+      // базар не пришёл — остаётся прежний (если категория по-прежнему «Базары»)
+      if (typeof b.bz === 'string') cfg.shop.bazaar = cleanBz(b.bz);
+      const next = sanitizeCfg(cfg);
+      await this.st.put('cfg', next);
+      return json({ ok: true, cat: next.shop.category, bz: next.shop.bazaar });
     }
     if (path === '/__/clients') {
       // клиенты этого дистрибьютора: площадка один раз переносит их в общую базу магазинов
@@ -2495,7 +2506,9 @@ export class Shop {
         if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
         const cfg = sanitizeCfg(r.body.cfg);
         // категория меняется только своими запросами: устаревшая форма настроек не должна затирать выбор владельца
-        cfg.shop.category = cleanCat((await this.getCfg()).shop.category);
+        const cur = (await this.getCfg()).shop;
+        cfg.shop.category = cleanCat(cur.category);
+        cfg.shop.bazaar = cfg.shop.category === 'bazaar' ? cleanBz(cur.bazaar) : '';
         await this.st.put('cfg', cfg);
         await this.hubSync();
         return json({ cfg });
@@ -2505,11 +2518,22 @@ export class Shop {
         if (r.err || !r.body || typeof r.body !== 'object' || typeof r.body.cat !== 'string') return json({ error: 'bad_request' }, 400);
         const cat = cleanCat(r.body.cat);
         if (r.body.cat !== '' && !cat) return json({ error: 'bad_cat' }, 400);
+        if (r.body.bz !== undefined && typeof r.body.bz !== 'string') return json({ error: 'bad_request' }, 400);
         const cfg = await this.getCfg();
+        let bz = '';
+        if (cat === 'bazaar') {
+          // базар выбирается из списка площадки; не прислан — остаётся прежний, пустая строка снимает выбор
+          if (r.body.bz === undefined) bz = cleanBz(cfg.shop.bazaar);
+          else if (r.body.bz !== '') {
+            bz = cleanBz(r.body.bz);
+            if (!bz || !(await this.hubHasBz(bz))) return json({ error: 'bad_bz' }, 400);
+          }
+        }
         cfg.shop.category = cat;
+        cfg.shop.bazaar = bz;
         await this.st.put('cfg', sanitizeCfg(cfg));
         await this.hubSync();
-        return json({ cat });
+        return json({ cat, bz });
       }
       if (path === '/api/admin/products' && method === 'PUT') {
         const r = await this.readBody(request, PROD_BODY_MAX);
@@ -4150,14 +4174,14 @@ export class Shop {
 const newRec = (id, name, hash, sum) => ({
   id, name: cleanStr(name, 60) || DEFAULT.shop.name, on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
   items: sum && Number(sum.items) || 0, wait: sum && Number(sum.wait) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
-  regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home), cat: cleanCat(sum && sum.cat)
+  regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home), cat: cleanCat(sum && sum.cat), bz: cleanCat(sum && sum.cat) === 'bazaar' ? cleanBz(sum && sum.bz) : ''
 });
 /* Что видит клиент в списке. Код и служебные поля не уходят. */
-const pubRec = r => ({ id: r.id, name: r.name, items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat) });
+const pubRec = r => ({ id: r.id, name: r.name, items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat), bz: cleanCat(r.cat) === 'bazaar' ? cleanBz(r.bz) : '' });
 const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
-const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50;
+const MAX_BASE = 5000, MAX_TERR = 100, MAX_AGENTS = 100, BASE_PAGE = 50, MAX_BAZAARS = 30;
 /* У магазина один основной телефон и до пяти дополнительных номеров (ph): так одна точка заказывает с нескольких номеров. */
 const MAX_PH = 5;
 const PEOPLE_GAP = 600000, PEOPLE_MAX = 1000;
@@ -4338,10 +4362,12 @@ export class Hub {
       rec.regions = cleanRegions(s.regions);
       rec.home = cleanRegion(s.home);
       rec.cat = cleanCat(s.cat);
+      rec.bz = rec.cat === 'bazaar' ? cleanBz(s.bz) : '';
       await this.st.put('d:' + rec.id, rec);
       return json({ ok: true });
     }
     if (path === '/__/is-owner') return json({ owner: (await this.owners()).includes(Number(b.uid)) });
+    if (path === '/__/bz-has') return json({ ok: (await this.bazaars()).some(x => x.id === b.id) });
     if (path === '/__/mod-notify') {
       // продавец отправил товары на проверку: владельцам уходит одно сообщение на отправку
       const n = Math.round(Number(b.n));
@@ -4451,6 +4477,8 @@ export class Hub {
     return out;
   }
   async terrs() { const t = await this.st.get('terr'); return Array.isArray(t) ? t : []; }
+  /* Базары категории «Базары»: [{id,name,uz}], ведёт владелец; пустое название на одном из языков показывается языком другого. */
+  async bazaars() { const t = await this.st.get('bz'); return Array.isArray(t) ? t : []; }
   async allAgents() {
     const idx = (await this.st.get('ax')) || [];
     if (!idx.length) return [];
@@ -4929,6 +4957,59 @@ export class Hub {
     if (added) await this.st.put('terr', terrs);
     return added;
   }
+  /* Базары: добавляет, переименовывает и удаляет владелец. Название на двух языках, хватает одного. Продавцы удалённого базара
+     остаются в категории «Базары», но без базара (в списке для клиента это группа «Без базара»). */
+  cleanBazaar(body) {
+    const name = cleanStr(body && body.name, 40), uz = cleanStr(body && body.uz, 40);
+    if (name.length < 2 && uz.length < 2) return null;
+    const ru = name.length >= 2 ? name : uz;
+    return { name: ru, uz: uz.length >= 2 && uz.toLowerCase() !== ru.toLowerCase() ? uz : '' };
+  }
+  async adminBazaars(request, path, method) {
+    const dup = (list, c, except) => list.some(x => x.id !== except
+      && [x.name, x.uz].filter(Boolean).some(n => [c.name, c.uz].filter(Boolean).some(m => n.toLowerCase() === m.toLowerCase())));
+    if (path === '/api/hub/admin/bazaars' && method === 'GET') return json({ bazaars: await this.bazaars(), max: MAX_BAZAARS });
+    if (path === '/api/hub/admin/bazaars' && method === 'POST') {
+      const r = await this.readBody(request, 1000);
+      const c = r.err || !r.body || typeof r.body !== 'object' ? null : this.cleanBazaar(r.body);
+      if (!c) return json({ error: 'bad_name' }, 400);
+      const list = await this.bazaars();
+      if (list.length >= MAX_BAZAARS) return json({ error: 'too_many' }, 409);
+      if (dup(list, c, '')) return json({ error: 'bz_dup' }, 409);
+      let id;
+      do { id = 'b' + randId(4).toLowerCase(); } while (list.some(x => x.id === id));
+      list.push({ id, name: c.name, uz: c.uz });
+      await this.st.put('bz', list);
+      return json({ bazaars: list, id, max: MAX_BAZAARS });
+    }
+    const m = path.match(/^\/api\/hub\/admin\/bazaars\/(b[a-z0-9]{2,8})$/);
+    if (!m) return null;
+    const list = await this.bazaars(), cur = list.find(x => x.id === m[1]);
+    if (!cur) return json({ error: 'not_found' }, 404);
+    if (method === 'PUT') {
+      const r = await this.readBody(request, 1000);
+      const c = r.err || !r.body || typeof r.body !== 'object' ? null : this.cleanBazaar(r.body);
+      if (!c) return json({ error: 'bad_name' }, 400);
+      if (dup(list, c, cur.id)) return json({ error: 'bz_dup' }, 409);
+      cur.name = c.name;
+      cur.uz = c.uz;
+      await this.st.put('bz', list);
+      return json({ bazaars: list, max: MAX_BAZAARS });
+    }
+    if (method === 'DELETE') {
+      const rest = list.filter(x => x.id !== cur.id);
+      await this.st.put('bz', rest);
+      for (const rec of await this.allRecs()) {
+        if (rec.bz !== cur.id) continue;
+        rec.bz = '';
+        await this.st.put('d:' + rec.id, rec);
+        // выбор сбрасывается и в самом хранилище продавца; сбой не мешает: лишний номер всё равно не найдётся в списке
+        try { await shopCall(this.env, rec.id, '/__/set-cat', { cat: 'bazaar', bz: '' }); } catch (e) { console.error('bazaar reset failed', e && e.message || e); }
+      }
+      return json({ bazaars: rest, max: MAX_BAZAARS });
+    }
+    return null;
+  }
   async adminPeople(request, path, method) {
     if (path === '/api/hub/admin/people' && method === 'GET') return json(await this.peopleState());
     if (path === '/api/hub/admin/people/list' && method === 'GET') return json(await this.peopleSeen());
@@ -5082,7 +5163,7 @@ export class Hub {
   async publicList(request) {
     const recs = (await this.allRecs()).filter(r => r.on && r.items > 0);
     const terrs = (await this.terrs()).map(t => ({ id: t.id, name: t.name }));
-    const out = { title: await this.title(), about: await this.about(), shops: recs.map(pubRec), terrs };
+    const out = { title: await this.title(), about: await this.about(), shops: recs.map(pubRec), terrs, bazaars: await this.bazaars() };
     const au = await this.auth(request);
     if (au.user) {
       await this.touchPerson(au.user);
@@ -5206,6 +5287,10 @@ export class Hub {
       const res = await this.adminPeople(request, path, method);
       if (res) return res;
     }
+    if (path.startsWith('/api/hub/admin/bazaars')) {
+      const res = await this.adminBazaars(request, path, method);
+      if (res) return res;
+    }
     if (path === '/api/hub/admin/shops' && method === 'GET') {
       const recs = await this.allRecs();
       return json({ title: await this.title(), max: MAX_SHOPS, shops: await Promise.all(recs.map(r => this.ownerRec(r))) });
@@ -5289,9 +5374,17 @@ export class Hub {
       if (r.err || !r.body || typeof r.body !== 'object' || typeof r.body.cat !== 'string') return json({ error: 'bad_request' }, 400);
       const cat = cleanCat(r.body.cat);
       if (r.body.cat !== '' && !cat) return json({ error: 'bad_cat' }, 400);
-      const sc = await shopCall(this.env, rec.id, '/__/set-cat', { cat });
+      if (r.body.bz !== undefined && typeof r.body.bz !== 'string') return json({ error: 'bad_request' }, 400);
+      // базар: не прислан — остаётся прежний, пустая строка снимает выбор, иначе он должен быть в списке
+      let bz;
+      if (cat === 'bazaar' && typeof r.body.bz === 'string') {
+        if (r.body.bz !== '' && !(await this.bazaars()).some(x => x.id === r.body.bz)) return json({ error: 'bad_bz' }, 400);
+        bz = r.body.bz;
+      }
+      const sc = await shopCall(this.env, rec.id, '/__/set-cat', bz === undefined ? { cat } : { cat, bz });
       if (!sc.ok) return json({ error: 'server' }, 500);
       rec.cat = cat;
+      rec.bz = cat === 'bazaar' ? cleanBz(sc.data && sc.data.bz) : '';
       await this.st.put('d:' + rec.id, rec);
       return json({ shop: await this.ownerRec(rec) });
     }
@@ -5452,9 +5545,14 @@ export class Hub {
     let id;
     do { id = 's' + randId(5).toLowerCase(); } while (idx.includes(id));
     const cat = cleanCat(b.cat);
-    const init = await shopCall(this.env, id, '/__/init', { name, pct: COMM_DEFAULT, cat });
+    let bz = '';
+    if (cat === 'bazaar' && typeof b.bz === 'string' && b.bz) {
+      if (!(await this.bazaars()).some(x => x.id === b.bz)) return json({ error: 'bad_bz' }, 400);
+      bz = b.bz;
+    }
+    const init = await shopCall(this.env, id, '/__/init', { name, pct: COMM_DEFAULT, cat, bz });
     if (!init.ok) return json({ error: 'server' }, 500);
-    const rec = newRec(id, name, c.hash, { cat });
+    const rec = newRec(id, name, c.hash, { cat, bz });
     await this.st.put({ ['d:' + id]: rec, dx: idx.concat([id]) });
     return json({ shop: await this.ownerRec(rec), code: c.code });
   }

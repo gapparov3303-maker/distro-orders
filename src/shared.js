@@ -24,7 +24,7 @@ function stOf(status,mode){
 
 const DEFAULT={
   v:3,
-  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],home:'',category:''}
+  shop:{name:'Оптовая база',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],home:'',category:'',bazaar:''}
 };
 /* Категории дистрибьюторов на первом экране. Пустая категория — не выбрана: такой дистрибьютор показывается в «Дистрибьюторах».
    Продавец выбирает её в настройках, владелец может поменять; ключ хранится у дистрибьютора (shop.category), площадка держит копию в списке. */
@@ -33,6 +33,10 @@ const cleanCat=v=>typeof v==='string'&&SHOP_CATS.includes(v)?v:'';
 const shopCatOf=r=>cleanCat(r&&r.cat)||'distributor';
 const SHOP_CAT_NAMES={maker:['Производители','Ishlab chiqaruvchilar'],importer:['Импортеры','Importyorlar'],wholesale:['Оптовики','Ulgurji sotuvchilar'],distributor:['Дистрибьюторы','Distribyutorlar'],bazaar:['Базары','Bozorlar']};
 const shopCatName=k=>{const x=SHOP_CAT_NAMES[k];return x?(LANG==='uz'?x[1]:x[0]):''};
+/* Базары внутри категории «Базары»: список ведёт владелец площадки ([{id,name,uz}], id вида «b…»), продавец выбирает свой (shop.bazaar).
+   Название хранится на двух языках; если одного нет, показывается другое. Выбор имеет смысл только в категории «Базары». */
+const cleanBz=v=>typeof v==='string'&&/^b[a-z0-9]{2,8}$/.test(v)?v:'';
+const bzName=b=>b?((LANG==='uz'?(b.uz||b.name):(b.name||b.uz))||''):'';
 const clone=o=>JSON.parse(JSON.stringify(o));
 const pad=n=>String(n).padStart(2,'0');
 const ymd=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());

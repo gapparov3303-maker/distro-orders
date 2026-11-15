@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -7947,7 +7947,7 @@ await t('категории дистрибьюторов: пять катего�
   assert.ok(/SHOP_CATS\.map/.test(cs) && /data-act="opencat"/.test(cs) && /Пока пусто/.test(cs) && /' em'/.test(cs), 'пять карточек, пустые помечены');
   assert.ok(/shopCatOf\(r\)===k/.test(html), 'счёт и список по shopCatOf: без категории — «Дистрибьюторы»');
   assert.ok(/Пока здесь никого нет/.test(fn('catListHTML')), 'пустая категория: сообщение');
-  assert.ok(/if\(v==='shops'\)S\.shopsCat=''/.test(fn('go')), 'любой переход на список начинается с категорий');
+  assert.ok(/if\(v==='shops'\)\{S\.shopsCat='';S\.shopsBz=''\}/.test(fn('go')), 'любой переход на список начинается с категорий, а не с открытого базара');
   assert.ok(/a==='opencat'/.test(html) && /a==='catback'/.test(html));
   assert.ok(/shopsListHTML\(list\)/.test(html) && /const all=list\|\|S\.hub\.shops/.test(html), 'список с фильтром по региону работает и внутри категории');
   // настройки продавца: поле сохраняется сразу и отдельно от формы
@@ -7961,6 +7961,179 @@ await t('категории дистрибьюторов: пять катего�
   // подсказки в формах
   const hints = [...html.matchAll(/hintD\('([^']*)','([^']*)'\)/g)].filter(m => /категори|kategori/i.test(m[1] + m[2]));
   assert.ok(hints.length >= 2 && hints.every(m => m[1].length <= 140 && m[2].length <= 170));
+});
+
+await t('базары: владелец ведёт список (два языка, дубли, переименование, предел), права, список виден всем', async () => {
+  await hubWorld();
+  const add = (body, init = iS()) => call('POST', '/api/hub/admin/bazaars', { init, body });
+  assert.equal((await add({ name: 'Центральный базар' }, iA())).status, 403, 'не владелец');
+  assert.equal((await add({ name: 'Центральный базар' }, iD())).status, 403, 'продавец тоже не может');
+  assert.equal((await call('POST', '/api/hub/admin/bazaars', { body: { name: 'Центральный базар' } })).status, 401);
+  assert.equal((await add({ name: 'Ц' })).status, 400, 'слишком короткое');
+  assert.equal((await add({})).status, 400);
+  assert.equal((await add({ name: 5 })).status, 400);
+  let j = await jsonOf(await add({ name: 'Центральный базар', uz: 'Markaziy bozor' }));
+  assert.match(j.id, /^b[a-z0-9]{4}$/);
+  assert.deepEqual(j.bazaars.map(x => [x.name, x.uz]), [['Центральный базар', 'Markaziy bozor']]);
+  const id1 = j.id;
+  // одного названия хватает: второй язык пустой, показывается то же имя
+  j = await jsonOf(await add({ uz: 'Yangi bozor' }));
+  assert.deepEqual(j.bazaars[1], { id: j.id, name: 'Yangi bozor', uz: '' });
+  const id2 = j.id;
+  j = await jsonOf(await add({ name: 'Старый рынок', uz: 'старый рынок' }));
+  assert.equal(j.bazaars[2].uz, '', 'одинаковое на двух языках хранится один раз');
+  // дубли без учёта регистра, на любом из двух языков
+  assert.equal((await add({ name: 'ЦЕНТРАЛЬНЫЙ БАЗАР' })).status, 409);
+  assert.equal((await add({ name: 'Другой', uz: 'MARKAZIY BOZOR' })).status, 409);
+  // публичный список отдаёт базары всем
+  const pub = await jsonOf(await call('GET', '/api/shops', { init: iA() }));
+  assert.deepEqual(pub.bazaars.map(x => x.id), [id1, id2, j.bazaars[2].id]);
+  // переименование
+  const put = (id, body, init = iS()) => call('PUT', '/api/hub/admin/bazaars/' + id, { init, body });
+  assert.equal((await put(id1, { name: 'Главный базар' }, iA())).status, 403);
+  assert.equal((await put('bzzzz', { name: 'Главный базар' })).status, 404);
+  assert.equal((await put(id1, { name: 'Я' })).status, 400);
+  assert.equal((await put(id1, { name: 'Yangi bozor' })).status, 409, 'нельзя занять чужое имя');
+  j = await jsonOf(await put(id1, { name: 'Главный базар', uz: 'Asosiy bozor' }));
+  assert.deepEqual(j.bazaars[0], { id: id1, name: 'Главный базар', uz: 'Asosiy bozor' });
+  assert.equal((await put(id1, { name: 'Главный базар', uz: 'Asosiy bozor' })).status, 200, 'то же имя у самого себя не дубль');
+  // удаление: права и несуществующий
+  assert.equal((await call('DELETE', '/api/hub/admin/bazaars/' + id2, { init: iA() })).status, 403);
+  assert.equal((await call('DELETE', '/api/hub/admin/bazaars/bzzzz', { init: iS() })).status, 404);
+  j = await jsonOf(await call('DELETE', '/api/hub/admin/bazaars/' + id2, { init: iS() }));
+  assert.deepEqual(j.bazaars.map(x => x.id), [id1, pub.bazaars[2].id]);
+  // предел
+  let last = 200;
+  for (let i = 0; i < 40 && last === 200; i++) last = (await add({ name: 'Базар номер ' + i })).status;
+  assert.equal(last, 409);
+  const all = (await jsonOf(await call('GET', '/api/hub/admin/bazaars', { init: iS() })));
+  assert.equal(all.bazaars.length, 30);
+  assert.equal(all.max, 30);
+  assert.equal((await call('GET', '/api/hub/admin/bazaars', { init: iA() })).status, 403);
+});
+
+await t('базары: продавец выбирает свой базар только в категории «Базары», владелец может перевести, при уходе и удалении выбор сбрасывается', async () => {
+  const { sid } = await shopWorld('Альфа Трейд');
+  const mk = async name => (await jsonOf(await call('POST', '/api/hub/admin/bazaars', { init: iS(), body: { name } }))).id;
+  const b1 = await mk('Центральный базар'), b2 = await mk('Старый рынок');
+  const listRec = async () => (await jsonOf(await call('GET', '/api/shops', { init: iA() }))).shops.find(x => x.id === sid);
+  const cfgShop = async () => (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg.shop;
+  const sel = (body, init = iD()) => callS(sid, 'PUT', '/api/admin/category', { init, body });
+  // вне категории «Базары» базар не сохраняется
+  let r = await sel({ cat: 'maker', bz: b1 });
+  assert.equal(r.status, 200);
+  assert.deepEqual(await jsonOf(r), { cat: 'maker', bz: '' });
+  assert.equal((await listRec()).bz, '');
+  // категория «Базары» без базара
+  assert.deepEqual(await jsonOf(await sel({ cat: 'bazaar' })), { cat: 'bazaar', bz: '' });
+  assert.equal((await listRec()).cat, 'bazaar');
+  // выбор базара: виден в списке и в настройках
+  assert.deepEqual(await jsonOf(await sel({ cat: 'bazaar', bz: b1 })), { cat: 'bazaar', bz: b1 });
+  assert.equal((await listRec()).bz, b1);
+  assert.equal((await cfgShop()).bazaar, b1);
+  // повторное сохранение категории без поля «базар» его не трогает
+  assert.equal((await jsonOf(await sel({ cat: 'bazaar' }))).bz, b1);
+  // неизвестный базар и мусор отклоняются, выбор остаётся
+  assert.equal((await sel({ cat: 'bazaar', bz: 'bzzzz' })).status, 400);
+  assert.equal((await sel({ cat: 'bazaar', bz: 5 })).status, 400);
+  assert.equal((await sel({ cat: 'bazaar', bz: 'Б' })).status, 400);
+  assert.equal((await sel({ cat: 'bazaar', bz: b2 }, iA())).status, 403, 'чужой не может');
+  assert.equal((await listRec()).bz, b1);
+  // устаревшая форма настроек не затирает базар
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+  cfg.shop.bazaar = b2;
+  cfg.shop.phone = '+998 90 222 33 44';
+  assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } })).status, 200);
+  assert.equal((await cfgShop()).bazaar, b1);
+  assert.equal((await listRec()).bz, b1);
+  // владелец переводит в другой базар: побеждает последнее изменение
+  const own = (body, init = iS()) => call('PUT', '/api/hub/admin/shops/' + sid + '/cat', { init, body });
+  assert.equal((await own({ cat: 'bazaar', bz: b2 }, iA())).status, 403);
+  assert.equal((await own({ cat: 'bazaar', bz: b2 }, iD())).status, 403);
+  assert.equal((await own({ cat: 'bazaar', bz: 'bzzzz' })).status, 400);
+  assert.equal((await own({ cat: 'bazaar', bz: 7 })).status, 400);
+  r = await own({ cat: 'bazaar', bz: b2 });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).shop.bz, b2);
+  assert.equal((await listRec()).bz, b2);
+  assert.equal((await cfgShop()).bazaar, b2, 'продавец видит выбор владельца');
+  assert.equal((await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }))).shops.find(x => x.id === sid).bz, b2, 'в списке владельца');
+  assert.equal((await jsonOf(await own({ cat: 'bazaar' }))).shop.bz, b2, 'без поля «базар» остаётся прежний');
+  assert.equal((await sel({ cat: 'bazaar', bz: b1 })).status, 200);
+  assert.equal((await listRec()).bz, b1, 'потом продавец поменял сам');
+  assert.equal((await jsonOf(await sel({ cat: 'bazaar', bz: '' }))).bz, '', 'пустая строка снимает выбор');
+  // уход из «Базары» сбрасывает базар, возврат начинает с пустого
+  await sel({ cat: 'bazaar', bz: b2 });
+  assert.deepEqual(await jsonOf(await sel({ cat: 'importer' })), { cat: 'importer', bz: '' });
+  assert.equal((await listRec()).bz, '');
+  assert.equal((await cfgShop()).bazaar, '');
+  assert.equal((await jsonOf(await sel({ cat: 'bazaar' }))).bz, '');
+  // владелец убирает продавца из «Базары» через площадку: тоже сбрасывается
+  await own({ cat: 'bazaar', bz: b1 });
+  assert.equal((await jsonOf(await own({ cat: 'maker' }))).shop.bz, '');
+  // удаление базара: продавец остаётся в «Базары», но без базара
+  await sel({ cat: 'bazaar', bz: b2 });
+  assert.equal((await call('DELETE', '/api/hub/admin/bazaars/' + b2, { init: iS() })).status, 200);
+  assert.equal((await listRec()).cat, 'bazaar');
+  assert.equal((await listRec()).bz, '');
+  assert.equal((await cfgShop()).bazaar, '');
+  assert.equal((await sel({ cat: 'bazaar', bz: b2 })).status, 400, 'удалённый выбрать нельзя');
+  // изменение каталога не сбрасывает базар
+  await sel({ cat: 'bazaar', bz: b1 });
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: SAMPLE_PROD() } })).status, 200);
+  assert.equal((await listRec()).bz, b1);
+});
+
+await t('базары: при создании продавца владелец может сразу выбрать базар, лишнее отбрасывается', async () => {
+  await hubWorld();
+  const b1 = (await jsonOf(await call('POST', '/api/hub/admin/bazaars', { init: iS(), body: { name: 'Центральный базар' } }))).id;
+  const a = await jsonOf(await createShop({ name: 'Альфа', cat: 'bazaar', bz: b1 }));
+  assert.equal(a.shop.bz, b1);
+  assert.equal((await jsonOf(await callS(a.shop.id, 'GET', '/api/config'))).cfg.shop.bazaar, b1);
+  const b = await jsonOf(await createShop({ name: 'Бета', cat: 'maker', bz: b1 }));
+  assert.equal(b.shop.bz, '', 'вне категории «Базары» базар не сохраняется');
+  const c = await createShop({ name: 'Гамма', cat: 'bazaar', bz: 'bzzzz' });
+  assert.equal(c.status, 400, 'неизвестный базар');
+  const d = await jsonOf(await createShop({ name: 'Дельта', cat: 'bazaar' }));
+  assert.equal(d.shop.bz, '');
+  assert.equal(S.cleanBz('bab12'), 'bab12');
+  for (const bad of ['', 'x', 'bзз', 5, null, {}, 'B12345', 'b'.repeat(12)]) assert.equal(S.cleanBz(bad), '');
+  S.setLang('uz');
+  assert.equal(S.bzName({ name: 'Главный', uz: 'Asosiy' }), 'Asosiy');
+  assert.equal(S.bzName({ name: 'Главный', uz: '' }), 'Главный', 'нет перевода — показывается русское название');
+  S.setLang('ru');
+  assert.equal(S.bzName({ name: 'Главный', uz: 'Asosiy' }), 'Главный');
+  assert.equal(S.bzName({ name: '', uz: 'Asosiy' }), 'Asosiy');
+  assert.equal(S.bzName(null), '');
+});
+
+await t('базары: экраны магазина (группы и «Без базара»), продавца (поле «Базар») и владельца (раздел, перевод, создание)', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
+  // магазин: в категории «Базары» сначала базары, потом продавцы; без базаров сразу продавцы
+  const cl = fn('catListHTML');
+  assert.ok(/k==='bazaar'/.test(cl) && /bzGroups\(\)/.test(cl) && /data-act="openbz"/.test(cl), 'внутри «Базары» показаны базары');
+  assert.ok(/if\(!g\.length\)return null/.test(fn('bzGroups')) && /id:'none'/.test(fn('bzGroups')), 'пусто — без групп; без базара — группа «none»');
+  assert.ok(/bzOf\(r\)===\(b==='none'\?'':b\)/.test(cl), 'внутри базара только его продавцы, внутри «Без базара» — те, у кого базара нет');
+  assert.ok(/const bzOf=r=>\{const b=cleanBz\(r&&r\.bz\);return b&&bzList\(\)\.some\(x=>x\.id===b\)\?b:''\}/.test(html), 'удалённый базар равен «без базара»');
+  const rs = fn('renderShops');
+  assert.ok(/data-act="bzback"/.test(rs) && /data-act="catback"/.test(rs) && /ck&&!pickBz/.test(rs), 'назад из базара — к базарам, из категории — к категориям');
+  assert.ok(/a==='openbz'\)\{S\.shopsBz=t\.dataset\.b/.test(html) && /a==='bzback'\)\{S\.shopsBz=''/.test(html) && /a==='catback'\)\{S\.shopsCat='';S\.shopsBz=''/.test(html));
+  assert.ok(/bazaars:Array\.isArray\(d\.bazaars\)\?d\.bazaars:\[\]/.test(fn('loadHub')), 'список базаров приходит вместе со списком продавцов');
+  // продавец: поле «Базар» только в категории «Базары», сохраняется сразу
+  const st = fn('settingsHTML');
+  assert.ok(/id="s-bzbox"/.test(st) && /id="s-bz" data-bzsel="1"/.test(st) && /cleanCat\(s\.category\)==='bazaar'\?'':' style="display:none"'/.test(st), 'поле скрыто вне «Базары»');
+  assert.ok(/api\('PUT','\/api\/admin\/category',\{cat:'bazaar',bz\}\)/.test(fn('bzSave')) && /dataset\.bzsel!==undefined\)bzSave\(/.test(html));
+  assert.ok(/S\.cfg\.shop\.bazaar=cleanBz\(r\.data\.bz\)/.test(fn('catSave')), 'при смене категории базар берётся из ответа сервера');
+  // владелец
+  assert.ok(/\['bz',L\('Базары','Bozorlar'\),L\('Базары','Bozorlar'\)\]/.test(html) && /sec==='bz'\)h\+=ownBzHTML\(\)/.test(html), 'подраздел «Базары»');
+  assert.ok(/'\/api\/hub\/admin\/bazaars'/.test(fn('bzAdd')) && /'\/api\/hub\/admin\/bazaars\/'\+encodeURIComponent\(id\)/.test(fn('bzSaveRow')) && /'DELETE','\/api\/hub\/admin\/bazaars\//.test(fn('bzDel')), 'добавить, переименовать, удалить');
+  assert.ok(/ownBzSel\(r\.id,r\.bz\)/.test(fn('ownCatsHTML')) && /data-obz=/.test(fn('ownBzSel')) && /\{cat:'bazaar',bz:cleanBz\(v\)\}/.test(fn('ownBz')), 'перевод продавца на другой базар');
+  assert.ok(/id="o-bz" data-own="fbz"/.test(fn('ownAddHTML')) && /\{bz:cleanBz\(o\.fbz\)\}/.test(fn('ownAdd')), 'выбор базара при создании');
+  assert.ok(/dataset\.own==='fcat'\)\{S\.own\.fcat=t\.value;/.test(html), 'выбрали «Базары» в форме создания — поле базара появляется без потери введённого');
+  // подсказки в формах
+  const hints = [...html.matchAll(/hintD\('([^']*)','([^']*)'\)/g)].filter(m => /базар|bozor/i.test(m[1] + m[2]));
+  assert.ok(hints.length >= 2 && hints.every(m => m[1].length <= 140 && m[2].length <= 170 && !/[А-Яа-яЁё]/.test(m[2])));
 });
 
 await t('«Продавец» вместо «дистрибьютор»: в тексте приложения и бота слово осталось только как название категории', () => {
