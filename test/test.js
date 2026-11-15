@@ -8107,6 +8107,56 @@ await t('базары: при создании продавца владелец
   assert.equal(S.bzName(null), '');
 });
 
+await t('юридическое название: продавец вводит в настройках, владелец может поменять, клиент видит в каталоге, лишнее обрезается', async () => {
+  const { sid } = await shopWorld('Юр Трейд');
+  const cfgShop = async () => (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iA() }))).cfg.shop;
+  const ownerRow = async () => (await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }))).shops.find(x => x.id === sid);
+  assert.equal((await cfgShop()).legal, '', 'по умолчанию пусто');
+  // продавец сохраняет в настройках; лишние пробелы и длина убираются
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+  cfg.shop.legal = '  ООО «Навои Фуд»  ';
+  let r = await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).cfg.shop.legal, 'ООО «Навои Фуд»');
+  assert.equal((await cfgShop()).legal, 'ООО «Навои Фуд»', 'клиент получает его вместе с настройками');
+  assert.equal((await ownerRow()).legal, 'ООО «Навои Фуд»', 'копия на площадке (список владельца)');
+  const pub = (await jsonOf(await call('GET', '/api/shops', { init: iA() }))).shops.find(x => x.id === sid);
+  assert.equal(pub.legal, undefined, 'в общем списке продавцов его нет: только в каталоге');
+  cfg.shop.legal = 'Я'.repeat(200);
+  assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.legal.length, 80, 'не длиннее 80');
+  cfg.shop.legal = 5;
+  assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.legal, '', 'не строка — пусто');
+  // владелец меняет и убирает
+  const own = (body, init = iS()) => call('PUT', '/api/hub/admin/shops/' + sid + '/legal', { init, body });
+  assert.equal((await own({ legal: 'ИП Каримов' }, iA())).status, 403, 'чужой не может');
+  assert.equal((await own({ legal: 'ИП Каримов' }, iD())).status, 403, 'продавец через площадку не может');
+  assert.equal((await own({ legal: 7 })).status, 400);
+  assert.equal((await own({})).status, 400);
+  r = await own({ legal: '  ИП Каримов  ' });
+  assert.equal(r.status, 200);
+  assert.equal((await jsonOf(r)).shop.legal, 'ИП Каримов');
+  assert.equal((await cfgShop()).legal, 'ИП Каримов', 'продавец и клиенты видят правку владельца');
+  assert.equal((await ownerRow()).legal, 'ИП Каримов');
+  assert.equal((await jsonOf(await own({ legal: '' }))).shop.legal, '', 'пустая строка убирает');
+  assert.equal((await cfgShop()).legal, '');
+  assert.equal((await call('PUT', '/api/hub/admin/shops/nope1/legal', { init: iS(), body: { legal: 'x' } })).status, 404);
+  // правка владельца не ломает остальные настройки
+  assert.equal((await cfgShop()).category, '', 'категория осталась');
+});
+
+await t('юридическое название: экраны каталога, настроек продавца и списка владельца', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
+  assert.ok(/<\/h1>'\+\(S\.cfg\.shop\.legal\?'<div class="legal">'\+esc\(S\.cfg\.shop\.legal\)\+'<\/div>':''\)\+search/.test(html), 'в каталоге под названием, пусто — ничего');
+  assert.ok(/id="s-legal" data-s="legal"[^>]*maxlength="80"/.test(fn('settingsHTML')), 'поле в настройках продавца');
+  assert.ok(/data-olegal=/.test(fn('ownListHTML')) && /data-act="ownlegal"/.test(fn('ownListHTML')), 'поле и кнопка в списке владельца');
+  assert.ok(/'\/api\/hub\/admin\/shops\/'\+encodeURIComponent\(id\)\+'\/legal',\{legal:v\}/.test(fn('ownLegal')), 'владелец сохраняет через площадку');
+  assert.ok(/a==='ownlegal'\)ownLegal\(/.test(html) && /dataset\.olegal!==undefined\)S\.own\.legals\[/.test(html), 'нажатие и ввод');
+  assert.ok(/\.shop \.legal\{/.test(html), 'стиль подписи');
+  assert.equal(S.DEFAULT.shop.legal, '', 'в настройках по умолчанию пусто');
+  assert.ok(/Юридическое название/.test(html) && /Yuridik nomi/.test(html), 'подписи на двух языках');
+});
+
 await t('базары: экраны магазина (группы и «Без базара»), продавца (поле «Базар») и владельца (раздел, перевод, создание)', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
