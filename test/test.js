@@ -8219,7 +8219,8 @@ await t('«Продавец» вместо «дистрибьютор»: в те
   assert.ok(/\['dists',L\('Продавцы','Sotuvchilar'\)/.test(html), 'группа владельца: «Продавцы»');
   assert.ok(/L\('Добавить продавца','Sotuvchi qoʻshish'\)/.test(html), 'подраздел «Добавить продавца»');
   assert.ok(/L\('доступ: '\+r\.sellers\+' чел\.'/.test(html), 'в списке владельца у продавца: «доступ: N чел.», а не «продавцов: N»');
-  assert.ok(/Продавцы и покупатели в одном приложении/.test(html), 'первый экран');
+  assert.ok(/Продукты питания: продавцы и покупатели в одном приложении/.test(html) && /Oziq-ovqat mahsulotlari: sotuvchilar va xaridorlar bir ilovada/.test(html), 'первый экран: подпись про продукты питания');
+  assert.ok(/созданная для продуктов питания\. Она соединяет/.test(html) && /Platforma oziq-ovqat mahsulotlari uchun moʻljallangan\. U sotuvchilar/.test(html), 'стандартное вступление «О нас»: платформа для продуктов питания');
 });
 
 await t('«Покупатель» вместо «магазин» и «клиент»: в тексте приложения, бота и README слов нет, кроме типа точки и примеров', () => {
