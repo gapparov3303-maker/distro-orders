@@ -138,6 +138,7 @@ function sanitizeCfg(d) {
   const out = mergeCfg(d && typeof d === 'object' ? d : null);
   const s = out.shop;
   s.name = cleanStr(s.name, 60) || DEFAULT.shop.name;
+  s.legal = cleanStr(s.legal, 80);   // юридическое название: показывается под названием в каталоге
   s.phone = cleanStr(s.phone, 30);
   s.telegram = cleanStr(s.telegram, 40).replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '');
   s.address = cleanStr(s.address, 120);
@@ -2242,7 +2243,7 @@ export class Shop {
     const ok = prod.items.filter(isApproved);   // в списке продавцов считаются только одобренные товары
     const cats = prod.cats.filter(c => ok.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
     return {
-      name: cfg.shop.name || DEFAULT.shop.name, items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
+      name: cfg.shop.name || DEFAULT.shop.name, legal: cleanStr(cfg.shop.legal, 80), items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
       delivery: cfg.shop.delivery !== false, minOrder: Number(cfg.shop.minOrder) || 0,
       regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home), cat: cleanCat(cfg.shop.category), bz: cleanBz(cfg.shop.bazaar)
     };
@@ -2302,6 +2303,14 @@ export class Shop {
       const next = sanitizeCfg(cfg);
       await this.st.put('cfg', next);
       return json({ ok: true, cat: next.shop.category, bz: next.shop.bazaar });
+    }
+    if (path === '/__/set-legal') {
+      // владелец площадки поменял юридическое название: хранится здесь, площадка обновляет свою копию сама
+      const cfg = await this.getCfg();
+      cfg.shop.legal = cleanStr(b.legal, 80);
+      const next = sanitizeCfg(cfg);
+      await this.st.put('cfg', next);
+      return json({ ok: true, legal: next.shop.legal });
     }
     if (path === '/__/clients') {
       // клиенты этого дистрибьютора: площадка один раз переносит их в общую базу магазинов
@@ -4172,7 +4181,7 @@ export class Shop {
 
 /* ---------- Площадка: реестр дистрибьюторов, их коды, вход продавцов, заказы клиента по всем компаниям ---------- */
 const newRec = (id, name, hash, sum) => ({
-  id, name: cleanStr(name, 60) || DEFAULT.shop.name, on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
+  id, name: cleanStr(name, 60) || DEFAULT.shop.name, legal: cleanStr(sum && sum.legal, 80), on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
   items: sum && Number(sum.items) || 0, wait: sum && Number(sum.wait) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
   regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home), cat: cleanCat(sum && sum.cat), bz: cleanCat(sum && sum.cat) === 'bazaar' ? cleanBz(sum && sum.bz) : ''
 });
@@ -4262,7 +4271,7 @@ export class Hub {
   }
   async link(did) { const b = await this.botName(); return b ? 'https://t.me/' + b + '?start=d_' + did : ''; }
   /* Запись дистрибьютора для владельца: всё, кроме хэша кода. */
-  async ownerRec(r) { return Object.assign(pubRec(r), { on: r.on, sellers: r.sellers, since: r.since, own: !!r.hash, link: await this.link(r.id) }); }
+  async ownerRec(r) { return Object.assign(pubRec(r), { legal: cleanStr(r.legal, 80), on: r.on, sellers: r.sellers, since: r.since, own: !!r.hash, link: await this.link(r.id) }); }
 
   /* --- вход продавцов по коду --- */
   /* Код продавца ищется среди кода владельца (ADMIN_CODE) и кодов дистрибьюторов. Ошибки считаются по человеку: 8 подряд закрывают ввод на час. */
@@ -4354,6 +4363,7 @@ export class Hub {
       if (!rec || !b.summary || typeof b.summary !== 'object') return json({ ok: false });
       const s = b.summary;
       rec.name = cleanStr(s.name, 60) || rec.name;
+      rec.legal = cleanStr(s.legal, 80);
       rec.items = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.items) || 0)));
       rec.wait = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.wait) || 0)));
       rec.cats = (Array.isArray(s.cats) ? s.cats : []).slice(0, 6).map(c => ({ name: cleanStr(c && c.name, 40), uz: cleanStr(c && c.uz, 40) })).filter(c => c.name);
@@ -5385,6 +5395,19 @@ export class Hub {
       if (!sc.ok) return json({ error: 'server' }, 500);
       rec.cat = cat;
       rec.bz = cat === 'bazaar' ? cleanBz(sc.data && sc.data.bz) : '';
+      await this.st.put('d:' + rec.id, rec);
+      return json({ shop: await this.ownerRec(rec) });
+    }
+    // юридическое название: владелец может поменять то, что написал продавец
+    const lm = path.match(/^\/api\/hub\/admin\/shops\/([a-z0-9]{2,12})\/legal$/);
+    if (lm && method === 'PUT') {
+      const rec = await this.getRec(lm[1]);
+      if (!rec) return json({ error: 'not_found' }, 404);
+      const r = await this.readBody(request, 1000);
+      if (r.err || !r.body || typeof r.body !== 'object' || typeof r.body.legal !== 'string') return json({ error: 'bad_request' }, 400);
+      const sc = await shopCall(this.env, rec.id, '/__/set-legal', { legal: r.body.legal });
+      if (!sc.ok) return json({ error: 'server' }, 500);
+      rec.legal = cleanStr(sc.data && sc.data.legal, 80);
       await this.st.put('d:' + rec.id, rec);
       return json({ shop: await this.ownerRec(rec) });
     }
