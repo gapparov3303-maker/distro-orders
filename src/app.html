@@ -825,13 +825,17 @@ div.lgd{cursor:default}
 .abli li::marker{color:var(--tx)}
 @media (min-width:700px){.abfig{float:right;margin:0 0 12px 18px}.abli{clear:none}}
 .asbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px));background:var(--accent-soft);border-top:1px solid var(--line);font-size:13px;color:var(--ink-2)}
-.asbar[hidden],.mas[hidden]{display:none}
+.asbar[hidden]{display:none}
 .asbar b{color:var(--ink);font-weight:700}
 .asbar .btn{flex:none}
-.mas{flex:none;padding:10px 16px 12px;border-bottom:1px solid var(--line)}
-.masl{margin-bottom:7px;font:600 10.5px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--grp)}
-.masr{display:flex;flex-wrap:wrap;gap:6px}
-.masr .chip{height:34px;padding:0 11px;font-size:13px}
+/* «Смотреть как»: одна строка в самом низу меню, роли раскрываются списком по нажатию */
+.mas{margin:14px 12px 18px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.masb{appearance:none;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:48px;padding:8px 10px;background:transparent;border:0;font:inherit;font-size:13px;color:var(--ink-2);text-align:left;cursor:pointer}
+.masb .chip{display:inline-flex;align-items:center;flex:none;height:32px;padding:0 8px 0 11px;font-size:13px;white-space:nowrap;pointer-events:none}
+.masb .chev{flex:none;margin-left:6px;transition:transform .15s}
+.masb[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.masi{appearance:none;display:block;width:100%;min-height:44px;padding:10px 14px;background:transparent;border:0;border-top:1px solid var(--line);font:inherit;font-size:14px;color:var(--ink);text-align:left;cursor:pointer}
+.masi[aria-pressed="true"]{font-weight:700;color:var(--tx)}
 /* категории дистрибьюторов на первом экране */
 .catgrid{display:grid;gap:10px}
 .cat{appearance:none;display:flex;align-items:center;gap:14px;width:100%;min-height:72px;padding:12px 14px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface);text-align:left;cursor:pointer;color:var(--ink)}
@@ -881,7 +885,6 @@ div.lgd{cursor:default}
     <button type="button" class="mclose" data-act="menuclose" id="mclose"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4l12 12M16 4 4 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
   <div class="mrole" id="mrole" hidden></div>
-  <div class="mas" id="mas" hidden></div>
   <nav class="mnav" id="nav"></nav>
 </aside>
 <main id="view"></main>
@@ -909,7 +912,7 @@ const S={
   fav:[],favT:null,favSeq:0,imp:null,impBusy:false,
   rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0},
   an:{days:30,sh:'',tab:'cats',sort:'sum',all:false,data:null,shops:[],err:false,seq:0},
-  did:'',epoch:0,switching:false,leaving:false,off:false,otherCart:null,
+  did:'',epoch:0,switching:false,leaving:false,vam:false,off:false,otherCart:null,
   hub:{title:'',about:{ru:'',uz:'',phone:'',tg:'',ig:''},shops:[],me:null,terrs:[],bazaars:[],loaded:false,err:false},
   ab:{open:null},
   own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
@@ -1189,6 +1192,16 @@ function asRoles(){
 }
 const viewAs=()=>S.as&&asRoles().some(x=>x[0]===S.as)?S.as:'';
 const asName=k=>(asRoles().find(x=>x[0]===k)||['',''])[1];
+/* Строка «Смотреть как» в самом низу меню (только владелец): сверху выбранная роль, по нажатию список «Все мои роли» и своих ролей */
+function viewAsRowHTML(){
+  const ar=asRoles();
+  if(!ar.length)return '';
+  const as=viewAs(),open=!!S.vam,all=[['',L('Все мои роли','Barcha rollarim')]].concat(ar),lab=L('Смотреть как','Rol sifatida koʻrish');
+  return '<div class="mas"><button type="button" class="masb" data-act="vasw" aria-expanded="'+open+'" aria-controls="masl"><span>'+lab+'</span>'
+    +'<span class="chip">'+esc(as?asName(as):all[0][1])+'<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>'
+    +'<div id="masl" role="group" aria-label="'+esc(lab)+'"'+(open?'':' hidden')+'>'
+    +all.map(x=>'<button type="button" class="masi" data-act="viewas" data-v="'+x[0]+'" aria-pressed="'+(as===x[0])+'">'+esc(x[1])+'</button>').join('')+'</div></div>';
+}
 /* Правило значков в меню: у каждого пункта своё число (оно держится, пока оповещение не обработано), у группы сумма чисел внутри,
    на кнопке ☰ сумма по всем группам (без каталога и числа заказов магазина: это не оповещения). Так три уровня всегда сходятся. */
 const subSum=subs=>subs.reduce((a,x)=>a+(Number(x[2])||0),0);
@@ -1238,6 +1251,7 @@ function renderNav(){
       }else h+='<button type="button" class="mi" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])+'</button>';
     });
   });
+  h+=viewAsRowHTML();
   // перерисовка не должна сбивать прокрутку и фокус открытого меню
   const ae=document.activeElement,fk=ae&&nav.contains(ae)?[ae.dataset.act,ae.dataset.v||ae.dataset.t||'']:null,st=nav.scrollTop;
   nav.setAttribute('aria-label',L('Разделы','Boʻlimlar'));
@@ -1249,13 +1263,8 @@ function renderNav(){
   mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
   const mr=$('#mrole'),rl=roleLine();
   if(mr){mr.hidden=!rl;mr.innerHTML=rl?esc(L('Вы: ','Siz: '))+'<b>'+esc(rl)+'</b>':''}
-  // «Смотреть как» (только владелец): под строкой «Вы:», и полоска «Вернуться» над экраном
-  const as=viewAs(),ar=asRoles(),ma=$('#mas'),ab=$('#asbar');
-  if(ma){
-    ma.hidden=!ar.length;
-    ma.innerHTML=ar.length?'<div class="masl">'+L('Смотреть как','Rol sifatida koʻrish')+'</div><div class="masr" role="group" aria-label="'+esc(L('Смотреть как','Rol sifatida koʻrish'))+'">'
-      +[['',L('Все мои роли','Barcha rollarim')]].concat(ar).map(x=>'<button type="button" class="chip" data-act="viewas" data-v="'+x[0]+'" aria-pressed="'+(as===x[0])+'">'+esc(x[1])+'</button>').join('')+'</div>':'';
-  }
+  // «Смотреть как» (только владелец): строка внизу меню (viewAsRowHTML) и полоска «Вернуться» над экраном
+  const as=viewAs(),ab=$('#asbar');
   if(ab){
     ab.hidden=!as;
     ab.innerHTML=as?'<span>'+esc(L('Смотрю как: ','Koʻrish rejimi: '))+'<b>'+esc(asName(as))+'</b></span><button type="button" class="btn ghost sm" data-act="viewas" data-v="">'+esc(L('Вернуться','Qaytish'))+'</button>':'';
@@ -1296,6 +1305,7 @@ function menuSet(on){
     const f=$('#nav [aria-current="page"]')||$('#nav .mi');
     if(f){f.focus({preventScroll:true});try{f.scrollIntoView({block:'nearest'})}catch(e){}}
   }else{
+    if(S.vam){S.vam=false;renderNav()}
     const inside=document.activeElement&&$('#menu').contains(document.activeElement);
     if(inside||!document.activeElement||document.activeElement===document.body){const b=menuBack&&document.contains(menuBack)&&!$('#menu').contains(menuBack)?menuBack:$('#menubtn');try{b.focus({preventScroll:true})}catch(e){}}
     menuBack=null;
@@ -4871,7 +4881,7 @@ async function leaveDone(did,nm){
 const AS_SHOP_VIEWS=['shops','shop','mine','debt','profile','about'];
 async function setViewAs(v){
   if(v&&!asRoles().some(x=>x[0]===v))v='';
-  S.as=v;S.ab.open=null;
+  S.as=v;S.ab.open=null;S.vam=false;
   menuSet(false);
   const me=S.hub.me||{},sells=me.sells||[],dels=me.delivers||[];
   if(v==='shop'){
@@ -5948,6 +5958,7 @@ document.addEventListener('click',e=>{
   else if(a==='menu')menuSet(!menuIsOpen());
   else if(a==='menuclose')menuSet(false);
   else if(a==='viewas')setViewAs(t.dataset.v||'');
+  else if(a==='vasw'){S.vam=!S.vam;renderNav();if(S.vam){const l=$('#masl');if(l)try{l.scrollIntoView({block:'nearest'})}catch(e){}}}
   else if(a==='msub'){const it=menuGroups().reduce((r,g)=>r.concat(g[1]),[]).find(x=>x[0]===t.dataset.v),cur=S.view==='shops'?'shop':S.view;S.msub=it&&menuSubOpen(it,cur)?'':t.dataset.v;renderNav()}
   else if(a==='shops')go('shops');
   else if(a==='opencat'){if(SHOP_CATS.includes(t.dataset.k)){S.shopsCat=t.dataset.k;S.shopsBz='';renderShops();window.scrollTo(0,0)}}

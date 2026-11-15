@@ -7867,7 +7867,7 @@ await t('«Смотреть как»: роли в списке, только в�
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const i0 = html.indexOf('function asRoles()'), i1 = html.indexOf('/* Правило значков в меню:');
   assert.ok(i0 > 0 && i1 > i0, 'блок «Смотреть как» на месте');
-  const mk = S => new Function('S', 'L', html.slice(i0, i1) + '; return {asRoles,viewAs,asName};')(S, (ru) => ru);
+  const mk = S => new Function('S', 'L', 'esc', html.slice(i0, i1) + '; return {asRoles,viewAs,asName,viewAsRowHTML};')(S, (ru) => ru, x => String(x));
   const hub = me => ({ auth: true, hub: { me }, as: '' });
   // не владелец: ни списка, ни режима, даже если значение подсунуть
   for (const me of [{ owner: false, sells: [{ id: 'a' }], delivers: [], agent: null }, { owner: false, sells: [], delivers: [{ id: 'a' }], agent: { id: 'x' } }, null]) {
@@ -7900,12 +7900,33 @@ await t('«Смотреть как»: роли в списке, только в�
   assert.ok(/const commOn=\(\)=>commOwn\(\)\|\|/.test(cmSrc) && /const commBadge=\(\)=>commOwn\(\)\?/.test(cmSrc), 'пункт и значок комиссии идут по commOwn');
   assert.ok(/if\(!S\.admin\|\|!S\.did\|\|commOwn\(\)\)return;/.test(html) && /if\(commOwn\(\)\)\{loadCommOwner\(\);loadOwnerStats\(\)\}\s*else loadCommSeller\(\)/.test(html), 'данные продавца грузятся и для владельца в режиме продавца');
   assert.ok(/function renderComm\(\)\{\s*const own=commOwn\(\)/.test(html), 'экран комиссии выбирается по commOwn');
-  assert.ok(/id="mas"/.test(html) && /id="asbar"/.test(html), 'блок в меню и полоска над экраном есть в разметке');
+  assert.ok(!/id="mas"/.test(html) && /id="asbar"/.test(html), 'верх меню без блока ролей, полоска над экраном на месте');
   const rn = fn('renderNav');
-  assert.ok(/\$\('#mas'\)/.test(rn) && /\$\('#asbar'\)/.test(rn) && /as-on/.test(rn), 'меню рисует блок и полоску');
+  assert.ok(/\$\('#asbar'\)/.test(rn) && /as-on/.test(rn), 'меню рисует полоску');
+  assert.ok(!/\$\('#mas'\)/.test(rn), 'кнопки ролей больше не рисуются под строкой «Вы:»');
   assert.ok(/data-act="viewas" data-v="">'\+esc\(L\('Вернуться'/.test(rn), 'в полоске кнопка «Вернуться»');
-  assert.ok(/L\('Смотреть как'/.test(rn) && /L\('Все мои роли'/.test(rn), 'подписи блока');
-  assert.ok(/else if\(a==='viewas'\)setViewAs\(/.test(html), 'нажатие обрабатывается');
+  // строка внизу меню: после всех групп и «О нас», до записи в #nav
+  const ri = [rn.indexOf('groups.forEach'), rn.indexOf('h+=viewAsRowHTML()'), rn.indexOf('nav.innerHTML=h')];
+  assert.ok(ri.every(x => x > 0) && ri[0] < ri[1] && ri[1] < ri[2], 'строка «Смотреть как» добавляется в самый низ меню, после «О нас»: ' + ri);
+  assert.ok(/L\('Смотреть как','Rol sifatida koʻrish'\)/.test(html) && /L\('Все мои роли','Barcha rollarim'\)/.test(html), 'подписи строки на двух языках');
+  assert.ok(/else if\(a==='viewas'\)setViewAs\(/.test(html), 'выбор роли обрабатывается');
+  assert.ok(/else if\(a==='vasw'\)\{S\.vam=!S\.vam;renderNav\(\)/.test(html), 'нажатие на строку раскрывает и сворачивает список');
+  assert.ok(/S\.as=v;S\.ab\.open=null;S\.vam=false;/.test(html) && /if\(S\.vam\)\{S\.vam=false;renderNav\(\)\}/.test(html), 'выбор роли и закрытие меню сворачивают список');
+  assert.ok(/vam:false/.test(html), 'список свёрнут на старте');
+  // сама строка: только владельцу, по умолчанию свёрнута, роли только его
+  const none = mk(hub({ owner: false, sells: [{ id: 'a' }], delivers: [], agent: null }));
+  assert.equal(none.viewAsRowHTML(), '', 'не владельцу строки нет');
+  const ow = hub({ owner: true, sells: [{ id: 'a' }], delivers: [], agent: { id: 'x' } });
+  let row = mk(ow).viewAsRowHTML();
+  assert.ok(row.includes('Смотреть как') && row.includes('data-act="vasw"') && row.includes('aria-expanded="false"') && /id="masl"[^>]* hidden/.test(row), 'свёрнута: видна только строка');
+  assert.ok(/<span class="chip">Все мои роли/.test(row), 'в строке сейчас выбранное: «Все мои роли»');
+  assert.deepEqual([...row.matchAll(/data-act="viewas" data-v="([^"]*)"/g)].map(x => x[1]), ['', 'shop', 'seller', 'agent'], 'в списке «Все мои роли» и только его роли');
+  assert.ok(/data-v="" aria-pressed="true"/.test(row) && /data-v="seller" aria-pressed="false"/.test(row), 'выбранная помечена');
+  ow.as = 'seller'; ow.vam = true; row = mk(ow).viewAsRowHTML();
+  assert.ok(/<span class="chip">Продавец/.test(row) && row.includes('aria-expanded="true"') && !/id="masl"[^>]* hidden/.test(row), 'в режиме «Продавец»: роль в строке, список раскрыт');
+  assert.ok(/data-v="seller" aria-pressed="true"/.test(row), 'активна «Продавец»');
+  const css0 = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.ok(!/\.masr/.test(css0) && /\.masb\{/.test(css0) && /\.masi\{/.test(css0), 'стили: старые кнопки убраны, у строки и списка свои');
   const am = fn('aboutMine');
   assert.ok(/if\(as\)return as==='shop'\?\['shop'\]:\[as,'shop'\]/.test(am), '«О нас» подсвечивает выбранную роль');
   assert.ok(/isOwner\(\)&&!viewAs\(\)/.test(html), 'блок «Владелец» в «О нас» скрыт в режиме роли');
