@@ -3286,6 +3286,67 @@ await t('площадка: продавец дистрибьютора вход�
   assert.equal(ow.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=main&v=seller');
 });
 
+await t('площадка: выход из роли продавца убирает только этого человека и только из этой компании', async () => {
+  await hubWorld();
+  const { shop, code } = await addShop('Альфа Трейд');
+  const sid = shop.id;
+  const other = await addShop('Бета Опт');
+  await send(adminMsg(DIL, code, 60));            // Дилшод — продавец «Альфы»
+  await send(adminMsg(DIL, other.code, 61));      // и «Беты»
+  await send(adminMsg(ANNA, code, 62));           // Анна тоже продавец «Альфы» (на другом телефоне)
+  const sells = async init => (await jsonOf(await call('GET', '/api/shops', { init }))).me.sells.map(x => x.id).sort();
+  assert.deepEqual(await sells(iD()), [sid, other.shop.id].sort());
+  const leave = (did, init, check) => call('POST', '/api/hub/leave', { init, body: check === undefined ? { did } : { did, check } });
+  // «проверить» ничего не меняет и говорит, один ли человек продаёт
+  let r = await leave(sid, iD(), true);
+  assert.equal(r.status, 200);
+  assert.deepEqual(await jsonOf(r), { alone: false, name: 'Альфа Трейд' });
+  assert.deepEqual(await sells(iD()), [sid, other.shop.id].sort(), 'проверка не выходит');
+  assert.deepEqual(await jsonOf(await leave(other.shop.id, iD(), true)), { alone: true, name: 'Бета Опт' }, 'в «Бете» он один');
+  // выход из «Альфы»
+  r = await leave(sid, iD());
+  assert.equal(r.status, 200);
+  assert.deepEqual(await jsonOf(r), { ok: true, alone: false, name: 'Альфа Трейд' });
+  assert.deepEqual(await sells(iD()), [other.shop.id], 'из «Беты» он не вышел');
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: iD() })).status, 403, 'в «Альфу» больше нельзя');
+  assert.equal((await callS(other.shop.id, 'GET', '/api/admin/orders', { init: iD() })).status, 200, 'в «Бету» можно');
+  // второй продавец «Альфы» работает как раньше
+  assert.equal((await callS(sid, 'GET', '/api/admin/orders', { init: initDataFor(ANNA) })).status, 200);
+  assert.deepEqual(await sells(initDataFor(ANNA)), [sid]);
+  const l = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
+  assert.equal(l.shops.find(x => x.id === sid).sellers, 1, 'счётчик продавцов обновился');
+  assert.equal(l.shops.find(x => x.id === other.shop.id).sellers, 1);
+  // компания и её данные на месте
+  assert.equal((await callS(sid, 'GET', '/api/config')).status, 200);
+  assert.ok(l.shops.some(x => x.id === sid));
+  // повторный выход и чужая компания: «не найдено», ничего не ломается
+  assert.equal((await leave(sid, iD())).status, 404);
+  assert.equal((await leave('main', iD())).status, 404, 'не продавец главной компании');
+  assert.equal((await leave('zzzzzz', iD())).status, 404);
+  for (const bad of ['Evil/../x', 'UPPER', 'a', 5, null, undefined, '']) assert.equal((await call('POST', '/api/hub/leave', { init: iD(), body: { did: bad } })).status, 400, 'did ' + bad);
+  assert.equal((await call('POST', '/api/hub/leave', { init: iD() })).status, 400, 'пустое тело');
+  assert.equal((await call('POST', '/api/hub/leave', { body: { did: sid } })).status, 401, 'без входа через Telegram нельзя');
+  // последний продавец тоже может выйти: компания остаётся, войти снова можно по коду
+  r = await leave(other.shop.id, iD());
+  assert.deepEqual(await jsonOf(r), { ok: true, alone: true, name: 'Бета Опт' });
+  assert.deepEqual(await sells(iD()), []);
+  assert.equal((await callS(other.shop.id, 'GET', '/api/config')).status, 200, 'компания не удалена');
+  assert.equal((await callS(other.shop.id, 'GET', '/api/admin/orders', { init: iD() })).status, 403);
+  await send(adminMsg(DIL, other.code, 63));
+  assert.deepEqual(await sells(iD()), [other.shop.id], 'по коду он входит снова');
+  assert.equal((await callS(other.shop.id, 'GET', '/api/admin/orders', { init: iD() })).status, 200);
+  // владелец площадки: выход из главной компании не лишает его владения
+  await send(adminMsg(SELLER, CODE, 64));
+  assert.deepEqual(await sells(iS()), ['main']);
+  assert.equal((await jsonOf(await call('POST', '/api/hub/leave', { init: iS(), body: { did: 'main', check: true } }))).alone, true);
+  assert.equal((await call('POST', '/api/hub/leave', { init: iS(), body: { did: 'main' } })).status, 200);
+  assert.deepEqual(await sells(iS()), []);
+  assert.equal((await jsonOf(await call('GET', '/api/shops', { init: iS() }))).me.owner, true, 'владелец остался владельцем');
+  assert.equal((await call('GET', '/api/hub/admin/shops', { init: iS() })).status, 200);
+  await send(adminMsg(SELLER, CODE, 65));
+  assert.deepEqual(await sells(iS()), ['main'], 'по коду владельца он входит снова');
+});
+
 await t('площадка: у каждого дистрибьютора свои каталог и фото, список для покупателей собирается сам', async () => {
   const { sid } = await shopWorld('Альфа Трейд');
   const mine = (await jsonOf(await callS(sid, 'GET', '/api/config'))).prod;
@@ -3533,7 +3594,7 @@ await t('площадка: чужой номер дистрибьютора не
   assert.equal((await callS('zzzzzz', 'PUT', '/api/admin/products', { init: iS(), body: { prod: SAMPLE_PROD() } })).status, 404);
   assert.equal(W.getShop('zzzzzz').storage.m.size, 0, 'в хранилище ничего не появилось');
   // служебные адреса снаружи недоступны
-  for (const p of ['/__/summary', '/__/admin-add', '/__/sync', '/__/off']) assert.equal((await call('POST', p, { body: { uid: 1 } })).status, 404, p);
+  for (const p of ['/__/summary', '/__/admin-add', '/__/admin-remove', '/__/sync', '/__/off']) assert.equal((await call('POST', p, { body: { uid: 1 } })).status, 404, p);
   assert.equal((await call('GET', '/img/zzzzzz/p1')).status, 404);
 });
 
@@ -8329,6 +8390,30 @@ await t('меню: «Продавец» виден и тогда, когда к�
   st.msub = 'seller:b';
   assert.equal(open(g2, 'shop', gs), true, 'вторую раскрыли руками');
   assert.equal(open(g1, 'shop', gs), false, 'первая при этом свернулась');
+});
+
+await t('выход из роли продавца: кнопка внизу настроек, перед выходом сохранение и вопрос, после — главный экран', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const st = html.slice(html.indexOf('function settingsHTML()'), html.indexOf('/* Категория дистрибьютора меняется сразу'));
+  assert.ok(/\+leaveRoleHTML\(\);\s*$/.test(st.trimEnd()) || /\+leaveRoleHTML\(\);\n\}/.test(st), 'карточка выхода — последняя в настройках');
+  const card = html.slice(html.indexOf('const leaveRoleHTML='), html.indexOf('function paintLeave('));
+  assert.ok(/Выйти из роли продавца/.test(card) && /Sotuvchi rolidan chiqish/.test(card), 'надпись на двух языках');
+  assert.ok(/data-act="leaverole"/.test(card) && /dangerbtn/.test(card) && /S\.leaving\?' disabled'/.test(card), 'красная кнопка, пока идёт запрос — недоступна');
+  assert.ok(/на всех своих устройствах/.test(card) && /barcha qurilmalaringizda/.test(card), 'сказано, что выход касается аккаунта, а не одного телефона');
+  assert.ok(/a==='leaverole'\)\{leaveRole\(\)\}/.test(html), 'обработчик кнопки');
+  const lr = html.slice(html.indexOf('async function leaveRole()'), html.indexOf('/* Переключатель «Смотреть как»'));
+  // порядок: сохранить правки → проверить → спросить → выйти → закрыть компанию
+  const pos = ['flushSave()', "{did,check:true}", 'askConfirm(msg', "{did})", 'leaveDone(did,nm)'].map(x => lr.indexOf(x));
+  assert.ok(pos.every(x => x > 0) && pos.every((x, i) => !i || x > pos[i - 1]), 'порядок шагов: ' + pos);
+  assert.ok(/c\.data\.alone/.test(lr) && /единственный продавец/.test(lr) && /yagona sotuvchisi/.test(lr), 'отдельное предупреждение для единственного продавца');
+  assert.ok(/c\.status===404\)\{leaveDone\(did,''\)/.test(lr), 'роли уже нет — без вопросов к итогу');
+  assert.ok(/if\(S\.leaving\|\|S\.did!==did\)return/.test(lr), 'двойное нажатие не отправляет второй запрос');
+  const done = lr.slice(lr.indexOf('async function leaveDone('));
+  assert.ok(/S\.epoch\+\+;resetShopState\(\);S\.did=''/.test(done) && /await loadHub\(\)/.test(done) && /go\('shops'\)/.test(done), 'компания закрывается, роли обновляются, открывается главный экран');
+  assert.ok(/asRoles\(\)\.some\(x=>x\[0\]===S\.as\)\)S\.as=''/.test(done), 'режим «Смотреть как» не остаётся на исчезнувшей роли');
+  assert.ok(/leaving:false/.test(html), 'флаг в начальном состоянии');
+  // тексты: RU и UZ, без «дистрибьютор»
+  assert.ok(!/дистрибьютор/i.test(card + lr), 'без слова «дистрибьютор»');
 });
 
 /* ---------- итог ---------- */
