@@ -3594,7 +3594,7 @@ await t('площадка: чужой номер дистрибьютора не
   assert.equal((await callS('zzzzzz', 'PUT', '/api/admin/products', { init: iS(), body: { prod: SAMPLE_PROD() } })).status, 404);
   assert.equal(W.getShop('zzzzzz').storage.m.size, 0, 'в хранилище ничего не появилось');
   // служебные адреса снаружи недоступны
-  for (const p of ['/__/summary', '/__/admin-add', '/__/admin-remove', '/__/sync', '/__/off']) assert.equal((await call('POST', p, { body: { uid: 1 } })).status, 404, p);
+  for (const p of ['/__/summary', '/__/admin-add', '/__/admin-remove', '/__/sync', '/__/off', '/__/wh-list', '/__/wh-receive']) assert.equal((await call('POST', p, { body: { uid: 1 } })).status, 404, p);
   assert.equal((await call('GET', '/img/zzzzzz/p1')).status, 404);
 });
 
@@ -8435,6 +8435,261 @@ await t('выход из роли продавца: кнопка внизу на
   assert.ok(/leaving:false/.test(html), 'флаг в начальном состоянии');
   // тексты: RU и UZ, без «дистрибьютор»
   assert.ok(!/дистрибьютор/i.test(card + lr), 'без слова «дистрибьютор»');
+});
+
+/* ---------- склад Sarbon ---------- */
+const WHK = { id: 9301, first_name: 'Salim', username: 'salim_wh', language_code: 'ru' };
+const WHK2 = { id: 9302, first_name: 'Sardor', username: 'sardor_wh', language_code: 'ru' };
+const iW = () => initDataFor(WHK), iW2 = () => initDataFor(WHK2);
+const whMsg = (from, code, mid) => ({ update_id: 7000 + mid, message: { message_id: mid, from, chat: { id: from.id, type: 'private' }, text: '/sklad ' + code } });
+const mkBazaarShop = async (name, bz, n) => {
+  const d = await addShop(name);
+  await send(adminMsg(DIL, d.code, n));
+  assert.equal((await call('PUT', '/api/admin/products', { init: iD(), headers: sx(d.shop.id), body: { prod: SAMPLE_PROD() } })).status, 200);
+  await approveAll(d.shop.id);
+  if (bz !== undefined) assert.equal((await adm('PUT', '/shops/' + d.shop.id + '/cat', { cat: 'bazaar', bz })).status, 200);
+  return d.shop.id;
+};
+
+await t('склад: владелец добавляет кладовщика, вход по /sklad КОД, код хранится только хэшем, отключение и новый код закрывают доступ', async () => {
+  await hubWorld();
+  const bz = (await jsonOf(await adm('POST', '/bazaars', { name: 'Урикзор', uz: 'Oʻrikzor' }))).id;
+  // только владелец
+  assert.equal((await call('POST', '/api/hub/admin/wh', { init: iA(), body: { name: 'Салим' } })).status, 403);
+  assert.equal((await call('POST', '/api/hub/admin/wh', { body: { name: 'Салим' } })).status, 401);
+  // проверка ввода
+  assert.equal((await adm('POST', '/wh', { name: 'С' })).status, 400);
+  assert.equal((await adm('POST', '/wh', { name: 'Салим', code: 'short' })).status, 400);
+  assert.equal((await adm('POST', '/wh', { name: 'Салим', bz: 'bnope' })).status, 400, 'базара нет');
+  const made = await jsonOf(await adm('POST', '/wh', { name: 'Салим', bz }));
+  assert.match(made.code, /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.ok(!JSON.stringify([...W.hubStorage.m.entries()]).includes(made.code), 'код лежит только в виде хэша');
+  assert.deepEqual(made.wh.map(x => [x.name, x.on, x.bz, x.used]), [['Салим', true, bz, false]]);
+  assert.equal(made.whrate, 500, 'ставка по умолчанию 500 сум за 1 кг');
+  // пока не вошёл по коду, кладовщиком не быть
+  assert.equal((await meHub(WHK)).wh, undefined);
+  assert.equal((await call('GET', '/api/hub/wh', { init: iW() })).status, 403);
+  await send(whMsg(WHK, 'wrong-wrong-wrong', 1));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'));
+  tgLog = [];
+  await send(whMsg(WHK, made.code, 2));
+  assert.ok(lastTg('deleteMessage', p => p.message_id === 2), 'сообщение с кодом удалено');
+  const hello = lastTg('sendMessage', p => p.chat_id === WHK.id).payload;
+  assert.ok(hello.text.includes('вы кладовщик «Салим»') && hello.text.includes('Tayyor'), 'приветствие на двух языках');
+  assert.equal(hello.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?v=wh');
+  assert.ok(tgAll('sendMessage', p => p.chat_id === SELLER.id && p.text.includes('кладовщик «Салим»')).length === 1, 'владелец узнал о входе');
+  assert.deepEqual(await meHub(WHK).then(m => m.wh), { id: made.wh[0].id, name: 'Салим', bz });
+  assert.equal((await meHub(WHK)).owner, false);
+  assert.equal((await call('GET', '/api/hub/wh', { init: iW() })).status, 200);
+  // повторный ввод того же кода владельцу не пишется
+  tgLog = [];
+  await send(whMsg(WHK, made.code, 3));
+  assert.equal(tgAll('sendMessage', p => p.chat_id === SELLER.id).length, 0);
+  // без кода — подсказка
+  await send({ update_id: 7100, message: { message_id: 7100, from: WHK, chat: { id: WHK.id, type: 'private' }, text: '/sklad' } });
+  assert.ok(lastTg('sendMessage').payload.text.includes('/sklad КОД'));
+  // в списке «Люди» у него роль «Склад»
+  const ppl = (await jsonOf(await call('GET', '/api/hub/admin/people/list', { init: iS() }))).people.find(x => x.id === WHK.id);
+  assert.deepEqual(ppl.roles, [{ r: 'wh', n: 'Салим' }]);
+  // один код — одна роль: ни продавцу, ни агенту, ни другому кладовщику тот же код не отдать
+  assert.equal((await createShop({ name: 'Альфа', code: made.code })).status, 409);
+  assert.equal((await adm('POST', '/agents', { name: 'Азиз', code: made.code })).status, 409);
+  assert.equal((await adm('POST', '/wh', { name: 'Сардор', code: made.code })).status, 409);
+  // отключение закрывает доступ сразу, включение возвращает
+  const id = made.wh[0].id;
+  assert.equal((await adm('PUT', '/wh/' + id, { on: false })).status, 200);
+  assert.equal((await meHub(WHK)).wh, undefined);
+  assert.equal((await call('GET', '/api/hub/wh', { init: iW() })).status, 403);
+  await send(whMsg(WHK, made.code, 4));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'), 'отключённый по коду не входит');
+  assert.equal((await adm('PUT', '/wh/' + id, { on: true, name: 'Салим-ака', bz: '' })).status, 200);
+  assert.deepEqual((await meHub(WHK)).wh, { id, name: 'Салим-ака', bz: '' }, 'имя и «все базары» поменялись');
+  assert.equal((await adm('PUT', '/wh/' + id, { bz: 'bnope' })).status, 400);
+  assert.equal((await adm('PUT', '/wh/' + id, { name: 'С' })).status, 400);
+  assert.equal((await adm('PUT', '/wh/wnope1', { on: false })).status, 404);
+  // новый код отключает прежний аккаунт, новый входит
+  const reset = await jsonOf(await adm('POST', '/wh/' + id + '/code', {}));
+  assert.notEqual(reset.code, made.code);
+  assert.equal((await call('GET', '/api/hub/wh', { init: iW() })).status, 403, 'прежний аккаунт отключён');
+  await send(whMsg(WHK2, reset.code, 5));
+  assert.equal((await call('GET', '/api/hub/wh', { init: iW2() })).status, 200);
+  await send(whMsg(WHK, made.code, 6));
+  assert.ok(lastTg('sendMessage').payload.text.includes('Неверный код'), 'старый код не работает');
+  // ставка перевозки
+  for (const bad of ['abc', -1, 1.5, 100001, null, undefined]) assert.equal((await adm('PUT', '/whrate', { rate: bad })).status, 400, 'ставка ' + bad);
+  assert.equal((await call('PUT', '/api/hub/admin/whrate', { init: iA(), body: { rate: 600 } })).status, 403);
+  const rt = await jsonOf(await adm('PUT', '/whrate', { rate: 600 }));
+  assert.equal(rt.whrate, 600);
+  assert.equal((await jsonOf(await call('GET', '/api/hub/wh', { init: iW2() }))).rate, 600);
+  assert.equal((await adm('PUT', '/whrate', { rate: 0 })).status, 200, 'ноль разрешён: перевозка бесплатна');
+  // удаление
+  const del = await jsonOf(await adm('DELETE', '/wh/' + id));
+  assert.deepEqual(del.wh, []);
+  assert.equal((await call('GET', '/api/hub/wh', { init: iW2() })).status, 403);
+  assert.equal((await adm('DELETE', '/wh/' + id)).status, 404);
+  assert.equal((await adm('POST', '/wh', { name: 'Ещё' })).status, 200, 'после удаления код и место свободны');
+});
+
+await t('склад: кладовщик видит заказы продавцов-базаров, принимает с весом; покупатель и продавец получают сообщения', async () => {
+  await hubWorld();
+  const bz = (await jsonOf(await adm('POST', '/bazaars', { name: 'Урикзор', uz: 'Oʻrikzor' }))).id;
+  const bz2 = (await jsonOf(await adm('POST', '/bazaars', { name: 'Другой', uz: '' }))).id;
+  const sA = await mkBazaarShop('Рынок Один', bz, 10);      // базар Урикзор
+  const sB = await mkBazaarShop('Рынок Два', bz2, 11);      // другой базар
+  const sC = await mkBazaarShop('Обычная база', undefined, 12);   // не базар
+  const A = newUser(), B = newUser();
+  const oA = (await ordBase(sA, A, { name: 'Магазин А' })).order;
+  const oB = (await ordBase(sB, B, { name: 'Магазин Б' })).order;
+  const oC = (await ordBase(sC, A, { name: 'Магазин А' })).order;
+  const all = await jsonOf(await adm('POST', '/wh', { name: 'Салим' }));        // все базары
+  const onlyA = await jsonOf(await adm('POST', '/wh', { name: 'Сардор', bz }));   // только Урикзор
+  await send(whMsg(WHK, all.code, 20));
+  await send(whMsg(WHK2, onlyA.code, 21));
+  const list = async init => (await jsonOf(await call('GET', '/api/hub/wh', { init }))).orders;
+  const got = await list(iW());
+  assert.deepEqual(got.map(o => o.id).sort(), [oA.id, oB.id].sort(), 'только заказы продавцов-базаров, обычный продавец не виден');
+  const a = got.find(o => o.id === oA.id);
+  assert.deepEqual([a.did, a.shopName, a.bz, a.status, a.wh, a.name], [sA, 'Рынок Один', bz, 'new', null, 'Магазин А']);
+  assert.equal(a.items.length, 2); assert.ok(a.items[0].name && a.items[0].qty >= 1 && a.total === 1394000);
+  assert.ok(!('uid' in a) && !('tg' in a) && !('msgs' in a), 'внутренних полей нет');
+  assert.deepEqual((await list(iW2())).map(o => o.id), [oA.id], 'кладовщик своего базара видит только его');
+  // старые заказы первыми
+  assert.deepEqual(got.map(o => o.createdAt), got.map(o => o.createdAt).slice().sort());
+  // чужим список и приём закрыты
+  for (const init of [iA(), iD(), iS()]) {
+    assert.equal((await call('GET', '/api/hub/wh', { init })).status, 403);
+    assert.equal((await call('POST', '/api/hub/wh/receive', { init, body: { did: sA, id: oA.id, kg: 5 } })).status, 403);
+  }
+  assert.equal((await call('GET', '/api/hub/wh')).status, 401);
+  const recv = (init, did, id, kg) => call('POST', '/api/hub/wh/receive', { init, body: { did, id, kg } });
+  // ввод
+  for (const kg of [0, -1, '5', null, undefined, 20001, NaN]) assert.equal((await recv(iW(), sA, oA.id, kg)).status, 400, 'вес ' + kg);
+  assert.equal((await recv(iW(), 'Evil/x', oA.id, 5)).status, 400);
+  assert.equal((await recv(iW(), sA, 'bad id', 5)).status, 400);
+  assert.equal((await recv(iW(), sA, 'Z-NOPE1', 5)).status, 404, 'такого заказа нет');
+  assert.equal((await recv(iW(), sC, oC.id, 5)).status, 404, 'у обычного продавца принять нельзя');
+  assert.equal((await recv(iW2(), sB, oB.id, 5)).status, 404, 'кладовщик Урикзора не принимает чужой базар');
+  // приём: вес 12,5 кг → перевозка 6250
+  tgLog = [];
+  let r = await recv(iW(), sA, oA.id, 12.5);
+  assert.equal(r.status, 200);
+  let d = await jsonOf(r);
+  assert.equal(d.first, true);
+  assert.deepEqual([d.order.wh.kg, d.order.wh.rate, d.order.wh.fee, d.order.status], [12.5, 500, 6250, 'new'], 'статус заказа не меняется');
+  assert.ok(!JSON.stringify(d).includes('whu') && !('uid' in d.order));
+  const tb = tgAll('sendMessage', p => p.chat_id === A.u.id);
+  assert.equal(tb.length, 1, 'покупателю одно сообщение');
+  const bt = tb[0].payload.text.replace(/\s/g, ' ');
+  assert.ok(bt.includes('Заказ ' + oA.id + ' принят на складе Sarbon') && bt.includes('Вес: 12,5 кг') && /6\s250 сум \(500 сум за 1 кг\), платится водителю/.test(bt), bt);
+  assert.ok(/Способ оплаты согласуйте с продавцом/.test(bt) && bt.includes('После оплаты склад отправит груз в Навои'));
+  assert.equal(tb[0].payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?v=mine');
+  const ts = tgAll('sendMessage', p => p.chat_id === DIL.id && p.text.includes('принят на складе'));
+  assert.equal(ts.length, 1, 'продавцу одно сообщение');
+  assert.ok(ts[0].payload.text.includes('Sarbon omboriga qabul qilindi') && ts[0].payload.text.includes('вес 12,5 кг'), 'на двух языках');
+  // в списке и в заказах покупателя и продавца
+  const after = (await list(iW())).find(o => o.id === oA.id);
+  assert.equal(after.wh.fee, 6250);
+  const mine = (await jsonOf(await call('GET', '/api/hub/orders', { init: A.init() }))).orders.find(o => o.id === oA.id);
+  assert.deepEqual([mine.wh.kg, mine.wh.fee], [12.5, 6250]);
+  assert.ok(!JSON.stringify(mine).includes('whu'), 'номер кладовщика покупателю не виден');
+  const sel = (await jsonOf(await callS(sA, 'GET', '/api/admin/orders', { init: iD() }))).orders.find(o => o.id === oA.id);
+  assert.equal(sel.wh.fee, 6250); assert.ok(!('whu' in sel));
+  // поправили вес: покупатель получает уточнение, продавцу второе сообщение не идёт
+  tgLog = [];
+  d = await jsonOf(await recv(iW(), sA, oA.id, 20));
+  assert.equal(d.first, false);
+  assert.equal(d.order.wh.fee, 10000);
+  const t2 = tgAll('sendMessage', p => p.chat_id === A.u.id);
+  assert.equal(t2.length, 1);
+  assert.ok(t2[0].payload.text.includes('вес уточнён') && t2[0].payload.text.includes('Вес: 20 кг'));
+  assert.equal(tgAll('sendMessage', p => p.chat_id === DIL.id).length, 0, 'продавца второй раз не беспокоим');
+  // ставка владельца действует на следующие приёмы
+  await adm('PUT', '/whrate', { rate: 700 });
+  d = await jsonOf(await recv(iW(), sB, oB.id, 10));
+  assert.deepEqual([d.order.wh.rate, d.order.wh.fee], [700, 7000]);
+  // покупатель на узбекском получает сообщение на узбекском
+  const oU = (await jsonOf(await callS(sA, 'POST', '/api/order', { init: B.init(), body: { cart: CART, form: formFor(S.DEFAULT, 'pickup', { name: 'Дукон' }), lang: 'uz', expectTotal: 1394000 } }))).order;
+  tgLog = [];
+  await recv(iW(), sA, oU.id, 3);
+  const uzt = tgAll('sendMessage', p => p.chat_id === B.u.id)[0].payload.text;
+  assert.ok(uzt.includes('Sarbon omboriga qabul qilindi') && uzt.includes('Ogʻirligi: 3 kg') && !uzt.includes('Заказ'), uzt);
+  // отменённый заказ принять нельзя
+  assert.equal((await callS(sA, 'POST', '/api/admin/status', { init: iD(), body: { id: oU.id, to: 'cancelled' } })).status, 200);
+  r = await recv(iW(), sA, oU.id, 3);
+  assert.equal(r.status, 409);
+  assert.equal((await jsonOf(r)).error, 'closed');
+  assert.ok(!(await list(iW())).some(o => o.id === oU.id), 'отменённый из списка ушёл');
+});
+
+await t('базар: текст «Как это работает» (два языка) правит только владелец, лишнее обрезается, пустой убирает его, переименование его не стирает', async () => {
+  await hubWorld();
+  const add = await jsonOf(await adm('POST', '/bazaars', { name: 'Урикзор', uz: 'Oʻrikzor', how: 'Как заказать\r\n\r\n1 шаг\n  2 шаг  \n', howUz: 'Qanday buyurtma' }));
+  const id = add.id;
+  const cur = async () => (await jsonOf(await call('GET', '/api/shops'))).bazaars.find(x => x.id === id);
+  let b = await cur();
+  assert.equal(b.how, 'Как заказать\n1 шаг\n2 шаг', 'пустые строки и переводы строки приведены в порядок');
+  assert.equal(b.howUz, 'Qanday buyurtma');
+  assert.ok(b.how !== undefined, 'текст виден всем: он на публичном экране');
+  // без текста поля нет
+  const other = (await jsonOf(await adm('POST', '/bazaars', { name: 'Другой' }))).id;
+  const o = (await jsonOf(await call('GET', '/api/shops'))).bazaars.find(x => x.id === other);
+  assert.ok(!('how' in o) && !('howUz' in o));
+  // переименование без текста в запросе его не трогает
+  assert.equal((await adm('PUT', '/bazaars/' + id, { name: 'Урикзор рынок', uz: 'Oʻrikzor bozori' })).status, 200);
+  b = await cur();
+  assert.deepEqual([b.name, b.how, b.howUz], ['Урикзор рынок', 'Как заказать\n1 шаг\n2 шаг', 'Qanday buyurtma']);
+  // только один язык меняется, другой остаётся
+  await adm('PUT', '/bazaars/' + id, { name: 'Урикзор рынок', howUz: 'Yangi matn' });
+  b = await cur();
+  assert.deepEqual([b.how, b.howUz], ['Как заказать\n1 шаг\n2 шаг', 'Yangi matn']);
+  // пределы: 9 строк, 400 знаков в строке, 1500 всего
+  const lines = Array.from({ length: 12 }, (_, i) => 'строка ' + (i + 1));
+  await adm('PUT', '/bazaars/' + id, { name: 'Урикзор рынок', how: lines.join('\n') });
+  assert.equal((await cur()).how.split('\n').length, 9, 'не больше 9 строк');
+  await adm('PUT', '/bazaars/' + id, { name: 'Урикзор рынок', how: 'я'.repeat(900) });
+  assert.equal((await cur()).how.length, 400, 'строка до 400 знаков');
+  await adm('PUT', '/bazaars/' + id, { name: 'Урикзор рынок', how: Array.from({ length: 9 }, () => 'ы'.repeat(399)).join('\n') });
+  assert.equal((await cur()).how.length, 1500, 'всего до 1500 знаков');
+  await adm('PUT', '/bazaars/' + id, { name: 'Урикзор рынок', how: 5 });
+  assert.equal((await cur()).how, undefined, 'не строка — текста нет');
+  // пустой текст убирает поле
+  await adm('PUT', '/bazaars/' + id, { name: 'Урикзор рынок', howUz: '  \n ' });
+  assert.ok(!('howUz' in (await cur())));
+  // права
+  assert.equal((await call('PUT', '/api/hub/admin/bazaars/' + id, { init: iA(), body: { name: 'Х', how: 'Взлом' } })).status, 403);
+  assert.equal((await call('PUT', '/api/hub/admin/bazaars/' + id, { init: iD(), body: { name: 'Х', how: 'Взлом' } })).status, 403);
+  assert.ok(!JSON.stringify(await cur()).includes('Взлом'));
+});
+
+await t('склад на экране: блок «Как это работает» (шаги, язык, экранирование), вес кладовщика, меню и вход только для роли', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  // блок на экране базара
+  const src = html.slice(html.indexOf('function bzHowHTML('), html.indexOf('function renderShops()'));
+  const how = (lang, b) => new Function('LANG', 'esc', src + '; return bzHowHTML;')(lang, x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))(b);
+  assert.equal(how('ru', null), '', 'базара нет — блока нет');
+  assert.equal(how('ru', { how: '', howUz: '' }), '', 'текст пуст — блока нет');
+  const h = how('ru', { how: 'Как <b>заказать</b>\nШаг один\nШаг два', howUz: 'Qanday' });
+  assert.ok(h.includes('<h2>Как &lt;b&gt;заказать&lt;/b&gt;</h2>') && (h.match(/<li>/g) || []).length === 2 && !h.includes('<b>'), 'первая строка — заголовок, остальные — шаги, разметка экранирована');
+  assert.ok(how('uz', { how: 'Русский\nШаг', howUz: 'Oʻzbek\nQadam' }).includes('Oʻzbek'), 'на узбекском показывается узбекский текст');
+  assert.ok(how('uz', { how: 'Русский\nШаг', howUz: '' }).includes('Русский'), 'узбекского нет — показываем русский');
+  assert.ok(!how('ru', { how: 'Один заголовок' }).includes('<ol>'), 'одна строка без шагов — просто абзац');
+  assert.ok(html.includes("if(bk&&bk!=='none')out+=bzHowHTML("), 'блок виден только внутри конкретного базара');
+  // вес
+  const kgSrc = html.match(/const whKgOf=.*\n/)[0];
+  const kg = new Function(kgSrc + '; return whKgOf;')();
+  assert.deepEqual([kg('12,5'), kg(' 12.5 '), kg('0'), kg('-3'), kg('abc'), kg(''), kg(null), kg('20001'), kg('20000'), kg('0,005'), kg('3.456')], [12.5, 12.5, 0, 0, 0, 0, 0, 0, 20000, 0.01, 3.46], 'вес: запятая и точка, 0, минус, текст и больше 20 000 не проходят');
+  // меню, вход и работа с сервером
+  assert.ok(/if\(S\.auth&&S\.hub\.me&&S\.hub\.me\.wh&&!as\)work\.push\(\['wh'/.test(html), 'пункт «Склад» только у кладовщика и не в режиме «Смотреть как»');
+  assert.ok(/if\(v==='wh'&&!\(S\.auth&&S\.hub\.me&&S\.hub\.me\.wh\)\)v='shops'/.test(html), 'без роли экран склада не открывается');
+  assert.ok(/vw==='wh'&&S\.hub\.me&&S\.hub\.me\.wh\)v='wh'/.test(html) && /vw!=='wh'\)did='main'/.test(html), 'адрес ?v=wh из бота открывает склад');
+  const rc = html.slice(html.indexOf('async function whRecv('), html.indexOf('/* ---------- дистрибьюторы: список'));
+  assert.ok(rc.indexOf('askConfirm(') > 0 && rc.indexOf('askConfirm(') < rc.indexOf("'/api/hub/wh/receive',{did:o.did,id:o.id,kg}"), 'перед приёмом спрашиваем: покупателю уйдёт сообщение');
+  assert.ok(/if\(!kg\)\{toast\(/.test(rc) && /r\.status===403/.test(rc) && /r\.status===404\|\|r\.status===409/.test(rc), 'неверный вес, снятая роль, отменённый заказ обработаны');
+  assert.ok(/if\(!o\|\|W\.busy\)return/.test(rc), 'двойное нажатие не шлёт второй запрос');
+  // заметка о складе в карточке заказа и правка текста базара
+  assert.ok(/\(o\.wh\?'<div class="note">📦 '/.test(html) && /kgTxt\(o\.wh\.kg\)/.test(html) && /money\(o\.wh\.fee\)/.test(html), 'в карточке заказа есть вес и перевозка');
+  assert.ok(/\{name,uz,how,howUz\}/.test(html) && /data-bze="how"/.test(html) && /data-bze="howUz"/.test(html), 'владелец правит текст в редакторе базара');
+  assert.ok(/\['wh',L\('Склад','Ombor'\),L\('Склад','Ombor'\)\]/.test(html) && /data-act="whadd"/.test(html), 'у владельца есть раздел «Склад»');
 });
 
 /* ---------- итог ---------- */

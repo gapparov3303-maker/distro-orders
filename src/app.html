@@ -142,6 +142,11 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .page{padding-block:18px 56px}
 .page h1{font:700 18px/1.25 var(--f-display);margin-bottom:6px;text-wrap:balance}
 .lead{color:var(--ink-2);margin-bottom:16px;max-width:60ch}
+.how{margin:0 0 16px;padding:14px 14px 4px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface)}
+.how h2{font:700 15px/1.3 var(--f-display);margin:0 0 12px}
+.how ol{list-style:none;margin:0;padding:0;counter-reset:hs}
+.how li{counter-increment:hs;position:relative;padding:0 0 12px 34px;font-size:14px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
+.how li::before{content:counter(hs);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--tx);font:700 13px/24px var(--f-display);text-align:center}
 .tagline{margin-top:4px;color:var(--ink-2);font-size:14px;line-height:1.4}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}
 @media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -292,6 +297,9 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .ord .pls{display:grid;gap:3px}
 .ord .ptg{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:32px;margin:1px 0;padding:0 10px;border:0;border-radius:10px;background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;text-align:left;cursor:pointer}
 .ord .ptg i{font-style:normal;font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap}
+.whc .whtg{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:40px;padding:0 12px;border:0;border-radius:10px;background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:13px;font-weight:600;line-height:1.2;text-align:left;cursor:pointer}
+.whc .whtg i{font-style:normal;font-size:12px;font-weight:600;color:var(--tx);white-space:nowrap}
+.whc .sum .r span:first-child{overflow-wrap:anywhere}
 .ord .ptg i::after{content:" ▾"}
 .ord.fold:not(.open) .pls{display:none}
 .ord.fold.open .ptg i::after{content:" ▴"}
@@ -915,7 +923,8 @@ const S={
   did:'',epoch:0,switching:false,leaving:false,vam:false,off:false,otherCart:null,
   hub:{title:'',about:{ru:'',uz:'',phone:'',tg:'',ig:''},shops:[],me:null,terrs:[],bazaars:[],loaded:false,err:false},
   ab:{open:null},
-  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
+  wh:{ok:false,err:false,rate:500,info:null,orders:[],tab:'wait',q:'',kg:{},ed:{},open:{},busy:''},
+  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -1162,6 +1171,7 @@ function myRoles(){
   const r=[];
   if(me.owner)r.push({k:'owner',n:L('Владелец площадки','Platforma egasi'),d:[]});
   if(me.agent)r.push({k:'agent',n:L('Агент','Agent'),d:me.agent.name?[me.agent.name]:[]});
+  if(me.wh)r.push({k:'wh',n:L('Склад','Ombor'),d:me.wh.name?[me.wh.name]:[]});
   if((me.sells||[]).length)r.push({k:'seller',n:L('Продавец','Sotuvchi'),d:me.sells.map(x=>x.name)});
   if((me.delivers||[]).length)r.push({k:'courier',n:L('Доставщик','Yetkazuvchi'),d:me.delivers.map(x=>x.name)});
   return r;
@@ -1174,6 +1184,7 @@ function roleLine(){
   const sl=here?sells.find(x=>x.id===here):sells[0],dl=here?dels.find(x=>x.id===here):dels[0];
   if(me.owner)parts.push(L('Владелец','Egasi'));
   if(me.agent)parts.push(L('Агент','Agent'));
+  if(me.wh)parts.push(L('Склад','Ombor'));
   if(sl)parts.push(L('Продавец','Sotuvchi'));
   if(dl)parts.push(L('Доставщик','Yetkazuvchi'));
   if(here&&(sl||dl))parts.push((sl||dl).name);
@@ -1219,6 +1230,7 @@ function menuGroups(){
   }
   if(S.courier&&S.did&&(!as||as==='courier')){const cb=crTabs();work.push(['courier',L('Доставка','Yetkazib berish'),subSum(cb),'',cb,'ctab'])}
   if(canBase()&&(!as||as==='seller'||as==='agent'))work.push(['base',L('База','Baza')]);
+  if(S.auth&&S.hub.me&&S.hub.me.wh&&!as)work.push(['wh',L('Склад','Ombor'),whWaiting(),'bad']);
   if((!as||as==='seller')&&commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
   if(work.length)g.push([L('Работа','Ish'),work]);
   if(isOwner()&&!as)g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
@@ -1572,6 +1584,8 @@ const tgLink=o=>{
   if(!h)return '';
   return 'https://t.me/'+encodeURIComponent(h)+'?text='+encodeURIComponent(L('Здравствуйте! Вопрос по заказу ','Assalomu alaykum! Buyurtma boʻyicha savol: ')+o.id);
 };
+const nfKg=new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
+const kgTxt=k=>nfKg.format(Number(k)||0)+' '+L('кг','kg');
 function itemRow(it){const pk=packText(it,it.qty);return '<span>'+esc(nm(it))+(weightLabel(it)?' ('+esc(weightLabel(it))+')':'')+' × '+it.qty+(pk?' ('+esc(pk)+')':'')+'</span><span>'+money(it.price*it.qty)+'</span>'}
 const discRow=(o,cls)=>o.disc>0?'<div class="'+cls+'"><span>'+L('Скидка '+o.dpct+'%','Chegirma '+o.dpct+'%')+'</span><span>−'+money(o.disc)+'</span></div>':'';
 function renderShopPlaced(){
@@ -1797,6 +1811,7 @@ function orderCard(o,m){
     +((m==='seller'||m==='courier')&&o.crn&&!o.mine&&o.status!=='done'?'<div class="note">🚚 '+L('Везёт: ','Olib ketmoqda: ')+esc(o.crn)+'</div>':'')
     +(m==='seller'&&del&&o.status==='ready'&&!o.crn&&S.crs.length?'<div class="note">🚚 '+L('Ждёт доставщика','Yetkazuvchi kutilmoqda')+'</div>':'')
     +(m==='seller'&&o.status==='done'&&o.crn?'<div class="note">🚚 '+L('Доставил: ','Yetkazdi: ')+esc(o.crn)+'</div>':'')
+    +(o.wh?'<div class="note">📦 '+L('На складе Sarbon · ','Sarbon omborida · ')+kgTxt(o.wh.kg)+' · '+L('перевозка в Навои ','Navoiyga tashish ')+money(o.wh.fee)+L(' (платится водителю)',' (haydovchiga toʻlanadi)')+'</div>':'')
     +((m==='seller'||m==='courier')?orderBaseHTML(o):'')
     +((m==='seller'||m==='courier')&&(o.loc||(o.bs&&o.bs.loc))?(l=>'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>')(o.loc||o.bs.loc):'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
@@ -4616,6 +4631,7 @@ function render(){
   else if(S.view==='debt')renderMyDebt();
   else if(S.view==='profile')renderProfile();
   else if(S.view==='base')renderBase();
+  else if(S.view==='wh')renderWh();
   else if(S.view==='review')renderReview();
   else if(S.view==='analytics')renderAnalytics();
   else if(S.view==='comm')renderComm();
@@ -4629,6 +4645,7 @@ function go(v){
   if(v==='courier'&&!S.courier)v='shop';
   if(v==='owner'&&!isOwner())v='shops';
   if(v==='base'&&!canBase())v='shops';
+  if(v==='wh'&&!(S.auth&&S.hub.me&&S.hub.me.wh))v='shops';
   if(v==='review'&&!isOwner())v='shops';
   if(v==='analytics'&&!isOwner())v='shops';
   if(v==='comm'&&!(isOwner()||(S.admin&&S.did)))v='shops';
@@ -4646,10 +4663,96 @@ function go(v){
   if(v==='shops')loadHub();
   if(v==='owner')loadOwner();
   if(v==='base')loadBase(true);
+  if(v==='wh')loadWh();
   if(v==='analytics')loadAnalytics();
   if(v==='comm')loadComm();
   if(v==='about')loadHub();
   if(v==='review'){S.rv.ret=null;S.rv.edit=null;loadReview()}
+}
+/* ---------- склад Sarbon: кладовщик принимает заказы продавцов-базаров, взвешивает и отмечает «Принят на складе» ---------- */
+const whKey=o=>o.did+':'+o.id;
+const whWaiting=()=>S.wh.ok?S.wh.orders.filter(o=>!o.wh).length:0;
+const whKgOf=v=>{const x=Number(String(v===undefined||v===null?'':v).trim().replace(',','.'));return isFinite(x)&&x>0&&x<=20000?Math.round(x*100)/100:0};
+async function loadWh(){
+  const W=S.wh;
+  if(!(S.auth&&S.hub.me&&S.hub.me.wh))return;
+  const r=await api('GET','/api/hub/wh');
+  if(r.status===403){loadHub();if(S.view==='wh')go('shops');return}
+  if(!r.ok||!r.data||!Array.isArray(r.data.orders)){W.err=!W.ok;if(S.view==='wh')renderWh();return}
+  const same=W.ok&&JSON.stringify([W.orders,W.rate,W.info])===JSON.stringify([r.data.orders,r.data.rate,r.data.wh]);
+  W.ok=true;W.err=false;W.orders=r.data.orders;W.rate=r.data.rate;W.info=r.data.wh;
+  if(same)return;
+  renderNav();
+  if(S.view==='wh')renderWh();
+}
+function whFiltered(){
+  const W=S.wh,q=W.q.trim().toLowerCase().replace(/^#/,'');
+  let l=W.orders.filter(o=>W.tab==='in'?!!o.wh:!o.wh);
+  if(q)l=l.filter(o=>[o.id,o.shopName,o.name,o.org,o.phone].filter(Boolean).some(v=>String(v).toLowerCase().includes(q)));
+  if(W.tab==='in')l=l.slice().sort((a,b)=>String(b.wh.upd||b.wh.at).localeCompare(String(a.wh.upd||a.wh.at)));
+  return l;
+}
+function whCardHTML(o){
+  const W=S.wh,k=whKey(o),w=o.wh,edit=!w||!!W.ed[k],open=!!W.open[k],busy=W.busy===k;
+  const bz=bzList().find(x=>x.id===o.bz),n=(o.items||[]).length;
+  const kv=W.kg[k]!==undefined?W.kg[k]:(w?String(w.kg).replace('.',','):'');
+  const fee=whKgOf(kv)?Math.round(whKgOf(kv)*W.rate):0;
+  return '<div class="bcard whc"><div class="bh"><h3>'+esc(o.id)+'</h3>'+(w?'<span class="dtag">'+L('на складе','omborda')+'</span>':'')+'</div>'
+    +'<div class="dmeta">'+esc([o.shopName,bz?bzName(bz):'',fmtWhen(o.createdAt)].filter(Boolean).join(' · '))+'</div>'
+    +'<div class="cust"><b>'+esc(o.name)+'</b>'+(o.org?' <span>'+esc(o.org)+'</span>':'')+(o.phone?' <a href="tel:'+esc(String(o.phone).replace(/[^+\d]/g,''))+'">'+esc(o.phone)+'</a>':'')+'</div>'
+    +'<button type="button" class="ptg whtg" data-act="whitems" data-k="'+esc(k)+'" aria-expanded="'+open+'"><span>'+n+' '+L(n<5?'товара':'товаров','mahsulot')+' · '+money(o.total)+'</span><i>'+(open?L('Свернуть','Yigʻish'):L('Показать','Koʻrsatish'))+'</i></button>'
+    +(open?'<div class="sum">'+(o.items||[]).map(it=>'<div class="r">'+itemRow(it)+'</div>').join('')+'</div>':'')
+    +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
+    +(w&&!edit?'<div class="note">⚖️ '+kgTxt(w.kg)+' · '+L('перевозка ','tashish ')+money(w.fee)+'</div><div class="row-btns"><button type="button" class="btn ghost sm" data-act="whedit" data-k="'+esc(k)+'">'+L('Изменить вес','Ogʻirlikni oʻzgartirish')+'</button></div>'
+      :'<div><label class="lab" for="whk-'+esc(k)+'">'+L('Вес заказа, кг','Buyurtma ogʻirligi, kg')+'</label><input type="text" inputmode="decimal" id="whk-'+esc(k)+'" data-whkg="'+esc(k)+'" maxlength="8" value="'+esc(kv)+'" placeholder="'+esc(L('Например 12,5','Masalan 12,5'))+'" autocomplete="off"></div>'
+        +'<div class="unit" data-whfee="'+esc(k)+'">'+(fee?L('Перевозка в Навои: ','Navoiyga tashish: ')+money(fee):L('Введите вес — покажем перевозку','Ogʻirlikni kiriting — tashishni koʻrsatamiz'))+'</div>'
+        +'<div class="row-btns"><button type="button" class="btn" data-act="whrecv" data-k="'+esc(k)+'"'+(busy?' disabled':'')+'>'+(busy?L('Сохраняем…','Saqlanmoqda…'):w?L('Сохранить вес','Ogʻirlikni saqlash'):L('Принят на складе','Omborga qabul qilindi'))+'</button>'
+        +(w?'<button type="button" class="btn ghost sm" data-act="whcancel" data-k="'+esc(k)+'">'+L('Отмена','Bekor qilish')+'</button>':'')+'</div>')
+    +'</div>';
+}
+function paintWhList(){
+  const el=$('#wh-list');if(!el)return;
+  const W=S.wh,l=whFiltered();
+  el.innerHTML=l.length?l.map(whCardHTML).join(''):'<div class="empty"><b>'+(W.q.trim()?L('Ничего не нашли','Hech narsa topilmadi'):W.tab==='in'?L('Пока ничего не принято','Hozircha hech narsa qabul qilinmagan'):L('Новых заказов нет','Yangi buyurtmalar yoʻq'))+'</b>'+(W.q.trim()?L('Измените поиск.','Qidiruvni oʻzgartiring.'):W.tab==='in'?L('Принятые заказы появятся здесь.','Qabul qilingan buyurtmalar shu yerda paydo boʻladi.'):L('Когда продавец базара получит заказ, он появится здесь.','Bozor sotuvchisi buyurtma olganda, u shu yerda paydo boʻladi.'))+'</div>';
+}
+function renderWh(){
+  const W=S.wh,wait=W.orders.filter(o=>!o.wh).length,inn=W.orders.length-wait;
+  let h='<div class="wrap page"><div class="hrow"><div><div class="eyebrow">'+L('Склад Sarbon','Sarbon ombori')+'</div><h1>'+L('Склад','Ombor')+'</h1></div></div>';
+  if(!W.ok)h+=W.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="whreload">'+L('Повторить','Qayta urinish')+'</button></div>'
+    :'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else{
+    const bz=W.info&&W.info.bz?bzList().find(x=>x.id===W.info.bz):null;
+    h+='<p class="lead">'+L('Заказы продавцов из категории «Базары»'+(bz?' · '+bzName(bz):'')+'. Проверьте заказ, взвесьте и нажмите «Принят на складе»: покупатель получит сообщение о весе и перевозке ('+num(W.rate)+' сум за 1 кг).','«Bozorlar» kategoriyasidagi sotuvchilarning buyurtmalari'+(bz?' · '+bzName(bz):'')+'. Buyurtmani tekshiring, tortib «Omborga qabul qilindi» tugmasini bosing: xaridor ogʻirlik va tashish haqida xabar oladi (1 kg uchun '+num(W.rate)+' soʻm).')+'</p>'
+      +'<div class="filters">'+[['wait',L('Ожидаются','Kutilmoqda'),wait],['in',L('На складе','Omborda'),inn]].map(f=>'<button type="button" class="chip" data-act="whtab" data-v="'+f[0]+'" aria-pressed="'+(W.tab===f[0])+'">'+f[1]+' · '+f[2]+'</button>').join('')+'</div>'
+      +'<div class="who-s"><input type="search" id="wh-q" data-whq="1" value="'+esc(W.q)+'" placeholder="'+esc(L('Номер, продавец или покупатель','Raqam, sotuvchi yoki xaridor'))+'" aria-label="'+esc(L('Поиск заказов','Buyurtmalarni qidirish'))+'" autocomplete="off" maxlength="60"></div>'
+      +'<div id="wh-list"></div>';
+  }
+  view.innerHTML=h+'</div>';
+  if(W.ok)paintWhList();
+}
+async function whRecv(k){
+  const W=S.wh,o=W.orders.find(x=>whKey(x)===k);if(!o||W.busy)return;
+  const kg=whKgOf(W.kg[k]!==undefined?W.kg[k]:(o.wh?o.wh.kg:''));
+  if(!kg){toast(L('Вес — число больше 0, например 12,5','Ogʻirlik — 0 dan katta son, masalan 12,5'));return}
+  const again=!!o.wh;
+  askConfirm(again?L('Изменить вес заказа '+o.id+' на '+kgTxt(kg)+'? Покупатель получит сообщение, что вес уточнён.','Buyurtma '+o.id+' ogʻirligi '+kgTxt(kg)+' ga oʻzgartirilsinmi? Xaridorga ogʻirlik aniqlangani haqida xabar boradi.')
+    :L('Принять заказ '+o.id+' с весом '+kgTxt(kg)+'? Покупатель получит сообщение о весе и перевозке.','Buyurtma '+o.id+' '+kgTxt(kg)+' ogʻirlikda qabul qilinsinmi? Xaridorga ogʻirlik va tashish haqida xabar boradi.'),async()=>{
+    W.busy=k;paintWhList();
+    const r=await api('POST','/api/hub/wh/receive',{did:o.did,id:o.id,kg});
+    W.busy='';
+    if(r.ok&&r.data&&r.data.order){
+      const no=Object.assign({},o,r.data.order);
+      W.orders=W.orders.map(x=>whKey(x)===k?no:x);
+      delete W.kg[k];delete W.ed[k];
+      toast(r.data.first?L('Заказ принят. Покупатель получил сообщение','Buyurtma qabul qilindi. Xaridorga xabar yuborildi'):L('Вес уточнён. Покупатель получил сообщение','Ogʻirlik aniqlandi. Xaridorga xabar yuborildi'));
+      renderNav();renderWh();
+      return;
+    }
+    if(r.status===403){loadHub();go('shops');return}
+    if(r.status===404||r.status===409){toast(L('Заказ уже отменён, закрыт или недоступен','Buyurtma bekor qilingan, yopilgan yoki mavjud emas'));loadWh();paintWhList();return}
+    toast(L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
+    paintWhList();
+  });
 }
 /* ---------- дистрибьюторы: список, переход, раздел владельца ---------- */
 /* Региональный фильтр работает, только если кто-то из дистрибьюторов уже отметил регионы или склад */
@@ -4742,6 +4845,15 @@ function catListHTML(k){
   }
   return list.length?shopsListHTML(list):none();
 }
+/* «Как это работает» на экране базара: первая строка — заголовок, остальные — шаги с автономерами. Текст ведёт владелец; пусто — блока нет. На узбекском берём узбекский, если он заполнен, иначе русский. */
+function bzHowHTML(b){
+  if(!b)return '';
+  const raw=(LANG==='uz'&&b.howUz?b.howUz:b.how)||b.how||b.howUz||'';
+  const ls=String(raw).split('\n').map(x=>x.trim()).filter(Boolean);
+  if(!ls.length)return '';
+  const head=ls[0],steps=ls.slice(1);
+  return '<div class="how">'+(steps.length?'<h2>'+esc(head)+'</h2><ol>'+steps.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>':'<p style="margin:0 0 12px;font-size:14px;line-height:1.45">'+esc(head)+'</p>')+'</div>';
+}
 function renderShops(){
   const h=S.hub,me=h.me,ck=SHOP_CATS.includes(S.shopsCat)?S.shopsCat:'';
   const bk=ck==='bazaar'&&h.loaded?bzSel():'';   // открытый базар: '', 'none' («Без базара») или номер
@@ -4755,6 +4867,7 @@ function renderShops(){
   else{
     out+=bannerSlot();
     if(ck&&!pickBz)out+='<p class="lead">'+L('Выберите продавца, чтобы посмотреть каталог и заказать товары. В одной корзине товары только одного продавца.','Katalog va buyurtma uchun sotuvchini tanlang. Bitta savatda faqat bitta sotuvchining mahsulotlari boʻladi.')+'</p>';
+    if(bk&&bk!=='none')out+=bzHowHTML(bzList().find(x=>x.id===bk));
     const pc=pendingCart();
     if(pc)out+='<div class="note" style="margin-bottom:12px">🛒 '+esc(L('В корзине '+pc.n+' поз.'+(pc.name?' · «'+pc.name+'»':''),'Savatda '+pc.n+' ta mahsulot'+(pc.name?' · «'+pc.name+'»':'')))+' <button type="button" class="btn ghost sm" data-act="opencartshop" data-id="'+esc(pc.did)+'">'+L('Открыть корзину','Savatni ochish')+'</button></div>';
     const sells=me&&me.sells||[];
@@ -5556,7 +5669,7 @@ async function commAddOwn(did){
 /* раздел владельца: каждый блок на своём экране, заходят в него из меню ☰ (категория → подраздел) */
 const ownSecs=()=>[
   ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['cats',L('Категории','Kategoriyalar'),L('Категории продавцов','Sotuvchi kategoriyalari')],['bz',L('Базары','Bozorlar'),L('Базары','Bozorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить продавца','Sotuvchi qoʻshish')]]],
-  ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
+  ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['wh',L('Склад','Ombor'),L('Склад','Ombor')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
   ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База покупателей','Xaridorlar bazasi'),L('База покупателей','Xaridorlar bazasi')]]]
 ];
@@ -5651,6 +5764,8 @@ function ownBzHTML(){
     return '<div class="card"><div class="form">'
       +'<div><label class="lab" for="bze-n-'+esc(b.id)+'">'+L('По-русски','Ruscha')+'</label><input type="text" id="bze-n-'+esc(b.id)+'" data-bze="name" data-bid="'+esc(b.id)+'" maxlength="40" value="'+esc(e.name===undefined?b.name:e.name)+'" autocomplete="off"></div>'
       +'<div><label class="lab" for="bze-u-'+esc(b.id)+'">'+L('По-узбекски','Oʻzbekcha')+'</label><input type="text" id="bze-u-'+esc(b.id)+'" data-bze="uz" data-bid="'+esc(b.id)+'" maxlength="40" value="'+esc(e.uz===undefined?b.uz:e.uz)+'" autocomplete="off"></div>'
+      +'<div class="full"><label class="lab" for="bze-h-'+esc(b.id)+'">'+L('Как это работает · по-русски','Bu qanday ishlaydi · ruscha')+' <span class="ltag">RU</span></label><textarea id="bze-h-'+esc(b.id)+'" data-bze="how" data-bid="'+esc(b.id)+'" rows="6" maxlength="1500">'+esc(e.how===undefined?(b.how||''):e.how)+'</textarea></div>'
+      +'<div class="full"><label class="lab" for="bze-hu-'+esc(b.id)+'">'+L('Как это работает · по-узбекски','Bu qanday ishlaydi · oʻzbekcha')+' <span class="ltag">UZ</span></label><textarea id="bze-hu-'+esc(b.id)+'" data-bze="howUz" data-bid="'+esc(b.id)+'" rows="6" maxlength="1500">'+esc(e.howUz===undefined?(b.howUz||''):e.howUz)+'</textarea>'+hintD('Первая строка — заголовок, каждая следующая — отдельный шаг с номером. До 9 строк. Пусто — блок на экране базара не показывается.','Birinchi qator — sarlavha, har bir keyingisi — raqamli alohida qadam. 9 qatorgacha. Boʻsh boʻlsa — bozor ekranida blok koʻrsatilmaydi.')+'</div>'
       +'</div><div class="unit" style="margin-top:8px">'+esc(n?L(n+' '+plDistr(n),n+' ta sotuvchi'):L('Пока никого','Hozircha hech kim yoʻq'))+'</div>'
       +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="bzsave" data-id="'+esc(b.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button>'
       +'<button type="button" class="btn ghost sm" data-act="bzdel" data-id="'+esc(b.id)+'"'+(o.busy?' disabled':'')+'>'+L('Удалить','Oʻchirish')+'</button></div></div>';
@@ -5671,9 +5786,10 @@ async function bzAdd(){
 async function bzSaveRow(id){
   const o=S.own,z=o.bz,b=bzList().find(x=>x.id===id);if(!b||o.busy)return;
   const e=z.edit[id]||{},name=(e.name===undefined?b.name:e.name).trim(),uz=(e.uz===undefined?b.uz:e.uz).trim();
+  const how=(e.how===undefined?(b.how||''):e.how).trim(),howUz=(e.howUz===undefined?(b.howUz||''):e.howUz).trim();
   if(name.length<2&&uz.length<2){toast(ownErr('bad_name'));return}
   o.busy='bz';
-  const r=await api('PUT','/api/hub/admin/bazaars/'+encodeURIComponent(id),{name,uz});
+  const r=await api('PUT','/api/hub/admin/bazaars/'+encodeURIComponent(id),{name,uz,how,howUz});
   o.busy='';
   if(r.ok&&r.data&&Array.isArray(r.data.bazaars)){S.hub.bazaars=r.data.bazaars;delete z.edit[id];toast(L('Сохранено','Saqlandi'))}
   else toast(bzErr(r.data&&r.data.error));
@@ -5780,6 +5896,8 @@ const peopleErr=e=>({
   too_many:L('Больше добавить нельзя','Koʻproq qoʻshib boʻlmaydi'),
   weak_code:L('Код должен быть не короче 12 символов','Kod kamida 12 belgidan iborat boʻlsin'),
   code_taken:L('Такой код уже занят, придумайте другой','Bu kod band, boshqasini oʻylab toping'),
+  bad_rate:L('Ставка — целое число от 0 до 100 000 сум','Narx — 0 dan 100 000 soʻmgacha butun son'),
+  bad_request:L('Такого базара уже нет. Обновите страницу.','Bunday bozor endi yoʻq. Sahifani yangilang.'),
   forbidden:L('Раздел только для владельца','Boʻlim faqat egasi uchun')
 }[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
 /* «Люди»: все, кто открывал приложение или писал боту, и держатели ролей. Только просмотр: поиск и фильтр по роли считаются здесь, на телефоне. */
@@ -5790,7 +5908,7 @@ async function loadOwnerWho(){
   W.ok=true;W.err=false;W.people=r.data.people;W.total=r.data.total||r.data.people.length;
   if(S.view==='owner'&&S.own.sec==='people')ownRefresh();
 }
-const WHO_ROLES=()=>[['owner',L('Владельцы','Egalar')],['seller',L('Продавцы','Sotuvchilar')],['agent',L('Агенты','Agentlar')],['courier',L('Доставщики','Yetkazuvchilar')],['shop',L('Покупатели','Xaridorlar')]];
+const WHO_ROLES=()=>[['owner',L('Владельцы','Egalar')],['seller',L('Продавцы','Sotuvchilar')],['agent',L('Агенты','Agentlar')],['courier',L('Доставщики','Yetkazuvchilar')],['wh',L('Склад','Ombor')],['shop',L('Покупатели','Xaridorlar')]];
 /* роли человека для фильтра: без особых ролей он «магазин» (обычный клиент) */
 const whoRoles=x=>x.roles.length?[...new Set(x.roles.map(r=>r.r))]:['shop'];
 function whoFiltered(){
@@ -5798,7 +5916,7 @@ function whoFiltered(){
   return W.people.filter(x=>(W.f==='all'||whoRoles(x).includes(W.f))&&(!q||[x.nm,x.un,String(x.id),x.shop&&x.shop.name,x.shop&&x.shop.phone,...x.roles.map(r=>r.n)].filter(Boolean).some(v=>String(v).toLowerCase().includes(q))));
 }
 function whoRoleTag(r){
-  const nm={owner:L('Владелец','Ega'),seller:L('Продавец','Sotuvchi'),agent:L('Агент','Agent'),courier:L('Доставщик','Yetkazuvchi')}[r.r]||r.r;
+  const nm={owner:L('Владелец','Ega'),seller:L('Продавец','Sotuvchi'),agent:L('Агент','Agent'),courier:L('Доставщик','Yetkazuvchi'),wh:L('Склад','Ombor')}[r.r]||r.r;
   return '<span class="dtag">'+esc(nm+(r.n?' · '+r.n:''))+'</span>';
 }
 function whoRowHTML(x){
@@ -5862,6 +5980,32 @@ function ownPeopleHTML(part){
   h+='<div class="trow"><input type="text" id="o-tname" data-own="tname" maxlength="40" value="'+esc(o.tname)+'" placeholder="'+esc(L('Новая территория','Yangi hudud'))+'" autocomplete="off" aria-label="'+esc(L('Новая территория','Yangi hudud'))+'"><button type="button" class="btn sm" data-act="terradd"'+dis+'>'+L('Добавить','Qoʻshish')+'</button></div>'+hintD('Название района или города. Пример: Кармана.','Tuman yoki shahar nomi. Masalan: Karmana.')+''
     +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="terrpreset"'+dis+'>'+L('Добавить районы и города Навоийской области','Navoiy viloyati tumanlari va shaharlarini qoʻshish')+'</button></div></div>';
   }
+  else if(part==='wh'){
+  h+=o.perr?'<div class="err" role="alert" style="margin-bottom:10px">'+esc(o.perr)+'</div>':'';
+  const rate=o.wrate===null?String(p.whrate===undefined?500:p.whrate):o.wrate;
+  h+='<div class="card"><h3>'+L('Перевозка в Навои','Navoiyga tashish')+'</h3><div class="unit">'+L('Склад взвешивает заказ и сообщает покупателю, сколько платить водителю: вес в кг × ставка. Сумма заказа не меняется. Новая ставка действует для заказов, которые примут на складе после этого.','Ombor buyurtmani tortadi va xaridorga haydovchiga qancha toʻlashini aytadi: kg dagi ogʻirlik × narx. Buyurtma summasi oʻzgarmaydi. Yangi narx shundan keyin omborga qabul qilinadigan buyurtmalarga amal qiladi.')+'</div>'
+    +'<div class="trow"><input type="text" inputmode="numeric" id="o-wrate" data-own="wrate" maxlength="6" value="'+esc(rate)+'" aria-label="'+esc(L('Сум за 1 кг','1 kg uchun soʻm'))+'" autocomplete="off"><span class="dtag">'+L('сум за 1 кг','soʻm / 1 kg')+'</span>'
+    +'<button type="button" class="btn sm" data-act="whrate"'+dis+'>'+L('Сохранить','Saqlash')+'</button></div></div>';
+  h+='<div class="card"><h3>'+L('Склад','Ombor')+'</h3><div class="unit">'+L('Кладовщик принимает заказы продавцов из категории «Базары»: проверяет, взвешивает и отмечает «Принят на складе». Каждому вы даёте личный код. Он пишет боту «/sklad КОД», в приложении открывается раздел «Склад».','Omborchi «Bozorlar» kategoriyasidagi sotuvchilarning buyurtmalarini qabul qiladi: tekshiradi, tortadi va «Omborga qabul qilindi» deb belgilaydi. Har biriga shaxsiy kod berasiz. U botga «/sklad KOD» deb yozadi, ilovada «Ombor» boʻlimi ochiladi.')+'</div></div>';
+  if(o.wmade){
+    const m=o.wmade;
+    h+='<div class="codebox" style="margin:12px 0"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Кладовщик добавлен: ','Omborchi qoʻshildi: ')+m.name)+'</h3><div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его кладовщику.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni omborchiga yuboring.')+'</div><div class="mono">'+esc(m.code)+'</div>'
+      +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="">'+L('Копировать код','Kodni nusxalash')+'</button>'
+      +'<button type="button" class="btn ghost" data-act="copy" data-v="/sklad '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/sklad КОД»','«/sklad KOD» nusxalash')+'</button></div>'
+      +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="wmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
+  }
+  const bzOpts=cur=>'<option value="">'+esc(L('Все базары','Barcha bozorlar'))+'</option>'+bzList().map(b=>'<option value="'+esc(b.id)+'"'+(b.id===cur?' selected':'')+'>'+esc(bzName(b))+'</option>').join('');
+  h+=(p.wh||[]).map(w=>'<div class="bcard"><div class="hrow"><h3>'+esc(w.name)+'</h3><span class="dtag">'+(w.on?L('работает','ishlaydi'):L('отключён','oʻchirilgan'))+'</span></div>'
+    +'<div class="dmeta">'+esc(w.used?L('вошёл по коду','kod bilan kirgan'):L('ещё не входил','hali kirmagan'))+'</div>'
+    +'<label class="lab" for="whbz-'+esc(w.id)+'">'+L('Какой базар принимает','Qaysi bozorni qabul qiladi')+'</label><select id="whbz-'+esc(w.id)+'" data-whbz="'+esc(w.id)+'"'+dis+'>'+bzOpts(w.bz||'')+'</select>'
+    +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn ghost sm" data-act="whon" data-id="'+esc(w.id)+'"'+dis+'>'+(w.on?L('Отключить','Oʻchirish'):L('Включить','Yoqish'))+'</button>'
+    +'<button type="button" class="btn ghost sm" data-act="whcode" data-id="'+esc(w.id)+'"'+dis+'>'+L('Новый код','Yangi kod')+'</button>'
+    +'<button type="button" class="btn ghost sm" data-act="whdel" data-id="'+esc(w.id)+'"'+dis+'>'+L('Удалить','Oʻchirish')+'</button></div></div>').join('');
+  h+='<div class="form" style="margin-top:12px"><div><label class="lab" for="o-wname">'+L('Имя кладовщика','Omborchi ismi')+'</label><input type="text" id="o-wname" data-own="wname" maxlength="60" value="'+esc(o.wname)+'" autocomplete="off">'+hintD('Как вы зовёте кладовщика. Пример: Салим.','Omborchini qanday chaqirasiz. Masalan: Salim.')+'</div>'
+    +'<div><label class="lab" for="o-wcode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-wcode" data-own="wcode" maxlength="64" value="'+esc(o.wcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Кладовщик отправит этот код боту командой «/sklad КОД». Если оставить пустым, бот придумает код сам.','Omborchi bu kodni botga «/sklad KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div>'
+    +(bzList().length?'<div class="full"><label class="lab" for="o-wbz">'+L('Какой базар принимает','Qaysi bozorni qabul qiladi')+'</label><select id="o-wbz" data-own="wbz">'+bzOpts(o.wbz)+'</select></div>':'')+'</div>'
+    +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="whadd"'+dis+'>'+L('Добавить кладовщика','Omborchi qoʻshish')+'</button></div>';
+  }
   else if(part==='agents'){
   h+=o.perr?'<div class="err" role="alert" style="margin-bottom:10px">'+esc(o.perr)+'</div>':'';
   h+='<div class="card"><h3>'+L('Агенты','Agentlar')+'</h3><div class="unit">'+L('Каждому агенту вы даёте личный код. Он пишет боту «/agent КОД», в приложении открывается вкладка «База». Агент видит покупателей своих территорий и покупателей без территории.','Har bir agentga shaxsiy kod berasiz. U botga «/agent KOD» deb yozadi, ilovada «Baza» boʻlimi ochiladi. Agent oʻz hududlaridagi va hududsiz xaridorlarni koʻradi.')+'</div>';
@@ -5889,6 +6033,22 @@ function ownPeopleHTML(part){
 async function ownTerrAdd(names){
   const d=await peopleCall('POST','/terr',{names});
   if(d){S.own.tname='';renderOwner()}
+}
+async function ownWhAdd(){
+  const o=S.own,name=o.wname.trim(),code=o.wcode.trim();
+  if(name.length<2){o.perr=peopleErr('bad_name');renderOwner();return}
+  if(code&&code.length<12){o.perr=peopleErr('weak_code');renderOwner();return}
+  const body={name};if(code)body.code=code;if(o.wbz)body.bz=o.wbz;
+  const d=await peopleCall('POST','/wh',body);
+  if(d){o.wmade={name,code:d.code,reset:false};o.wname='';o.wcode='';o.wbz='';renderOwner();window.scrollTo(0,0)}
+}
+async function ownWhRate(){
+  const o=S.own;
+  if(o.wrate===null)return;
+  const raw=String(o.wrate).replace(/\s/g,'');
+  if(!/^\d{1,6}$/.test(raw)||Number(raw)>100000){o.perr=peopleErr('bad_rate');renderOwner();return}
+  const d=await peopleCall('PUT','/whrate',{rate:Number(raw)});
+  if(d){o.wrate=null;toast(L('Ставка сохранена','Narx saqlandi'));renderOwner()}
 }
 async function ownAgentAdd(){
   const o=S.own,name=o.aname.trim(),code=o.acode.trim();
@@ -6051,6 +6211,27 @@ document.addEventListener('click',e=>{
   else if(a==='terrdel'){
     const tt=S.own.ppl&&S.own.ppl.terr.find(x=>x.id===t.dataset.id);
     if(tt)askConfirm(L('Удалить территорию «'+tt.name+'»?','«'+tt.name+'» hududini oʻchirasizmi?'),()=>peopleCall('DELETE','/terr/'+encodeURIComponent(tt.id)));
+  }
+  else if(a==='whtab'){S.wh.tab=t.dataset.v==='in'?'in':'wait';renderWh()}
+  else if(a==='whitems'){const W=S.wh,k=t.dataset.k;if(W.open[k])delete W.open[k];else W.open[k]=1;paintWhList()}
+  else if(a==='whedit'){S.wh.ed[t.dataset.k]=1;paintWhList()}
+  else if(a==='whcancel'){const W=S.wh;delete W.ed[t.dataset.k];delete W.kg[t.dataset.k];paintWhList()}
+  else if(a==='whrecv')whRecv(t.dataset.k)
+  else if(a==='whreload'){S.wh.err=false;renderWh();loadWh()}
+  else if(a==='whadd')ownWhAdd();
+  else if(a==='whrate')ownWhRate();
+  else if(a==='whon'){const w=S.own.ppl&&(S.own.ppl.wh||[]).find(x=>x.id===t.dataset.id);if(w)peopleCall('PUT','/wh/'+encodeURIComponent(w.id),{on:!w.on}).then(()=>loadHub())}
+  else if(a==='whcode'){
+    const w=S.own.ppl&&(S.own.ppl.wh||[]).find(x=>x.id===t.dataset.id);
+    if(w)askConfirm(L('Выдать «'+w.name+'» новый код? Прежний аккаунт кладовщика потеряет доступ.','«'+w.name+'» ga yangi kod berasizmi? Omborchining avvalgi akkaunti kirolmaydi.'),async()=>{
+      const d=await peopleCall('POST','/wh/'+encodeURIComponent(w.id)+'/code',{});
+      if(d){S.own.wmade={name:w.name,code:d.code,reset:true};renderOwner();window.scrollTo(0,0)}
+    });
+  }
+  else if(a==='wmadeclose'){S.own.wmade=null;renderOwner()}
+  else if(a==='whdel'){
+    const w=S.own.ppl&&(S.own.ppl.wh||[]).find(x=>x.id===t.dataset.id);
+    if(w)askConfirm(L('Удалить кладовщика «'+w.name+'»? Доступ к складу закроется сразу.','Omborchi «'+w.name+'» oʻchirilsinmi? Omborga kirish darhol yopiladi.'),()=>{peopleCall('DELETE','/wh/'+encodeURIComponent(w.id)).then(d=>{if(d)loadHub()})});
   }
   else if(a==='agentadd')ownAgentAdd();
   else if(a==='agenton'){const ag=S.own.ppl&&S.own.ppl.agents.find(x=>x.id===t.dataset.id);if(ag)peopleCall('PUT','/agents/'+encodeURIComponent(ag.id),{on:!ag.on}).then(()=>loadHub())}
@@ -6371,6 +6552,12 @@ document.addEventListener('input',e=>{
   else if(t.dataset.ownWho!==undefined){const W=S.own.who;W[t.dataset.ownWho]=t.value;W.all=false;const l=$('#who-list');if(l)l.innerHTML=whoListHTML()}
   else if(t.dataset.bz!==undefined){S.own.bz[t.dataset.bz]=t.value;S.own.bz.err='';const er=$('#bz-err');if(er)er.textContent=''}
   else if(t.dataset.bze!==undefined){const E=S.own.bz.edit;(E[t.dataset.bid]=E[t.dataset.bid]||{})[t.dataset.bze]=t.value}
+  else if(t.dataset.whq!==undefined){S.wh.q=t.value;paintWhList()}
+  else if(t.dataset.whkg!==undefined){
+    const W=S.wh,k=t.dataset.whkg;W.kg[k]=t.value;
+    const kg=whKgOf(t.value),el=[...document.querySelectorAll('[data-whfee]')].find(x=>x.dataset.whfee===k);
+    if(el)el.textContent=kg?L('Перевозка в Навои: ','Navoiyga tashish: ')+money(Math.round(kg*W.rate)):L('Введите вес — покажем перевозку','Ogʻirlikni kiriting — tashishni koʻrsatamiz');
+  }
   else if(t.dataset.own!==undefined){S.own[t.dataset.own]=t.value;if(t.dataset.own!=='ftitle'&&S.own.err2){S.own.err2='';const er=$('#o-err');if(er)er.textContent=''}}
   else if(t.dataset.qty!==undefined){
     /* количество вводят с клавиатуры: пока клиент печатает, обновляем только суммы */
@@ -6449,6 +6636,7 @@ document.addEventListener('change',e=>{
   else if(t&&t.dataset&&t.dataset.bzsel!==undefined)bzSave(t.value);
   else if(t&&t.dataset&&t.dataset.ocat!==undefined)ownCat(t.dataset.ocat,t.value);
   else if(t&&t.dataset&&t.dataset.obz!==undefined)ownBz(t.dataset.obz,t.value);
+  else if(t&&t.dataset&&t.dataset.whbz!==undefined)peopleCall('PUT','/wh/'+encodeURIComponent(t.dataset.whbz),{bz:t.value});
   else if(t&&t.dataset&&t.dataset.own==='fcat'){S.own.fcat=t.value;if(cleanCat(t.value)!=='bazaar')S.own.fbz='';renderOwner()}
   else if(t&&t.dataset&&t.dataset.rfil!==undefined){S.rv[t.dataset.rfil]=t.value;paintReview()}
   else if(t&&t.dataset&&t.dataset.bterr!==undefined){S.base.terr=t.value;loadBase(true)}
@@ -6548,6 +6736,8 @@ function tick(){
   tickN++;
   if(S.auth&&S.view==='mine')loadMine();
   if(S.auth&&(S.view==='debt'||tickN%4===0))loadMyDebt(S.view==='debt');
+  if(S.view==='wh'&&tickN%2===0&&!(document.activeElement&&document.activeElement.matches&&document.activeElement.matches('input,textarea')))loadWh();
+  else if(S.auth&&S.hub.me&&S.hub.me.wh&&tickN%4===0)loadWh();
   if((S.view==='shops'||S.view==='review')&&tickN%2===0)loadHub();
   else if(isOwner()&&tickN%4===0)loadHub();
   if(isOwner()&&(tickN%4===0||(S.view==='owner'&&S.own.sec==='disp'&&tickN%2===0)))loadDisputes();
@@ -6576,7 +6766,7 @@ function tick(){
   const me=S.hub.me;
   let did=validDid(want)?want:'';
   if(!did&&!vw&&S.hub.shops.length===1)did=S.hub.shops[0].id;   // продавец один: список выбирать не из чего
-  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым продавцом
+  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about'&&vw!=='wh')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым продавцом
   if(!did&&vw==='seller'&&me&&me.sells.length===1)did=me.sells[0].id;
   if(!did&&vw==='courier'&&me&&me.delivers&&me.delivers.length===1)did=me.delivers[0].id;
   S.ready=true;
@@ -6587,6 +6777,7 @@ function tick(){
   else if(vw==='debt')v='debt';
   else if(vw==='owner'&&isOwner())v='owner';
   else if(vw==='base'&&canBase())v='base';
+  else if(vw==='wh'&&S.hub.me&&S.hub.me.wh)v='wh';
   else if(vw==='review'&&isOwner())v='review';
   else if(vw==='analytics'&&isOwner())v='analytics';
   else if(vw==='comm'&&isOwner())v='comm';
@@ -6595,6 +6786,7 @@ function tick(){
   if(v==='debt')loadMyDebt(true);
   if(v==='owner')loadOwner();
   if(v==='base')loadBase(true);
+  if(v==='wh')loadWh();
   if(v==='analytics')loadAnalytics();
   if(v==='review')loadReview();
   if(v==='comm')loadComm();
