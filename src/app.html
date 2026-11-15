@@ -679,6 +679,7 @@ button.mtag{border:0;font-family:inherit;cursor:pointer}
 .who-s{margin:2px 0 10px}
 .who .wtags{display:flex;flex-wrap:wrap;gap:2px 12px}
 .who .bh h3{font-size:15px}
+.fbt{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;font-size:15px;line-height:1.4}
 .bh .dtag{margin-left:auto;flex:none;padding-left:4px}
 .sgn{position:relative;width:26px;height:26px;border-radius:50%;border:0;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none;font:inherit}
 button.sgn{cursor:pointer}
@@ -928,7 +929,8 @@ const S={
   hub:{title:'',about:{ru:'',uz:'',phone:'',tg:'',ig:''},shops:[],me:null,terrs:[],bazaars:[],loaded:false,err:false},
   ab:{open:null},
   wh:{ok:false,err:false,rate:500,info:null,orders:[],tab:'wait',q:'',kg:{},ed:{},open:{},busy:''},
-  own:{sec:'dist',dn:0,disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
+  fb:{kind:'',text:'',busy:false,sent:'',err:''},   // «Написать нам»: форма обращения
+  own:{sec:'dist',dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -1246,8 +1248,8 @@ function menuGroups(){
   if(S.auth&&S.hub.me&&S.hub.me.wh&&!as)work.push(['wh',L('Склад','Ombor'),whWaiting(),'bad']);
   if((!as||as==='seller')&&commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
   if(work.length)g.push([L('Работа','Ish'),work]);
-  if(isOwner()&&!as)g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
-  g.push(['',[['about',L('О нас','Biz haqimizda')]]]);   // отдельный пункт внизу меню, виден всем
+  if(isOwner()&&!as)g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:x[0]==='fb'?S.own.fbn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
+  g.push(['',[['about',L('О нас','Biz haqimizda')],['feedback',L('Написать нам','Bizga yozish')]]]);   // отдельные пункты внизу меню, видны всем
   return g;
 }
 /* сумма оповещений на кнопке ☰: все группы и пункты, кроме каталога и заказов магазина */
@@ -4716,6 +4718,7 @@ function render(){
   else if(S.view==='analytics')renderAnalytics();
   else if(S.view==='comm')renderComm();
   else if(S.view==='about')renderAbout();
+  else if(S.view==='feedback')renderFeedback();
   else if(S.view==='courier')renderCourier();
   else renderSeller();
 }
@@ -4732,6 +4735,7 @@ function go(v){
   const was=S.view;
   if(was==='comm'&&v!=='comm')S.cm.nb=0;
   if(v==='base'&&was!=='base')baseResetUI();
+  if(v==='feedback'&&was!=='feedback'){S.fb.sent='';S.fb.err=''}
   if(v==='shops'){S.shopsCat='';S.shopsBz=''}
   S.view=v;S.cc=null;S.cp=null;S.msub=null;setScrollLock();
   render();window.scrollTo(0,0);
@@ -5036,6 +5040,7 @@ async function loadHub(){
   }
   const same=h.loaded&&JSON.stringify([h.title,h.about,h.shops,h.me,h.terrs,h.bazaars])===JSON.stringify([next.title,next.about,next.shops,next.me,next.terrs,next.bazaars]);
   Object.assign(h,next,{loaded:true,err:false});
+  if(isOwner()&&h.me&&typeof h.me.fbn==='number')S.own.fbn=h.me.fbn;   // число новых обращений у владельца
   if(same)return true;
   paintBzSel();
   renderNav();
@@ -5130,7 +5135,7 @@ async function leaveDone(did,nm){
   toast(nm?L('Вы вышли из роли продавца «'+nm+'»','Siz «'+nm+'» sotuvchisi rolidan chiqdingiz'):L('Вы вышли из роли продавца','Siz sotuvchi rolidan chiqdingiz'));
 }
 /* Переключатель «Смотреть как»: ставит режим и открывает начальный экран выбранной роли */
-const AS_SHOP_VIEWS=['shops','shop','mine','debt','profile','about'];
+const AS_SHOP_VIEWS=['shops','shop','mine','debt','profile','about','feedback'];
 async function setViewAs(v){
   if(v&&!asRoles().some(x=>x[0]===v))v='';
   S.as=v;S.ab.open=null;S.vam=false;
@@ -5569,6 +5574,7 @@ async function loadOwner(){
   loadOwnerStats();
   loadOwnerPeople();
   loadOwnerWho();
+  loadOwnerFb();
   const r=await api('GET','/api/hub/admin/shops');
   const o=S.own;
   if(!r.ok||!r.data){o.err=true;o.loaded=true;if(S.view==='owner')renderOwner();return}
@@ -5810,7 +5816,7 @@ const ownSecs=()=>[
   ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['cats',L('Категории','Kategoriyalar'),L('Категории продавцов','Sotuvchi kategoriyalari')],['bz',L('Базары','Bozorlar'),L('Базары','Bozorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить продавца','Sotuvchi qoʻshish')]]],
   ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['wh',L('Склад','Ombor'),L('Склад','Ombor')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
-  ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База покупателей','Xaridorlar bazasi'),L('База покупателей','Xaridorlar bazasi')]]]
+  ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База покупателей','Xaridorlar bazasi'),L('База покупателей','Xaridorlar bazasi')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]]
 ];
 function ownSecInfo(sec){
   for(const g of ownSecs()){const x=g[2].find(y=>y[0]===sec);if(x)return {group:g[1],title:x[2]}}
@@ -5819,7 +5825,7 @@ function ownSecInfo(sec){
 function ownOpen(sec){
   S.own.sec=sec;S.own.perr='';
   if(S.view!=='owner')go('owner');
-  else{S.msub=null;renderNav();renderOwner();window.scrollTo(0,0)}
+  else{S.msub=null;renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb()}
 }
 function ownMadeHTML(){
   const o=S.own;let h='';
@@ -5996,6 +6002,7 @@ function renderOwner(){
     else if(sec==='about')h+=ownAboutHTML();
     else if(sec==='disp')h+=ownDispHTML();
     else if(sec==='people')h+=ownWhoHTML();
+    else if(sec==='fb')h+=ownFbHTML();
     else h+=ownPeopleHTML(sec);
   }
   view.innerHTML=h+'</div>';
@@ -6071,6 +6078,84 @@ function whoListHTML(){
   const W=S.own.who,list=whoFiltered(),CAP=100,shown=W.all?list:list.slice(0,CAP);
   if(!list.length)return '<div class="empty"><b>'+L('Никого не нашли','Hech kim topilmadi')+'</b>'+L('Измените поиск или фильтр.','Qidiruv yoki filtrni oʻzgartiring.')+'</div>';
   return shown.map(whoRowHTML).join('')+(list.length>shown.length?'<div class="row-btns"><button type="button" class="btn ghost" data-act="whoall">'+L('Показать всех ('+list.length+')','Hammasini koʻrsatish ('+list.length+')')+'</button></div>':'');
+}
+/* ---------- «Написать нам»: человек пишет владельцу площадки об ошибке или новой функции ---------- */
+const FB_LEN=1000,FB_MIN=5;
+const fbKinds=()=>[['bug',L('Ошибка','Xato')],['idea',L('Новая функция','Yangi funksiya')],['other',L('Другое','Boshqa')]];
+const fbKindName=k=>(fbKinds().find(x=>x[0]===k)||fbKinds()[2])[1];
+function renderFeedback(){
+  const F=S.fb;
+  let h='<div class="wrap page"><h1>'+L('Написать нам','Bizga yozish')+'</h1>';
+  if(!S.ready)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else if(!S.auth)h+='<div class="empty"><b>'+L('Откройте через бота','Bot orqali oching')+'</b>'+L('Написать нам можно, если открыть приложение из бота в Telegram.','Bizga yozish uchun ilovani Telegramdagi bot orqali oching.')+'</div>';
+  else if(F.sent)h+='<div class="card"><h3>✅ '+L('Спасибо, получили','Rahmat, qabul qildik')+'</h3><div class="unit">'+L('Ваше обращение отправлено владельцу площадки. Если нужно что-то уточнить, он напишет вам в Telegram.','Murojaatingiz platforma egasiga yuborildi. Aniqlashtirish kerak boʻlsa, u sizga Telegramda yozadi.')+'</div>'
+    +'<div class="row-btns"><button type="button" class="btn" data-act="fbagain">'+L('Написать ещё','Yana yozish')+'</button><button type="button" class="btn ghost" data-act="shops">'+L('На главную','Bosh sahifa')+'</button></div></div>';
+  else{
+    h+='<p class="lead">'+L('Нашли ошибку или хотите новую функцию? Напишите, владелец площадки получит ваше сообщение.','Xato topdingizmi yoki yangi funksiya kerakmi? Yozing, platforma egasi xabaringizni oladi.')+'</p>'
+      +'<div class="card"><div class="lab">'+L('О чём вы пишете','Nima haqida yozyapsiz')+'</div>'
+      +'<div class="filters">'+fbKinds().map(k=>'<button type="button" class="chip" data-act="fbkind" data-v="'+k[0]+'" aria-pressed="'+(F.kind===k[0])+'">'+k[1]+'</button>').join('')+'</div>'
+      +'<div class="full"><label class="lab" for="fb-t">'+L('Ваше сообщение','Xabaringiz')+'</label><textarea id="fb-t" rows="7" maxlength="'+FB_LEN+'" placeholder="'+esc(L('Опишите ошибку или функцию, которой не хватает','Xatoni yoki yetishmayotgan funksiyani yozing'))+'"'+(F.busy?' disabled':'')+'>'+esc(F.text)+'</textarea>'
+      +'<div class="unit" id="fb-cnt">'+F.text.length+' / '+FB_LEN+'</div></div>'
+      +(F.err?'<div class="note warnnote" role="alert">'+esc(F.err)+'</div>':'')
+      +'<div class="row-btns"><button type="button" class="btn" data-act="fbsend"'+(F.busy?' disabled':'')+'>'+(F.busy?L('Отправляем','Yuborilmoqda'):L('Отправить','Yuborish'))+'</button></div>'
+      +hintD('Мы видим ваше имя, @логин и роль в приложении. Не больше 5 обращений в день.','Biz ismingiz, @loginingiz va rolingizni koʻramiz. Kuniga 5 tadan koʻp murojaat yuborib boʻlmaydi.')+'</div>';
+  }
+  view.innerHTML=h+'</div>';
+}
+async function fbSend(){
+  const F=S.fb;if(F.busy)return;
+  const text=F.text.trim();
+  if(!F.kind){F.err=L('Выберите, о чём вы пишете','Nima haqida yozayotganingizni tanlang');renderFeedback();return}
+  if(text.length<FB_MIN){F.err=L('Напишите хотя бы несколько слов','Hech boʻlmasa bir necha soʻz yozing');renderFeedback();return}
+  F.busy=true;F.err='';renderFeedback();
+  const r=await api('POST','/api/hub/feedback',{kind:F.kind,text});
+  F.busy=false;
+  if(r.ok&&r.data&&r.data.id){F.sent=r.data.id;F.text='';F.kind='';renderFeedback();window.scrollTo(0,0);return}
+  const e=r.data&&r.data.error;
+  F.err=e==='limit'?L('Сегодня вы уже отправили 5 обращений. Напишите завтра.','Bugun 5 ta murojaat yubordingiz. Ertaga yozing.')
+    :e==='short'?L('Напишите хотя бы несколько слов','Hech boʻlmasa bir necha soʻz yozing')
+    :e==='bad_kind'?L('Выберите, о чём вы пишете','Nima haqida yozayotganingizni tanlang')
+    :L('Не удалось отправить. Проверьте соединение и попробуйте ещё раз.','Yuborib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.');
+  renderFeedback();
+}
+/* владелец: список обращений с отметкой «Решено» */
+async function loadOwnerFb(){
+  if(!isOwner())return;
+  const D=S.own.fb,r=await api('GET','/api/hub/admin/feedback');
+  if(!r.ok||!r.data||!Array.isArray(r.data.items)){D.err=!D.ok;if(!D.ok&&S.view==='owner'&&S.own.sec==='fb')ownRefresh();return}
+  D.ok=true;D.err=false;D.items=r.data.items;
+  const chg=S.own.fbn!==r.data.n;
+  S.own.fbn=r.data.n;
+  if(chg)renderNav();
+  if(S.view==='owner'&&S.own.sec==='fb')ownRefresh();
+}
+async function fbDone(id,done){
+  const D=S.own.fb;if(D.busy)return;
+  D.busy=id;renderOwner();
+  const r=await api('POST','/api/hub/admin/feedback/done',{id,done});
+  D.busy='';
+  if(r.ok&&r.data&&r.data.item){D.items=D.items.map(x=>x.id===id?r.data.item:x);S.own.fbn=r.data.n;renderNav()}
+  else toast(L('Не удалось сохранить. Попробуйте ещё раз.','Saqlab boʻlmadi. Yana urinib koʻring.'));
+  renderOwner();
+}
+function fbCardHTML(x){
+  const D=S.own.fb,tags=x.roles&&x.roles.length?x.roles.map(whoRoleTag).join(''):'<span class="dtag">'+esc(L('Покупатель','Xaridor')+(x.shop&&x.shop.name?' · '+x.shop.name:''))+'</span>';
+  const done=x.st==='done',dis=D.busy?' disabled':'';
+  return '<div class="bcard who"><div class="bh"><h3>'+esc(fbKindName(x.k)+' · '+(x.nm||L('Без имени','Ismsiz')))+'</h3><span class="dtag">'+(done?L('Решено','Hal qilingan'):L('Новое','Yangi'))+'</span></div>'
+    +'<div class="dmeta">'+esc([x.un?'@'+x.un:'',x.shop&&x.shop.phone,'ID '+x.uid].filter(Boolean).join(' · '))+'</div>'
+    +'<div class="wtags">'+tags+'</div>'
+    +'<div class="fbt">'+esc(x.t)+'</div>'
+    +'<div class="dmeta">'+esc(x.id+' · '+jrDate(x.at)+(done&&x.dt?' · '+L('Решено: ','Hal qilingan: ')+(x.db?x.db+', ':'')+jrDate(x.dt):''))+'</div>'
+    +'<div class="row-btns">'+(done?'<button type="button" class="btn ghost sm" data-act="fbundo" data-id="'+esc(x.id)+'"'+dis+'>'+L('Вернуть в новые','Yangilarga qaytarish')+'</button>':'<button type="button" class="btn sm" data-act="fbdone" data-id="'+esc(x.id)+'"'+dis+'>'+L('Решено','Hal qilindi')+'</button>')+'</div></div>';
+}
+function ownFbHTML(){
+  const D=S.own.fb;
+  if(!D.ok)return D.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div>':'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  const nNew=D.items.filter(x=>x.st==='new').length,nDone=D.items.length-nNew;
+  const list=D.items.filter(x=>D.f==='all'||(D.f==='new'?x.st==='new':x.st==='done'));
+  return '<p class="lead">'+L('Что пишут люди через кнопку «Написать нам». Ответьте человеку сами: по @логину или телефону. Хранятся последние 300 обращений.','Odamlar «Bizga yozish» tugmasi orqali yozganlari. Odamga oʻzingiz javob bering: @login yoki telefon orqali. Oxirgi 300 ta murojaat saqlanadi.')+'</p>'
+    +'<div class="filters">'+[['new',L('Новые','Yangilar'),nNew],['done',L('Решено','Hal qilingan'),nDone],['all',L('Все','Hammasi'),D.items.length]].map(f=>'<button type="button" class="chip" data-act="fbf" data-v="'+f[0]+'" aria-pressed="'+(D.f===f[0])+'">'+f[1]+' · '+f[2]+'</button>').join('')+'</div>'
+    +(list.length?list.map(fbCardHTML).join(''):'<div class="empty"><b>'+(D.f==='new'?L('Новых обращений нет','Yangi murojaatlar yoʻq'):L('Пока пусто','Hozircha boʻsh'))+'</b>'+L('Когда кто-то напишет через «Написать нам», обращение появится здесь.','Kimdir «Bizga yozish» orqali yozsa, murojaat shu yerda paydo boʻladi.')+'</div>');
 }
 function ownWhoHTML(){
   const W=S.own.who;
@@ -6249,6 +6334,12 @@ document.addEventListener('click',e=>{
   if(!t||t.disabled)return;
   const a=t.dataset.act;
   if(a==='setlang'){if(t.dataset.lg&&t.dataset.lg!==LANG)switchLang()}
+  else if(a==='fbkind'){S.fb.kind=t.dataset.v;S.fb.err='';renderFeedback()}
+  else if(a==='fbsend')fbSend();
+  else if(a==='fbagain'){S.fb.sent='';S.fb.err='';renderFeedback()}
+  else if(a==='fbf'){S.own.fb.f=t.dataset.v;renderOwner()}
+  else if(a==='fbdone')fbDone(t.dataset.id,true);
+  else if(a==='fbundo')fbDone(t.dataset.id,false);
   else if(a==='nav'){
     if(t.dataset.v==='shop'&&S.did&&S.view!=='shop'){S.shopPlaced=null;S.shopStep='list'}
     go(t.dataset.v);
@@ -6662,6 +6753,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='q'){S.q=t.value;paintGrid()}
+  else if(t.id==='fb-t'){S.fb.text=t.value;const c=$('#fb-cnt');if(c)c.textContent=t.value.length+' / '+FB_LEN}
   else if(t.id==='dp-amount')DB().amount=t.value
   else if(t.id==='dp-note')DB().note=t.value
   else if(t.id==='dv-name')S.dv.name=t.value
@@ -6911,14 +7003,15 @@ function tick(){
   const me=S.hub.me;
   let did=validDid(want)?want:'';
   if(!did&&!vw&&S.hub.shops.length===1)did=S.hub.shops[0].id;   // продавец один: список выбирать не из чего
-  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about'&&vw!=='wh')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым продавцом
+  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about'&&vw!=='feedback'&&vw!=='wh')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым продавцом
   if(!did&&vw==='seller'&&me&&me.sells.length===1)did=me.sells[0].id;
   if(!did&&vw==='courier'&&me&&me.delivers&&me.delivers.length===1)did=me.delivers[0].id;
   S.ready=true;
   let v='shops';
-  if(did&&await openShop(did))v=vw==='review'&&isOwner()?'review':vw==='comm'&&(isOwner()||S.admin)?'comm':vw==='seller'&&S.admin?'seller':vw==='courier'&&S.courier?'courier':vw==='mine'?'mine':vw==='debt'?'debt':vw==='about'?'about':'shop';
+  if(did&&await openShop(did))v=vw==='review'&&isOwner()?'review':vw==='comm'&&(isOwner()||S.admin)?'comm':vw==='seller'&&S.admin?'seller':vw==='courier'&&S.courier?'courier':vw==='mine'?'mine':vw==='debt'?'debt':vw==='about'?'about':vw==='feedback'?'feedback':'shop';
   else if(vw==='mine')v='mine';
   else if(vw==='about')v='about';
+  else if(vw==='feedback')v='feedback';
   else if(vw==='debt')v='debt';
   else if(vw==='owner'&&isOwner())v='owner';
   else if(vw==='base'&&canBase())v='base';

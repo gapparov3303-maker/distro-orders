@@ -7804,7 +7804,7 @@ await t('«О нас»: пункт меню последний и виден в�
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
   const mg = fn('menuGroups');
-  assert.ok(/g\.push\(\['',\[\['about',L\('О нас','Biz haqimizda'\)\]\]\]\);\s*\/\/[^\n]*\n\s*return g;/.test(mg), 'пункт «О нас» добавляется последним, без заголовка группы, для всех ролей');
+  assert.ok(/g\.push\(\['',\[\['about',L\('О нас','Biz haqimizda'\)\],\['feedback',L\('Написать нам','Bizga yozish'\)\]\]\]\);\s*\/\/[^\n]*\n\s*return g;/.test(mg), 'пункты «О нас» и «Написать нам» добавляются последними, без заголовка группы, для всех ролей');
   assert.ok(mg.indexOf("g.push(['',[['about'") > mg.lastIndexOf('if(isOwner()&&!as)g.push('), '«О нас» стоит после группы владельца и остальных групп');
   assert.ok(/\.mgsep/.test(html), 'перед ним тонкая черта, не заголовок группы');
   assert.ok(/else if\(S\.view==='about'\)renderAbout\(\)/.test(fn('render')) && /if\(v==='about'\)loadHub\(\)/.test(fn('go')), 'экран открывается и подгружает данные площадки');
@@ -9325,6 +9325,127 @@ await t('склад, часть 3 на экране: «Отвёз на скла�
   assert.ok(/\['cr','crn','crAt','crp','ship','pay','sent','got'\]/.test(html), 'после «Снять разрешение» старые поля не остаются');
   // подписи на двух языках
   for (const t of ['Снять разрешение', 'Ruxsatni qaytarish', 'Joʻnatilganlardan qaytarish', 'Navoiyga joʻnatildi', 'Omborga olib bordim', 'Отвёз на склад']) assert.ok(html.includes(t) || fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8').includes(t), t);
+});
+
+await t('обращения «Написать нам»: человек пишет владельцу, лимит 5 в день, владелец видит список и отмечает «Решено»', async () => {
+  await hubWorld();
+  const d = await addShop('Альфа Трейд');
+  await send(adminMsg(DIL, d.code, 2));
+  const fb = (init, body) => call('POST', '/api/hub/feedback', { init, body });
+  const list = async () => jsonOf(await call('GET', '/api/hub/admin/feedback', { init: iS() }));
+  const done = (init, body) => call('POST', '/api/hub/admin/feedback/done', { init, body });
+  const meOf = async init => (await jsonOf(await call('GET', '/api/shops', { init }))).me;
+  const A = newUser(), B = newUser();
+  // без входа и с плохими данными нельзя
+  assert.equal((await call('POST', '/api/hub/feedback', { body: { kind: 'bug', text: 'Не открывается корзина' } })).status, 401);
+  let r = await fb(A.init(), { kind: 'wish', text: 'Не открывается корзина' });
+  assert.equal(r.status, 400); assert.equal((await jsonOf(r)).error, 'bad_kind');
+  r = await fb(A.init(), { kind: 'bug', text: '  ab  ' });
+  assert.equal(r.status, 400); assert.equal((await jsonOf(r)).error, 'short');
+  r = await fb(A.init(), { kind: 'bug' });
+  assert.equal(r.status, 400);
+  assert.equal((await list()).items.length, 0, 'плохие обращения не сохраняются');
+  assert.equal((await meOf(iS())).fbn, 0, 'у владельца значок пуст');
+
+  // хорошее обращение: сохраняется, владельцу приходит сообщение, перевод строк сохраняется (не больше двух подряд)
+  tgLog = [];
+  r = await fb(A.init(), { kind: 'bug', text: '  Не открывается корзина\r\n\r\n\r\nпосле заказа  ' });
+  assert.equal(r.status, 200);
+  const id = (await jsonOf(r)).id;
+  assert.ok(/^F-[A-Z0-9]{5}$/.test(id), id);
+  const ms = tgAll('sendMessage', p => p.chat_id === SELLER.id && String(p.text).includes(id));
+  assert.equal(ms.length, 1, 'владельцу ушло одно сообщение');
+  const mt = String(ms[0].payload.text);
+  assert.ok(mt.includes('Обращение ' + id) && mt.includes('Xato · Ошибка') && mt.includes('Гость' + A.u.id) && mt.includes('Роль: Покупатель') && mt.endsWith('Не открывается корзина\n\nпосле заказа'), mt);
+  let ls = await list();
+  assert.equal(ls.items.length, 1); assert.equal(ls.n, 1);
+  const it = ls.items[0];
+  assert.deepEqual([it.id, it.uid, it.k, it.t, it.st], [id, A.u.id, 'bug', 'Не открывается корзина\n\nпосле заказа', 'new']);
+  assert.ok(it.at && !('dt' in it));
+  assert.equal((await meOf(iS())).fbn, 1, 'на значке владельца 1');
+  assert.ok(!('fbn' in (await meOf(A.init()))), 'у обычного человека значка нет');
+
+  // лимит 5 в день с человека; другой человек пишет свободно
+  for (let i = 0; i < 4; i++) assert.equal((await fb(A.init(), { kind: 'idea', text: 'Нужна новая функция ' + i })).status, 200);
+  r = await fb(A.init(), { kind: 'other', text: 'Ещё одно обращение' });
+  assert.equal(r.status, 429); assert.equal((await jsonOf(r)).error, 'limit');
+  assert.equal((await list()).items.length, 5, 'шестое не сохранилось');
+  assert.equal((await fb(B.init(), { kind: 'other', text: 'Вопрос по приложению' })).status, 200);
+  // на следующий день лимит снова свободен
+  const hub = W.hubStorage;
+  await hub.put('fbr:' + A.u.id, { d: '2000-01-01', n: 5 });
+  assert.equal((await fb(A.init(), { kind: 'other', text: 'Новый день, новое обращение' })).status, 200);
+
+  // роль и магазин в обращении: продавец, владелец
+  tgLog = [];
+  assert.equal((await fb(iD(), { kind: 'idea', text: 'Хочу выгрузку по дням' })).status, 200);
+  assert.ok(String(tgAll('sendMessage', p => p.chat_id === SELLER.id)[0].payload.text).includes('Роль: Продавец «Альфа Трейд»'));
+  tgLog = [];
+  assert.equal((await fb(iS(), { kind: 'idea', text: 'Хочу тёмную тему' })).status, 200);
+  assert.equal(tgAll('sendMessage', p => p.chat_id === SELLER.id).length, 1, 'владельцу тоже сообщение, если он пишет сам');
+  ls = await list();
+  assert.deepEqual(ls.items.find(x => x.uid === DIL.id).roles, [{ r: 'seller', n: 'Альфа Трейд' }]);
+  assert.deepEqual(ls.items.find(x => x.uid === SELLER.id).roles[0], { r: 'owner' }, 'владелец указан первым (он же продавец первого дистрибьютора)');
+  assert.equal(ls.items[0].t, 'Хочу тёмную тему', 'свежие первыми');
+
+  // длинный текст обрезается до 1000 знаков
+  assert.equal((await fb(newUser().init(), { kind: 'other', text: 'я'.repeat(1500) })).status, 200);
+  assert.equal((await list()).items[0].t.length, 1000);
+
+  // владелец: «Решено» и «Вернуть»; чужие не могут
+  const total = (await list()).n;
+  assert.equal((await done(A.init(), { id, done: true })).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/feedback', { init: A.init() })).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/feedback')).status, 401);
+  assert.equal((await done(iS(), { id: 'bad', done: true })).status, 400);
+  assert.equal((await done(iS(), { id, done: 'yes' })).status, 400);
+  assert.equal((await done(iS(), { id: 'F-ZZZZZ', done: true })).status, 404);
+  let dr = await jsonOf(await done(iS(), { id, done: true }));
+  assert.equal(dr.item.st, 'done'); assert.ok(dr.item.dt); assert.equal(dr.item.db, 'Jasur'); assert.equal(dr.n, total - 1);
+  assert.equal((await meOf(iS())).fbn, total - 1, 'значок уменьшился');
+  dr = await jsonOf(await done(iS(), { id, done: true }));
+  assert.equal(dr.n, total - 1, 'повторно ничего не меняется');
+  dr = await jsonOf(await done(iS(), { id, done: false }));
+  assert.equal(dr.item.st, 'new'); assert.ok(!('dt' in dr.item) && !('db' in dr.item)); assert.equal(dr.n, total);
+
+  // хранится не больше 300: самые старые уходят
+  const idx = (await hub.get('fbx'));
+  const keep = idx.slice(0, 299);
+  for (let i = 0; i < 300; i++) { const fid = 'F-T' + String(i).padStart(4, '0'); await hub.put('fb:' + fid, { id: fid, uid: 1, nm: 'x', un: '', roles: [], k: 'other', t: 'старое ' + i, at: '2020-01-01T00:00:00.000Z', st: 'done' }); keep.push(fid); }
+  await hub.put('fbx', keep);
+  assert.equal((await fb(newUser().init(), { kind: 'other', text: 'Самое свежее обращение' })).status, 200);
+  assert.equal((await hub.get('fbx')).length, 300);
+  assert.equal(await hub.get('fb:F-T0299'), undefined, 'самое старое удалено');
+  assert.equal((await list()).items[0].t, 'Самое свежее обращение');
+});
+
+await t('«Написать нам» на экране: пункт меню, форма (тема, текст до 1000, счётчик), отправка и ошибки, раздел «Обращения» у владельца со значком', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const wk = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  assert.ok(/\['about',L\('О нас','Biz haqimizda'\)\],\['feedback',L\('Написать нам','Bizga yozish'\)\]/.test(fn('menuGroups')), 'пункт меню рядом с «О нас», виден всем');
+  assert.ok(/else if\(S\.view==='feedback'\)renderFeedback\(\)/.test(fn('render')) && /if\(v==='feedback'&&was!=='feedback'\)\{S\.fb\.sent='';S\.fb\.err=''\}/.test(fn('go')), 'экран открывается, при входе старое «Спасибо» и ошибка стираются');
+  assert.ok(/vw!=='feedback'/.test(html) && /vw==='feedback'\)v='feedback'/.test(html) && /AS_SHOP_VIEWS=\[[^\]]*'feedback'\]/.test(html), 'адрес ?v=feedback и «Смотреть как»');
+  const rf = fn('renderFeedback');
+  assert.ok(/!S\.auth/.test(rf) && /F\.sent/.test(rf) && /data-act="fbkind"/.test(rf) && /data-act="fbsend"/.test(rf) && /data-act="fbagain"/.test(rf), 'без входа, «Спасибо», темы, «Отправить», «Написать ещё»');
+  assert.ok(/maxlength="'\+FB_LEN\+'"/.test(rf) && /id="fb-cnt"/.test(rf) && /FB_LEN=1000,FB_MIN=5/.test(html), 'до 1000 знаков и счётчик');
+  const fnum = (src, re) => Number((src.match(re) || [])[1]);
+  assert.equal(fnum(wk, /FB_LEN = (\d+)/), 1000); assert.equal(fnum(wk, /FB_MIN = (\d+)/), 5); assert.equal(fnum(wk, /FB_DAY = (\d+)/), 5);
+  assert.ok(/5 обращений/.test(rf + fn('fbSend')) && /5 ta/.test(rf + fn('fbSend')), 'про лимит 5 в день сказано на двух языках');
+  const fs_ = fn('fbSend');
+  for (const e of ['/api/hub/feedback', "e==='limit'", "e==='short'", "e==='bad_kind'", 'if(F.busy)return']) assert.ok(fs_.includes(e), e);
+  assert.ok(/'Мы видим ваше имя, @логин и роль в приложении\. Не больше 5 обращений в день\.'/.test(rf), 'подсказка под формой');
+  assert.ok(/else if\(t\.id==='fb-t'\)\{S\.fb\.text=t\.value/.test(html), 'текст запоминается при вводе');
+  // владелец
+  assert.ok(/\['fb',L\('Обращения','Murojaatlar'\),L\('Обращения','Murojaatlar'\)\]/.test(html) && /x\[0\]==='fb'\?S\.own\.fbn/.test(fn('menuGroups')), 'раздел «Обращения» в группе «Площадка», значок с числом новых');
+  assert.ok(/else if\(sec==='fb'\)h\+=ownFbHTML\(\)/.test(fn('renderOwner')) && /loadOwnerFb\(\);/.test(fn('loadOwner')) && /sec==='fb'\)loadOwnerFb\(\)/.test(fn('ownOpen')), 'раздел рисуется и загружается');
+  assert.ok(/typeof h\.me\.fbn==='number'\)S\.own\.fbn=h\.me\.fbn/.test(html), 'число новых берётся из ответа площадки');
+  const lo = fn('loadOwnerFb'), fd = fn('fbDone'), ow = fn('ownFbHTML');
+  assert.ok(lo.includes('/api/hub/admin/feedback') && fd.includes('/api/hub/admin/feedback/done') && /if\(D\.busy\)return/.test(fd), 'запросы владельца, двойное нажатие');
+  assert.ok(/data-act="fbf"/.test(ow) && /data-act="fbdone"/.test(fn('fbCardHTML')) && /data-act="fbundo"/.test(fn('fbCardHTML')) && /class="fbt"/.test(fn('fbCardHTML')), 'вкладки, «Решено», «Вернуть», текст с переводами строк');
+  assert.ok(/\.fbt\{white-space:pre-wrap/.test(html), 'переводы строк в тексте сохраняются');
+  for (const a of ['fbkind', 'fbsend', 'fbagain', 'fbf', 'fbdone', 'fbundo']) assert.ok(html.includes("a==='" + a + "'"), 'обработчик ' + a);
+  for (const t of ['Написать нам', 'Bizga yozish', 'Спасибо, получили', 'Rahmat, qabul qildik', 'Обращения', 'Murojaatlar', 'Решено', 'Hal qilindi']) assert.ok(html.includes(t), t);
 });
 
 /* ---------- итог ---------- */
