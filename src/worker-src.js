@@ -7,6 +7,7 @@
 */
 
 const TG_API = 'https://api.telegram.org/bot';
+const TG_FILE = 'https://api.telegram.org/file/bot';
 const MAX_NEW_PER_USER = 5;   // сколько неподтверждённых заказов может висеть у одного покупателя
 const MAX_ACTIVE = 300;       // защита от переполнения: столько активных заказов на весь склад
 const HIST_CAP = 150;         // сколько завершённых заказов показывать в панели
@@ -175,11 +176,29 @@ const validId = id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(id)
    Ставит только бот, когда продавец прислал ему видео; приложение vd не задаёт (sanitizeProd берёт его из сохранённых данных). */
 const VIDEO_CH = 'sarbon_video';            // канал по умолчанию, владелец меняет в приложении
 const VIDEO_MAX_SEC = 60;                   // длиннее — бот не принимает
-const VIDEO_MAX_BYTES = 50 * 1024 * 1024;   // тяжелее — тоже
+const VIDEO_MAX_BYTES = 20 * 1024 * 1024;   // тяжелее — тоже: бот может скачать у Telegram файл не больше 20 МБ, а приложению видео отдаёт наш сервер
 const VIDEO_WAIT_MS = 15 * 60 * 1000;       // сколько бот ждёт видео после нажатия «Добавить видео»
 const VIDEO_DAY_MAX = 30;                   // видео от одного человека в сутки
 const cleanVd = v => typeof v === 'string' && /^[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(v) ? v : '';
 const cleanVch = v => { const t = String(v || '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').replace(/[/?#].*$/, ''); return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(t) ? t : ''; };
+/* Как проиграть видео в приложении: номера файлов в Telegram (видео, кадр-заставка) и тип. Это знает только сервер, покупателю и клиенту не отдаётся. */
+const TG_FILE_ID = /^[A-Za-z0-9_-]{10,200}$/;
+const cleanVx = v => {
+  if (!v || typeof v !== 'object' || typeof v.f !== 'string' || !TG_FILE_ID.test(v.f)) return null;
+  const o = { f: v.f };
+  if (typeof v.t === 'string' && TG_FILE_ID.test(v.t)) o.t = v.t;
+  o.m = typeof v.m === 'string' && /^video\/[a-z0-9.+-]{2,30}$/.test(v.m) ? v.m : 'video/mp4';
+  return o;
+};
+/* Range: bytes=a-b, bytes=a-, bytes=-n → [начало, конец] или null, если диапазон не годится */
+function parseRange(h, size) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(h || '').trim());
+  if (!m || (m[1] === '' && m[2] === '') || !(size > 0)) return null;
+  let a, b;
+  if (m[1] === '') { const n = Number(m[2]); if (!(n > 0)) return null; a = Math.max(0, size - n); b = size - 1; }
+  else { a = Number(m[1]); b = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1); }
+  return a <= b && a < size ? [a, b] : null;
+}
 const vdParts = vd => { const m = cleanVd(vd).match(/^(.+)\/(\d+)$/); return m ? { ch: m[1], id: Number(m[2]) } : null; };
 const emptyProd = () => ({ cats: [], items: [] });
 function normProd(d) {
@@ -251,7 +270,7 @@ function sanitizeProd(d, old, mod) {
       pv: prev && typeof prev.pv === 'string' ? prev.pv : '',
       pv2: prev && typeof prev.pv2 === 'string' ? prev.pv2 : '',
       pv3: prev && typeof prev.pv3 === 'string' ? prev.pv3 : '',
-      ...(prev && cleanVd(prev.vd) ? { vd: prev.vd } : {})   // видео ставит только бот
+      ...(prev && cleanVd(prev.vd) ? { vd: prev.vd, ...(cleanVx(prev.vx) ? { vx: cleanVx(prev.vx) } : {}) } : {})   // видео ставит только бот
     });
     const it = items[items.length - 1];
     if (prev) {
@@ -278,7 +297,8 @@ function publicProd(prod, stk, admin) {
       return;
     }
     const v = stk && !it.ms ? stkPublic(stk[it.id], MAX_QTY) : undefined;
-    items.push(!v ? it : Object.assign({}, it, v.lw ? { av: v.av, lw: 1 } : { av: v.av }));
+    const pub = 'vx' in it ? (({ vx, ...r }) => r)(it) : it;   // номера файлов Telegram наружу не идут
+    items.push(!v ? pub : Object.assign({}, pub, v.lw ? { av: v.av, lw: 1 } : { av: v.av }));
   });
   return { cats: prod.cats, items };
 }
@@ -1845,6 +1865,12 @@ export default {
       if (rest.length > 2 || !validDid(did)) return new Response('not found', { status: 404 });
       return stubOf(env.SHOP, did).fetch(withDid(new Request(url.origin + '/img/' + pid + url.search, request), did));
     }
+    if (p.startsWith('/vid/')) {
+      // /vid/<дистрибьютор>/<товар>[?t=1 — кадр-заставка]
+      const rest = p.slice(5).split('/');
+      if (rest.length !== 2 || !validDid(rest[0])) return new Response('not found', { status: 404 });
+      return stubOf(env.SHOP, rest[0]).fetch(withDid(new Request(url.origin + '/vid/' + rest[1] + url.search, request), rest[0]));
+    }
     if (p.startsWith('/api/')) {
       const did = request.headers.get('x-shop') || MAIN;
       if (!validDid(did)) return json({ error: 'bad_shop' }, 400);
@@ -2356,6 +2382,7 @@ export class Shop {
       if (path === '/webhook' && method === 'POST') return await this.webhook(request);
       if (path === '/setup') return await this.setup(request);
       if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5), new URL(request.url).searchParams.get('n'));
+      if ((method === 'GET' || method === 'HEAD') && path.startsWith('/vid/')) return await this.videoFile(path.slice(5), new URL(request.url).searchParams.get('t') === '1', request);
       if (path === '/api/config' && method === 'GET') { const adm = await this.adminIn(request); return json({ cfg: pubCfg(await this.getCfg(), adm), prod: await this.pubProd(adm), off: await this.isOff() }); }
       if (path.startsWith('/api/')) return await this.api(request, path, method);
       return json({ error: 'not_found' }, 404);
@@ -2456,7 +2483,7 @@ export class Shop {
     if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
     if (path === '/__/mod-photo') return await this.modPhoto(request);
     if (path === '/__/video-info') return json(await this.videoInfo(String(b.pid || '')));
-    if (path === '/__/video-set') return json(await this.videoSet(String(b.pid || ''), String(b.vd || '')));
+    if (path === '/__/video-set') return json(await this.videoSet(String(b.pid || ''), String(b.vd || ''), b.vx));
     if (path === '/__/video-remove') return json(await this.videoRemove(String(b.pid || '')));
     if (path === '/__/video-list') return json({ items: await this.videoList() });
     if (path === '/__/summary') return json(await this.summary());
@@ -3372,12 +3399,14 @@ export class Shop {
     const it = (await this.getProd()).items.find(x => x.id === pid);
     return it ? { ok: true, name: it.name, uz: it.uz || '', vd: cleanVd(it.vd) } : { ok: false };
   }
-  async videoSet(pid, vd) {
+  async videoSet(pid, vd, vx) {
     const prod = await this.getProd();
     const it = prod.items.find(x => x.id === pid);
     if (!it || !cleanVd(vd)) return { ok: false };
     const old = cleanVd(it.vd);
     it.vd = vd;
+    const x = cleanVx(vx);
+    if (x) it.vx = x; else delete it.vx;
     await this.st.put('prod', prod);
     return { ok: true, old };
   }
@@ -3391,7 +3420,7 @@ export class Shop {
     const it = prod.items.find(x => x.id === pid);
     if (!it) return { ok: false };
     const old = cleanVd(it.vd);
-    if (old) { delete it.vd; await this.st.put('prod', prod); await this.videoDrop(old); }
+    if (old) { delete it.vd; delete it.vx; await this.st.put('prod', prod); await this.videoDrop(old); }
     return { ok: true };
   }
   async videoList() {
@@ -3446,6 +3475,39 @@ export class Shop {
     const bytes = await this.st.get(id === LOGO_ID ? 'logo' : photoKey(id, Number.isInteger(k) && k >= 1 && k <= PHOTOS_MAX ? k : 1));
     if (!bytes) return new Response('not found', { status: 404 });
     return new Response(bytes, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
+  }
+
+  /* Видео и кадр-заставка для просмотра в приложении: сервер берёт файл у Telegram и отдаёт его сам (ключ бота наружу не виден).
+     Только у одобренных товаров. Safari просит куски файла (Range), поэтому они поддержаны. */
+  async videoFile(id, thumb, request) {
+    const gone = () => new Response('not found', { status: 404 });
+    if (!validId(id)) return gone();
+    const it = (await this.getProd()).items.find(x => x.id === id);
+    const vx = it && !it.ms && cleanVd(it.vd) ? cleanVx(it.vx) : null;
+    const fid = vx ? (thumb ? vx.t : vx.f) : '';
+    if (!fid) return gone();
+    const g = await this.tg('getFile', { file_id: fid });
+    const fp = g && g.ok && g.result && typeof g.result.file_path === 'string' ? g.result.file_path : '';
+    if (!/^[A-Za-z0-9_\/.-]{1,200}$/.test(fp) || fp.includes('..') || Number(g.result.file_size) > VIDEO_MAX_BYTES) return gone();
+    const range = thumb ? '' : request.headers.get('range') || '';
+    let up;
+    try { up = await fetch(TG_FILE + this.env.BOT_TOKEN + '/' + fp, { headers: range ? { range } : {}, signal: AbortSignal.timeout(25000) }); }
+    catch (e) { console.error('video fetch failed', e && e.message || e); return new Response('bad gateway', { status: 502 }); }
+    if (up.status !== 200 && up.status !== 206) return gone();
+    const head = { 'content-type': thumb ? 'image/jpeg' : vx.m, 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' };
+    const isHead = request.method === 'HEAD';
+    if (up.status === 206) {   // Telegram сам отдал кусок
+      for (const k of ['content-range', 'content-length']) if (up.headers.get(k)) head[k] = up.headers.get(k);
+      return new Response(isHead ? null : up.body, { status: 206, headers: head });
+    }
+    if (!range) {
+      if (up.headers.get('content-length')) head['content-length'] = up.headers.get('content-length');
+      return new Response(isHead ? null : up.body, { status: 200, headers: head });
+    }
+    // Telegram отдал файл целиком, хотя просили кусок: режем сами (файл не больше 20 МБ)
+    const buf = await up.arrayBuffer(), size = buf.byteLength, r = parseRange(range, size);
+    if (!r) return new Response(null, { status: 416, headers: Object.assign(head, { 'content-range': 'bytes */' + size }) });
+    return new Response(isHead ? null : buf.slice(r[0], r[1] + 1), { status: 206, headers: Object.assign(head, { 'content-range': 'bytes ' + r[0] + '-' + r[1] + '/' + size, 'content-length': String(r[1] - r[0] + 1) }) });
   }
 
   async cancelMine(uid, id) {
@@ -6710,8 +6772,8 @@ export class Hub {
     }
     const ch = await this.vch();
     await this.st.put('vp:' + uid, { did, pid, t: Date.now() });
-    await say('Отправьте сюда видео для товара «' + info.name + '»: не длиннее ' + VIDEO_MAX_SEC + ' секунд и не больше 50 МБ. Я опубликую его в канале @' + ch + ' и привяжу к товару.' + (info.vd ? ' Прежнее видео этого товара будет заменено.' : ''),
-      '«' + (info.uz || info.name) + '» mahsuloti uchun videoni shu yerga yuboring: ' + VIDEO_MAX_SEC + ' soniyadan uzun boʻlmasin va 50 MB dan oshmasin. Men uni @' + ch + ' kanaliga joylayman va mahsulotga bogʻlayman.' + (info.vd ? ' Mahsulotning oldingi videosi almashtiriladi.' : ''));
+    await say('Отправьте сюда видео для товара «' + info.name + '»: не длиннее ' + VIDEO_MAX_SEC + ' секунд и не больше 20 МБ. Я опубликую его в канале @' + ch + ' и привяжу к товару.' + (info.vd ? ' Прежнее видео этого товара будет заменено.' : ''),
+      '«' + (info.uz || info.name) + '» mahsuloti uchun videoni shu yerga yuboring: ' + VIDEO_MAX_SEC + ' soniyadan uzun boʻlmasin va 20 MB dan oshmasin. Men uni @' + ch + ' kanaliga joylayman va mahsulotga bogʻlayman.' + (info.vd ? ' Mahsulotning oldingi videosi almashtiriladi.' : ''));
   }
   async videoReceive(msg) {
     const uid = msg.from.id, chat = msg.chat.id;
@@ -6723,7 +6785,7 @@ export class Hub {
     }
     const v = msg.video || msg.document || {};
     if (msg.video && Number(v.duration) > VIDEO_MAX_SEC) { await say('Видео длиннее ' + VIDEO_MAX_SEC + ' секунд. Пришлите покороче.', 'Video ' + VIDEO_MAX_SEC + ' soniyadan uzun. Qisqaroq yuboring.'); return; }
-    if (Number(v.file_size) > VIDEO_MAX_BYTES) { await say('Видео больше 50 МБ. Пришлите файл поменьше.', 'Video 50 MB dan katta. Kichikroq fayl yuboring.'); return; }
+    if (Number(v.file_size) > VIDEO_MAX_BYTES) { await say('Видео больше 20 МБ. Пришлите файл поменьше.', 'Video 20 MB dan katta. Kichikroq fayl yuboring.'); return; }
     const rec = await this.videoCan(uid, pend.did);
     const info = rec ? (await shopCall(this.env, pend.did, '/__/video-info', { pid: pend.pid })).data : null;
     if (!rec || !info || !info.ok) {
@@ -6744,7 +6806,9 @@ export class Hub {
       return;
     }
     const mid = res.result.message_id, vd = ch + '/' + mid;
-    const set = (await shopCall(this.env, pend.did, '/__/video-set', { pid: pend.pid, vd })).data;
+    const th = v.thumbnail || v.thumb || {};
+    const vx = { f: String(v.file_id || ''), t: String(th.file_id || ''), m: String(v.mime_type || '') };   // чтобы приложение могло проиграть ролик само
+    const set = (await shopCall(this.env, pend.did, '/__/video-set', { pid: pend.pid, vd, vx })).data;
     if (!set || !set.ok) {
       await this.tg('deleteMessage', { chat_id: '@' + ch, message_id: mid });
       await this.st.delete('vp:' + uid);
@@ -6755,8 +6819,8 @@ export class Hub {
     if (old) await this.tg('deleteMessage', { chat_id: '@' + old.ch, message_id: old.id });   // прежнее видео этого товара
     await this.st.put('vq:' + uid, { d: day, n: used + 1 });
     await this.st.delete('vp:' + uid);
-    await say('Готово: видео опубликовано в канале и привязано к товару «' + info.name + '». Покупатели увидят кнопку «▶ Видео». Вернитесь в приложение.',
-      'Tayyor: video kanalga joylandi va «' + (info.uz || info.name) + '» mahsulotiga bogʻlandi. Xaridorlar «▶ Video» tugmasini koʻradi. Ilovaga qayting.',
+    await say('Готово: видео опубликовано в канале и привязано к товару «' + info.name + '». Покупатели увидят его последним слайдом в просмотре фото товара. Вернитесь в приложение.',
+      'Tayyor: video kanalga joylandi va «' + (info.uz || info.name) + '» mahsulotiga bogʻlandi. Xaridorlar uni mahsulot rasmlari koʻrinishida oxirgi slayd sifatida koʻradi. Ilovaga qayting.',
       openBtn(this.origin, btn2('Ilovani ochish', 'Открыть приложение'), sellerUrl(this.origin, pend.did)));
   }
   /* Доставщик нажал ссылку-приглашение: хранилище дистрибьютора проверяет ключ и записывает его, площадка запоминает, где он доставщик. */

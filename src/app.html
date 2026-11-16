@@ -370,6 +370,14 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .lb-slide{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always;display:flex;align-items:center;justify-content:center;padding:64px 0;box-sizing:border-box;cursor:zoom-out}
 .lb-slide img{max-width:100%;max-height:100%;object-fit:contain;display:block;cursor:default;user-select:none;-webkit-user-drag:none}
 .lb-slide .ph{font-size:72px}
+.lb-vslide{padding:64px 0}
+.lb-play{appearance:none;border:0;padding:0;font:inherit;position:relative;width:100%;min-height:42vh;max-height:100%;background:#0b100f;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden}
+.lb-play .lb-poster{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:contain;opacity:.9}
+.lb-tri{position:relative;width:76px;height:76px;border-radius:50%;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;color:#fff}
+.lb-tri svg{width:34px;height:34px;fill:currentColor;margin-left:4px}
+.lb-vwrap{width:100%;max-height:100%;display:flex;align-items:center;justify-content:center;cursor:default}
+.lb-video{width:100%;max-height:100%;background:#000;display:block}
+.lb-verr{flex-direction:column;gap:14px;color:#fff;font-size:16px;text-align:center;padding:0 24px}
 .lb-dots{position:absolute;left:0;right:0;bottom:max(18px,env(safe-area-inset-bottom));display:flex;gap:8px;justify-content:center;pointer-events:none}
 .lb-dots i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.4)}
 .lb-dots i.on{background:#fff}
@@ -515,7 +523,7 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .psv .btn.done[disabled]{opacity:1}
 .pvidb .row-btns{margin-top:8px}
 .pvidb .err{margin-top:8px}
-.pvid{margin:8px 0 0}
+
 .crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;padding:8px 6px 8px 10px;margin:0 0 10px;background:var(--bg);border:1.5px solid var(--edge);border-radius:14px}
 .crow .cf{display:flex;align-items:center;gap:8px;min-width:0}
 .crow .cf .ltag{margin:0;flex:0 0 auto;width:28px;text-align:center;padding:1px 0}
@@ -1504,10 +1512,10 @@ function productCard(p){
   if(isPend(p))return pendCard(p);
   const off=soldOut(p),d=prodDesc(p),w=weightLabel(p);
   const status=off?'':(p.lw&&typeof p.av==='number'?'<div class="pst low">'+esc(lowTxt(p.av,p))+'</div>':'<div class="pst">'+L('В наличии','Mavjud')+'</div>');
-  const np=phVers(p).length;
-  return '<article class="pcard'+(off?' off':'')+(!off&&S.cart[p.id]>0?' incart':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg'+(np?' zm':'')+'"'+(np?' data-act="pzoom" data-id="'+esc(p.id)+'"':'')+'>'+pimg(p)+(np>1?'<span class="pcnt" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>'+np+' '+L('фото','rasm')+'</span>':'')+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
+  const np=phVers(p).length,hv=vdOk(p.vd),zm=np||hv;
+  const cnt=[np>1?'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>'+np+' '+L('фото','rasm'):'',hv?'▶'+(np>1?'':' '+L('Видео','Video')):''].filter(Boolean).join(' · ');
+  return '<article class="pcard'+(off?' off':'')+(!off&&S.cart[p.id]>0?' incart':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg'+(zm?' zm':'')+'"'+(zm?' data-act="pzoom" data-id="'+esc(p.id)+'"':'')+'>'+pimg(p)+(cnt?'<span class="pcnt" aria-hidden="true">'+cnt+'</span>':'')+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
     +'<div class="pbody"><div class="pname">'+esc(nm(p))+'</div>'+(w?'<div class="pw">'+esc(w)+'</div>':'')+status
-    +(vdOk(p.vd)?'<button type="button" class="btn ghost sm pvid" data-act="pvid" data-id="'+esc(p.id)+'">▶ '+L('Видео','Video')+'</button>':'')
     +(d?'<div class="pdesc" data-act="pdesc">'+esc(d)+'</div>':'')
     +'<div class="pprice">'+priceHTML(p)+'</div>'+(packOnly(p)?'<div class="ponly">'+esc(packOnlyText(p))+'</div>':'')+'<div class="pctl">'+productCtl(p)+'</div></div></article>';
 }
@@ -3281,7 +3289,7 @@ function openVideo(vd){
 function vidHTML(p){
   const id=esc(p.id),has=vdOk(p.vd),st=S.vid&&S.vid.id===p.id?S.vid.st:'',busy=st==='busy',dis=busy?' disabled':'';
   let h='<div class="full pvidb" id="pvid-'+id+'"><div class="lab">'+L('Видео товара','Mahsulot videosi')+'</div>';
-  h+=hintD(has?'Покупатели видят кнопку «▶ Видео». Новое видео заменит это.':'Покажите товар в деле, до 60 секунд. Нажмите кнопку: откроется бот, пришлите ему видео.',has?'Xaridorlar «▶ Video» tugmasini koʻradi. Yangi video bunisini almashtiradi.':'Mahsulotni amalda koʻrsating, 60 soniyagacha. Tugmani bosing: bot ochiladi, unga videoni yuboring.');
+  h+=hintD(has?'Покупатели увидят видео последним слайдом после фото. Новое видео заменит это.':'Покажите товар в деле: до 60 секунд и 20 МБ. Нажмите кнопку, откроется бот, пришлите ему видео.',has?'Xaridorlar videoni rasmlardan keyin oxirgi slayd sifatida koʻradi. Yangi video bunisini almashtiradi.':'Mahsulotni amalda koʻrsating: 60 soniya va 20 MB gacha. Tugmani bosing, bot ochiladi, unga videoni yuboring.');
   h+='<div class="row-btns">';
   if(has)h+='<button type="button" class="btn ghost sm" data-act="vidwatch" data-id="'+id+'">▶ '+L('Смотреть','Koʻrish')+'</button>';
   h+='<button type="button" class="btn'+(has?' ghost':'')+' sm" data-act="vidadd" data-id="'+id+'"'+dis+'>'+(busy?L('Открываем бота…','Bot ochilmoqda…'):has?L('Заменить','Almashtirish'):'+ '+L('Добавить видео','Video qoʻshish'))+'</button>';
@@ -4107,19 +4115,39 @@ async function removePhoto(id,n){
 
 /* просмотр фото на весь экран: свайп между фото, × / касание тёмного поля / Esc / «Назад» в Telegram закрывают */
 function lbBack(){closeViewer()}
-function openViewer(id,pp,did){
+function openViewer(id,pp,did,atVideo){
   const p=pp||S.prod.items.find(x=>x.id===id);if(!p)return;
-  const vs=phVers(p);if(!vs.length)return;
-  lbOpen(vs.map((v,i)=>({src:imgUrl(p,i+1,did),alt:nm(p)})),nm(p));
+  const vs=phVers(p),hv=vdOk(p.vd);if(!vs.length&&!hv)return;
+  const items=vs.map((v,i)=>({src:imgUrl(p,i+1,did),alt:nm(p)}));
+  if(hv)items.push({video:true,src:vidUrl(p,did),poster:vidUrl(p,did,true),vd:p.vd,alt:nm(p)});   // видео — последний слайд после фото
+  lbOpen(items,nm(p),hv&&atVideo?items.length-1:0);
+}
+/* видео товара играет в приложении: сервер берёт его у Telegram (адрес /vid/<продавец>/<товар>, номер поста в адресе — чтобы после замены не показывался старый ролик) */
+const vidUrl=(p,did,thumb)=>'/vid/'+encodeURIComponent(did||S.did||'main')+'/'+encodeURIComponent(p.id)+'?v='+encodeURIComponent(String(p.vd||'').split('/')[1]||'')+(thumb?'&t=1':'');
+function lbVideoHTML(v){
+  return '<div class="lb-slide lb-vslide" data-act="lbbg"><button type="button" class="lb-play" data-act="lbplay" aria-label="'+esc(L('Смотреть видео','Videoni koʻrish'))+'">'
+    +'<img class="lb-poster" src="'+esc(v.poster)+'" alt="" decoding="async" draggable="false"><span class="lb-tri" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span></button></div>';
+}
+function lbPlay(btn){
+  const slide=btn.closest('.lb-vslide'),tr=btn.closest('.lb-track');if(!slide)return;
+  const idx=[...tr.children].indexOf(slide),it=(S.lbItems||[])[idx];if(!it||!it.video)return;
+  slide.innerHTML='<div class="lb-vwrap" data-act="lbkeep"><video class="lb-video" controls autoplay playsinline preload="auto" poster="'+esc(it.poster)+'" src="'+esc(it.src)+'"></video></div>';
+  const v=slide.querySelector('video');
+  // не загрузилось (файл тяжелее допустимого, Telegram не ответил): предлагаем открыть пост в канале
+  v.addEventListener('error',()=>{
+    slide.innerHTML='<div class="lb-vwrap lb-verr" data-act="lbkeep"><div>'+L('Не удалось загрузить видео.','Videoni yuklab boʻlmadi.')+'</div><button type="button" class="btn sm" data-act="lbtg" data-vd="'+esc(it.vd)+'">'+L('Открыть в Telegram','Telegramda ochish')+'</button></div>';
+  },{once:true});
+  try{const pr=v.play();if(pr&&pr.catch)pr.catch(()=>{})}catch(e){}
 }
 /* общий просмотр картинок на весь экран: фото товара и скриншоты в «О нас» */
-function lbOpen(items,label){
+function lbOpen(items,label,start){
   if(!items||!items.length)return;
   closeViewer();
+  S.lbItems=items;
   const el=document.createElement('div');el.id='lb';el.className='lb';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label',label||'');
   const many=items.length>1;
   el.innerHTML='<div class="lb-top"><span class="lb-cnt" id="lb-cnt" aria-live="polite">'+(many?'1 / '+items.length:'')+'</span><button type="button" class="lb-x" data-act="lbclose" aria-label="'+esc(L('Закрыть','Yopish'))+'">×</button></div>'
-    +'<div class="lb-track" id="lb-track">'+items.map(v=>'<div class="lb-slide" data-act="lbbg"><img src="'+esc(v.src)+'" alt="'+esc(v.alt||'')+'" decoding="async" draggable="false"></div>').join('')+'</div>'
+    +'<div class="lb-track" id="lb-track">'+items.map(v=>v.video?lbVideoHTML(v):'<div class="lb-slide" data-act="lbbg"><img src="'+esc(v.src)+'" alt="'+esc(v.alt||'')+'" decoding="async" draggable="false"></div>').join('')+'</div>'
     +(many?'<div class="lb-dots" id="lb-dots">'+items.map((v,i)=>'<i'+(i?'':' class="on"')+'></i>').join('')+'</div>':'');
   document.body.appendChild(el);
   document.documentElement.classList.add('lb-open');
@@ -4131,17 +4159,24 @@ function lbOpen(items,label){
       const i=Math.max(0,Math.min(items.length-1,Math.round(tr.scrollLeft/(tr.clientWidth||1))));
       const c=el.querySelector('#lb-cnt');if(c&&many)c.textContent=(i+1)+' / '+items.length;
       el.querySelectorAll('#lb-dots i').forEach((d,k)=>d.classList.toggle('on',k===i));
+      el.querySelectorAll('video').forEach(v=>{if(v.closest('.lb-slide')!==tr.children[i])v.pause()});   // листнули от видео: оно замолкает
     });
   },{passive:true});
+  if(start>0&&start<items.length){
+    const go=()=>{tr.scrollLeft=start*(tr.clientWidth||0)};go();requestAnimationFrame(go);
+    const c=el.querySelector('#lb-cnt');if(c&&many)c.textContent=(start+1)+' / '+items.length;
+    el.querySelectorAll('#lb-dots i').forEach((d,k)=>d.classList.toggle('on',k===start));
+  }
   try{if(S.tg&&S.tg.BackButton&&S.tg.isVersionAtLeast&&S.tg.isVersionAtLeast('6.1')){S.tg.BackButton.onClick(lbBack);S.tg.BackButton.show();S.lbTg=true}}catch(e){}
 }
 function closeViewer(){
   const el=document.getElementById('lb');
-  if(el)el.remove();
+  if(el){el.querySelectorAll('video').forEach(v=>{try{v.pause();v.removeAttribute('src');v.load()}catch(e){}});el.remove()}
+  S.lbItems=null;
   document.documentElement.classList.remove('lb-open');
   if(S.lbTg){S.lbTg=false;try{S.tg.BackButton.offClick(lbBack);S.tg.BackButton.hide()}catch(e){}}
 }
-document.addEventListener('error',e=>{const t=e.target;if(t&&t.tagName==='IMG'&&t.dataset&&t.dataset.abimg){const f=t.closest('figure');if(f)f.remove()}},true);
+document.addEventListener('error',e=>{const t=e.target;if(t&&t.tagName==='IMG'&&t.dataset&&t.dataset.abimg){const f=t.closest('figure');if(f)f.remove()}else if(t&&t.tagName==='IMG'&&t.classList&&t.classList.contains('lb-poster'))t.remove()},true);   // у видео нет кадра-заставки: остаётся тёмный экран с ▶
 document.addEventListener('keydown',e=>{
   const el=document.getElementById('lb');if(!el)return;
   if(e.key==='Escape')closeViewer();
@@ -4919,7 +4954,7 @@ const ABOUT_ROLES=[
   ['Если у товара есть цена от количества, на карточке видны ступени: чем больше берёте, тем ниже цена.','Agar tovarda miqdorga qarab narx boʻlsa, kartochkada pogʻonalar koʻrinadi: koʻproq olsangiz, narx arzonlashadi.'],
   ['Нажмите «В корзину», затем «−» и «+» или введите число с клавиатуры (до 500 штук одного товара). Внизу всегда видна сумма и кнопка «Оформить заказ».','«Savatga» tugmasini bosing, soʻng «−» va «+» bilan yoki raqamni klaviaturadan kiriting (bitta tovardan 500 tagacha). Pastda doim summa va «Buyurtma berish» tugmasi koʻrinadi.'],
   ['Если товар продаётся только упаковками, под ценой подпись «Только коробками · 10 шт», а «−» и «+» меняют количество сразу на упаковку. У товара «1 кг» или «1 л» количество считается в «кг» или «л».','Agar tovar faqat qadoqlarda sotilsa, narx ostida «Faqat qutida · 10 dona» deb yoziladi, «−» va «+» esa miqdorni darhol bitta qadoqqa oʻzgartiradi. «1 kg» yoki «1 l» tovarda miqdor «kg» yoki «l» bilan hisoblanadi.'],
-  ['У товара с видео есть кнопка «▶ Видео»: она открывает ролик в Telegram-канале площадки, потом можно вернуться в приложение.','Videosi bor tovarda «▶ Video» tugmasi bor: u videoni platformaning Telegram kanalida ochadi, keyin ilovaga qaytish mumkin.']]},
+  ['Если у товара есть видео, на его фото виден значок ▶. Нажмите на фото и листайте влево: видео стоит последним слайдом, нажмите ▶, и оно играет прямо в приложении.','Tovarda video boʻlsa, uning rasmida ▶ belgisi koʻrinadi. Rasmni bosing va chapga suring: video oxirgi slaydda turadi, ▶ ni bosing, u ilovaning oʻzida oʻynaydi.']]},
  {img:'shop-cart',h:['Оформление заказа','Buyurtma berish'],cap:['Корзина и оформление','Savat va buyurtma berish'],li:[
   ['Выберите «Самовывоз» или «Доставка». Для доставки впишите адрес; по желанию можно отметить своё местоположение на карте.','«Olib ketish» yoki «Yetkazib berish»ni tanlang. Yetkazib berish uchun manzilni yozing; xohlasangiz, joylashuvingizni xaritada belgilashingiz mumkin.'],
   ['Укажите дату и время (в часы работы продавца; для доставки нужен запас по времени) и пожелания к заказу.','Sana va vaqtni (sotuvchining ish vaqtida; yetkazib berish uchun vaqt zaxirasi kerak) hamda buyurtmaga istaklaringizni yozing.'],
@@ -4982,7 +5017,7 @@ const ABOUT_ROLES=[
   ['Новый товар сначала «Черновик». Нажмите «Отправить на проверку»: владелец площадки одобрит товар или вернёт с причиной, что исправить. Правки уже одобренных товаров проверки не требуют.','Yangi tovar avval «Qoralama» boʻladi. «Tekshiruvga yuborish»ni bosing: platforma egasi tovarni tasdiqlaydi yoki nimani tuzatish kerakligini sabab bilan qaytaradi. Tasdiqlangan tovarlarni oʻzgartirish tekshiruvsiz amalga oshadi.'],
   ['Пока товар не одобрен, покупатели видят его серым с надписью «На модерации».','Tovar tasdiqlanmaguncha xaridorlar uni «Tekshiruvda» yozuvli kulrang koʻrinishda koʻradi.'],
   ['«Продаётся только блоками» или «Продаётся только коробками»: покупатель берёт целыми упаковками, а «−» и «+» шагают упаковкой. У товара «1 кг» или «1 л» одна штука равна 1 кг (1 л), поэтому везде пишется «кг» или «л».','«Faqat blokda sotiladi» yoki «Faqat qutida sotiladi»: xaridor butun qadoqlarda oladi, «−» va «+» esa bitta qadoq bilan siljiydi. «1 kg» yoki «1 l» tovarda bir dona 1 kg (1 l)ga teng, shuning uchun hamma joyda «kg» yoki «l» yoziladi.'],
-  ['Видео товара: в карточке нажмите «Добавить видео», откроется бот. Пришлите ему ролик до 60 секунд и до 50 МБ: бот сам выложит его в канал и привяжет к товару. «Заменить» ставит новое видео, «Убрать видео» удаляет.','Tovar videosi: kartochkada «Video qoʻshish» tugmasini bosing, bot ochiladi. Unga 60 soniyagacha va 50 MB gacha video yuboring: bot uni kanalga oʻzi joylaydi va tovarga bogʻlaydi. «Almashtirish» yangi videoni qoʻyadi, «Videoni olib tashlash» oʻchiradi.']]},
+  ['Видео товара: в карточке нажмите «Добавить видео», откроется бот. Пришлите ему ролик до 60 секунд и до 20 МБ: бот сам выложит его в канал и привяжет к товару. «Заменить» ставит новое видео, «Убрать видео» удаляет.','Tovar videosi: kartochkada «Video qoʻshish» tugmasini bosing, bot ochiladi. Unga 60 soniyagacha va 20 MB gacha video yuboring: bot uni kanalga oʻzi joylaydi va tovarga bogʻlaydi. «Almashtirish» yangi videoni qoʻyadi, «Videoni olib tashlash» oʻchiradi.']]},
  {img:'sel-stock',h:['Остатки','Qoldiq'],cap:['Остатки на складе','Ombor qoldigʻi'],li:[
   ['Учёт включается по каждому товару: введите, сколько единиц на складе. Приложение показывает «На складе», «В заказах» (отложено под принятые заказы) и «Свободно». Покупатель может заказать только свободное.','Hisob har bir tovar uchun alohida yoqiladi: omborda necha birlik borligini kiriting. Ilova «Omborda», «Buyurtmalarda» (qabul qilingan buyurtmalarga ajratilgan) va «Boʻsh»ni koʻrsatadi. Xaridor faqat boʻsh qoldiqni buyurtma qila oladi.'],
   ['Когда приезжает товар, нажмите «+ Приход»; после пересчёта на складе поправьте число кнопкой «Задать остаток». Выдача заказа списывает товар сама, отмена возвращает.','Tovar kelganda «+ Kirim»ni bosing; ombor qayta sanalgach, sonni «Qoldiqni belgilash» tugmasi bilan tuzating. Buyurtma topshirilganda tovar oʻzi hisobdan chiqadi, bekor qilinsa qaytadi.'],
@@ -6726,7 +6761,7 @@ function ownVidHTML(){
   const V=S.own.vid;
   if(!V.ok)return V.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div>':'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   const cur=V.fch===null?V.ch:V.fch;
-  let h='<p class="lead">'+L('Продавец в карточке товара нажимает «Добавить видео» и присылает ролик боту. Бот сам публикует его в канале и привязывает к товару. Покупатели видят кнопку «▶ Видео».','Sotuvchi mahsulot kartasida «Video qoʻshish» tugmasini bosib, videoni botga yuboradi. Bot uni kanalga oʻzi joylaydi va mahsulotga bogʻlaydi. Xaridorlar «▶ Video» tugmasini koʻradi.')+'</p>'
+  let h='<p class="lead">'+L('Продавец в карточке товара нажимает «Добавить видео» и присылает ролик боту. Бот сам публикует его в канале и привязывает к товару. Покупатели видят видео последним слайдом в просмотре фото товара.','Sotuvchi mahsulot kartasida «Video qoʻshish» tugmasini bosib, videoni botga yuboradi. Bot uni kanalga oʻzi joylaydi va mahsulotga bogʻlaydi. Xaridorlar videoni mahsulot rasmlari koʻrinishida oxirgi slayd sifatida koʻradi.')+'</p>'
     +'<div class="card"><h3>'+L('Канал для видео','Videolar kanali')+'</h3><div class="unit">'+L('Публичный канал, где бот должен быть администратором с правами публикации и удаления сообщений.','Bot administrator boʻlishi kerak boʻlgan ochiq kanal: xabar joylash va oʻchirish huquqlari bilan.')+'</div>'
     +'<div class="form"><div class="full"><input type="text" id="o-vch" data-own-vid="fch" maxlength="64" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="sarbon_video" value="'+esc(cur)+'" aria-label="'+esc(L('Канал для видео','Videolar kanali'))+'">'+hintD('Ник канала без @. Пример: sarbon_video.','Kanal nomi @ siz. Masalan: sarbon_video.')+'</div></div>'
     +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="ownvch"'+(V.busy?' disabled':'')+'>'+L('Сохранить канал','Kanalni saqlash')+'</button></div></div>';
@@ -7142,7 +7177,7 @@ document.addEventListener('click',e=>{
   else if(a==='psave')prodSave(t.dataset.id);
   else if(a==='vidadd')vidAdd(t.dataset.id);
   else if(a==='vidrm')vidRemove(t.dataset.id);
-  else if(a==='vidwatch'||a==='pvid'){const q=S.prod.items.find(x=>x.id===t.dataset.id);if(q)openVideo(q.vd)}
+  else if(a==='vidwatch')openViewer(t.dataset.id,null,null,true)
   else if(a==='ovidw')openVideo(t.dataset.vd);
   else if(a==='ovidr')ownVidRemove(t.dataset.did,t.dataset.id);
   else if(a==='ownvch')ownVidChannel();
@@ -7203,6 +7238,9 @@ document.addEventListener('click',e=>{
   else if(a==='pzoom')openViewer(t.dataset.id);
   else if(a==='lbclose')closeViewer();
   else if(a==='lbbg'){if(e.target.tagName!=='IMG')closeViewer()}
+  else if(a==='lbplay')lbPlay(t);
+  else if(a==='lbkeep'){}
+  else if(a==='lbtg'){openVideo(t.dataset.vd)}
   else if(a==='copy'){
     const v=t.dataset.v||'';
     const ok=t.dataset.ok||L('Номер скопирован','Raqam nusxalandi');
