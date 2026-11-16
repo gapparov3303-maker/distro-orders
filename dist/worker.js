@@ -1014,13 +1014,14 @@ function customerText(o, kind, shop) {
    Многие в Узбекистане пользуются Telegram на русском или английском, но говорят по-узбекски. */
 const bilingual = (lang, ru, uz) => lang === 'uz' ? uz + '\n\n' + ru : ru + '\n\n' + uz;
 /* Приветствие (/start): сверху всегда узбекский, ниже русский, язык Telegram у человека не важен.
-   Один текст для всех, в том числе для продавцов (строки «Вы продавец…» нет). Если продавец один или человек пришёл по ссылке на продавца, выбирать из списка нечего: «выберите товары», иначе «выберите продавца и товары». */
+   Один текст для всех, в том числе для продавцов (строки «Вы продавец…» нет). Если продавец один или человек пришёл по ссылке на продавца, выбирать из списка нечего: «выберите товары», иначе «выберите продавца и товары».
+   Когда говорит площадка, она так и называется: «Bu Sarbon platformasi» / «Это платформа Sarbon»; когда от имени продавца, только его название. Про оплату одно общее: у продавцов она разная (при получении, договорная у Базара). */
 function welcomeText(lang, shop) {
   setLang(lang);
   const name = (shop && shop.name) || DEFAULT.shop.name;
   const direct = !!(shop && shop.direct);
-  const uz = 'Assalomu alaykum! Bu ' + name + ' 🛒\n«Buyurtma» tugmasini bosing, ' + (direct ? 'mahsulotlarni' : 'sotuvchi va mahsulotlarni') + ' tanlang va buyurtma bering. Olib ketish yoki yetkazib berish. Toʻlovni buyurtmangizni olganda qilasiz.';
-  const ru = 'Здравствуйте! Это ' + name + ' 🛒\nНажмите «Заказать», выберите ' + (direct ? 'товары' : 'продавца и товары') + ' и оформите заказ. Самовывоз или доставка. Оплата при получении заказа.';
+  const uz = 'Assalomu alaykum! Bu ' + (direct ? name : name + ' platformasi') + ' 🛒\n«Buyurtma» tugmasini bosing, ' + (direct ? 'mahsulotlarni' : 'sotuvchi va mahsulotlarni') + ' tanlang va buyurtma bering. Olib ketish yoki yetkazib berish. Toʻlov usuli sotuvchiga bogʻliq.';
+  const ru = 'Здравствуйте! Это ' + (direct ? name : 'платформа ' + name) + ' 🛒\nНажмите «Заказать», выберите ' + (direct ? 'товары' : 'продавца и товары') + ' и оформите заказ. Самовывоз или доставка. Способ оплаты зависит от продавца.';
   return uz + '\n\n' + ru;
 }
 const openBtn = (origin, text, url) => ({ inline_keyboard: [[{ text, web_app: { url: url || origin + '/' } }]] });
