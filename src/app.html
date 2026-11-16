@@ -92,6 +92,9 @@ html.mn-open,html.mn-open body{overflow:hidden}
 .msub{margin:2px 0 6px 18px;padding-left:8px;border-left:2px solid var(--line)}
 .msub .mi{min-height:40px;padding:8px 10px;font-size:14px;font-weight:500}
 .msub .mi[aria-current="page"]{font-weight:600}
+.msub>.mgrp{font-weight:600}
+.msub>.mgrp .ml{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.msub .msub{margin:0 0 4px 10px}
 }
 
 /* sections, chips */
@@ -943,7 +946,7 @@ div.lgd{cursor:default}
 const $=(s,r)=>(r||document).querySelector(s);
 const MAX_QTY=500,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
-  view:'shops',as:'',shopsCat:'',shopsBz:'',sellerTab:'orders',filter:'active',msub:null,dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
+  view:'shops',as:'',shopsCat:'',shopsBz:'',sellerTab:'orders',filter:'active',msub:null,msub2:null,dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
   cfg:clone(DEFAULT),
   form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:'',loc:null,fp:'in'},
   region:'',showFar:false,regSent:false,regOnly:null,
@@ -1290,10 +1293,14 @@ function menuGroups(){
   if(S.auth&&S.did)shop.push(['profile',L('Профиль','Profil')]);
   if(!as||as==='shop')g.push([L('Покупатель','Xaridor'),shop]);
   const work=[];
-  if(S.admin&&S.did&&(!as||as==='seller')){const sb=sellerSubs();work.push(['seller',L('Продавец','Sotuvchi'),subSum(sb),'',sb,'stab'])}
-  else if(!as||as==='seller'){   // своя компания не открыта: «Продавец» всё равно виден, нажатие на раздел открывает компанию (по группе на каждую)
-    const sl=S.auth&&S.hub.me&&S.hub.me.sells||[];
-    sl.forEach((x,k)=>work.push([k?'seller:'+x.id:'seller',sl.length>1?L('Продавец · ','Sotuvchi · ')+x.name:L('Продавец','Sotuvchi'),0,'',sellerTabs().map(y=>[y[0],y[1],0]),'sof',x.id]));
+  const mine=S.auth&&S.hub.me&&S.hub.me.sells||[];
+  if((!as||as==='seller')&&mine.length>1&&!(S.admin&&S.did&&!mine.some(x=>x.id===S.did))){   // компаний несколько: одна свёрнутая строка «Продавец (N)», внутри компании, у каждой свои разделы; цифры только у открытой компании
+    const cos=mine.map(x=>{const on=!!(S.admin&&S.did===x.id),sb=on?sellerSubs():sellerTabs().map(y=>[y[0],y[1],0]);return [x.id,x.name,on?subSum(sb):0,'',sb]});
+    work.push(['seller',L('Продавец','Sotuvchi')+' ('+mine.length+')',subSum(cos),'',cos,'sco']);
+  }
+  else if(S.admin&&S.did&&(!as||as==='seller')){const sb=sellerSubs();work.push(['seller',L('Продавец','Sotuvchi'),subSum(sb),'',sb,'stab'])}
+  else if(!as||as==='seller'){   // своя компания не открыта: «Продавец» всё равно виден, нажатие на раздел открывает компанию
+    mine.forEach(x=>work.push(['seller',L('Продавец','Sotuvchi'),0,'',sellerTabs().map(y=>[y[0],y[1],0]),'sof',x.id]));
   }
   if(S.courier&&S.did&&(!as||as==='courier')){const cb=crTabs();work.push(['courier',L('Доставка','Yetkazib berish'),subSum(cb),'',cb,'ctab'])}
   if(canBase()&&(!as||as==='seller'||as==='agent'))work.push(['base',L('База','Baza')]);
@@ -1314,6 +1321,8 @@ const subHere=(i,x,cur)=>i[5]==='otab'?cur==='owner'&&S.own.sec===x[0]:i[5]==='c
 const parentHere=(i,cur)=>i[5]==='otab'?cur==='owner'&&i[4].some(x=>x[0]===S.own.sec):cur===i[0];
 /* Меню-шторка (узкий экран): при каждом открытии все группы свёрнуты, раскрывает человек сам (S.msub — номер раскрытой группы, null и '' — все свёрнуты). На широком экране меню лежит сбоку всегда: там, пока человек ничего не нажимал, раскрыта группа, где он сейчас, а у продавца «Продавец», если он не внутри другой группы (доставки, владельца). */
 const menuSubOpen=(i,cur,gs)=>S.msub!==null?S.msub===i[0]:menuWide()&&(parentHere(i,cur)||(i[0]==='seller'&&!(gs||menuGroups()).some(g=>g[1].some(x=>x[4]&&x[0]!=='seller'&&parentHere(x,cur)))));
+/* Вторая ступень: раскрыта ли компания внутри «Продавец (N)»: при открытии шторки свёрнуты все, на широком экране раскрыта компания, где мы сейчас */
+const menuCoOpen=(did,cur)=>S.msub2!==null?S.msub2===did:menuWide()&&cur==='seller'&&S.did===did;
 function renderNav(){
   const cur=S.view==='shops'?'shop':S.view,groups=menuGroups(),multi=groups.filter(gr=>gr[0]).length>1,nav=$('#nav');
   let h='';
@@ -1322,11 +1331,15 @@ function renderNav(){
     else if(!gr[0])h+='<div class="mgsep" role="presentation"></div>';
     gr[1].forEach(i=>{
       if(i[4]){
-        const open=menuSubOpen(i,cur,groups);
+        const open=menuSubOpen(i,cur,groups),chev='<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         h+='<button type="button" class="mi mgrp" data-act="msub" data-v="'+i[0]+'" aria-expanded="'+open+'" aria-controls="msub-'+i[0]+'"'+(parentHere(i,cur)?' data-here="1"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])
-          +'<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'
+          +chev+'</button>'
           +'<div class="msub" id="msub-'+i[0]+'" role="group" aria-label="'+esc(i[1])+'"'+(open?'':' hidden')+'>'
-          +i[4].map(x=>'<button type="button" class="mi" data-act="'+(i[5]||'stab')+'" data-t="'+x[0]+'"'+(i[6]?' data-id="'+esc(i[6])+'"':'')+(subHere(i,x,cur)?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join('')+'</div>';
+          +(i[5]==='sco'?i[4].map(c=>{
+            const here=cur==='seller'&&S.did===c[0],co=menuCoOpen(c[0],cur);   // «Продавец (N)»: компания — вторая ступень со своими разделами
+            return '<button type="button" class="mi mgrp" data-act="msub2" data-v="'+esc(c[0])+'" aria-expanded="'+co+'" aria-controls="msub2-'+esc(c[0])+'"'+(here?' data-here="1"':'')+'><span class="ml">'+esc(c[1])+'</span>'+badgeHTML(c[2],c[3])+chev+'</button>'
+              +'<div class="msub" id="msub2-'+esc(c[0])+'" role="group" aria-label="'+esc(c[1])+'"'+(co?'':' hidden')+'>'
+              +c[4].map(x=>'<button type="button" class="mi" data-act="sof" data-id="'+esc(c[0])+'" data-t="'+x[0]+'"'+(here&&S.sellerTab===x[0]?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join('')+'</div>'}).join(''):i[4].map(x=>'<button type="button" class="mi" data-act="'+(i[5]||'stab')+'" data-t="'+x[0]+'"'+(i[6]?' data-id="'+esc(i[6])+'"':'')+(subHere(i,x,cur)?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join(''))+'</div>';
       }else h+='<button type="button" class="mi" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])+'</button>';
     });
   });
@@ -1382,7 +1395,7 @@ function menuSet(on){
   if(on){
     menuBack=document.activeElement;
     // шторка всегда открывается со свёрнутыми группами, даже если их раскрывали в прошлый раз
-    if(S.msub!==null){S.msub=null;renderNav()}
+    if(S.msub!==null||S.msub2!==null){S.msub=null;S.msub2=null;renderNav()}
     // фокус на текущем пункте; если он спрятан в свёрнутой группе, то на самой группе
     const f=[...$('#nav').querySelectorAll('[aria-current="page"],.mgrp[data-here="1"]')].find(x=>!x.closest('[hidden]'))||$('#nav .mi');
     if(f){f.focus({preventScroll:true});try{f.scrollIntoView({block:'nearest'})}catch(e){}}
@@ -4819,7 +4832,7 @@ const ABOUT_ROLES=[
   ['«Категория» в настройках: выберите, где вас увидят покупатели: Производители, Импортеры, Оптовики, Дистрибьюторы или Базары. Выбор сохраняется сразу. Пока не выбрана, вас показывают в «Дистрибьюторах». Если выбрали «Базары», ниже появится поле «Базар»: выберите свой из списка. Нет своего базара? Выберите другую категорию. Владелец площадки тоже может её поменять.','Sozlamalardagi «Kategoriya»: xaridorlar sizni qayerda koʻrishini tanlang: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar yoki Bozorlar. Tanlov darhol saqlanadi. Tanlanmaguncha sizni «Distribyutorlar» ichida koʻrsatadi. «Bozorlar»ni tanlasangiz, pastda «Bozor» maydoni chiqadi: roʻyxatdan oʻzingiznikini tanlang. Bozoringiz yoʻqmi? Boshqa kategoriyani tanlang. Platforma egasi ham uni oʻzgartirishi mumkin.'],
   ['«Комиссия»: площадка ведёт учёт комиссии с выданных заказов. Накопленная сумма уменьшается, когда вы вписываете оплаченное, нажимаете «Оплатил», а владелец подтверждает.','«Komissiya»: platforma topshirilgan buyurtmalardan komissiya hisobini yuritadi. Toʻplangan summa siz toʻlanganini yozib «Toʻladim»ni bosganingizda va ega tasdiqlaganida kamayadi.'],
   ['Внизу раздела «Настройки» кнопка «Выйти из роли продавца»: например, когда вы только помогали настроить чужой каталог. Перед выходом приложение сохраняет настройки и спрашивает подтверждение.','«Sozlamalar» boʻlimining pastida «Sotuvchi rolidan chiqish» tugmasi bor: masalan, siz faqat birovning katalogini sozlashga yordam bergan boʻlsangiz. Chiqishdan oldin ilova sozlamalarni saqlaydi va tasdiq soʻraydi.'],
-  ['Если вы продавец в нескольких компаниях, в меню ☰ у каждой своя группа «Продавец · название»; раскрывается одна за раз.','Agar siz bir nechta kompaniyada sotuvchi boʻlsangiz, ☰ menyuda har birining oʻz guruhi bor: «Sotuvchi · nomi»; bir vaqtda bittasi ochiladi.'],
+  ['Если вы продавец в нескольких компаниях, в меню ☰ одна строка «Продавец (число компаний)». Нажмите на неё, и раскроются ваши компании; нажмите на компанию, и раскроются её разделы. Раскрыта одна компания за раз.','Agar siz bir nechta kompaniyada sotuvchi boʻlsangiz, ☰ menyuda bitta «Sotuvchi (kompaniyalar soni)» qatori bor. Uni bossangiz, kompaniyalaringiz ochiladi; kompaniyani bossangiz, uning boʻlimlari ochiladi. Bir vaqtda bitta kompaniya ochiq boʻladi.'],
   ['Всё, что бот пишет вам, приходит сразу на двух языках: сверху узбекский, ниже русский. Кнопки подписаны в одну строку на обоих языках.','Bot sizga yozadigan hamma narsa bir vaqtda ikki tilda keladi: tepada oʻzbekcha, pastda ruscha. Tugmalar ikkala tilda bir qatorga yoziladi.'],
   ['В меню ☰ внизу есть «Написать нам»: сообщите об ошибке, предложите новую функцию или напишите о другом. Ваше сообщение получит владелец площадки.','☰ menyuning pastida «Bizga yozish» bor: xato haqida xabar bering, yangi funksiya taklif qiling yoki boshqa narsa haqida yozing. Xabaringizni platforma egasi oladi.']]}
  ]},
@@ -5033,7 +5046,7 @@ function go(v){
   if(v==='base'&&was!=='base')baseResetUI();
   if(v==='feedback'&&was!=='feedback'){S.fb.sent='';S.fb.err=''}
   if(v==='shops'){S.shopsCat='';S.shopsBz=''}
-  S.view=v;S.cc=null;S.cp=null;S.msub=null;setScrollLock();
+  S.view=v;S.cc=null;S.cp=null;S.msub=null;S.msub2=null;setScrollLock();
   render();window.scrollTo(0,0);
   if(v==='mine')loadMine();
   if(v==='debt')loadMyDebt(true);
@@ -5427,6 +5440,7 @@ async function enterShop(did,v,cart){
 }
 /* раздел продавца из меню, когда его компания не открыта: открываем компанию и сразу нужный раздел */
 async function enterSeller(did,tab){
+  S.msub2=null;
   if(!(await openShop(did))){if(!S.did)S.view='shops';render();return false}
   S.shopPlaced=null;S.shopStep='list';
   if(!S.admin){go('shop');return false}
@@ -6168,7 +6182,7 @@ function ownSecInfo(sec){
 function ownOpen(sec){
   S.own.sec=sec;S.own.perr='';
   if(S.view!=='owner')go('owner');
-  else{S.msub=null;renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb()}
+  else{S.msub=null;S.msub2=null;renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb()}
 }
 function ownMadeHTML(){
   const o=S.own;let h='';
@@ -6692,7 +6706,8 @@ document.addEventListener('click',e=>{
   else if(a==='menuclose')menuSet(false);
   else if(a==='viewas')setViewAs(t.dataset.v||'');
   else if(a==='vasw'){S.vam=!S.vam;renderNav();if(S.vam){const l=$('#masl');if(l)try{l.scrollIntoView({block:'nearest'})}catch(e){}}}
-  else if(a==='msub'){const it=menuGroups().reduce((r,g)=>r.concat(g[1]),[]).find(x=>x[0]===t.dataset.v),cur=S.view==='shops'?'shop':S.view;S.msub=it&&menuSubOpen(it,cur)?'':t.dataset.v;renderNav()}
+  else if(a==='msub'){const it=menuGroups().reduce((r,g)=>r.concat(g[1]),[]).find(x=>x[0]===t.dataset.v),cur=S.view==='shops'?'shop':S.view;S.msub=it&&menuSubOpen(it,cur)?'':t.dataset.v;S.msub2=null;renderNav()}
+  else if(a==='msub2'){const cur=S.view==='shops'?'shop':S.view;S.msub2=menuCoOpen(t.dataset.v,cur)?'':t.dataset.v;renderNav()}
   else if(a==='shops')go('shops');
   else if(a==='opencat'){if(SHOP_CATS.includes(t.dataset.k)){S.shopsCat=t.dataset.k;S.shopsBz='';renderShops();window.scrollTo(0,0)}}
   else if(a==='catback'){S.shopsCat='';S.shopsBz='';renderShops();window.scrollTo(0,0)}

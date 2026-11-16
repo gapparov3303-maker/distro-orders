@@ -8388,10 +8388,10 @@ await t('меню: при открытии все группы свёрнуты 
   assert.equal(wideOpen(seller, 'shop', gs), false, 'широкий экран: нажали, свёрнуто');
   // шторка при каждом открытии сбрасывает раскрытое и ставит фокус на видимый пункт
   const ms = html.slice(html.indexOf('function menuSet('), html.indexOf('function menuSet(') + 900);
-  assert.ok(/if\(S\.msub!==null\)\{S\.msub=null;renderNav\(\)\}/.test(ms), 'при открытии шторки раскрытое сбрасывается');
+  assert.ok(/if\(S\.msub!==null\|\|S\.msub2!==null\)\{S\.msub=null;S\.msub2=null;renderNav\(\)\}/.test(ms), 'при открытии шторки раскрытое (и компания внутри «Продавца») сбрасывается');
   assert.ok(/\[aria-current="page"\],\.mgrp\[data-here="1"\]/.test(ms) && /!x\.closest\('\[hidden\]'\)/.test(ms), 'фокус не уходит в спрятанный пункт');
   assert.ok(/\.mgrp\[data-here="1"\]\[aria-expanded="false"\]\{background:var\(--accent-soft\)\}/.test(html), 'свёрнутая группа с текущим экраном подсвечена');
-  assert.ok(/const open=menuSubOpen\(i,cur,groups\);/.test(html), 'меню рисуется по тому же правилу');
+  assert.ok(/const open=menuSubOpen\(i,cur,groups\),chev=/.test(html), 'меню рисуется по тому же правилу');
   assert.ok(/S\.msub=it&&menuSubOpen\(it,cur\)\?'':t\.dataset\.v/.test(html), 'нажатие переключает по тому же правилу');
 });
 
@@ -8407,27 +8407,70 @@ await t('меню: «Продавец» виден и тогда, когда к�
   const mg = html.slice(html.indexOf('function menuGroups()'), html.indexOf('/* сумма оповещений на кнопке'));
   assert.ok(/else if\(!as\|\|as==='seller'\)\{/.test(mg), 'ветка без открытой компании');
   assert.ok(/S\.auth&&S\.hub\.me&&S\.hub\.me\.sells\|\|\[\]/.test(mg), 'компании берутся из ролей человека');
-  assert.ok(/k\?'seller:'\+x\.id:'seller'/.test(mg), 'первая группа «seller», остальные «seller:<id>»');
-  assert.ok(/sl\.length>1\?L\('Продавец · ','Sotuvchi · '\)\+x\.name:L\('Продавец','Sotuvchi'\)/.test(mg), 'при нескольких компаниях в названии группы компания');
-  assert.ok(/'sof',x\.id\]/.test(mg), 'у группы действие sof и номер компании');
+  assert.ok(/mine\.forEach\(x=>work\.push\(\['seller',L\('Продавец','Sotuvchi'\),0,'',sellerTabs\(\)\.map\(y=>\[y\[0\],y\[1\],0\]\),'sof',x\.id\]\)\)/.test(mg), 'одна компания: группа «Продавец» с действием sof и номером компании');
+  assert.ok(!/'seller:'\+x\.id/.test(mg) && !/Продавец · /.test(mg), 'отдельных групп «Продавец · название» больше нет');
   assert.ok(/\(i\[6\]\?' data-id="'\+esc\(i\[6\]\)\+'"':''\)/.test(html), 'подпункт несёт номер компании');
   // нажатие: закрыть меню, открыть компанию и сразу раздел
   assert.ok(/a==='sof'\)\{menuSet\(false\);enterSeller\(t\.dataset\.id,t\.dataset\.t\)\}/.test(html), 'обработчик sof');
   const es = html.slice(html.indexOf('async function enterSeller('), html.indexOf('/* Переключатель «Смотреть как»'));
   assert.ok(/openShop\(did\)/.test(es) && /sellerOpen\(tab\)/.test(es) && /if\(!S\.admin\)\{go\('shop'\)/.test(es), 'открывает компанию, раздел; без прав — каталог');
-  // на широком экране раскрыта по умолчанию только первая группа «Продавец», на узком все свёрнуты
-  const pick = new Function('S', 'menuGroups', 'menuWide', fnLine(html, /^const parentHere=.*$/m, 'parentHere') + '\n' + fnLine(html, /^const menuSubOpen=.*$/m, 'menuSubOpen') + '\nreturn menuSubOpen;');
-  const g1 = ['seller', 'Продавец · A', 0, '', [['orders', 'Заказы']], 'sof', 'a'], g2 = ['seller:b', 'Продавец · B', 0, '', [['orders', 'Заказы']], 'sof', 'b'];
-  const gs = [['Работа', [g1, g2, ['base', 'База']]]];
-  const st = { msub: null, own: { sec: 'dists' }, cr: { tab: 'today' }, sellerTab: 'orders' };
-  const narrow = pick({ ...st }, () => { throw new Error('группы переданы'); }, () => false);
-  assert.equal(narrow(g1, 'shop', gs) || narrow(g2, 'shop', gs), false, 'узкий экран: обе компании свёрнуты');
-  const open = pick(st, () => { throw new Error('группы переданы'); }, () => true);
-  assert.equal(open(g1, 'shop', gs), true, 'первая компания раскрыта');
-  assert.equal(open(g2, 'shop', gs), false, 'вторая свёрнута');
-  st.msub = 'seller:b';
-  assert.equal(open(g2, 'shop', gs), true, 'вторую раскрыли руками');
-  assert.equal(open(g1, 'shop', gs), false, 'первая при этом свернулась');
+});
+
+await t('меню: несколько компаний продавца — одна свёрнутая строка «Продавец (N)», внутри компании, у каждой свои разделы', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('function menuGroups()'), html.indexOf('/* сумма оповещений на кнопке'));
+  const names = ['S', 'viewAs', 'L', 'cartCount', 'activeMine', 'subSum', 'sellerSubs', 'sellerTabs', 'crTabs', 'canBase', 'whWaiting', 'commOn', 'commBadge', 'isOwner', 'ownSecs', 'modN'];
+  const subSum = subs => subs.reduce((a, x) => a + (Number(x[2]) || 0), 0);
+  const tabs = ids => ids.map(i => [i, i]);
+  const mk = (S, as) => new Function(...names, src + '\nreturn menuGroups;')(S, () => as || '', (ru, uz) => ru, () => 0, () => 0, subSum,
+    () => tabs(['orders', 'debts']).map((x, k) => [x[0], x[1], k ? 2 : 3]), () => tabs(['orders', 'debts']), () => [], () => false, () => 0, () => false, () => 0, () => false, () => [], () => 0);
+  const sells = [{ id: 'a', name: 'Альфа' }, { id: 'b', name: 'Бета' }, { id: 'c', name: 'Гамма' }];
+  const work = (S, as) => { S = { mdebt: {}, courier: null, ...S }; const g = mk(S, as)().find(x => x[0] === 'Работа'); return g ? g[1] : []; };
+  // компания не открыта: одна строка, в ней три компании без цифр
+  let w = work({ auth: true, hub: { me: { sells } }, admin: false, did: '' });
+  assert.equal(w.filter(x => x[0] === 'seller').length, 1, 'строка «Продавец» одна');
+  assert.equal(w[0][1], 'Продавец (3)', 'в названии число компаний');
+  assert.equal(w[0][5], 'sco', 'вид группы: компании внутри');
+  assert.deepEqual(w[0][4].map(c => c[0]), ['a', 'b', 'c'], 'внутри три компании по порядку');
+  assert.equal(w[0][4][0][4].length, 2, 'у компании свои разделы');
+  assert.equal(w[0][2], 0, 'цифр нет, пока компания не открыта');
+  // открыта компания «Бета»: цифры только у неё, сумма на общей строке
+  w = work({ auth: true, hub: { me: { sells } }, admin: true, did: 'b' });
+  assert.equal(w[0][1], 'Продавец (3)');
+  assert.deepEqual(w[0][4].map(c => c[2]), [0, 5, 0], 'цифры только у открытой компании');
+  assert.equal(w[0][2], 5, 'на общей строке сумма');
+  // владелец смотрит чужую компанию, которой нет в его ролях: прежняя одна группа «Продавец»
+  w = work({ auth: true, hub: { me: { sells } }, admin: true, did: 'zzz' });
+  assert.equal(w[0][1], 'Продавец'); assert.equal(w[0][5], 'stab');
+  // одна компания: ничего лишнего, как раньше
+  w = work({ auth: true, hub: { me: { sells: sells.slice(0, 1) } }, admin: false, did: '' });
+  assert.equal(w[0][1], 'Продавец'); assert.equal(w[0][5], 'sof'); assert.equal(w[0][6], 'a');
+  w = work({ auth: true, hub: { me: { sells: sells.slice(0, 1) } }, admin: true, did: 'a' });
+  assert.equal(w[0][1], 'Продавец'); assert.equal(w[0][5], 'stab');
+  // «Смотреть как» магазин: продавца в меню нет
+  assert.equal(work({ auth: true, hub: { me: { sells } }, admin: false, did: '' }, 'shop').filter(x => x[0] === 'seller').length, 0);
+  // вторая ступень: при открытии шторки свёрнуты все компании; руками раскрывается одна; на широком экране раскрыта открытая
+  const co = (S, wide) => new Function('S', 'menuWide', html.match(/^const menuCoOpen=.*$/m)[0] + '\nreturn menuCoOpen;')(S, () => wide);
+  const st = { msub2: null, did: 'b' };
+  assert.equal(co(st, false)('b', 'seller'), false, 'узкий экран: свёрнуто, даже если компания открыта');
+  assert.equal(co(st, true)('b', 'seller'), true, 'широкий экран: открытая компания раскрыта');
+  assert.equal(co(st, true)('a', 'seller'), false, 'широкий экран: чужая свёрнута');
+  assert.equal(co(st, true)('b', 'shop'), false, 'широкий экран, но мы не у продавца: свёрнуто');
+  st.msub2 = 'a';
+  assert.equal(co(st, false)('a', 'shop'), true, 'раскрыли «Альфа» руками');
+  assert.equal(co(st, false)('b', 'shop'), false, 'за раз одна компания');
+  assert.equal(co(st, true)('b', 'seller'), false, 'руками выбранная перебивает правило широкого экрана');
+  st.msub2 = '';
+  assert.equal(co(st, true)('b', 'seller'), false, 'нажали на раскрытую: всё свёрнуто');
+  // экран: вторая ступень, разделы ведут в свою компанию, название переносится, а не обрезается
+  const nav = html.slice(html.indexOf('function renderNav()'), html.indexOf('h+=viewAsRowHTML();'));
+  assert.ok(/i\[5\]==='sco'\?i\[4\]\.map\(c=>/.test(nav) && /data-act="msub2" data-v="'\+esc\(c\[0\]\)/.test(nav), 'компании рисуются второй ступенью');
+  assert.ok(/data-act="sof" data-id="'\+esc\(c\[0\]\)\+'" data-t="'\+x\[0\]/.test(nav), 'раздел ведёт в свою компанию');
+  assert.ok(/<span class="ml">'\+esc\(c\[1\]\)/.test(nav), 'название компании экранируется');
+  assert.ok(/\.msub>\.mgrp \.ml\{white-space:normal/.test(html), 'длинное название компании переносится на вторую строку');
+  assert.ok(/a==='msub2'\)\{const cur=S\.view==='shops'\?'shop':S\.view;S\.msub2=menuCoOpen\(t\.dataset\.v,cur\)\?'':t\.dataset\.v;renderNav\(\)\}/.test(html), 'нажатие на компанию раскрывает/сворачивает её');
+  assert.ok(/S\.msub=it&&menuSubOpen\(it,cur\)\?'':t\.dataset\.v;S\.msub2=null;/.test(html), 'закрыли «Продавец» — компания внутри тоже свернулась');
+  assert.ok(/async function enterSeller\(did,tab\)\{\s*S\.msub2=null;/.test(html), 'после выбора раздела раскрытая компания сбрасывается');
 });
 
 await t('выход из роли продавца: кнопка внизу настроек, перед выходом сохранение и вопрос, после — главный экран', async () => {
