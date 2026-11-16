@@ -179,6 +179,8 @@ const VIDEO_MAX_SEC = 60;                   // длиннее — бот не п
 const VIDEO_MAX_BYTES = 20 * 1024 * 1024;   // тяжелее — тоже: бот может скачать у Telegram файл не больше 20 МБ, а приложению видео отдаёт наш сервер
 const VIDEO_WAIT_MS = 15 * 60 * 1000;       // сколько бот ждёт видео после нажатия «Добавить видео»
 const VIDEO_DAY_MAX = 30;                   // видео от одного человека в сутки
+const TG_MINIAPP = 'app';                   // короткое имя Mini App в BotFather (t.me/<бот>/app): по нему кнопка под видео в канале открывает приложение сразу на товаре
+const miniLink = (bot, did, pid) => 'https://t.me/' + bot + '/' + TG_MINIAPP + '?startapp=p_' + did + '_' + pid;
 const cleanVd = v => typeof v === 'string' && /^[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(v) ? v : '';
 const cleanVch = v => { const t = String(v || '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').replace(/[/?#].*$/, ''); return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(t) ? t : ''; };
 /* Как проиграть видео в приложении: номера файлов в Telegram (видео, кадр-заставка) и тип. Это знает только сервер, покупателю и клиенту не отдаётся. */
@@ -6797,7 +6799,12 @@ export class Hub {
     const used = q && q.d === day ? Number(q.n) || 0 : 0;
     if (used >= VIDEO_DAY_MAX) { await say('На сегодня хватит: можно до ' + VIDEO_DAY_MAX + ' видео в сутки. Попробуйте завтра.', 'Bugunga yetadi: sutkada ' + VIDEO_DAY_MAX + ' tagacha video mumkin. Ertaga urinib koʻring.'); return; }
     const ch = await this.vch();
-    const res = await this.tg('copyMessage', { chat_id: '@' + ch, from_chat_id: chat, message_id: msg.message_id, caption: cleanStr(info.name + ' · ' + rec.name, 200) });
+    /* Под постом кнопка «Открыть в приложении»: ссылка на Mini App открывает каталог продавца с этим товаром (в канале разрешены только кнопки-ссылки) */
+    const bot = await this.botName();
+    const cp = { chat_id: '@' + ch, from_chat_id: chat, message_id: msg.message_id, caption: cleanStr(info.name + ' · ' + rec.name, 200) };
+    if (bot && validId(pend.pid)) cp.reply_markup = { inline_keyboard: [[{ text: btn2('🛒 Ilovada ochish', '🛒 Открыть в приложении'), url: miniLink(bot, pend.did, pend.pid) }]] };
+    let res = await this.tg('copyMessage', cp);
+    if (!res.ok && cp.reply_markup && /button|reply.?markup/i.test(String(res.description || ''))) { delete cp.reply_markup; res = await this.tg('copyMessage', cp); }   // кнопку не приняли — видео всё равно публикуем
     if (!res.ok || !res.result || !Number.isInteger(res.result.message_id)) {
       console.error('video publish failed', ch, res && res.description);
       await say('Не получилось опубликовать видео в канале. Мы сообщили владельцу площадки, попробуйте позже.', 'Videoni kanalga joylab boʻlmadi. Platforma egasiga xabar berdik, keyinroq urinib koʻring.');
