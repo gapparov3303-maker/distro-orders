@@ -8033,7 +8033,7 @@ await t('категории дистрибьюторов: пять катего�
   const rs = fn('renderShops');
   assert.ok(/out\+=ck\?catListHTML\(ck\):catsHTML\(\)/.test(rs), 'без выбранной категории показываются категории, с выбранной — её список');
   assert.ok(/data-act="catback"/.test(rs) && /L\('Категории','Kategoriyalar'\)/.test(rs), 'в категории есть «← Категории»');
-  assert.ok(/!ck&&sells\.length/.test(rs) && /!ck&&dels\.length/.test(rs), 'кнопки ролей только на первом экране');
+  assert.ok(!/sells\.length/.test(rs) && /!ck&&dels\.length/.test(rs), 'кнопки доставщика только на первом экране; кнопок продавца нет, вход продавца в меню ☰');
   const cs = fn('catsHTML');
   assert.ok(/SHOP_CATS\.map/.test(cs) && /data-act="opencat"/.test(cs) && /Пока пусто/.test(cs) && /' em'/.test(cs), 'пять карточек, пустые помечены');
   assert.ok(/shopCatOf\(r\)===k/.test(html), 'счёт и список по shopCatOf: без категории — «Дистрибьюторы»');
@@ -8471,6 +8471,15 @@ await t('меню: несколько компаний продавца — од
   assert.ok(/a==='msub2'\)\{const cur=S\.view==='shops'\?'shop':S\.view;S\.msub2=menuCoOpen\(t\.dataset\.v,cur\)\?'':t\.dataset\.v;renderNav\(\)\}/.test(html), 'нажатие на компанию раскрывает/сворачивает её');
   assert.ok(/S\.msub=it&&menuSubOpen\(it,cur\)\?'':t\.dataset\.v;S\.msub2=null;/.test(html), 'закрыли «Продавец» — компания внутри тоже свернулась');
   assert.ok(/async function enterSeller\(did,tab\)\{\s*S\.msub2=null;/.test(html), 'после выбора раздела раскрытая компания сбрасывается');
+});
+
+await t('главный экран: кнопок «Панель продавца: …» нет (вход продавца — в меню ☰), кнопки доставщика остались', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  assert.ok(!/sellerof/.test(html) && !/Панель продавца/.test(html) && !/Sotuvchi paneli/.test(html), 'кнопок входа продавца на главном экране нет');
+  assert.ok(/data-act="courierof"/.test(html) && /a==='courierof'/.test(html), 'у доставщика вход с главного экрана остался: меню показывает его только при открытой компании');
+  // продавца без открытой компании меню по-прежнему ведёт в его компанию
+  const mg = html.slice(html.indexOf('function menuGroups()'), html.indexOf('/* сумма оповещений на кнопке'));
+  assert.ok(/mine\.forEach\(x=>work\.push\(\['seller'/.test(mg) && /'sco'/.test(mg), 'вход продавца есть в меню ☰');
 });
 
 await t('выход из роли продавца: кнопка внизу настроек, перед выходом сохранение и вопрос, после — главный экран', async () => {
