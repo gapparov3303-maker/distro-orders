@@ -143,7 +143,8 @@ function sanitizeCfg(d) {
   const s = out.shop;
   s.name = cleanStr(s.name, 60) || DEFAULT.shop.name;
   s.legal = cleanStr(s.legal, 80);   // юридическое название: показывается под названием в каталоге
-  s.info = cleanStr(s.info, 100);    // строка для информации (адрес): под названием в списке продавцов
+  s.info = cleanStr(s.info, 100);    // строка для информации (адрес) по-русски: под названием в списке продавцов
+  s.infoUz = cleanStr(s.infoUz, 100);   // то же по-узбекски; если один язык пуст, показывается другой
   s.logo = cleanLogoV(s.logo);       // версия фото компании: меняется только загрузкой фото, не формой настроек
   s.phone = cleanStr(s.phone, 30);
   s.telegram = cleanStr(s.telegram, 40).replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '');
@@ -2365,7 +2366,7 @@ export class Shop {
     const ok = prod.items.filter(isApproved);   // в списке продавцов считаются только одобренные товары
     const cats = prod.cats.filter(c => ok.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
     return {
-      name: cfg.shop.name || DEFAULT.shop.name, legal: cleanStr(cfg.shop.legal, 80), info: cleanStr(cfg.shop.info, 100), logo: cleanLogoV(cfg.shop.logo), items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
+      name: cfg.shop.name || DEFAULT.shop.name, legal: cleanStr(cfg.shop.legal, 80), info: cleanStr(cfg.shop.info, 100), infoUz: cleanStr(cfg.shop.infoUz, 100), logo: cleanLogoV(cfg.shop.logo), items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
       delivery: cfg.shop.delivery !== false, minOrder: Number(cfg.shop.minOrder) || 0,
       regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home), cat: cleanCat(cfg.shop.category), bz: cleanBz(cfg.shop.bazaar)
     };
@@ -4702,12 +4703,12 @@ export class Shop {
 
 /* ---------- Площадка: реестр дистрибьюторов, их коды, вход продавцов, заказы клиента по всем компаниям ---------- */
 const newRec = (id, name, hash, sum) => ({
-  id, name: cleanStr(name, 60) || DEFAULT.shop.name, legal: cleanStr(sum && sum.legal, 80), info: cleanStr(sum && sum.info, 100), logo: cleanLogoV(sum && sum.logo), on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
+  id, name: cleanStr(name, 60) || DEFAULT.shop.name, legal: cleanStr(sum && sum.legal, 80), info: cleanStr(sum && sum.info, 100), infoUz: cleanStr(sum && sum.infoUz, 100), logo: cleanLogoV(sum && sum.logo), on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
   items: sum && Number(sum.items) || 0, wait: sum && Number(sum.wait) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
   regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home), cat: cleanCat(sum && sum.cat), bz: cleanCat(sum && sum.cat) === 'bazaar' ? cleanBz(sum && sum.bz) : ''
 });
 /* Что видит клиент в списке. Код и служебные поля не уходят. */
-const pubRec = r => ({ id: r.id, name: r.name, legal: cleanStr(r.legal, 80), info: cleanStr(r.info, 100), logo: cleanLogoV(r.logo), items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat), bz: cleanCat(r.cat) === 'bazaar' ? cleanBz(r.bz) : '' });
+const pubRec = r => ({ id: r.id, name: r.name, legal: cleanStr(r.legal, 80), info: cleanStr(r.info, 100), infoUz: cleanStr(r.infoUz, 100), logo: cleanLogoV(r.logo), items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat), bz: cleanCat(r.cat) === 'bazaar' ? cleanBz(r.bz) : '' });
 const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
@@ -4917,6 +4918,7 @@ export class Hub {
       rec.name = cleanStr(s.name, 60) || rec.name;
       rec.legal = cleanStr(s.legal, 80);
       rec.info = cleanStr(s.info, 100);
+      rec.infoUz = cleanStr(s.infoUz, 100);
       rec.logo = cleanLogoV(s.logo);
       rec.items = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.items) || 0)));
       rec.wait = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.wait) || 0)));
