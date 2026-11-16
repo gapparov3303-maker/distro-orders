@@ -40,7 +40,7 @@ class MockStorage {
     return Array.isArray(k) ? n : n > 0;
   }
 }
-let tgLog = [], tgFail = false, tgDocFail = false, tgDocDelay = 0, msgSeq = 1000;
+let tgLog = [], tgFail = false, tgDocFail = false, tgDocDelay = 0, msgSeq = 1000, tgCopyFail = '';
 globalThis.fetch = async (url, init) => {
   const u = String(url);
   assert.ok(u.startsWith('https://api.telegram.org/bot' + TOKEN + '/'), 'запрос ушёл не в Telegram: ' + u);
@@ -58,7 +58,9 @@ globalThis.fetch = async (url, init) => {
   tgLog.push({ method, payload, file });
   if (tgDocDelay && method === 'sendDocument') await new Promise(r => setTimeout(r, tgDocDelay));
   if (tgDocFail && method === 'sendDocument') return new Response(JSON.stringify({ ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' }), { status: 403, headers: { 'content-type': 'application/json' } });
+  if (tgCopyFail && method === 'copyMessage') return new Response(JSON.stringify({ ok: false, error_code: 400, description: tgCopyFail }), { status: 400, headers: { 'content-type': 'application/json' } });
   const res = { ok: true, result: true };
+  if (method === 'copyMessage') res.result = { message_id: ++msgSeq };
   if (method === 'sendMessage') res.result = { message_id: ++msgSeq, chat: { id: payload.chat_id } };
   if (method === 'sendDocument') res.result = { message_id: ++msgSeq, chat: { id: Number(payload.chat_id) } };
   if (method === 'getMe') res.result = { id: 123456, username: 'distro_test_bot' };
@@ -10199,6 +10201,234 @@ await t('карточка товара: большая кнопка «Сохра
   const run2 = new Function('S', 'L', 'esc', 'paintSave', 'document', 'flushSave', 'setTimeout', 'clearTimeout', src + '\nlet psvT=null;\nreturn prodSave;');
   await run2(w.S, w.env.L, esc, w.env.paintSave, w.env.document, w.env.flushSave, w.env.setTimeout, w.env.clearTimeout)('p1');
   assert.equal(w.S.psv, null, 'удалённый товар не оставляет отметку');
+});
+
+await t('видео товара: продавец жмёт «Добавить видео», бот публикует ролик в канале и привязывает к товару; покупатель видит ссылку, клиент подделать её не может', async () => {
+  const { sid } = await shopWorld('Видео Трейд');
+  const vmsg = (from, over, mid) => send({ update_id: 9000 + (mid || 1), message: Object.assign({ message_id: mid || 500, from, chat: { id: from.id, type: 'private' }, video: { file_id: 'F', duration: 20, file_size: 5e6 } }, over || {}) });
+  const seller = (init, did) => callS(did || sid, 'POST', '/api/admin/video/link', { init: init || iD(), body: { id: 'p1' } });
+  // ссылка на бота: только у продавца, только для существующего товара
+  const lk = await seller();
+  assert.equal(lk.status, 200);
+  const link = (await jsonOf(lk)).url;
+  assert.equal(link, 'https://t.me/distro_test_bot?start=v_' + sid + '_p1');
+  assert.equal((await callS(sid, 'POST', '/api/admin/video/link', { init: iD(), body: { id: 'zz' } })).status, 404, 'нет такого товара');
+  assert.equal((await seller(iA())).status, 403, 'покупатель не получает ссылку');
+  // видео без нажатия «Добавить видео»: бот просит сначала открыть товар
+  tgLog = [];
+  await vmsg(DIL);
+  assert.ok(lastTg('sendMessage', p => /Добавить видео/.test(p.text) && /Video qoʻshish/.test(p.text)), 'нет ожидающего видео — подсказка на двух языках');
+  assert.equal(tgAll('copyMessage').length, 0);
+  // чужой человек не может привязать видео к товару продавца
+  tgLog = [];
+  await startMsg(JAS2, 'v_' + sid + '_p1');
+  assert.ok(lastTg('sendMessage', p => /не найден|Mahsulot topilmadi/.test(p.text)) && !lastTg('sendMessage', p => /Отправьте сюда видео/.test(p.text)));
+  await vmsg(JAS2, {}, 501);
+  assert.equal(tgAll('copyMessage').length, 0, 'не продавец — ничего не публикуется');
+  // продавец: ссылка → бот ждёт видео
+  tgLog = [];
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  const ask = lastTg('sendMessage', p => /Отправьте сюда видео/.test(p.text));
+  assert.ok(ask && /Масло подсолнечное/.test(ask.payload.text) && /Kungaboqar yogʻi/.test(ask.payload.text), 'бот называет товар на обоих языках');
+  assert.ok(/60/.test(ask.payload.text) && /50/.test(ask.payload.text) && /@sarbon_video/.test(ask.payload.text), 'лимиты и канал названы');
+  // слишком длинное и слишком тяжёлое не публикуются, ожидание сохраняется
+  tgLog = [];
+  await vmsg(DIL, { video: { duration: 61, file_size: 1e6 } }, 502);
+  assert.ok(lastTg('sendMessage', p => /длиннее 60/.test(p.text) && /uzun/.test(p.text)));
+  await vmsg(DIL, { video: { duration: 10, file_size: 60 * 1024 * 1024 } }, 503);
+  assert.ok(lastTg('sendMessage', p => /больше 50 МБ/.test(p.text) && /50 MB/.test(p.text)));
+  assert.equal(tgAll('copyMessage').length, 0);
+  // нормальное видео: копия в канал с подписью «товар · продавец», привязка, ответ с кнопкой «Открыть»
+  tgLog = [];
+  await vmsg(DIL, {}, 504);
+  const cp = lastTg('copyMessage');
+  assert.ok(cp && cp.payload.chat_id === '@sarbon_video' && cp.payload.from_chat_id === DIL.id && cp.payload.message_id === 504);
+  assert.equal(cp.payload.caption, 'Масло подсолнечное · Видео Трейд');
+  const vd1 = 'sarbon_video/' + (msgSeq);
+  let cfg = await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }));
+  const it1 = cfg.prod.items.find(i => i.id === 'p1');
+  assert.ok(/^sarbon_video\/\d+$/.test(it1.vd), 'видео привязано к товару: ' + it1.vd);
+  const done = lastTg('sendMessage', p => /Готово: видео опубликовано/.test(p.text));
+  assert.ok(done && /Tayyor/.test(done.payload.text) && done.payload.reply_markup.inline_keyboard[0][0].web_app.url.includes('v=seller'));
+  // покупатель видит видео у одобренного товара, у остальных нет
+  cfg = await jsonOf(await callS(sid, 'GET', '/api/config', { init: iA() }));
+  assert.equal(cfg.prod.items.find(i => i.id === 'p1').vd, it1.vd);
+  assert.ok(!cfg.prod.items.filter(i => i.id !== 'p1').some(i => i.vd));
+  // клиент не может записать видео сам: ни новое, ни чужое, ни выдуманное
+  const put = async mut => { const c = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod; mut(c); const r = await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c } }); assert.equal(r.status, 200); return (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod; };
+  let pr = await put(c => { c.items.find(i => i.id === 'p2').vd = 'evil_channel/1'; c.items.find(i => i.id === 'p1').vd = 'evil_channel/2'; });
+  assert.ok(!pr.items.find(i => i.id === 'p2').vd, 'выдуманное видео не принято');
+  assert.equal(pr.items.find(i => i.id === 'p1').vd, it1.vd, 'настоящее не подменить');
+  pr = await put(c => { delete c.items.find(i => i.id === 'p1').vd; });
+  assert.equal(pr.items.find(i => i.id === 'p1').vd, it1.vd, 'и убрать правкой каталога нельзя, только кнопкой');
+  // замена: новый пост публикуется, старый удаляется из канала
+  tgLog = [];
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  await vmsg(DIL, {}, 505);
+  cfg = await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }));
+  const it2 = cfg.prod.items.find(i => i.id === 'p1');
+  assert.ok(it2.vd !== it1.vd && /^sarbon_video\/\d+$/.test(it2.vd));
+  assert.ok(lastTg('deleteMessage', p => p.chat_id === '@sarbon_video' && p.message_id === Number(it1.vd.split('/')[1])), 'старый пост удалён из канала');
+  // файл-видео (документом) тоже годится, обычный документ — нет
+  tgLog = [];
+  await startMsg(DIL, 'v_' + sid + '_p2');
+  await vmsg(DIL, { video: undefined, document: { mime_type: 'application/pdf', file_size: 10 } }, 506);
+  assert.equal(tgAll('copyMessage').length, 0, 'документ не видео');
+  await vmsg(DIL, { video: undefined, document: { mime_type: 'video/mp4', file_size: 10 } }, 507);
+  assert.equal(tgAll('copyMessage').length, 1);
+  // продавец убирает видео: пост удаляется, кнопка у покупателей пропадает
+  tgLog = [];
+  const rm = await callS(sid, 'POST', '/api/admin/video/remove', { init: iD(), body: { id: 'p1' } });
+  assert.equal(rm.status, 200);
+  assert.ok(lastTg('deleteMessage', p => p.chat_id === '@sarbon_video' && p.message_id === Number(it2.vd.split('/')[1])));
+  cfg = await jsonOf(await callS(sid, 'GET', '/api/config', { init: iA() }));
+  assert.ok(!cfg.prod.items.find(i => i.id === 'p1').vd);
+  assert.equal((await callS(sid, 'POST', '/api/admin/video/remove', { init: iA(), body: { id: 'p1' } })).status, 403);
+  // удалили товар из каталога — его видео уходит из канала
+  tgLog = [];
+  const c2 = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod;
+  const vdP2 = c2.items.find(i => i.id === 'p2').vd;
+  assert.ok(vdP2);
+  c2.items = c2.items.filter(i => i.id !== 'p2');
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c2 } })).status, 200);
+  assert.ok(lastTg('deleteMessage', p => p.message_id === Number(vdP2.split('/')[1])), 'видео удалённого товара убрано из канала');
+});
+
+await t('видео товара: ошибка канала сообщает владельцу, лимит 30 в сутки, ожидание 15 минут, владелец меняет канал и убирает любое видео', async () => {
+  const { sid } = await shopWorld('Видео Два');
+  const vmsg = (from, mid) => send({ update_id: 9500 + mid, message: { message_id: mid, from, chat: { id: from.id, type: 'private' }, video: { file_id: 'F', duration: 5, file_size: 1e6 } } });
+  // бот не админ канала: продавцу понятный ответ, владелец получает подсказку, к товару ничего не привязано
+  tgCopyFail = 'Bad Request: chat not found';
+  tgLog = [];
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  await vmsg(DIL, 600);
+  tgCopyFail = '';
+  assert.ok(lastTg('sendMessage', p => p.chat_id === DIL.id && /Не получилось опубликовать/.test(p.text)));
+  assert.ok(lastTg('sendMessage', p => p.chat_id === SELLER.id && /администратором канала/.test(p.text) && /@sarbon_video/.test(p.text)), 'владелец знает, что чинить');
+  let cfg = await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }));
+  assert.ok(!cfg.prod.items.some(i => i.vd));
+  // ожидание протухает через 15 минут
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  const st = await W.hubStorage.get('vp:' + DIL.id);
+  assert.ok(st && st.pid === 'p1');
+  await W.hubStorage.put('vp:' + DIL.id, Object.assign({}, st, { t: Date.now() - 16 * 60 * 1000 }));
+  tgLog = [];
+  await vmsg(DIL, 601);
+  assert.equal(tgAll('copyMessage').length, 0, 'ожидание старше 15 минут не действует');
+  // лимит 30 видео в сутки на человека
+  const day = new Date().toISOString().slice(0, 10);
+  await W.hubStorage.put('vq:' + DIL.id, { d: day, n: 30 });
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  tgLog = [];
+  await vmsg(DIL, 602);
+  assert.equal(tgAll('copyMessage').length, 0);
+  assert.ok(lastTg('sendMessage', p => /до 30 видео в сутки/.test(p.text)));
+  await W.hubStorage.put('vq:' + DIL.id, { d: '2000-01-01', n: 30 });   // вчерашний счётчик не мешает
+  await vmsg(DIL, 603);
+  assert.equal(tgAll('copyMessage').length, 1);
+  assert.equal((await W.hubStorage.get('vq:' + DIL.id)).n, 1);
+  // владелец: канал и список всех видео
+  let v = await jsonOf(await call('GET', '/api/hub/admin/video', { init: iS() }));
+  assert.equal(v.ch, 'sarbon_video'); assert.equal(v.bot, 'distro_test_bot');
+  assert.equal(v.items.length, 1);
+  assert.deepEqual(Object.keys(v.items[0]).sort(), ['did', 'id', 'name', 'shop', 'uz', 'vd']);
+  assert.equal(v.items[0].shop, 'Видео Два'); assert.equal(v.items[0].did, sid);
+  assert.equal((await call('GET', '/api/hub/admin/video', { init: iD() })).status, 403, 'продавцу список всех видео не показывают');
+  assert.equal((await call('GET', '/api/hub/admin/video', { init: iA() })).status, 403);
+  for (const bad of ['', 'ab', 'a b c', '../x', '1abcdef', 'https://example.com/x']) assert.equal((await call('PUT', '/api/hub/admin/video', { init: iS(), body: { ch: bad } })).status, 400, 'канал «' + bad + '»');
+  const put = await call('PUT', '/api/hub/admin/video', { init: iS(), body: { ch: 'https://t.me/@Sarbon_Videolar/12' } });
+  assert.equal(put.status, 200); assert.equal((await jsonOf(put)).ch, 'Sarbon_Videolar');
+  // новое видео идёт уже в новый канал
+  tgLog = [];
+  await startMsg(DIL, 'v_' + sid + '_p3');
+  await vmsg(DIL, 604);
+  assert.equal(lastTg('copyMessage').payload.chat_id, '@Sarbon_Videolar');
+  v = await jsonOf(await call('GET', '/api/hub/admin/video', { init: iS() }));
+  assert.equal(v.items.length, 2);
+  const old = v.items.find(x => x.id === 'p1');
+  assert.ok(old.vd.startsWith('sarbon_video/'), 'старое видео помнит свой канал');
+  // владелец убирает любое: пост удаляется из того канала, где лежит
+  tgLog = [];
+  const rm = await call('POST', '/api/hub/admin/video/remove', { init: iS(), body: { did: sid, id: 'p1' } });
+  assert.equal(rm.status, 200); assert.equal((await jsonOf(rm)).items.length, 1);
+  assert.ok(lastTg('deleteMessage', p => p.chat_id === '@sarbon_video' && p.message_id === Number(old.vd.split('/')[1])));
+  tgLog = [];
+  const rm2 = await call('POST', '/api/hub/admin/video/remove', { init: iS(), body: { did: sid, id: 'p1' } });
+  assert.equal(rm2.status, 200, 'второй раз ничего не ломает: просто обновлённый список'); assert.equal((await jsonOf(rm2)).items.length, 1);
+  assert.equal(tgAll('deleteMessage').length, 0, 'второй раз ничего не удаляется');
+  assert.equal((await call('POST', '/api/hub/admin/video/remove', { init: iS(), body: { did: sid, id: 'zz' } })).status, 404, 'нет такого товара');
+  assert.equal((await call('POST', '/api/hub/admin/video/remove', { init: iS(), body: { did: 'nope', id: 'p1' } })).status, 400);
+  assert.equal((await call('POST', '/api/hub/admin/video/remove', { init: iD(), body: { did: sid, id: 'p3' } })).status, 403, 'продавец не убирает через раздел владельца');
+});
+
+await t('видео товара на экране: блок в карточке продавца, кнопка у покупателя, раздел «Видео» у владельца; ссылки только на настоящие посты', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('/* ---------- видео товара'), html.indexOf('function modBanInner('));
+  assert.ok(src.length > 800, 'функции найдены');
+  const body = html.slice(html.indexOf('function prodBody('), html.indexOf('/* ---------- прайс из Excel ---------- */'));
+  assert.equal((body.match(/vidHTML\(p\)/g) || []).length, 1, 'один блок в карточке');
+  assert.ok(body.indexOf('vidHTML(p)') < body.indexOf('psvHTML(p)'), 'видео выше кнопки «Сохранить»');
+  const card = html.slice(html.indexOf('function productCard('), html.indexOf('/* Поиск по названию, описанию'));
+  assert.ok(/vdOk\(p\.vd\)\?'<button[^']*data-act="pvid"/.test(card), 'у покупателя кнопка только при настоящем видео');
+  for (const a of ['vidadd', 'vidrm', 'vidwatch', 'pvid', 'ovidw', 'ovidr', 'ownvch']) assert.ok(html.includes("a==='" + a + "'"), 'нажатие «' + a + '» обработано');
+  assert.ok(/\['video',L\('Видео','Video'\)/.test(html), 'пункт «Видео» в меню владельца');
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const mk = (uz, over, api) => {
+    const log = [], opened = [];
+    const S = Object.assign({ prod: { items: [{ id: 'p1' }, { id: 'p2', vd: 'sarbon_video/17' }] }, vid: null, saveState: '', auth: true, admin: true, dirtyP: false, dirty: false, tg: { openTelegramLink: u => opened.push(u) } }, over || {});
+    const env = { S, L: (ru, u) => uz ? u : ru, esc, hintD: (ru, u) => '<div class="hint">' + (uz ? u : ru) + '</div>', toast: m => log.push('toast:' + m), document: { getElementById: id => ({ set outerHTML(v) { log.push(v) } }) },
+      flushSave: async () => { log.push('flush'); }, api: api || (async (m, p, b) => { log.push(m + ' ' + p + ' ' + JSON.stringify(b)); return { ok: true, data: { url: 'https://t.me/sarbon_optom_bot?start=v_abc_' + b.id } }; }),
+      setTimeout: () => 1, clearTimeout: () => {}, window: { open: u => opened.push('win:' + u) } };
+    const run = new Function('S', 'L', 'esc', 'hintD', 'toast', 'document', 'flushSave', 'api', 'setTimeout', 'clearTimeout', 'window', src + '\nlet psvT=null;\nreturn {vidHTML,vidAdd,vidRemove,vdOk,openVideo};');
+    return { S, log, opened, f: run(S, env.L, esc, env.hintD, env.toast, env.document, env.flushSave, env.api, env.setTimeout, env.clearTimeout, env.window) };
+  };
+  let w = mk(false);
+  // без видео — одна кнопка «Добавить видео»; с видео — «Смотреть», «Заменить», «Убрать видео»
+  let h = w.f.vidHTML({ id: 'p1' });
+  assert.ok(/\+ Добавить видео<\/button>/.test(h) && !/vidwatch|vidrm/.test(h) && /Покажите товар в деле/.test(h));
+  h = w.f.vidHTML({ id: 'p2', vd: 'sarbon_video/17' });
+  assert.ok(/data-act="vidwatch"/.test(h) && />Заменить<\/button>/.test(h) && />Убрать видео<\/button>/.test(h) && /«▶ Видео»/.test(h));
+  assert.ok(!/vidwatch/.test(w.f.vidHTML({ id: 'p2', vd: 'javascript:alert(1)' })), 'подделанная ссылка не даёт кнопку');
+  h = mk(true).f.vidHTML({ id: 'p2', vd: 'sarbon_video/17' });
+  assert.ok(/Koʻrish<\/button>/.test(h) && />Almashtirish</.test(h) && />Videoni olib tashlash</.test(h));
+  assert.ok(/\+ Video qoʻshish/.test(mk(true).f.vidHTML({ id: 'p1' })));
+  // проверка ссылки и открытие
+  for (const ok of ['sarbon_video/1', 'Sarbon_Videolar/123456']) assert.ok(w.f.vdOk(ok), ok);
+  for (const bad of ['', 'x/1', 'sarbon_video', 'sarbon_video/', 'sarbon_video/abc', '../a/1', 'a b c d e/1', 'sarbon_video/1?x=1', 'https://t.me/sarbon_video/1', null, 5]) assert.ok(!w.f.vdOk(bad), String(bad));
+  w.f.openVideo('sarbon_video/17'); w.f.openVideo('evil/../x'); assert.deepEqual(w.opened, ['https://t.me/sarbon_video/17']);
+  // «Добавить видео»: сначала запись товара, потом ссылка бота, бот открывается
+  w = mk(false); await w.f.vidAdd('p1');
+  assert.ok(/flush/.test(w.log.join('|')) && /POST \/api\/admin\/video\/link \{"id":"p1"\}/.test(w.log.join('|')));
+  assert.deepEqual(w.opened, ['https://t.me/sarbon_optom_bot?start=v_abc_p1']); assert.equal(w.S.vid, null);
+  assert.ok(w.log.join('|').indexOf('flush') < w.log.join('|').indexOf('POST'), 'товар записан раньше, чем бот узнаёт про него');
+  // ошибка сервера и чужая ссылка: бот не открывается, красная подсказка
+  w = mk(false, {}, async () => ({ ok: false, status: 404, data: null })); await w.f.vidAdd('p1');
+  assert.equal(w.opened.length, 0); assert.equal(w.S.vid.st, 'error'); assert.ok(/class="err"/.test(w.log[w.log.length - 1]));
+  w = mk(false, {}, async () => ({ ok: true, data: { url: 'https://evil.example/?start=v_x' } })); await w.f.vidAdd('p1');
+  assert.equal(w.opened.length, 0); assert.equal(w.S.vid.st, 'error');
+  // «Убрать видео»: первое нажатие спрашивает, второе убирает
+  w = mk(false); await w.f.vidRemove('p2');
+  assert.equal(w.S.vid.st, 'ask'); assert.ok(/Точно убрать\?/.test(w.log[w.log.length - 1])); assert.ok(!/POST/.test(w.log.join('|')));
+  await w.f.vidRemove('p2');
+  assert.ok(/POST \/api\/admin\/video\/remove \{"id":"p2"\}/.test(w.log.join('|')));
+  assert.ok(!w.S.prod.items.find(i => i.id === 'p2').vd && w.S.vid === null, 'видео убрано и в приложении');
+  w = mk(false); await w.f.vidRemove('p1'); assert.equal(w.log.length, 0, 'нет видео — нечего убирать');
+  // обновление каталога перерисовывает только блок видео; у покупателя кнопка уходит вместе с видео
+  const lc = html.slice(html.indexOf('async function loadCfg('), html.indexOf('function applyTheme('));
+  assert.ok(/oldVd/.test(lc) && /paintVid\(p\.id\)/.test(lc) && /S\.sellerTab==='prod'/.test(lc), 'бот привязал видео — блок обновился сам');
+  // раздел владельца: канал и список с «Смотреть» и «Убрать»
+  const osrc = html.slice(html.indexOf('async function loadOwnerVid('), html.indexOf('function ownWhoHTML('));
+  const draw = (uz, vid) => new Function('S', 'L', 'esc', 'hintD', 'nm', 'vdOk', 'isOwner', 'api', osrc + '\nreturn ownVidHTML;')({ own: { vid } }, (ru, u) => uz ? u : ru, esc, (ru, u) => '<div class="hint">' + (uz ? u : ru) + '</div>', x => x.name, w.f.vdOk, () => true, async () => ({}))();
+  const V = { ok: true, err: false, ch: 'sarbon_video', fch: null, bot: 'b', busy: '', ask: '', items: [{ did: 'aa', shop: 'Альфа', id: 'p1', name: 'Масло', uz: 'Yogʻ', vd: 'sarbon_video/5' }, { did: 'aa', shop: 'Альфа', id: 'p2', name: 'Рис', vd: 'bad' }] };
+  let oh = draw(false, V);
+  assert.ok(/value="sarbon_video"/.test(oh) && /data-act="ownvch"/.test(oh) && /Все видео · 2/.test(oh));
+  assert.equal((oh.match(/data-act="ovidw"/g) || []).length, 1, 'кнопки только у настоящих ссылок');
+  assert.ok(/data-act="ovidr" data-did="aa" data-id="p1"[^>]*>Убрать видео</.test(oh));
+  assert.ok(/Точно убрать\?/.test(draw(false, Object.assign({}, V, { ask: 'aa:p1' }))));
+  assert.ok(/Videolar kanali/.test(draw(true, V)) && /Koʻrish</.test(draw(true, V)));
+  assert.ok(/Видео пока нет/.test(draw(false, Object.assign({}, V, { items: [] }))));
+  assert.ok(/Загружаем/.test(draw(false, Object.assign({}, V, { ok: false }))) && /Не удалось загрузить/.test(draw(false, Object.assign({}, V, { ok: false, err: true }))));
+  assert.ok(!/магазин|клиент|дистрибьютор/i.test(src + osrc), 'в видимых текстах нет «магазин», «клиент», «дистрибьютор»');
 });
 
 /* ---------- итог ---------- */

@@ -171,6 +171,16 @@ function sanitizeCfg(d) {
 
 /* ---------- каталог ---------- */
 const validId = id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(id);
+/* Видео товара: пост в общем публичном канале площадки. vd = «канал/номер поста» (канал хранится вместе с постом, чтобы ссылка жила и после смены канала).
+   Ставит только бот, когда продавец прислал ему видео; приложение vd не задаёт (sanitizeProd берёт его из сохранённых данных). */
+const VIDEO_CH = 'sarbon_video';            // канал по умолчанию, владелец меняет в приложении
+const VIDEO_MAX_SEC = 60;                   // длиннее — бот не принимает
+const VIDEO_MAX_BYTES = 50 * 1024 * 1024;   // тяжелее — тоже
+const VIDEO_WAIT_MS = 15 * 60 * 1000;       // сколько бот ждёт видео после нажатия «Добавить видео»
+const VIDEO_DAY_MAX = 30;                   // видео от одного человека в сутки
+const cleanVd = v => typeof v === 'string' && /^[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(v) ? v : '';
+const cleanVch = v => { const t = String(v || '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').replace(/[/?#].*$/, ''); return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(t) ? t : ''; };
+const vdParts = vd => { const m = cleanVd(vd).match(/^(.+)\/(\d+)$/); return m ? { ch: m[1], id: Number(m[2]) } : null; };
 const emptyProd = () => ({ cats: [], items: [] });
 function normProd(d) {
   const out = emptyProd();
@@ -240,7 +250,8 @@ function sanitizeProd(d, old, mod) {
       old: o.tag === 'sale' ? Math.round(clampN(o.old, 0, 1e8, 0)) : 0,
       pv: prev && typeof prev.pv === 'string' ? prev.pv : '',
       pv2: prev && typeof prev.pv2 === 'string' ? prev.pv2 : '',
-      pv3: prev && typeof prev.pv3 === 'string' ? prev.pv3 : ''
+      pv3: prev && typeof prev.pv3 === 'string' ? prev.pv3 : '',
+      ...(prev && cleanVd(prev.vd) ? { vd: prev.vd } : {})   // видео ставит только бот
     });
     const it = items[items.length - 1];
     if (prev) {
@@ -2437,12 +2448,17 @@ export class Shop {
     if (path === '/__/wipe') {
       // дистрибьютор удалён: хранилище очищается целиком (товары, фото, заказы, клиенты, настройки); у первого дистрибьютора так нельзя
       if (this.did === MAIN) return json({ error: 'forbidden' }, 403);
+      await Promise.all((await this.videoList()).map(i => this.videoDrop(i.vd)));   // видео удалённого продавца из канала тоже убираем
       await this.st.deleteAll();
       this.born = false;
       return json({ ok: true });
     }
     if (this.did !== MAIN && !(await this.isBorn())) return json({ error: 'no_shop' }, 404);
     if (path === '/__/mod-photo') return await this.modPhoto(request);
+    if (path === '/__/video-info') return json(await this.videoInfo(String(b.pid || '')));
+    if (path === '/__/video-set') return json(await this.videoSet(String(b.pid || ''), String(b.vd || '')));
+    if (path === '/__/video-remove') return json(await this.videoRemove(String(b.pid || '')));
+    if (path === '/__/video-list') return json({ items: await this.videoList() });
     if (path === '/__/summary') return json(await this.summary());
     if (path === '/__/set-cat') {
       // владелец площадки поменял категорию: хранится здесь, площадка обновляет свою копию сама
@@ -2883,6 +2899,21 @@ export class Shop {
         if (!checkJpeg(bytes, LOGO_LIM)) return json({ error: 'bad_photo' }, 400);
         return await this.setLogo(bytes);
       }
+      if (path === '/api/admin/video/link' && method === 'POST') {
+        const r = await this.readBody(request, 400);
+        const id = r.body && typeof r.body === 'object' ? r.body.id : '';
+        if (r.err || !validId(id)) return json({ error: 'bad_request' }, 400);
+        if (!(await this.videoInfo(id)).ok) return json({ error: 'not_found' }, 404);
+        const bot = await this.botUser();
+        return json({ url: bot ? 'https://t.me/' + bot + '?start=v_' + this.did + '_' + id : '' });
+      }
+      if (path === '/api/admin/video/remove' && method === 'POST') {
+        const r = await this.readBody(request, 400);
+        const id = r.body && typeof r.body === 'object' ? r.body.id : '';
+        if (r.err || !validId(id)) return json({ error: 'bad_request' }, 400);
+        const res = await this.videoRemove(id);
+        return res.ok ? json({ ok: true }) : json({ error: 'not_found' }, 404);
+      }
       if (path.startsWith('/api/admin/photo/') && (method === 'PUT' || method === 'DELETE')) {
         const id = path.slice('/api/admin/photo/'.length);
         if (!validId(id)) return json({ error: 'not_found' }, 404);
@@ -3162,6 +3193,7 @@ export class Shop {
     if (gone.some(id => stk[id])) { gone.forEach(id => { delete stk[id]; }); upd.stk = stk; }   // остаток удалённого товара не копим
     await this.st.put(upd);
     if (gone.length) await this.st.delete(gone.flatMap(id => [1, 2, 3].map(n => photoKey(id, n))));   // фото удалённых товаров не копим
+    await Promise.all(old.items.filter(i => gone.includes(i.id) && cleanVd(i.vd)).map(i => this.videoDrop(i.vd)));   // и посты с их видео в канале
     await this.hubSync();
     if (mod && mod.state === 'wait') {
       const fresh = prod.items.filter(i => i.ms === 'wait' && !oldIds.has(i.id));
@@ -3334,6 +3366,36 @@ export class Shop {
     await this.st.put(upd);
     await this.stockAlert(low);
     return json({ stk });
+  }
+  /* Видео товара (см. VIDEO_CH). Бот спрашивает название, привязывает пост и убирает прежний; продавец и владелец убирают видео сами. */
+  async videoInfo(pid) {
+    const it = (await this.getProd()).items.find(x => x.id === pid);
+    return it ? { ok: true, name: it.name, uz: it.uz || '', vd: cleanVd(it.vd) } : { ok: false };
+  }
+  async videoSet(pid, vd) {
+    const prod = await this.getProd();
+    const it = prod.items.find(x => x.id === pid);
+    if (!it || !cleanVd(vd)) return { ok: false };
+    const old = cleanVd(it.vd);
+    it.vd = vd;
+    await this.st.put('prod', prod);
+    return { ok: true, old };
+  }
+  /* Удаляет пост из канала (нужно право «Удаление сообщений»); сбой не страшен: пост просто останется в канале. */
+  async videoDrop(vd) {
+    const v = vdParts(vd);
+    if (v) await this.tg('deleteMessage', { chat_id: '@' + v.ch, message_id: v.id });
+  }
+  async videoRemove(pid) {
+    const prod = await this.getProd();
+    const it = prod.items.find(x => x.id === pid);
+    if (!it) return { ok: false };
+    const old = cleanVd(it.vd);
+    if (old) { delete it.vd; await this.st.put('prod', prod); await this.videoDrop(old); }
+    return { ok: true };
+  }
+  async videoList() {
+    return (await this.getProd()).items.filter(i => cleanVd(i.vd)).map(i => ({ id: i.id, name: i.name, uz: i.uz || '', vd: i.vd }));
   }
   /* Кладёт фото под номером n (замена или добавление в конец) или убирает его, а следующие сдвигает на одно место вперёд.
      Номер больше «сколько есть + 1» нельзя: фото идут подряд. Ответ: версии всех трёх мест (пустая строка, если места нет). */
@@ -4819,6 +4881,17 @@ export class Hub {
   async owners() { const o = await this.st.get('owners'); return Array.isArray(o) ? o : []; }
   async sellsOf(uid) { const a = await this.st.get('adm:' + uid); return Array.isArray(a) ? a : []; }
   async title() { return (await this.st.get('title')) || HUB_TITLE; }
+  /* Публичный канал, куда бот выкладывает видео товаров (владелец меняет в приложении). */
+  async vch() { return cleanVch(await this.st.get('vch')) || VIDEO_CH; }
+  /* Канал и все видео всех продавцов (владелец убирает любое). */
+  async videoState() {
+    const recs = await this.allRecs();
+    const got = await Promise.all(recs.map(async rec => {
+      const r = await shopCall(this.env, rec.id, '/__/video-list', {});
+      return ((r.data && r.data.items) || []).map(x => ({ did: rec.id, shop: rec.name, id: x.id, name: x.name, uz: x.uz || '', vd: x.vd }));
+    }));
+    return { ch: await this.vch(), bot: await this.botName(), items: [].concat(...got) };
+  }
   async about() { return cleanAbout(await this.st.get('about')).v || ABOUT_EMPTY(); }
   async botName() {
     let b = await this.st.get('bot');
@@ -6167,6 +6240,22 @@ export class Hub {
       await this.st.put('title', t);
       return json({ title: t });
     }
+    // видео товаров: канал и список всех видео
+    if (path === '/api/hub/admin/video' && method === 'GET') return json(await this.videoState());
+    if (path === '/api/hub/admin/video' && method === 'PUT') {
+      const r = await this.readBody(request, 400);
+      const ch = r.body && typeof r.body === 'object' ? cleanVch(r.body.ch) : '';
+      if (r.err || !ch) return json({ error: 'bad_channel' }, 400);
+      await this.st.put('vch', ch);
+      return json(await this.videoState());
+    }
+    if (path === '/api/hub/admin/video/remove' && method === 'POST') {
+      const r = await this.readBody(request, 400);
+      const b = r.body && typeof r.body === 'object' ? r.body : null;
+      if (r.err || !b || !validDid(b.did) || !validId(b.id) || !(await this.getRec(b.did))) return json({ error: 'bad_request' }, 400);
+      const sc = await shopCall(this.env, b.did, '/__/video-remove', { pid: b.id });
+      return sc.data && sc.data.ok ? json(await this.videoState()) : json({ error: 'not_found' }, 404);
+    }
     // «О нас»: вступление и контакты
     if (path === '/api/hub/admin/about' && method === 'PUT') {
       const r = await this.readBody(request, 8000);
@@ -6498,6 +6587,9 @@ export class Hub {
     const openText = '🛒 Заказать / Buyurtma';
     const isSeller = async () => (await this.sellsOf(uid)).length > 0;
 
+    // видео для товара: продавец прислал его после «Добавить видео» в приложении
+    if (msg.video || (msg.document && /^video\//i.test(String(msg.document.mime_type || '')))) { await this.videoReceive(msg); return; }
+
     if (cmd === '/admin') {
       const code = text.replace(/^\S+\s*/, '');
       if (!code) {
@@ -6583,6 +6675,9 @@ export class Hub {
 
     // «/start d_<номер>» — ссылка на каталог конкретного дистрибьютора; всё остальное — общее приветствие
     const payload = cmd === '/start' ? (text.split(/\s+/)[1] || '') : '';
+    // «/start v_<продавец>_<товар>» — «Добавить видео» в приложении: бот запоминает товар и ждёт видео
+    const vj = payload.match(/^v_([a-z0-9]{2,12})_([A-Za-z0-9_-]{1,24})$/);
+    if (vj) { await this.videoStart(uid, chat, vj[1], vj[2]); return; }
     // «/start c_<дистрибьютор>_<ключ>» — приглашение доставщика, которое выдал продавец
     const cj = payload.match(/^c_([a-z0-9]{2,12})_([a-z0-9]{6,12})$/);
     if (cj) { await this.courierJoin(uid, chat, lang, cj[1], cj[2], msg.from); return; }
@@ -6597,6 +6692,72 @@ export class Hub {
       text: await this.welcome(lang, target ? target.name : ''),
       reply_markup: openBtn(this.origin, openText, target ? shopUrl(this.origin, target.id) : this.origin + '/')
     });
+  }
+  /* Видео товара. Может продавец этой компании или владелец площадки. */
+  async videoCan(uid, did) {
+    if (!validDid(did)) return null;
+    if (!(await this.sellsOf(uid)).includes(did) && !(await this.owners()).includes(uid)) return null;
+    return await this.getRec(did);
+  }
+  async videoStart(uid, chat, did, pid) {
+    const say = (ru, uz, markup) => this.tg('sendMessage', { chat_id: chat, text: biU(ru, uz), reply_markup: markup });
+    const rec = await this.videoCan(uid, did);
+    const info = rec ? (await shopCall(this.env, did, '/__/video-info', { pid })).data : null;
+    if (!rec || !info || !info.ok) {
+      await say('Товар не найден или у вас нет доступа к этому продавцу. Откройте товар в приложении и нажмите «Добавить видео» ещё раз.',
+        'Mahsulot topilmadi yoki bu sotuvchiga kirish huquqingiz yoʻq. Ilovada mahsulotni ochib, «Video qoʻshish» tugmasini qayta bosing.');
+      return;
+    }
+    const ch = await this.vch();
+    await this.st.put('vp:' + uid, { did, pid, t: Date.now() });
+    await say('Отправьте сюда видео для товара «' + info.name + '»: не длиннее ' + VIDEO_MAX_SEC + ' секунд и не больше 50 МБ. Я опубликую его в канале @' + ch + ' и привяжу к товару.' + (info.vd ? ' Прежнее видео этого товара будет заменено.' : ''),
+      '«' + (info.uz || info.name) + '» mahsuloti uchun videoni shu yerga yuboring: ' + VIDEO_MAX_SEC + ' soniyadan uzun boʻlmasin va 50 MB dan oshmasin. Men uni @' + ch + ' kanaliga joylayman va mahsulotga bogʻlayman.' + (info.vd ? ' Mahsulotning oldingi videosi almashtiriladi.' : ''));
+  }
+  async videoReceive(msg) {
+    const uid = msg.from.id, chat = msg.chat.id;
+    const say = (ru, uz, markup) => this.tg('sendMessage', { chat_id: chat, text: biU(ru, uz), reply_markup: markup });
+    const pend = await this.st.get('vp:' + uid);
+    if (!pend || Date.now() - (Number(pend.t) || 0) > VIDEO_WAIT_MS) {
+      await say('Сначала в приложении откройте товар и нажмите «Добавить видео», потом пришлите видео сюда.', 'Avval ilovada mahsulotni ochib «Video qoʻshish» tugmasini bosing, keyin videoni shu yerga yuboring.');
+      return;
+    }
+    const v = msg.video || msg.document || {};
+    if (msg.video && Number(v.duration) > VIDEO_MAX_SEC) { await say('Видео длиннее ' + VIDEO_MAX_SEC + ' секунд. Пришлите покороче.', 'Video ' + VIDEO_MAX_SEC + ' soniyadan uzun. Qisqaroq yuboring.'); return; }
+    if (Number(v.file_size) > VIDEO_MAX_BYTES) { await say('Видео больше 50 МБ. Пришлите файл поменьше.', 'Video 50 MB dan katta. Kichikroq fayl yuboring.'); return; }
+    const rec = await this.videoCan(uid, pend.did);
+    const info = rec ? (await shopCall(this.env, pend.did, '/__/video-info', { pid: pend.pid })).data : null;
+    if (!rec || !info || !info.ok) {
+      await this.st.delete('vp:' + uid);
+      await say('Товар не найден или уже удалён. Откройте товар в приложении и нажмите «Добавить видео» ещё раз.', 'Mahsulot topilmadi yoki oʻchirilgan. Ilovada mahsulotni ochib, «Video qoʻshish» tugmasini qayta bosing.');
+      return;
+    }
+    const day = new Date().toISOString().slice(0, 10), q = await this.st.get('vq:' + uid);
+    const used = q && q.d === day ? Number(q.n) || 0 : 0;
+    if (used >= VIDEO_DAY_MAX) { await say('На сегодня хватит: можно до ' + VIDEO_DAY_MAX + ' видео в сутки. Попробуйте завтра.', 'Bugunga yetadi: sutkada ' + VIDEO_DAY_MAX + ' tagacha video mumkin. Ertaga urinib koʻring.'); return; }
+    const ch = await this.vch();
+    const res = await this.tg('copyMessage', { chat_id: '@' + ch, from_chat_id: chat, message_id: msg.message_id, caption: cleanStr(info.name + ' · ' + rec.name, 200) });
+    if (!res.ok || !res.result || !Number.isInteger(res.result.message_id)) {
+      console.error('video publish failed', ch, res && res.description);
+      await say('Не получилось опубликовать видео в канале. Мы сообщили владельцу площадки, попробуйте позже.', 'Videoni kanalga joylab boʻlmadi. Platforma egasiga xabar berdik, keyinroq urinib koʻring.');
+      await this.notifyOwners(biL(() => L('⚠️ Видео не опубликовано: бот не может писать в канал @' + ch + ' (' + String(res && res.description || 'нет ответа') + '). Добавьте бота администратором канала с правами «Публикация сообщений» и «Удаление сообщений».',
+        '⚠️ Video joylanmadi: bot @' + ch + ' kanaliga yoza olmaydi (' + String(res && res.description || 'javob yoʻq') + '). Botni kanal administratori qiling: «Xabarlarni joylash» va «Xabarlarni oʻchirish» huquqlari bilan.')));
+      return;
+    }
+    const mid = res.result.message_id, vd = ch + '/' + mid;
+    const set = (await shopCall(this.env, pend.did, '/__/video-set', { pid: pend.pid, vd })).data;
+    if (!set || !set.ok) {
+      await this.tg('deleteMessage', { chat_id: '@' + ch, message_id: mid });
+      await this.st.delete('vp:' + uid);
+      await say('Товар уже удалён, видео не привязано.', 'Mahsulot allaqachon oʻchirilgan, video bogʻlanmadi.');
+      return;
+    }
+    const old = set.old ? vdParts(set.old) : null;
+    if (old) await this.tg('deleteMessage', { chat_id: '@' + old.ch, message_id: old.id });   // прежнее видео этого товара
+    await this.st.put('vq:' + uid, { d: day, n: used + 1 });
+    await this.st.delete('vp:' + uid);
+    await say('Готово: видео опубликовано в канале и привязано к товару «' + info.name + '». Покупатели увидят кнопку «▶ Видео». Вернитесь в приложение.',
+      'Tayyor: video kanalga joylandi va «' + (info.uz || info.name) + '» mahsulotiga bogʻlandi. Xaridorlar «▶ Video» tugmasini koʻradi. Ilovaga qayting.',
+      openBtn(this.origin, btn2('Ilovani ochish', 'Открыть приложение'), sellerUrl(this.origin, pend.did)));
   }
   /* Доставщик нажал ссылку-приглашение: хранилище дистрибьютора проверяет ключ и записывает его, площадка запоминает, где он доставщик. */
   async courierJoin(uid, chat, lang, did, tok, from) {

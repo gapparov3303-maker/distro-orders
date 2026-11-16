@@ -513,6 +513,9 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .psv .btn{width:100%;min-height:48px}
 .psv .btn.done{background:var(--accent-soft);color:var(--tx);box-shadow:none}
 .psv .btn.done[disabled]{opacity:1}
+.pvidb .row-btns{margin-top:8px}
+.pvidb .err{margin-top:8px}
+.pvid{margin:8px 0 0}
 .crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;padding:8px 6px 8px 10px;margin:0 0 10px;background:var(--bg);border:1.5px solid var(--edge);border-radius:14px}
 .crow .cf{display:flex;align-items:center;gap:8px;min-width:0}
 .crow .cf .ltag{margin:0;flex:0 0 auto;width:28px;text-align:center;padding:1px 0}
@@ -986,7 +989,7 @@ const S={
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
   busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,ox:{},
   prod:{cats:[],items:[]},cart:{},shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
-  pfilter:'all',medit:{},pxo:{},psv:null,upl:{},dirtyC:false,dirtyP:false,cd:null,
+  pfilter:'all',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,cd:null,
   stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,
   profile:null,blocked:false,pfBusy:false,
   pm:false,xbusy:'',pick:null,pickBusy:false,
@@ -998,7 +1001,7 @@ const S={
   ab:{open:null},
   wh:{ok:false,err:false,rate:500,info:null,orders:[],tab:'wait',q:'',kg:{},ed:{},open:{},busy:''},
   fb:{kind:'',text:'',busy:false,sent:'',err:''},   // «Написать нам»: форма обращения
-  own:{sec:'dist',dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
+  own:{sec:'dist',dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false},vid:{ok:false,err:false,ch:'',fch:null,items:[],bot:'',busy:'',ask:''}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -1036,7 +1039,7 @@ function resetShopState(){
   Object.assign(S,{
     cfg:clone(DEFAULT),prod:{cats:[],items:[]},cart:{},otherCart:null,shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
     admin:false,off:false,profile:null,blocked:false,fav:[],allOrders:[],stats:{doneSum:0,doneCount:0},
-    sellerTab:'orders',pfilter:'all',medit:{},pxo:{},psv:null,upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
+    sellerTab:'orders',pfilter:'all',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
     stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,dbt:newDebts(),pay:null,courier:null,cr:newCour(),dv:newDv(),
     pm:false,xbusy:'',pick:null,pickBusy:false,imp:null,impBusy:false,regOnly:null,
     rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
@@ -1504,6 +1507,7 @@ function productCard(p){
   const np=phVers(p).length;
   return '<article class="pcard'+(off?' off':'')+(!off&&S.cart[p.id]>0?' incart':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg'+(np?' zm':'')+'"'+(np?' data-act="pzoom" data-id="'+esc(p.id)+'"':'')+'>'+pimg(p)+(np>1?'<span class="pcnt" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>'+np+' '+L('фото','rasm')+'</span>':'')+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
     +'<div class="pbody"><div class="pname">'+esc(nm(p))+'</div>'+(w?'<div class="pw">'+esc(w)+'</div>':'')+status
+    +(vdOk(p.vd)?'<button type="button" class="btn ghost sm pvid" data-act="pvid" data-id="'+esc(p.id)+'">▶ '+L('Видео','Video')+'</button>':'')
     +(d?'<div class="pdesc" data-act="pdesc">'+esc(d)+'</div>':'')
     +'<div class="pprice">'+priceHTML(p)+'</div>'+(packOnly(p)?'<div class="ponly">'+esc(packOnlyText(p))+'</div>':'')+'<div class="pctl">'+productCtl(p)+'</div></div></article>';
 }
@@ -3265,6 +3269,54 @@ async function prodSave(id){
   S.psv={id,st:ok?'saved':'error'};paintPsv(id);
   if(ok)psvT=setTimeout(()=>{if(S.psv&&S.psv.id===id&&S.psv.st==='saved'){S.psv=null;paintPsv(id)}},2500);
 }
+/* ---------- видео товара: его публикует бот в канале, в приложении только кнопки ---------- */
+const VD_RE=/^[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/;
+const vdOk=v=>typeof v==='string'&&VD_RE.test(v);
+function openVideo(vd){
+  if(!vdOk(vd))return;
+  const url='https://t.me/'+vd;
+  try{if(S.tg&&S.tg.openTelegramLink){S.tg.openTelegramLink(url);return}}catch(e){}
+  try{window.open(url,'_blank','noopener')}catch(e){}
+}
+function vidHTML(p){
+  const id=esc(p.id),has=vdOk(p.vd),st=S.vid&&S.vid.id===p.id?S.vid.st:'',busy=st==='busy',dis=busy?' disabled':'';
+  let h='<div class="full pvidb" id="pvid-'+id+'"><div class="lab">'+L('Видео товара','Mahsulot videosi')+'</div>';
+  h+=hintD(has?'Покупатели видят кнопку «▶ Видео». Новое видео заменит это.':'Покажите товар в деле, до 60 секунд. Нажмите кнопку: откроется бот, пришлите ему видео.',has?'Xaridorlar «▶ Video» tugmasini koʻradi. Yangi video bunisini almashtiradi.':'Mahsulotni amalda koʻrsating, 60 soniyagacha. Tugmani bosing: bot ochiladi, unga videoni yuboring.');
+  h+='<div class="row-btns">';
+  if(has)h+='<button type="button" class="btn ghost sm" data-act="vidwatch" data-id="'+id+'">▶ '+L('Смотреть','Koʻrish')+'</button>';
+  h+='<button type="button" class="btn'+(has?' ghost':'')+' sm" data-act="vidadd" data-id="'+id+'"'+dis+'>'+(busy?L('Открываем бота…','Bot ochilmoqda…'):has?L('Заменить','Almashtirish'):'+ '+L('Добавить видео','Video qoʻshish'))+'</button>';
+  if(has)h+='<button type="button" class="btn ghost sm" data-act="vidrm" data-id="'+id+'"'+dis+'>'+(st==='ask'?L('Точно убрать?','Aniq olib tashlansinmi?'):L('Убрать видео','Videoni olib tashlash'))+'</button>';
+  h+='</div>';
+  if(st==='error')h+='<div class="err" role="alert">'+L('Не получилось. Проверьте соединение и нажмите ещё раз.','Boʻlmadi. Ulanishni tekshiring va yana bosing.')+'</div>';
+  return h+'</div>';
+}
+function paintVid(id){
+  const el=document.getElementById('pvid-'+id),p=S.prod.items.find(x=>x.id===id);
+  if(el&&p)el.outerHTML=vidHTML(p);
+}
+async function vidAdd(id){
+  if(!S.prod.items.some(x=>x.id===id)||(S.vid&&S.vid.st==='busy'))return;
+  S.vid={id,st:'busy'};paintVid(id);
+  clearTimeout(psvT);
+  if(S.auth&&S.admin){S.dirtyP=true;S.dirty=true;await flushSave()}   // товар должен быть записан, иначе боту будет не к чему привязать видео
+  const r=await api('POST','/api/admin/video/link',{id});
+  const url=r.ok&&r.data?r.data.url:'';
+  if(!/^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}\?start=v_[A-Za-z0-9_-]{3,40}$/.test(url||'')){S.vid={id,st:'error'};paintVid(id);return}
+  S.vid=null;paintVid(id);
+  try{if(S.tg&&S.tg.openTelegramLink){S.tg.openTelegramLink(url);return}}catch(e){}
+  try{window.open(url,'_blank','noopener')}catch(e){}
+}
+async function vidRemove(id){
+  const p0=S.prod.items.find(x=>x.id===id);
+  if(!p0||!vdOk(p0.vd)||(S.vid&&S.vid.st==='busy'))return;
+  if(!S.vid||S.vid.id!==id||S.vid.st!=='ask'){S.vid={id,st:'ask'};paintVid(id);return}
+  S.vid={id,st:'busy'};paintVid(id);
+  const r=await api('POST','/api/admin/video/remove',{id});
+  const p=S.prod.items.find(x=>x.id===id);
+  if(r.ok){if(p)delete p.vd;S.vid=null;toast(L('Видео убрано','Video olib tashlandi'))}
+  else S.vid={id,st:'error'};
+  paintVid(id);
+}
 function modBanInner(){
   const n=S.prod.items.filter(p=>p.ms==='draft').length;
   if(!n)return '';
@@ -3444,6 +3496,7 @@ function prodBody(p){
       +hintD('Для доставки «за габарит»: объём считается в м³. Укажите все три размера, иначе цену назовёте вы. Пример: 50 × 40 × 20.','«Hajm boʻyicha» yetkazish uchun: hajm m³ da hisoblanadi. Uchala oʻlchamni yozing, aks holda narxni oʻzingiz aytasiz. Masalan: 50 × 40 × 20.')+'</div>':'')
     +'<div class="full unit" style="margin:0">'+L('Блок и коробка — для удобства: цена и остаток всегда считаются в штуках. Если указать, у покупателя появятся кнопки «+ блок» и «+ коробка», а в заказах будет видно, сколько это коробок. Допустимо от 2 до 500 штук. Галочка «Продаётся только…» — покупатель сможет взять товар лишь целыми упаковками (10, 20, 30 '+pcsWord(p)+').','Blok va quti — qulaylik uchun: narx va qoldiq doim donada hisoblanadi. Koʻrsatilsa, xaridorda «+ blok» va «+ quti» tugmalari paydo boʻladi, buyurtmalarda esa necha quti ekani koʻrinadi. 2 dan 500 donagacha. «Faqat … sotiladi» belgisi — xaridor mahsulotni faqat butun qadoqda oladi (10, 20, 30 '+pcsWord(p)+').')+'</div>'
     +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
+    +vidHTML(p)
     +psvHTML(p)
     +'<div class="full pact"><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="-1" aria-label="'+esc(L('Выше','Yuqoriga'))+'">▲</button><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="1" aria-label="'+esc(L('Ниже','Pastga'))+'">▼</button>'
     +'<button type="button" class="btn ghost sm" data-act="pdel" data-id="'+id+'">'+(S.cd===p.id?L('Точно удалить?','Aniq oʻchirilsinmi?'):L('Удалить товар','Mahsulotni oʻchirish'))+'</button>'
@@ -4865,7 +4918,8 @@ const ABOUT_ROLES=[
   ['«Мало (осталось N)» значит, что товар заканчивается, «Нет в наличии» — серая карточка. Больше остатка в корзину положить нельзя.','«Oz qoldi (N ta)» tovar tugayotganini bildiradi, «Mavjud emas» — kulrang kartochka. Qoldiqdan ortiq tovarni savatga qoʻshib boʻlmaydi.'],
   ['Если у товара есть цена от количества, на карточке видны ступени: чем больше берёте, тем ниже цена.','Agar tovarda miqdorga qarab narx boʻlsa, kartochkada pogʻonalar koʻrinadi: koʻproq olsangiz, narx arzonlashadi.'],
   ['Нажмите «В корзину», затем «−» и «+» или введите число с клавиатуры (до 500 штук одного товара). Внизу всегда видна сумма и кнопка «Оформить заказ».','«Savatga» tugmasini bosing, soʻng «−» va «+» bilan yoki raqamni klaviaturadan kiriting (bitta tovardan 500 tagacha). Pastda doim summa va «Buyurtma berish» tugmasi koʻrinadi.'],
-  ['Если товар продаётся только упаковками, под ценой подпись «Только коробками · 10 шт», а «−» и «+» меняют количество сразу на упаковку. У товара «1 кг» или «1 л» количество считается в «кг» или «л».','Agar tovar faqat qadoqlarda sotilsa, narx ostida «Faqat qutida · 10 dona» deb yoziladi, «−» va «+» esa miqdorni darhol bitta qadoqqa oʻzgartiradi. «1 kg» yoki «1 l» tovarda miqdor «kg» yoki «l» bilan hisoblanadi.']]},
+  ['Если товар продаётся только упаковками, под ценой подпись «Только коробками · 10 шт», а «−» и «+» меняют количество сразу на упаковку. У товара «1 кг» или «1 л» количество считается в «кг» или «л».','Agar tovar faqat qadoqlarda sotilsa, narx ostida «Faqat qutida · 10 dona» deb yoziladi, «−» va «+» esa miqdorni darhol bitta qadoqqa oʻzgartiradi. «1 kg» yoki «1 l» tovarda miqdor «kg» yoki «l» bilan hisoblanadi.'],
+  ['У товара с видео есть кнопка «▶ Видео»: она открывает ролик в Telegram-канале площадки, потом можно вернуться в приложение.','Videosi bor tovarda «▶ Video» tugmasi bor: u videoni platformaning Telegram kanalida ochadi, keyin ilovaga qaytish mumkin.']]},
  {img:'shop-cart',h:['Оформление заказа','Buyurtma berish'],cap:['Корзина и оформление','Savat va buyurtma berish'],li:[
   ['Выберите «Самовывоз» или «Доставка». Для доставки впишите адрес; по желанию можно отметить своё местоположение на карте.','«Olib ketish» yoki «Yetkazib berish»ni tanlang. Yetkazib berish uchun manzilni yozing; xohlasangiz, joylashuvingizni xaritada belgilashingiz mumkin.'],
   ['Укажите дату и время (в часы работы продавца; для доставки нужен запас по времени) и пожелания к заказу.','Sana va vaqtni (sotuvchining ish vaqtida; yetkazib berish uchun vaqt zaxirasi kerak) hamda buyurtmaga istaklaringizni yozing.'],
@@ -4927,7 +4981,8 @@ const ABOUT_ROLES=[
   ['Метки «Акция» (со старой ценой) и «Новинка», цены от количества, блоки и коробки, скидка на заказ от суммы. Прайс можно выгрузить в Excel, поправить цены и загрузить обратно: перед применением вы увидите, что изменится.','«Aksiya» (eski narx bilan) va «Yangilik» belgilari, miqdorga qarab narx, blok va qutilar, summaga qarab chegirma. Prays-listni Excelga yuklab, narxlarni tuzatib, qaytarib yuklash mumkin: qoʻllashdan oldin nima oʻzgarishini koʻrasiz.'],
   ['Новый товар сначала «Черновик». Нажмите «Отправить на проверку»: владелец площадки одобрит товар или вернёт с причиной, что исправить. Правки уже одобренных товаров проверки не требуют.','Yangi tovar avval «Qoralama» boʻladi. «Tekshiruvga yuborish»ni bosing: platforma egasi tovarni tasdiqlaydi yoki nimani tuzatish kerakligini sabab bilan qaytaradi. Tasdiqlangan tovarlarni oʻzgartirish tekshiruvsiz amalga oshadi.'],
   ['Пока товар не одобрен, покупатели видят его серым с надписью «На модерации».','Tovar tasdiqlanmaguncha xaridorlar uni «Tekshiruvda» yozuvli kulrang koʻrinishda koʻradi.'],
-  ['«Продаётся только блоками» или «Продаётся только коробками»: покупатель берёт целыми упаковками, а «−» и «+» шагают упаковкой. У товара «1 кг» или «1 л» одна штука равна 1 кг (1 л), поэтому везде пишется «кг» или «л».','«Faqat blokda sotiladi» yoki «Faqat qutida sotiladi»: xaridor butun qadoqlarda oladi, «−» va «+» esa bitta qadoq bilan siljiydi. «1 kg» yoki «1 l» tovarda bir dona 1 kg (1 l)ga teng, shuning uchun hamma joyda «kg» yoki «l» yoziladi.']]},
+  ['«Продаётся только блоками» или «Продаётся только коробками»: покупатель берёт целыми упаковками, а «−» и «+» шагают упаковкой. У товара «1 кг» или «1 л» одна штука равна 1 кг (1 л), поэтому везде пишется «кг» или «л».','«Faqat blokda sotiladi» yoki «Faqat qutida sotiladi»: xaridor butun qadoqlarda oladi, «−» va «+» esa bitta qadoq bilan siljiydi. «1 kg» yoki «1 l» tovarda bir dona 1 kg (1 l)ga teng, shuning uchun hamma joyda «kg» yoki «l» yoziladi.'],
+  ['Видео товара: в карточке нажмите «Добавить видео», откроется бот. Пришлите ему ролик до 60 секунд и до 50 МБ: бот сам выложит его в канал и привяжет к товару. «Заменить» ставит новое видео, «Убрать видео» удаляет.','Tovar videosi: kartochkada «Video qoʻshish» tugmasini bosing, bot ochiladi. Unga 60 soniyagacha va 50 MB gacha video yuboring: bot uni kanalga oʻzi joylaydi va tovarga bogʻlaydi. «Almashtirish» yangi videoni qoʻyadi, «Videoni olib tashlash» oʻchiradi.']]},
  {img:'sel-stock',h:['Остатки','Qoldiq'],cap:['Остатки на складе','Ombor qoldigʻi'],li:[
   ['Учёт включается по каждому товару: введите, сколько единиц на складе. Приложение показывает «На складе», «В заказах» (отложено под принятые заказы) и «Свободно». Покупатель может заказать только свободное.','Hisob har bir tovar uchun alohida yoqiladi: omborda necha birlik borligini kiriting. Ilova «Omborda», «Buyurtmalarda» (qabul qilingan buyurtmalarga ajratilgan) va «Boʻsh»ni koʻrsatadi. Xaridor faqat boʻsh qoldiqni buyurtma qila oladi.'],
   ['Когда приезжает товар, нажмите «+ Приход»; после пересчёта на складе поправьте число кнопкой «Задать остаток». Выдача заказа списывает товар сама, отмена возвращает.','Tovar kelganda «+ Kirim»ni bosing; ombor qayta sanalgach, sonni «Qoldiqni belgilash» tugmasi bilan tuzating. Buyurtma topshirilganda tovar oʻzi hisobdan chiqadi, bekor qilinsa qaytadi.'],
@@ -5036,7 +5091,8 @@ const ABOUT_ROLES=[
   ['Есть «Новый код» (вошедшие по прежнему коду теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого продавца, вашу компанию, удалить нельзя.','«Yangi kod» (eski kod bilan kirganlar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi sotuvchini, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
  {img:'ow-review',h:['Проверка товаров','Tovarlarni tekshirish'],cap:['Проверка товаров','Tovarlarni tekshirish'],li:[
   ['Пункт «Проверка» собирает все новые товары продавцов в одном списке с названием продавца. Число на значке — сколько товаров ждёт решения.','«Tekshiruv» boʻlimi sotuvchilarning barcha yangi tovarlarini bitta roʻyxatga sotuvchi nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
-  ['Исправьте ошибки в карточке сами или нажмите «Вернуть» и напишите причину: продавец её увидит. «Одобрить» открывает товар покупателям. Ваши товары одобряются сразу.','Kartochkadagi xatolarni oʻzingiz tuzating yoki «Qaytarish»ni bosib sababini yozing: sotuvchi uni koʻradi. «Tasdiqlash» tovarni xaridorlarga ochadi. Oʻzingizning tovarlaringiz darhol tasdiqlanadi.']]},
+  ['Исправьте ошибки в карточке сами или нажмите «Вернуть» и напишите причину: продавец её увидит. «Одобрить» открывает товар покупателям. Ваши товары одобряются сразу.','Kartochkadagi xatolarni oʻzingiz tuzating yoki «Qaytarish»ni bosib sababini yozing: sotuvchi uni koʻradi. «Tasdiqlash» tovarni xaridorlarga ochadi. Oʻzingizning tovarlaringiz darhol tasdiqlanadi.'],
+  ['Видео товаров бот выкладывает в канал сразу, заранее они не проверяются. В меню «Площадка» → «Видео» меняется канал (бот должен быть его администратором) и виден список всех видео: «Смотреть» открывает ролик, «Убрать видео» удаляет его.','Tovar videolarini bot kanalga darhol joylaydi, oldindan tekshirilmaydi. «Platforma» → «Video» menyusida kanal oʻzgartiriladi (bot uning administratori boʻlishi kerak) va barcha videolar roʻyxati koʻrinadi: «Koʻrish» videoni ochadi, «Videoni olib tashlash» oʻchiradi.']]},
  {img:'ow-people',h:['Люди, агенты и территории','Odamlar, agentlar va hududlar'],cap:['Люди и территории','Odamlar va hududlar'],li:[
   ['«Территории»: создайте районы и города, по которым работают агенты. «Агенты»: список агентов; у каждого видно территории, их меняет кнопка «Изменить», есть «Новый код» и своя ссылка. «Добавить агента»: имя, территории и личный код (он показывается один раз).','«Hududlar»: agentlar ishlaydigan tuman va shaharlarni yarating. «Agentlar»: agentlar roʻyxati; har birining hududlari koʻrinadi, ularni «Oʻzgartirish» tugmasi almashtiradi, «Yangi kod» va oʻz havolasi bor. «Agent qoʻshish»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi).'],
   ['«Люди»: все, кто открывал приложение или писал боту, и их роли: владелец, продавец, агент, доставщик или покупатель.','«Odamlar»: ilovani ochgan yoki botga yozgan hamma va ularning rollari: ega, sotuvchi, agent, yetkazuvchi yoki xaridor.']]},
@@ -6053,6 +6109,7 @@ async function loadOwner(){
   loadOwnerPeople();
   loadOwnerWho();
   loadOwnerFb();
+  if(S.own.sec==='video')loadOwnerVid();
   const r=await api('GET','/api/hub/admin/shops');
   const o=S.own;
   if(!r.ok||!r.data){o.err=true;o.loaded=true;if(S.view==='owner')renderOwner();return}
@@ -6294,7 +6351,7 @@ const ownSecs=()=>[
   ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['cats',L('Категории','Kategoriyalar'),L('Категории продавцов','Sotuvchi kategoriyalari')],['bz',L('Базары','Bozorlar'),L('Базары','Bozorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить продавца','Sotuvchi qoʻshish')]]],
   ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['agadd',L('Добавить агента','Agent qoʻshish'),L('Добавить агента','Agent qoʻshish')],['wh',L('Склад','Ombor'),L('Склад','Ombor')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
-  ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База покупателей','Xaridorlar bazasi'),L('База покупателей','Xaridorlar bazasi')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]]
+  ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База покупателей','Xaridorlar bazasi'),L('База покупателей','Xaridorlar bazasi')],['video',L('Видео','Video'),L('Видео товаров','Mahsulot videolari')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]]
 ];
 function ownSecInfo(sec){
   for(const g of ownSecs()){const x=g[2].find(y=>y[0]===sec);if(x)return {group:g[1],title:x[2]}}
@@ -6303,7 +6360,7 @@ function ownSecInfo(sec){
 function ownOpen(sec){
   S.own.sec=sec;S.own.perr='';
   if(S.view!=='owner')go('owner');
-  else{S.msub=null;S.msub2=null;renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb()}
+  else{S.msub=null;S.msub2=null;renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb();if(sec==='video')loadOwnerVid()}
 }
 function ownMadeHTML(){
   const o=S.own;let h='';
@@ -6480,6 +6537,7 @@ function renderOwner(){
     else if(sec==='about')h+=ownAboutHTML();
     else if(sec==='disp')h+=ownDispHTML();
     else if(sec==='people')h+=ownWhoHTML();
+    else if(sec==='video')h+=ownVidHTML();
     else if(sec==='fb')h+=ownFbHTML();
     else h+=ownPeopleHTML(sec);
   }
@@ -6634,6 +6692,52 @@ function ownFbHTML(){
   return '<p class="lead">'+L('Что пишут люди через кнопку «Написать нам». Ответьте человеку сами: по @логину или телефону. Хранятся последние 300 обращений.','Odamlar «Bizga yozish» tugmasi orqali yozganlari. Odamga oʻzingiz javob bering: @login yoki telefon orqali. Oxirgi 300 ta murojaat saqlanadi.')+'</p>'
     +'<div class="filters">'+[['new',L('Новые','Yangilar'),nNew],['done',L('Решено','Hal qilingan'),nDone],['all',L('Все','Hammasi'),D.items.length]].map(f=>'<button type="button" class="chip" data-act="fbf" data-v="'+f[0]+'" aria-pressed="'+(D.f===f[0])+'">'+f[1]+' · '+f[2]+'</button>').join('')+'</div>'
     +(list.length?list.map(fbCardHTML).join(''):'<div class="empty"><b>'+(D.f==='new'?L('Новых обращений нет','Yangi murojaatlar yoʻq'):L('Пока пусто','Hozircha boʻsh'))+'</b>'+L('Когда кто-то напишет через «Написать нам», обращение появится здесь.','Kimdir «Bizga yozish» orqali yozsa, murojaat shu yerda paydo boʻladi.')+'</div>');
+}
+/* владелец: канал для видео и все видео товаров с кнопками «Смотреть» и «Убрать» */
+async function loadOwnerVid(){
+  if(!isOwner())return;
+  const V=S.own.vid,r=await api('GET','/api/hub/admin/video');
+  if(!r.ok||!r.data||!Array.isArray(r.data.items)){V.err=!V.ok;if(!V.ok&&S.view==='owner'&&S.own.sec==='video')ownRefresh();return}
+  V.ok=true;V.err=false;V.ch=r.data.ch||'';V.bot=r.data.bot||'';V.items=r.data.items;
+  if(S.view==='owner'&&S.own.sec==='video'&&!/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))ownRefresh();
+}
+async function ownVidChannel(){
+  const V=S.own.vid;if(V.busy)return;
+  const v=String(V.fch===null?V.ch:V.fch).trim();
+  V.busy='ch';renderOwner();
+  const r=await api('PUT','/api/hub/admin/video',{ch:v});
+  V.busy='';
+  if(r.ok&&r.data&&Array.isArray(r.data.items)){V.ch=r.data.ch||'';V.items=r.data.items;V.fch=null;toast(L('Канал сохранён','Kanal saqlandi'))}
+  else toast(r.data&&r.data.error==='bad_channel'?L('Название канала не подходит. Пример: sarbon_video','Kanal nomi mos emas. Masalan: sarbon_video'):L('Не удалось сохранить. Попробуйте ещё раз.','Saqlab boʻlmadi. Yana urinib koʻring.'));
+  renderOwner();
+}
+async function ownVidRemove(did,id){
+  const V=S.own.vid;if(V.busy)return;
+  const k=did+':'+id;
+  if(V.ask!==k){V.ask=k;renderOwner();return}
+  V.ask='';V.busy='rm';renderOwner();
+  const r=await api('POST','/api/hub/admin/video/remove',{did,id});
+  V.busy='';
+  if(r.ok&&r.data&&Array.isArray(r.data.items)){V.items=r.data.items;toast(L('Видео убрано','Video olib tashlandi'))}
+  else toast(L('Не удалось убрать. Обновите список и попробуйте ещё раз.','Olib tashlab boʻlmadi. Roʻyxatni yangilab, qayta urinib koʻring.'));
+  renderOwner();
+}
+function ownVidHTML(){
+  const V=S.own.vid;
+  if(!V.ok)return V.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div>':'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  const cur=V.fch===null?V.ch:V.fch;
+  let h='<p class="lead">'+L('Продавец в карточке товара нажимает «Добавить видео» и присылает ролик боту. Бот сам публикует его в канале и привязывает к товару. Покупатели видят кнопку «▶ Видео».','Sotuvchi mahsulot kartasida «Video qoʻshish» tugmasini bosib, videoni botga yuboradi. Bot uni kanalga oʻzi joylaydi va mahsulotga bogʻlaydi. Xaridorlar «▶ Video» tugmasini koʻradi.')+'</p>'
+    +'<div class="card"><h3>'+L('Канал для видео','Videolar kanali')+'</h3><div class="unit">'+L('Публичный канал, где бот должен быть администратором с правами публикации и удаления сообщений.','Bot administrator boʻlishi kerak boʻlgan ochiq kanal: xabar joylash va oʻchirish huquqlari bilan.')+'</div>'
+    +'<div class="form"><div class="full"><input type="text" id="o-vch" data-own-vid="fch" maxlength="64" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="sarbon_video" value="'+esc(cur)+'" aria-label="'+esc(L('Канал для видео','Videolar kanali'))+'">'+hintD('Ник канала без @. Пример: sarbon_video.','Kanal nomi @ siz. Masalan: sarbon_video.')+'</div></div>'
+    +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="ownvch"'+(V.busy?' disabled':'')+'>'+L('Сохранить канал','Kanalni saqlash')+'</button></div></div>';
+  h+='<div class="eyebrow" style="margin-top:18px">'+L('Все видео','Barcha videolar')+' · '+V.items.length+'</div>';
+  if(!V.items.length)return h+'<div class="empty"><b>'+L('Видео пока нет','Hozircha video yoʻq')+'</b>'+L('Когда продавцы добавят видео к товарам, они появятся здесь.','Sotuvchilar mahsulotlarga video qoʻshsa, ular shu yerda paydo boʻladi.')+'</div>';
+  return h+V.items.filter(x=>vdOk(x.vd)).map(x=>{
+    const k=x.did+':'+x.id,ask=V.ask===k;
+    return '<div class="bcard who"><div class="bh"><h3>'+esc(nm(x))+'</h3></div><div class="dmeta">'+esc(x.shop||x.did)+'</div>'
+      +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="ovidw" data-vd="'+esc(x.vd)+'">▶ '+L('Смотреть','Koʻrish')+'</button>'
+      +'<button type="button" class="btn ghost sm" data-act="ovidr" data-did="'+esc(x.did)+'" data-id="'+esc(x.id)+'"'+(V.busy?' disabled':'')+'>'+(ask?L('Точно убрать?','Aniq olib tashlansinmi?'):L('Убрать видео','Videoni olib tashlash'))+'</button></div></div>';
+  }).join('');
 }
 function ownWhoHTML(){
   const W=S.own.who;
@@ -7036,6 +7140,12 @@ document.addEventListener('click',e=>{
   else if(a==='pfilter'){S.pfilter=t.dataset.id;paintSeller()}
   else if(a==='pfold')pxSet(t.dataset.id,!S.pxo[t.dataset.id]);
   else if(a==='psave')prodSave(t.dataset.id);
+  else if(a==='vidadd')vidAdd(t.dataset.id);
+  else if(a==='vidrm')vidRemove(t.dataset.id);
+  else if(a==='vidwatch'||a==='pvid'){const q=S.prod.items.find(x=>x.id===t.dataset.id);if(q)openVideo(q.vd)}
+  else if(a==='ovidw')openVideo(t.dataset.vd);
+  else if(a==='ovidr')ownVidRemove(t.dataset.did,t.dataset.id);
+  else if(a==='ownvch')ownVidChannel();
   else if(a==='pfoldall')pxAll(t.dataset.v==='1');
   else if(a==='rseg'){if(S.rv.seg!==t.dataset.v){S.rv.seg=t.dataset.v;S.rv.did='';S.rv.cat='';S.rv.items=[];loadReview()}}
   else if(a==='rvreload')loadReview();
@@ -7311,6 +7421,7 @@ document.addEventListener('input',e=>{
     const [aid,tid]=t.dataset.agterr.split(':'),ag=S.own.ppl&&S.own.ppl.agents.find(x=>x.id===aid);
     if(ag){const set=new Set(ag.terr);if(t.checked)set.add(tid);else set.delete(tid);peopleCall('PUT','/agents/'+encodeURIComponent(aid),{terr:[...set]})}
   }
+  else if(t.dataset.ownVid!==undefined)S.own.vid[t.dataset.ownVid]=t.value;
   else if(t.dataset.ownWho!==undefined){const W=S.own.who;W[t.dataset.ownWho]=t.value;W.all=false;const l=$('#who-list');if(l)l.innerHTML=whoListHTML()}
   else if(t.dataset.bz!==undefined){S.own.bz[t.dataset.bz]=t.value;S.own.bz.err='';const er=$('#bz-err');if(er)er.textContent=''}
   else if(t.dataset.bze!==undefined){const E=S.own.bz.edit;(E[t.dataset.bid]=E[t.dataset.bid]||{})[t.dataset.bze]=t.value}
@@ -7504,7 +7615,9 @@ async function loadCfg(){
   if(S.view==='seller'&&S.sellerTab==='prod'&&typing)return;
   const msig=x=>x.items.map(p=>p.id+':'+(p.ms||'')+':'+(p.mc||'')).join();
   const msChanged=msig(nextP)!==msig(S.prod);
+  const oldVd=new Map(S.prod.items.map(p=>[p.id,p.vd||'']));
   S.cfg=next;S.prod=nextP;S.off=off;normalizeMode();
+  if(S.view==='seller'&&S.sellerTab==='prod'&&!msChanged)nextP.items.forEach(p=>{if((oldVd.get(p.id)||'')!==(p.vd||'')&&!(S.vid&&S.vid.id===p.id&&S.vid.st==='busy'))paintVid(p.id)});   // бот привязал или убрали видео
   if(S.view==='seller'&&msChanged){paintTabs();if(S.sellerTab==='prod')paintSeller()}
   const pruned=pruneCart();
   renderNav();
