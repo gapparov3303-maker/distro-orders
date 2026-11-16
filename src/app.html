@@ -1287,13 +1287,19 @@ function hsPaint(){
   b.innerHTML='<div class="wrap"><p>'+esc(L('Добавьте '+hubTitle()+' на главный экран: заказывать будет быстрее','Buyurtma berish tezroq boʻlishi uchun '+hubTitle()+'ni bosh ekranga qoʻshing'))+'</p>'
     +'<div class="hsb"><button type="button" class="btn sm" data-act="hsadd">'+L('Добавить','Qoʻshish')+'</button><button type="button" class="btn ghost sm" data-act="hsno">'+L('Не сейчас','Hozir emas')+'</button></div></div>';
 }
+/* Пункт «Добавить на главный экран» в меню ☰: есть всегда, пока Telegram это умеет, потому что человек мог убрать значок, а Telegram этого не видит и скрывает свой пункт «⋮» */
+function hsRowHTML(){
+  return S.hsMenu?'<div class="mgsep" role="presentation"></div><button type="button" class="mi" data-act="hsadd"><span class="ml">'+L('Добавить на главный экран','Bosh ekranga qoʻshish')+'</span></button>':'';
+}
 function hsInit(){
   const tg=S.tg;
-  if(!tg||typeof tg.addToHomeScreen!=='function'||typeof tg.checkHomeScreenStatus!=='function'||hsSeen())return;
+  if(!tg||typeof tg.addToHomeScreen!=='function'||typeof tg.checkHomeScreenStatus!=='function')return;
   try{
     if(typeof tg.isVersionAtLeast==='function'&&!tg.isVersionAtLeast('8.0'))return;
     tg.checkHomeScreenStatus(st=>{
-      if((st!=='missed'&&st!=='unknown')||hsSeen())return;
+      if(st!=='missed'&&st!=='unknown'&&st!=='added')return;   // «не поддерживается» и непонятное: ни плашки, ни пункта
+      if(!S.hsMenu){S.hsMenu=true;renderNav()}
+      if(st==='added'||hsSeen())return;
       const b=document.getElementById('hsbar');
       if(!b)return;
       hsMark();
@@ -1420,7 +1426,7 @@ function renderNav(){
       }else h+='<button type="button" class="mi" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])+'</button>';
     });
   });
-  h+=viewAsRowHTML();
+  h+=hsRowHTML()+viewAsRowHTML();
   // перерисовка не должна сбивать прокрутку и фокус открытого меню
   const ae=document.activeElement,fk=ae&&nav.contains(ae)?[ae.dataset.act,ae.dataset.v||ae.dataset.t||'']:null,st=nav.scrollTop;
   nav.setAttribute('aria-label',L('Разделы','Boʻlimlar'));
@@ -7032,7 +7038,7 @@ document.addEventListener('click',e=>{
   }
   else if(a==='menu')menuSet(!menuIsOpen());
   else if(a==='menuclose')menuSet(false);
-  else if(a==='hsadd')hsAdd();
+  else if(a==='hsadd'){hsAdd();menuSet(false)}
   else if(a==='hsno')hsHide();
   else if(a==='viewas')setViewAs(t.dataset.v||'');
   else if(a==='vasw'){S.vam=!S.vam;renderNav();if(S.vam){const l=$('#masl');if(l)try{l.scrollIntoView({block:'nearest'})}catch(e){}}}

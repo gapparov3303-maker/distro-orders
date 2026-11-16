@@ -7940,7 +7940,7 @@ await t('«Смотреть как»: роли в списке, только в�
   assert.ok(!/\$\('#mas'\)/.test(rn), 'кнопки ролей больше не рисуются под строкой «Вы:»');
   assert.ok(/data-act="viewas" data-v="">'\+esc\(L\('Вернуться'/.test(rn), 'в полоске кнопка «Вернуться»');
   // строка внизу меню: после всех групп и «О нас», до записи в #nav
-  const ri = [rn.indexOf('groups.forEach'), rn.indexOf('h+=viewAsRowHTML()'), rn.indexOf('nav.innerHTML=h')];
+  const ri = [rn.indexOf('groups.forEach'), rn.indexOf('+viewAsRowHTML();'), rn.indexOf('nav.innerHTML=h')];
   assert.ok(ri.every(x => x > 0) && ri[0] < ri[1] && ri[1] < ri[2], 'строка «Смотреть как» добавляется в самый низ меню, после «О нас»: ' + ri);
   assert.ok(/L\('Смотреть как','Rol sifatida koʻrish'\)/.test(html) && /L\('Все мои роли','Barcha rollarim'\)/.test(html), 'подписи строки на двух языках');
   assert.ok(/else if\(a==='viewas'\)setViewAs\(/.test(html), 'выбор роли обрабатывается');
@@ -10656,17 +10656,18 @@ await t('открытие по ссылке из канала: start_param «p_�
   assert.ok(/function openPop\(did,pid\)\{[^}]*hlProd\(pid\)/.test(fn('openPop')), '«Популярное сейчас» идёт тем же путём');
 });
 
-await t('значок на главном экране: плашка один раз на устройство, только если Telegram умеет и значка нет; «Добавить» зовёт Telegram, «Не сейчас» закрывает; два языка', () => {
+await t('значок на главном экране: плашка один раз на устройство, а пункт в меню ☰ всегда, пока Telegram умеет; «Добавить» зовёт Telegram, «Не сейчас» закрывает; два языка', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fnSrc = (h, name) => { const i = h.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = h.indexOf('\n}\n', i); return h.slice(i, j + 3); };
   const src = html.slice(html.indexOf("const HS_KEY="), html.indexOf('/* меню: разделы по группам'));
   assert.ok(src.length > 600 && /function hsAdd\(\)/.test(src) && !/function renderNav/.test(src), 'кусок кода найден');
   const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const mk = (tg, { uz = false, store = {}, lsThrow = false, bar = true, title = 'Sarbon' } = {}) => {
     const el = bar ? { hidden: true, innerHTML: '' } : null;
     const ls = { getItem: k => { if (lsThrow) throw new Error('нет доступа'); return k in store ? store[k] : null; }, setItem: (k, v) => { if (lsThrow) throw new Error('нет доступа'); store[k] = String(v); } };
-    const S = { tg };
-    const f = new Function('S', 'localStorage', 'document', 'L', 'esc', 'hubTitle', src + '\nreturn {hsInit,hsPaint,hsAdd,hsHide,hsSeen};')(S, ls, { getElementById: id => id === 'hsbar' ? el : null }, (ru, u) => uz ? u : ru, esc, () => title);
-    return Object.assign({ el, store, S }, f);
+    const S = { tg }, nav = { n: 0 };
+    const f = new Function('S', 'localStorage', 'document', 'L', 'esc', 'hubTitle', 'renderNav', src + '\nreturn {hsInit,hsPaint,hsAdd,hsHide,hsSeen,hsRowHTML};')(S, ls, { getElementById: id => id === 'hsbar' ? el : null }, (ru, u) => uz ? u : ru, esc, () => title, () => { nav.n++; });
+    return Object.assign({ el, store, S, nav }, f);
   };
   const tgWith = (status, extra) => { const t = { calls: [], events: {}, isVersionAtLeast: v => { t.calls.push('ver ' + v); return true; }, checkHomeScreenStatus: cb => { t.calls.push('check'); cb(status); }, addToHomeScreen: () => t.calls.push('add'), onEvent: (n, fn) => { t.events[n] = fn; } }; return Object.assign(t, extra || {}); };
   // значка нет: плашка на русском, помечено «показано», кнопки на месте
@@ -10677,18 +10678,26 @@ await t('значок на главном экране: плашка один р
   assert.ok(/data-act="hsadd"/.test(w.el.innerHTML) && /data-act="hsno"/.test(w.el.innerHTML));
   assert.equal(w.store['sh-hs'], '1', 'на этом устройстве плашка больше не покажется');
   assert.ok(tg.calls.includes('ver 8.0') && tg.calls.includes('check'));
+  // пункт в меню ☰: меню перерисовано, строка с кнопкой «Добавить на главный экран»; пока Telegram не ответил, строки нет
+  assert.equal(w.S.hsMenu, true); assert.equal(w.nav.n, 1);
+  assert.ok(/data-act="hsadd"/.test(w.hsRowHTML()) && /class="mgsep"/.test(w.hsRowHTML()) && /<span class="ml">Добавить на главный экран<\/span>/.test(w.hsRowHTML()), w.hsRowHTML());
+  assert.equal(mk(tgWith('missed')).hsRowHTML(), '', 'без ответа Telegram пункта нет');
+  const wu = mk(tgWith('missed'), { uz: true }); wu.hsInit();
+  assert.ok(/<span class="ml">Bosh ekranga qoʻshish<\/span>/.test(wu.hsRowHTML()), 'по-узбекски');
   // узбекский, статус «неизвестно» тоже показывает; название берётся с площадки
   w = mk(tgWith('unknown'), { uz: true, title: 'Sarbon Optom' }); w.hsInit();
   assert.equal(w.el.hidden, false);
   assert.ok(/Buyurtma berish tezroq boʻlishi uchun Sarbon Optomni bosh ekranga qoʻshing/.test(w.el.innerHTML) && />Qoʻshish</.test(w.el.innerHTML) && />Hozir emas</.test(w.el.innerHTML), w.el.innerHTML);
   w.S.tg = tgWith('missed'); w.hsPaint(); assert.ok(/data-act="hsadd"/.test(w.el.innerHTML), 'при смене языка плашка перерисовывается');
-  // значок уже есть, телефон не умеет, статус неизвестного вида: плашки нет и ничего не помечается
-  for (const st of ['added', 'unsupported', 'weird', undefined]) { w = mk(tgWith(st)); w.hsInit(); assert.equal(w.el.hidden, true, 'статус ' + st); assert.equal(w.store['sh-hs'], undefined); }
-  // уже показывали на этом устройстве: Telegram даже не спрашиваем
+  // значок уже стоит: плашки нет, но пункт в меню остаётся (человек мог убрать значок, а Telegram этого не видит)
+  w = mk(tgWith('added')); w.hsInit(); assert.equal(w.el.hidden, true); assert.equal(w.store['sh-hs'], undefined); assert.equal(w.S.hsMenu, true); assert.ok(/hsadd/.test(w.hsRowHTML()));
+  // телефон не умеет и непонятный статус: ни плашки, ни пункта, ничего не помечается
+  for (const st of ['unsupported', 'weird', undefined]) { w = mk(tgWith(st)); w.hsInit(); assert.equal(w.el.hidden, true, 'статус ' + st); assert.equal(w.store['sh-hs'], undefined); assert.ok(!w.S.hsMenu && w.hsRowHTML() === '' && w.nav.n === 0, 'пункта нет при статусе ' + st); }
+  // плашку уже показывали на этом устройстве: её нет, а пункт в меню есть
   tg = tgWith('missed'); w = mk(tg, { store: { 'sh-hs': '1' } }); w.hsInit();
-  assert.equal(w.el.hidden, true); assert.ok(!tg.calls.includes('check'));
+  assert.equal(w.el.hidden, true); assert.ok(tg.calls.includes('check')); assert.equal(w.S.hsMenu, true); assert.ok(/hsadd/.test(w.hsRowHTML()));
   // старый Telegram, нет методов, нет Telegram вообще, нет места под плашку, нет доступа к памяти: ничего не падает
-  tg = tgWith('missed', { isVersionAtLeast: () => false }); w = mk(tg); assert.doesNotThrow(() => w.hsInit()); assert.equal(w.el.hidden, true); assert.ok(!tg.calls.includes('check'), 'версия ниже 8.0');
+  tg = tgWith('missed', { isVersionAtLeast: () => false }); w = mk(tg); assert.doesNotThrow(() => w.hsInit()); assert.equal(w.el.hidden, true); assert.ok(!tg.calls.includes('check') && !w.S.hsMenu, 'версия ниже 8.0: ни плашки, ни пункта');
   w = mk({ isVersionAtLeast: () => true }); assert.doesNotThrow(() => w.hsInit()); assert.equal(w.el.hidden, true);
   w = mk(null); assert.doesNotThrow(() => w.hsInit());
   w = mk(tgWith('missed'), { bar: false }); assert.doesNotThrow(() => w.hsInit()); assert.equal(w.store['sh-hs'], undefined, 'нет плашки — не считаем показанной');
@@ -10702,7 +10711,8 @@ await t('значок на главном экране: плашка один р
   tg = tgWith('missed', { addToHomeScreen: () => { throw new Error('сбой'); } }); w = mk(tg); w.hsInit(); assert.doesNotThrow(() => w.hsAdd());
   // подключено: место над каталогом, кнопки, запуск после первого показа, перерисовка при смене языка, стили; в текстах нет запрещённых слов
   assert.ok(/<div class="hsbar" id="hsbar" hidden><\/div>\s*<main id="view">/.test(html), 'плашка над каталогом, скрыта');
-  assert.ok(/a==='hsadd'\)hsAdd\(\)/.test(html) && /a==='hsno'\)hsHide\(\)/.test(html), 'кнопки подключены');
+  assert.ok(/a==='hsadd'\)\{hsAdd\(\);menuSet\(false\)\}/.test(html) && /a==='hsno'\)hsHide\(\)/.test(html), 'кнопки подключены, пункт меню закрывает меню');
+  assert.ok(/h\+=hsRowHTML\(\)\+viewAsRowHTML\(\);/.test(fnSrc(html, 'renderNav')), 'пункт стоит внизу меню, над строкой «Смотреть как»');
   assert.ok(/render\(\);\s*if\(hp\)hlProd\(hp\);\s*hsInit\(\);/.test(html), 'запуск после первого показа экрана');
   assert.ok(/function switchLang\(\)[\s\S]{0,300}hsPaint\(\);/.test(html), 'смена языка перерисовывает плашку');
   assert.ok(/\.hsbar\[hidden\]\{display:none\}/.test(html) && /\.hsbar \.wrap\{[^}]*flex-wrap:wrap/.test(html), 'стили есть');
