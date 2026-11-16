@@ -41,8 +41,30 @@ class MockStorage {
   }
 }
 let tgLog = [], tgFail = false, tgDocFail = false, tgDocDelay = 0, msgSeq = 1000, tgCopyFail = '';
+/* файлы Telegram для проигрывания видео: номер файла → путь → байты; tgFileRanges — умеет ли «Telegram» отдавать куски */
+const VID_ID = 'BAACAgIAAxkBAAIvideo01', THM_ID = 'AAMCAgADGQEAAthumb0001', VID2_ID = 'BAACAgIAAxkBAAIvideo02';
+const mkBytes = (n, k) => Uint8Array.from({ length: n }, (_, i) => (i * 7 + (k || 0)) % 251);
+let tgFiles = {}, tgFileFail = false, tgFileThrow = false, tgFileRanges = false, fileLog = [];
+const resetTgFiles = () => {
+  tgFiles = {
+    [VID_ID]: { path: 'videos/file_1.mp4', bytes: mkBytes(1000, 1) }, [THM_ID]: { path: 'thumbs/file_2.jpg', bytes: mkBytes(50, 2) },
+    [VID2_ID]: { path: 'videos/file_3.mp4', bytes: mkBytes(700, 3) }
+  };
+  tgFileFail = tgFileThrow = tgFileRanges = false; fileLog = [];
+};
+resetTgFiles();
 globalThis.fetch = async (url, init) => {
   const u = String(url);
+  if (u.startsWith('https://api.telegram.org/file/bot' + TOKEN + '/')) {
+    const fp = u.slice(('https://api.telegram.org/file/bot' + TOKEN + '/').length), hd = (init && init.headers) || {};
+    fileLog.push({ fp, range: hd.range || '' });
+    if (tgFileThrow) throw new Error('сеть недоступна');
+    const f = Object.values(tgFiles).find(x => x.path === fp);
+    if (tgFileFail || !f) return new Response('no', { status: 404 });
+    const rg = tgFileRanges && /^bytes=(\d+)-(\d*)$/.exec(hd.range || '');
+    if (rg) { const a = Number(rg[1]), b = rg[2] === '' ? f.bytes.length - 1 : Math.min(Number(rg[2]), f.bytes.length - 1); return new Response(f.bytes.slice(a, b + 1), { status: 206, headers: { 'content-range': 'bytes ' + a + '-' + b + '/' + f.bytes.length, 'content-length': String(b - a + 1) } }); }
+    return new Response(f.bytes, { status: 200, headers: { 'content-length': String(f.bytes.length) } });
+  }
   assert.ok(u.startsWith('https://api.telegram.org/bot' + TOKEN + '/'), 'запрос ушёл не в Telegram: ' + u);
   if (tgFail) throw new Error('сеть недоступна');
   const method = u.split('/').pop();
@@ -61,6 +83,11 @@ globalThis.fetch = async (url, init) => {
   if (tgCopyFail && method === 'copyMessage') return new Response(JSON.stringify({ ok: false, error_code: 400, description: tgCopyFail }), { status: 400, headers: { 'content-type': 'application/json' } });
   const res = { ok: true, result: true };
   if (method === 'copyMessage') res.result = { message_id: ++msgSeq };
+  if (method === 'getFile') {
+    const f = tgFiles[payload.file_id];
+    if (!f) return new Response(JSON.stringify({ ok: false, error_code: 400, description: 'Bad Request: invalid file_id' }), { status: 400, headers: { 'content-type': 'application/json' } });
+    res.result = { file_id: payload.file_id, file_path: f.path, file_size: f.size || f.bytes.length };
+  }
   if (method === 'sendMessage') res.result = { message_id: ++msgSeq, chat: { id: payload.chat_id } };
   if (method === 'sendDocument') res.result = { message_id: ++msgSeq, chat: { id: Number(payload.chat_id) } };
   if (method === 'getMe') res.result = { id: 123456, username: 'distro_test_bot' };
@@ -10205,7 +10232,7 @@ await t('карточка товара: большая кнопка «Сохра
 
 await t('видео товара: продавец жмёт «Добавить видео», бот публикует ролик в канале и привязывает к товару; покупатель видит ссылку, клиент подделать её не может', async () => {
   const { sid } = await shopWorld('Видео Трейд');
-  const vmsg = (from, over, mid) => send({ update_id: 9000 + (mid || 1), message: Object.assign({ message_id: mid || 500, from, chat: { id: from.id, type: 'private' }, video: { file_id: 'F', duration: 20, file_size: 5e6 } }, over || {}) });
+  const vmsg = (from, over, mid) => send({ update_id: 9000 + (mid || 1), message: Object.assign({ message_id: mid || 500, from, chat: { id: from.id, type: 'private' }, video: { file_id: VID_ID, duration: 20, file_size: 5e6, mime_type: 'video/mp4', thumbnail: { file_id: THM_ID, width: 90, height: 160 } } }, over || {}) });
   const seller = (init, did) => callS(did || sid, 'POST', '/api/admin/video/link', { init: init || iD(), body: { id: 'p1' } });
   // ссылка на бота: только у продавца, только для существующего товара
   const lk = await seller();
@@ -10230,13 +10257,13 @@ await t('видео товара: продавец жмёт «Добавить �
   await startMsg(DIL, 'v_' + sid + '_p1');
   const ask = lastTg('sendMessage', p => /Отправьте сюда видео/.test(p.text));
   assert.ok(ask && /Масло подсолнечное/.test(ask.payload.text) && /Kungaboqar yogʻi/.test(ask.payload.text), 'бот называет товар на обоих языках');
-  assert.ok(/60/.test(ask.payload.text) && /50/.test(ask.payload.text) && /@sarbon_video/.test(ask.payload.text), 'лимиты и канал названы');
+  assert.ok(/60/.test(ask.payload.text) && /20 МБ/.test(ask.payload.text) && /20 MB/.test(ask.payload.text) && !/50/.test(ask.payload.text) && /@sarbon_video/.test(ask.payload.text), 'лимиты и канал названы');
   // слишком длинное и слишком тяжёлое не публикуются, ожидание сохраняется
   tgLog = [];
   await vmsg(DIL, { video: { duration: 61, file_size: 1e6 } }, 502);
   assert.ok(lastTg('sendMessage', p => /длиннее 60/.test(p.text) && /uzun/.test(p.text)));
-  await vmsg(DIL, { video: { duration: 10, file_size: 60 * 1024 * 1024 } }, 503);
-  assert.ok(lastTg('sendMessage', p => /больше 50 МБ/.test(p.text) && /50 MB/.test(p.text)));
+  await vmsg(DIL, { video: { file_id: VID_ID, duration: 10, file_size: 25 * 1024 * 1024 } }, 503);
+  assert.ok(lastTg('sendMessage', p => /больше 20 МБ/.test(p.text) && /20 MB/.test(p.text)));
   assert.equal(tgAll('copyMessage').length, 0);
   // нормальное видео: копия в канал с подписью «товар · продавец», привязка, ответ с кнопкой «Открыть»
   tgLog = [];
@@ -10296,7 +10323,7 @@ await t('видео товара: продавец жмёт «Добавить �
 
 await t('видео товара: ошибка канала сообщает владельцу, лимит 30 в сутки, ожидание 15 минут, владелец меняет канал и убирает любое видео', async () => {
   const { sid } = await shopWorld('Видео Два');
-  const vmsg = (from, mid) => send({ update_id: 9500 + mid, message: { message_id: mid, from, chat: { id: from.id, type: 'private' }, video: { file_id: 'F', duration: 5, file_size: 1e6 } } });
+  const vmsg = (from, mid) => send({ update_id: 9500 + mid, message: { message_id: mid, from, chat: { id: from.id, type: 'private' }, video: { file_id: VID_ID, duration: 5, file_size: 1e6 } } });
   // бот не админ канала: продавцу понятный ответ, владелец получает подсказку, к товару ничего не привязано
   tgCopyFail = 'Bad Request: chat not found';
   tgLog = [];
@@ -10361,6 +10388,82 @@ await t('видео товара: ошибка канала сообщает в�
   assert.equal((await call('POST', '/api/hub/admin/video/remove', { init: iD(), body: { did: sid, id: 'p3' } })).status, 403, 'продавец не убирает через раздел владельца');
 });
 
+await t('видео товара: сервер отдаёт ролик и кадр-заставку из Telegram покупателю, с кусками для Safari; закрытое, чужое и сломанное не отдаётся, ключи не видны', async () => {
+  resetTgFiles();
+  const { sid } = await shopWorld('Видео Три');
+  const vmsg = (from, over, mid) => send({ update_id: 9800 + mid, message: Object.assign({ message_id: mid, from, chat: { id: from.id, type: 'private' }, video: { file_id: VID_ID, duration: 20, file_size: 1000, mime_type: 'video/mp4', thumbnail: { file_id: THM_ID } } }, over || {}) });
+  const get = (path, headers, method) => mod.default.fetch(new Request(HOST + path, { method: method || 'GET', headers: headers || {} }), W.env);
+  const bytesOf = async r => new Uint8Array(await r.arrayBuffer());
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const V1 = tgFiles[VID_ID].bytes, TH = tgFiles[THM_ID].bytes;
+  // до видео отдавать нечего
+  assert.equal((await get('/vid/' + sid + '/p1')).status, 404);
+  await startMsg(DIL, 'v_' + sid + '_p1'); await vmsg(DIL, {}, 700);
+  // ролик целиком: без входа (его открывают через <video src>), правильный тип, ключ бота не виден
+  let r = await get('/vid/' + sid + '/p1');
+  assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'video/mp4'); assert.equal(r.headers.get('accept-ranges'), 'bytes');
+  assert.ok(same(await bytesOf(r), V1), 'байты совпали');
+  assert.ok(![...r.headers.values()].join('|').includes(TOKEN) && !(await get('/vid/' + sid + '/p1').then(x => x.text())).includes(TOKEN), 'ключ бота в ответе не виден');
+  assert.ok(fileLog.some(x => x.fp === 'videos/file_1.mp4') && !fileLog.some(x => x.range), 'без Range Telegram кусок не просили');
+  // кусок: Telegram не умеет — режем сами; умеет — пропускаем его ответ
+  for (const ranges of [false, true]) {
+    tgFileRanges = ranges; fileLog = [];
+    r = await get('/vid/' + sid + '/p1', { range: 'bytes=0-99' });
+    assert.equal(r.status, 206, 'кусок: ' + ranges); assert.equal(r.headers.get('content-range'), 'bytes 0-99/1000'); assert.equal(r.headers.get('content-length'), '100');
+    assert.ok(same(await bytesOf(r), V1.slice(0, 100)));
+    r = await get('/vid/' + sid + '/p1', { range: 'bytes=500-' });
+    assert.equal(r.status, 206); assert.equal(r.headers.get('content-range'), 'bytes 500-999/1000'); assert.ok(same(await bytesOf(r), V1.slice(500)));
+    assert.ok(fileLog.find(x => x.range === 'bytes=500-'), 'кусок сначала просим у Telegram, режем сами только если он отдал файл целиком');
+  }
+  tgFileRanges = false;
+  r = await get('/vid/' + sid + '/p1', { range: 'bytes=-100' });
+  assert.equal(r.status, 206); assert.equal(r.headers.get('content-range'), 'bytes 900-999/1000'); assert.ok(same(await bytesOf(r), V1.slice(900)));
+  r = await get('/vid/' + sid + '/p1', { range: 'bytes=0-5000' });
+  assert.equal(r.headers.get('content-range'), 'bytes 0-999/1000', 'конец за пределами файла подрезается');
+  r = await get('/vid/' + sid + '/p1', { range: 'bytes=2000-3000' });
+  assert.equal(r.status, 416); assert.equal(r.headers.get('content-range'), 'bytes */1000');
+  r = await get('/vid/' + sid + '/p1', {}, 'HEAD');
+  assert.equal(r.status, 200); assert.equal((await r.text()), '');
+  // кадр-заставка
+  r = await get('/vid/' + sid + '/p1?t=1');
+  assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'image/jpeg'); assert.ok(same(await bytesOf(r), TH));
+  // клиент ни подсунуть, ни подсмотреть файл не может: в каталоге номеров файлов нет, правка каталога их не меняет
+  for (const init of [iA(), iD()]) {
+    const raw = await (await callS(sid, 'GET', '/api/config', { init })).text();
+    assert.ok(!raw.includes(VID_ID) && !raw.includes(THM_ID) && !/"vx"/.test(raw), 'в каталоге нет номеров файлов Telegram');
+  }
+  const c = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod;
+  c.items.find(i => i.id === 'p1').vx = { f: VID2_ID }; c.items.find(i => i.id === 'p2').vx = { f: VID2_ID };
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c } })).status, 200);
+  assert.ok(same(await bytesOf(await get('/vid/' + sid + '/p1')), V1), 'подмена номера файла не прошла');
+  assert.equal((await get('/vid/' + sid + '/p2')).status, 404, 'у товара без видео ничего не отдаётся');
+  // замена: отдаётся новый ролик, у которого нет заставки; убрали — снова 404
+  tgFiles[VID_ID].path = 'videos/old.mp4';
+  await startMsg(DIL, 'v_' + sid + '_p1'); await vmsg(DIL, { video: { file_id: VID2_ID, duration: 9, file_size: 700, mime_type: 'video/quicktime' } }, 701);
+  r = await get('/vid/' + sid + '/p1');
+  assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'video/quicktime'); assert.ok(same(await bytesOf(r), tgFiles[VID2_ID].bytes));
+  assert.equal((await get('/vid/' + sid + '/p1?t=1')).status, 404, 'без заставки — 404, приложение покажет тёмный кадр');
+  // слишком большой файл, сломанный номер, отказ или обрыв Telegram
+  tgFiles[VID2_ID].size = 25 * 1024 * 1024; assert.equal((await get('/vid/' + sid + '/p1')).status, 404, 'тяжелее 20 МБ не отдаётся'); delete tgFiles[VID2_ID].size;
+  tgFileFail = true; assert.equal((await get('/vid/' + sid + '/p1')).status, 404); tgFileFail = false;
+  tgFileThrow = true; assert.equal((await get('/vid/' + sid + '/p1')).status, 502); tgFileThrow = false;
+  const gf = tgFiles[VID2_ID]; delete tgFiles[VID2_ID]; assert.equal((await get('/vid/' + sid + '/p1')).status, 404, 'Telegram не знает файл'); tgFiles[VID2_ID] = gf;
+  // неверные адреса
+  for (const bad of ['/vid/' + sid + '/zz', '/vid/' + sid + '/p1/x', '/vid/nope1/p1', '/vid/' + sid, '/vid/', '/vid/' + sid + '/..%2Fp1']) assert.equal((await get(bad)).status, 404, bad);
+  // товар ещё на проверке: ролик закрыт, пока владелец не одобрит
+  const c2 = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod;
+  c2.items.push({ id: 'p9', cat: 'oil', name: 'Новый', uz: 'Yangi', desc: '', descUz: '', amount: 1, unit: 'l', price: 1000, on: true });
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c2 } })).status, 200);
+  await startMsg(DIL, 'v_' + sid + '_p9'); await vmsg(DIL, {}, 702);
+  assert.equal((await get('/vid/' + sid + '/p9')).status, 404, 'черновик');
+  await approveAll(sid);
+  assert.equal((await get('/vid/' + sid + '/p9')).status, 200, 'после одобрения отдаётся');
+  // убрал продавец — ролика нет
+  assert.equal((await callS(sid, 'POST', '/api/admin/video/remove', { init: iD(), body: { id: 'p1' } })).status, 200);
+  assert.equal((await get('/vid/' + sid + '/p1')).status, 404);
+  assert.equal((await get('/vid/' + sid + '/p1?t=1')).status, 404);
+});
+
 await t('видео товара на экране: блок в карточке продавца, кнопка у покупателя, раздел «Видео» у владельца; ссылки только на настоящие посты', async () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const src = html.slice(html.indexOf('/* ---------- видео товара'), html.indexOf('function modBanInner('));
@@ -10369,8 +10472,10 @@ await t('видео товара на экране: блок в карточке
   assert.equal((body.match(/vidHTML\(p\)/g) || []).length, 1, 'один блок в карточке');
   assert.ok(body.indexOf('vidHTML(p)') < body.indexOf('psvHTML(p)'), 'видео выше кнопки «Сохранить»');
   const card = html.slice(html.indexOf('function productCard('), html.indexOf('/* Поиск по названию, описанию'));
-  assert.ok(/vdOk\(p\.vd\)\?'<button[^']*data-act="pvid"/.test(card), 'у покупателя кнопка только при настоящем видео');
-  for (const a of ['vidadd', 'vidrm', 'vidwatch', 'pvid', 'ovidw', 'ovidr', 'ownvch']) assert.ok(html.includes("a==='" + a + "'"), 'нажатие «' + a + '» обработано');
+  assert.ok(!/data-act="pvid"/.test(html) && !/a==='pvid'/.test(html), 'отдельной кнопки «▶ Видео» у покупателя больше нет');
+  assert.ok(/hv=vdOk\(p\.vd\),zm=np\|\|hv/.test(card) && /hv\?'▶'\+\(np>1\?'':' '\+L\('Видео','Video'\)\)/.test(card), 'у товара с видео фото открывается и несёт значок ▶ (даже если фото нет)');
+  for (const a of ['vidadd', 'vidrm', 'vidwatch', 'ovidw', 'ovidr', 'ownvch', 'lbplay', 'lbkeep', 'lbtg']) assert.ok(html.includes("a==='" + a + "'"), 'нажатие «' + a + '» обработано');
+  assert.ok(/a==='vidwatch'\)openViewer\(t\.dataset\.id,null,null,true\)/.test(html), '«Смотреть» у продавца открывает просмотр сразу на видео');
   assert.ok(/\['video',L\('Видео','Video'\)/.test(html), 'пункт «Видео» в меню владельца');
   const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const mk = (uz, over, api) => {
@@ -10387,7 +10492,7 @@ await t('видео товара на экране: блок в карточке
   let h = w.f.vidHTML({ id: 'p1' });
   assert.ok(/\+ Добавить видео<\/button>/.test(h) && !/vidwatch|vidrm/.test(h) && /Покажите товар в деле/.test(h));
   h = w.f.vidHTML({ id: 'p2', vd: 'sarbon_video/17' });
-  assert.ok(/data-act="vidwatch"/.test(h) && />Заменить<\/button>/.test(h) && />Убрать видео<\/button>/.test(h) && /«▶ Видео»/.test(h));
+  assert.ok(/data-act="vidwatch"/.test(h) && />Заменить<\/button>/.test(h) && />Убрать видео<\/button>/.test(h) && /последним слайдом после фото/.test(h));
   assert.ok(!/vidwatch/.test(w.f.vidHTML({ id: 'p2', vd: 'javascript:alert(1)' })), 'подделанная ссылка не даёт кнопку');
   h = mk(true).f.vidHTML({ id: 'p2', vd: 'sarbon_video/17' });
   assert.ok(/Koʻrish<\/button>/.test(h) && />Almashtirish</.test(h) && />Videoni olib tashlash</.test(h));
@@ -10429,6 +10534,67 @@ await t('видео товара на экране: блок в карточке
   assert.ok(/Видео пока нет/.test(draw(false, Object.assign({}, V, { items: [] }))));
   assert.ok(/Загружаем/.test(draw(false, Object.assign({}, V, { ok: false }))) && /Не удалось загрузить/.test(draw(false, Object.assign({}, V, { ok: false, err: true }))));
   assert.ok(!/магазин|клиент|дистрибьютор/i.test(src + osrc), 'в видимых текстах нет «магазин», «клиент», «дистрибьютор»');
+});
+
+await t('видео в просмотре фото: четвёртый слайд после фото, нажали ▶ — играет в приложении, листнули — замолкает, не загрузилось — «Открыть в Telegram»', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const vsrc = html.slice(html.indexOf('function openViewer('), html.indexOf('/* общий просмотр картинок'));
+  assert.ok(vsrc.length > 800 && /function lbPlay\(/.test(vsrc), 'функции найдены');
+  const vd = html.slice(html.indexOf('const VD_RE='), html.indexOf('function openVideo('));
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const mk = (uz, calls) => new Function('S', 'L', 'esc', 'phVers', 'imgUrl', 'nm', 'lbOpen', 'openVideo', vd + '\n' + vsrc + '\nreturn {openViewer,vidUrl,lbVideoHTML,lbPlay,vdOk};')(
+    { did: 'aa1', lbItems: null }, (ru, u) => uz ? u : ru, esc, p => Array(p.n || 0).fill('v'), (p, n, did) => '/img/' + (did || 'aa1') + '/' + p.id + '?n=' + n, p => p.name, (...a) => calls.push(a), () => {});
+  let calls = [], f = mk(false, calls);
+  // три фото и видео: четыре слайда, видео последним
+  f.openViewer('', { id: 'p1', name: 'Рис', n: 3, vd: 'sarbon_video/17' });
+  let [items, label, start] = calls.pop();
+  assert.equal(items.length, 4); assert.ok(items.slice(0, 3).every(x => !x.video && /^\/img\/aa1\/p1\?n=\d$/.test(x.src)));
+  assert.deepEqual(items[3], { video: true, src: '/vid/aa1/p1?v=17', poster: '/vid/aa1/p1?v=17&t=1', vd: 'sarbon_video/17', alt: 'Рис' });
+  assert.equal(label, 'Рис'); assert.equal(start, 0, 'обычно открывается с первого фото');
+  f.openViewer('', { id: 'p1', name: 'Рис', n: 3, vd: 'sarbon_video/17' }, 'bb2', true);
+  [items, , start] = calls.pop(); assert.equal(start, 3, '«Смотреть» у продавца сразу на видео'); assert.equal(items[3].src, '/vid/bb2/p1?v=17', 'чужой продавец в адресе');
+  // только видео, только фото, ни того ни другого, подделанная ссылка
+  f.openViewer('', { id: 'p2', name: 'Мука', n: 0, vd: 'sarbon_video/5' }); [items, , start] = calls.pop();
+  assert.equal(items.length, 1); assert.ok(items[0].video); assert.equal(start, 0);
+  f.openViewer('', { id: 'p3', name: 'Сахар', n: 2 }, null, true); [items, , start] = calls.pop();
+  assert.equal(items.length, 2); assert.ok(items.every(x => !x.video)); assert.equal(start, 0, 'видео нет — начало с первого фото');
+  f.openViewer('', { id: 'p4', name: 'Соль', n: 0 }); f.openViewer('', { id: 'p5', name: 'Чай', n: 0, vd: 'javascript:alert(1)' });
+  f.openViewer('', { id: 'p6', name: 'Чай', n: 1, vd: 'evil/../x' }); [items] = calls.pop();
+  assert.equal(calls.length, 0, 'нечего показывать — просмотр не открывается'); assert.ok(items.length === 1 && !items[0].video, 'подделанная ссылка слайда не даёт');
+  // слайд-заставка
+  let h = f.lbVideoHTML(items0()); function items0() { return { poster: '/vid/aa1/p1?v=17&t=1' }; }
+  assert.ok(/class="lb-slide lb-vslide" data-act="lbbg"/.test(h) && /data-act="lbplay" aria-label="Смотреть видео"/.test(h) && /class="lb-poster" src="\/vid\/aa1\/p1\?v=17&amp;t=1"/.test(h) && /<svg/.test(h));
+  assert.ok(/Videoni koʻrish/.test(mk(true, []).lbVideoHTML(items0())));
+  // нажатие ▶: на месте заставки появляется <video> с управлением, фоновое касание его не закрывает; не загрузилось — предложение открыть пост
+  const run = (uz) => {
+    const log = [], c = []; const g = mk(uz, c);
+    const video = { listeners: {}, addEventListener(n, fn) { this.listeners[n] = fn; }, play() { log.push('play'); return Promise.resolve(); } };
+    const slide = { innerHTML: '', querySelector: sel => sel === 'video' ? video : null };
+    const track = { children: [{}, {}, slide] };
+    const btn = { closest: sel => sel === '.lb-vslide' ? slide : sel === '.lb-track' ? track : null };
+    const S = { lbItems: [{}, {}, { video: true, src: '/vid/aa1/p1?v=17', poster: '/vid/aa1/p1?v=17&t=1', vd: 'sarbon_video/17' }] };
+    const lp = new Function('S', 'L', 'esc', 'openVideo', vsrc.slice(vsrc.indexOf('function lbPlay(')) + '\nreturn lbPlay;')(S, (ru, u) => uz ? u : ru, esc, () => {});
+    lp(btn);
+    return { slide, video, log, lp, btn, S };
+  };
+  let r = run(false);
+  assert.ok(/<div class="lb-vwrap" data-act="lbkeep"><video class="lb-video" controls autoplay playsinline preload="auto" poster="\/vid\/aa1\/p1\?v=17&amp;t=1" src="\/vid\/aa1\/p1\?v=17"><\/video><\/div>/.test(r.slide.innerHTML), 'видео с управлением внутри «неотзывчивой» обёртки: ' + r.slide.innerHTML);
+  assert.deepEqual(r.log, ['play']); assert.ok(r.video.listeners.error, 'ошибка загрузки отслеживается');
+  r.video.listeners.error();
+  assert.ok(/Не удалось загрузить видео\./.test(r.slide.innerHTML) && /data-act="lbtg" data-vd="sarbon_video\/17">Открыть в Telegram</.test(r.slide.innerHTML) && /data-act="lbkeep"/.test(r.slide.innerHTML));
+  r = run(true); r.video.listeners.error();
+  assert.ok(/Videoni yuklab boʻlmadi\./.test(r.slide.innerHTML) && />Telegramda ochish</.test(r.slide.innerHTML));
+  // слайд не видео или нет данных — ничего не ломается
+  r = run(false); const bad = { closest: () => null }; assert.doesNotThrow(() => r.lp(bad));
+  r.S.lbItems = [{}, {}, {}]; r.slide.innerHTML = 'x'; r.lp(r.btn); assert.equal(r.slide.innerHTML, 'x', 'не видео-слайд не трогаем');
+  // общий просмотр: стартовый слайд, пауза при листании, остановка при закрытии, заставка без файла
+  const lb = html.slice(html.indexOf('function lbOpen('), html.indexOf('/* скидка на заказ'));
+  assert.ok(/function lbOpen\(items,label,start\)/.test(lb) && /start>0&&start<items\.length/.test(lb) && /tr\.scrollLeft=start\*/.test(lb), 'можно открыть сразу на нужном слайде');
+  assert.ok(/v\.closest\('\.lb-slide'\)!==tr\.children\[i\]\)v\.pause\(\)/.test(lb), 'листнули от видео — оно на паузе');
+  assert.ok(/querySelectorAll\('video'\)\.forEach\(v=>\{try\{v\.pause\(\);v\.removeAttribute\('src'\);v\.load\(\)/.test(lb), 'закрыли просмотр — видео остановлено и соединение отпущено');
+  assert.ok(/classList\.contains\('lb-poster'\)\)t\.remove\(\)/.test(lb), 'нет кадра-заставки — остаётся тёмный экран с ▶');
+  assert.ok(/\.lb-play\{[^}]*min-height:42vh/.test(html) && /\.lb-video\{width:100%/.test(html), 'стили слайда есть');
+  assert.ok(!/магазин|клиент|дистрибьютор/i.test(vsrc), 'в видимых текстах нет «магазин», «клиент», «дистрибьютор»');
 });
 
 /* ---------- итог ---------- */
