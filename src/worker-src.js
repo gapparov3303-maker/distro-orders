@@ -579,7 +579,7 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
     else if (o.status === 'accepted') rows.push([btn(bzo ? btn2('📦 Omborga olib bordim', '📦 Отвёз на склад') : del ? btn2('📦 Joʻnatishga tayyor', '📦 Готов к отправке') : btn2('📦 Topshirishga tayyor', '📦 Готов к выдаче'), 's:' + px + o.id + ':ready')]);
     // доставку закрывает доставщик; продавцу кнопка нужна, только если доставщиков нет (или самовывоз)
     if (o.status === 'ready' && !(del && hasCr) && !buyerCloses(o)) rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен покупателю') : btn2('🤝 Topshirildi', '🤝 Выдан покупателю'), 's:' + px + o.id + ':done')]);
-    if (NEXT[o.status] && !o.sent) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
+    if (NEXT[o.status] && !o.sent && !(o.far && o.pay)) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
     const ml = orderLoc(o);
     if (ml) rows.push([{ text: '📍 Яндекс.Карты', url: mapUrl('y', ml) }, { text: '📍 Google Maps', url: mapUrl('g', ml) }]);
     rows.push([{ text: btn2('Sotuvchi paneli', 'Панель продавца'), web_app: { url: sellerUrl(origin, did) } }]);
@@ -615,6 +615,7 @@ function courierCard(o, shop, origin, did, state) {
 /* Что ещё нужно сделать продавцу по заказу с дальней доставкой (строка под карточкой) */
 function farAdminNote(o) {
   if (o.pay && o.status === 'accepted') return L('✅ Оплата получена. Отправьте груз и отметьте это в приложении (можно указать водителя).', '✅ Toʻlov olindi. Yukni joʻnating va ilovada belgilang (haydovchini yozish mumkin).');
+  if (o.pay && o.status === 'ready') return L('🚚 Груз отправлен. Заказ закроется, когда покупатель нажмёт «Получил».', '🚚 Yuk joʻnatildi. Buyurtma xaridor «Oldim» tugmasini bosganda yopiladi.');
   if (o.pay) return '';
   const need = !farFeeKnown(o) ? L('\n⚠️ Назовите стоимость доставки в приложении.', '\n⚠️ Yetkazib berish narxini ilovada ayting.') : '';
   return L('💳 Ждём оплату: груз отправляем только после неё. Оплату отмечайте в приложении.', 'Toʻlovni kutamiz: yuk faqat toʻlovdan keyin joʻnatiladi. Toʻlovni ilovada belgilang.') + need;
@@ -626,7 +627,7 @@ function farPayBlock(o) {
     P.push(L('К оплате: ', 'Toʻlanadi: ') + money(o.total) + (farFeeKnown(o) ? (f.fee > 0 ? L(' (вместе с доставкой ', ' (yetkazib berish bilan ') + money(f.fee) + ')' : '') : L(' + доставка, её цену назовёт продавец', ' + yetkazib berish, narxini sotuvchi aytadi')));
   } else {
     P.push(L('К оплате продавцу: ', 'Sotuvchiga toʻlanadi: ') + money(o.total));
-    P.push(L('Перевозка водителю при получении: ', 'Yuk tashish haydovchiga olganda: ') + (farFeeKnown(o) ? money(f.fee) : L('сумму назовёт продавец', 'summani sotuvchi aytadi')));
+    P.push(L('Перевозка водителю при получении: ', 'Yuk tashish, qabul qilganda haydovchiga: ') + (farFeeKnown(o) ? money(f.fee) : L('сумму назовёт продавец', 'summani sotuvchi aytadi')));
   }
   if (f.rq) P.push(L('Реквизиты для оплаты:\n', 'Toʻlov rekvizitlari:\n') + f.rq);
   return P.join('\n');
@@ -652,7 +653,7 @@ function customerText(o, kind, shop) {
     if (kind === 'farsent') {
       const d = (o.far && o.far.dsp) || {}, drv = [d.n, d.ph].filter(Boolean).join(', ');
       const dl = (drv ? L('\nВодитель: ', '\nHaydovchi: ') + drv : '') + (d.wb ? L('\nНакладная / номер груза: ', '\nYuk xati / raqami: ') + d.wb : '');
-      const drvPay = !farInPrice(o) ? L('\nПеревозка водителю при получении: ', '\nYuk tashish haydovchiga olganda: ') + (farFeeKnown(o) ? money(o.far.fee) : L('сумму назовёт продавец', 'summani sotuvchi aytadi')) : '';
+      const drvPay = !farInPrice(o) ? L('\nПеревозка водителю при получении: ', '\nYuk tashish, qabul qilganda haydovchiga: ') + (farFeeKnown(o) ? money(o.far.fee) : L('сумму назовёт продавец', 'summani sotuvchi aytadi')) : '';
       return L('🚚 Заказ ' + o.id + ' отправлен.' + dl + drvPay + '\nАдрес доставки: ' + o.address + '\nКогда получите, нажмите «Получил» в «Мои заказы».',
         '🚚 Buyurtma ' + o.id + ' joʻnatildi.' + dl + drvPay + '\nYetkazib berish manzili: ' + o.address + '\nOlganingizda «Mening buyurtmalarim»da «Oldim» tugmasini bosing.');
     }
@@ -3505,7 +3506,7 @@ export class Shop {
   async afterGot(o) {
     const who = [o.name, o.phone].filter(Boolean).join(', ');
     const lab = btn2('Buyurtmalar', 'Заказы');
-    if (!buyerCloses(o) && !(o.far && o.pay)) {
+    if (!buyerCloses(o)) {
       await this.afterChange(o, 'ship');
       await this.notifyAdmins(biL(() => L('📥 Покупатель получил заказ ' + o.id + '.\nПокупатель: ' + who + '.\nОплата при получении: закройте заказ и отметьте, как заплатил покупатель.',
         '📥 Xaridor ' + o.id + ' buyurtmasini oldi.\nXaridor: ' + who + '.\nOlganda toʻlanadi: buyurtmani yoping va xaridor qanday toʻlaganini belgilang.')), lab);
@@ -3545,6 +3546,8 @@ export class Shop {
     if (to === 'cancelled' && shipLocked(o)) return { err: 'shipping_allowed', order: o };
     // склад уже отправил заказ Базара в Навои: отменять поздно
     if (to === 'cancelled' && o.sent) return { err: 'shipped', order: o };
+    // дальняя доставка: после «Оплата получена» отменить нельзя никому, возврат продавец и покупатель решают напрямую
+    if (to === 'cancelled' && o.far && o.pay) return { err: 'paid_far', order: o };
     // заказ Базара закрывает только покупатель кнопкой «Получил» (viaBuyer): продавцу закрывать нечем
     if (to === 'done' && !cour && !viaBuyer && buyerCloses(o)) return { err: 'buyer_closes', order: o };
     // доставщик закрывает только свой заказ на доставку
@@ -4643,6 +4646,10 @@ export class Shop {
       if (res.err === 'use_courier') {   // у заказа Базара доставщиков нет, сюда он не попадает
         await edit(await this.card(res.order, cfg.shop, false));
         return answer(ans2('Доставленным заказ отмечает доставщик', 'Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'), true);
+      }
+      if (res.err === 'paid_far') {   // оплаченный заказ дальней доставки не отменяется: в старых сообщениях кнопка «Отменить» могла остаться
+        await edit(await this.card(res.order, cfg.shop, false));
+        return answer(ans2('Оплата получена, отменить нельзя. Возврат решите с покупателем', 'Toʻlov olingan, bekor qilib boʻlmaydi. Qaytarishni xaridor bilan hal qiling'), true);
       }
       if (res.err === 'buyer_closes' || res.err === 'shipped') {
         await edit(await this.card(res.order, cfg.shop, false));

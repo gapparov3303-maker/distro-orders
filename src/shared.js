@@ -371,7 +371,7 @@ const farFeeKnown=o=>!!(o&&o.far&&Number.isFinite(o.far.fee)&&o.far.fee>=0);
 /* Груз уже отправлен продавцом: заказ закрывает «Получил» покупателя или «Доставлен» продавца */
 const farSent=o=>!!(o&&o.far&&o.far.sd);
 /* Заказ Базара закрывает только покупатель кнопкой «Получил»: ни продавец, ни склад, ни время его не закрывают. Исключение: заказы, разрешённые раньше с оплатой «при получении» (такого варианта больше нет): их закрывает продавец и записывает оплату */
-const buyerCloses=o=>noWhen(o)&&!(o.ship&&o.ship.m==='later');
+const buyerCloses=o=>!!(o&&o.far)||noWhen(o)&&!(o.ship&&o.ship.m==='later');   // дальняя доставка и Базар: заказ закрывает только покупатель кнопкой «Получил»
 const bzReadyBtn=()=>L('Отвёз на склад','Omborga olib bordim');
 const recvName=o=>o.mode==='delivery'?L('Доставка до двери','Eshikkacha yetkazish'):L('Заберу сам в Навои','Navoiyda oʻzim olaman');
 /* «когда» заказа: дата и время, а у заказа Базара — способ получения */
@@ -411,7 +411,7 @@ function orderText(o,shop,maxItems){
     if(farInPrice(o)){
       if(farFeeKnown(o)&&o.far.fee>0)P.push(L('Стоимость доставки: ','Yetkazib berish narxi: ')+money(o.far.fee));
       else if(!farFeeKnown(o))P.push(L('Стоимость доставки: назовёт продавец','Yetkazib berish narxini sotuvchi aytadi'));
-    }else P.push(L('Перевозка водителю при получении: ','Yuk tashish haydovchiga olganda: ')+(farFeeKnown(o)?money(o.far.fee):L('сумму назовёт продавец','summani sotuvchi aytadi')));
+    }else P.push(L('Перевозка водителю при получении: ','Yuk tashish, qabul qilganda haydovchiga: ')+(farFeeKnown(o)?money(o.far.fee):L('сумму назовёт продавец','summani sotuvchi aytadi')));
   }
   else if(o.fee>0)P.push(L('Стоимость доставки: ','Yetkazib berish narxi: ')+money(o.fee));
   P.push(L('Итого: ','Jami: ')+money(o.total)+(o.far?L(', оплата до отправки',', joʻnatishdan oldin toʻlanadi'):noWhen(o)?L(', оплата по договорённости с продавцом',', toʻlov sotuvchi bilan kelishiladi'):L(', оплата при получении',', olganda toʻlanadi')));

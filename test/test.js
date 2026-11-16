@@ -9487,7 +9487,7 @@ await t('склад, часть 3 на экране: «Отвёз на скла�
   assert.ok(/unshipBtn=m==='seller'&&o\.ship&&!o\.sent&&!\(o\.pay&&o\.pay\.m==='credit'\)&&NEXT_LIVE\.includes\(o\.status\)/.test(oc), '«Снять разрешение»: до отправки и не для долга');
   assert.ok(/gotBtn=m==='mine'&&\(o\.sent\|\|farSent\(o\)\)&&!o\.got&&NEXT_LIVE\.includes\(o\.status\)/.test(oc) && /Получил/.test(oc) && /Oldim/.test(oc), '«Получил» у покупателя после отправки');
   assert.ok(/o\.sent\?'<div class="note">🚚/.test(oc) && /o\.got&&o\.status!=='done'/.test(oc), 'в карточке виден этап');
-  assert.ok(/m==='seller'&&o\.got&&o\.status==='done'\?'<div class="note">🤝 '\+\(del\?L\('Доставлен покупателю','Xaridorga yetkazildi'\):L\('Выдан покупателю','Xaridorga topshirildi'\)\)\+' · '\+esc\(fmtWhen\(o\.got\.at\)\)/.test(oc), 'у продавца после «Получил» в карточке строка «Доставлен покупателю · время» (самовывоз: «Выдан покупателю»)');
+  assert.ok(/m==='seller'&&o\.got&&o\.status==='done'\?'<div class="note">🤝 '\+\(o\.far\?L\('Покупатель получил','Xaridor oldi'\):del\?L\('Доставлен покупателю','Xaridorga yetkazildi'\):L\('Выдан покупателю','Xaridorga topshirildi'\)\)\+' · '\+esc\(fmtWhen\(o\.got\.at\)\)/.test(oc), 'у продавца после «Получил» в карточке строка «Доставлен покупателю · время» (самовывоз: «Выдан покупателю»)');
   const wf = html.slice(html.indexOf('function whFiltered('), html.indexOf('function renderWh('));
   assert.ok(/data-act="whsent"/.test(wf) && /Отправлен в Навои/.test(wf) && /data-act="whunsent"/.test(wf) && /Вернуть из отправленных/.test(wf), 'кнопки кладовщика');
   const rw = html.slice(html.indexOf('function renderWh('), html.indexOf('async function whRecv('));
@@ -9930,6 +9930,12 @@ await t('дальняя доставка: заказ только с доста�
   o = (await jsonOf(r)).order;
   assert.deepEqual([o.pay, o.status, S.stOf(o.status, o.mode, o).name], [{ m: 'bank' }, 'accepted', 'Оплачен, готовим']);
   assert.ok(/:ready/.test(kb()) && /Оплата получена/.test(cardTxt()), 'после оплаты в карточке продавца появилась кнопка «Отправлен»');
+  assert.ok(!/"c:/.test(kb()), 'после оплаты кнопки «Отменить» в карточке продавца нет');
+  // оплаченный заказ не отменить никому: ни приложением, ни старой кнопкой в Telegram, ни покупателем
+  r = await st(o.id, 'cancelled');
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'paid_far'], 'продавец не отменяет оплаченный заказ');
+  assert.equal((await callS(sid, 'POST', '/api/cancel', { init: buyer.init(), body: { id: o.id } })).status === 200, false, 'покупатель после оплаты тоже не отменяет');
+  assert.equal(W.getShop(sid).storage.get ? (await W.getShop(sid).storage.get('o:' + o.id)).status : 'accepted', 'accepted', 'заказ остался в работе');
   const eta = S.ymd(new Date(S.shopNow().getTime() + 4 * 86400000));
   assert.equal(o.pickupAt, eta + 'T12:00', 'срок: 4 дня от дня оплаты');
   assert.ok(sentTo(buyer.u.id, t0).some(x => /оплата получена/.test(x.payload.text)), 'покупатель знает, что оплата дошла');
@@ -9941,11 +9947,21 @@ await t('дальняя доставка: заказ только с доста�
   o = (await jsonOf(r)).order;
   assert.deepEqual([o.status, S.stOf(o.status, o.mode, o).name, !!o.far.sd, o.far.dsp], ['ready', 'Отправлен', true, { n: 'Рустам', ph: '+998 90 111 11 11', wb: 'ТТН 4455' }]);
   assert.ok(sentTo(buyer.u.id, t0).some(x => /Водитель: Рустам, \+998 90 111 11 11/.test(x.payload.text) && /ТТН 4455/.test(x.payload.text) && /«Получил»/.test(x.payload.text)), 'покупатель видит водителя и накладную');
-  // доставщиков Sarbon у такого заказа нет, оплата уже записана: продавец закрывает «Доставлен» без вопроса про оплату
+  assert.ok(!/"c:/.test(kb()) && !/:done/.test(kb()), 'после отправки в Telegram у продавца ни «Отменить», ни «Доставлен»');
+  assert.ok(/Груз отправлен/.test(cardTxt()) && /«Получил»/.test(cardTxt()), 'в карточке сказано, что заказ закроет покупатель');
+  // «Доставлен покупателю» у продавца нет: заказ закрывает покупатель кнопкой «Получил»; отмены тоже нет
   r = await st(o.id, 'done');
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'buyer_closes'], 'продавец закрыть не может');
+  r = await st(o.id, 'cancelled');
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'paid_far'], 'и после отправки отменить нельзя');
+  const t1 = tgLog.length;
+  r = await call('POST', '/api/hub/orders/got', { init: buyer.init(), body: { did: sid, id: o.id } });
   assert.equal(r.status, 200);
-  o = (await jsonOf(r)).order;
-  assert.deepEqual([o.status, o.pay, S.stOf(o.status, o.mode, o).name], ['done', { m: 'bank' }, 'Доставлен']);
+  const g = await jsonOf(r);
+  o = g.order;
+  assert.deepEqual([g.closed, o.status, o.pay, S.stOf(o.status, o.mode, o).name, o.got.by], [true, 'done', { m: 'bank' }, 'Доставлен', 'buyer']);
+  assert.ok(tgAll('sendMessage', p => p.chat_id === DIL.id && /Покупатель получил заказ/.test(String(p.text)) && /закрыт/.test(String(p.text))).length >= 1, 'продавцу пришло сообщение, что покупатель получил заказ');
+  // старая кнопка «Доставлен» в Telegram продавцу не подходит
 });
 
 await t('дальняя доставка: цена «по договорённости» называется после заказа; покупатель получает сумму; напоминание об оплате раз в сутки; не «Производитель» — всё по-старому', async () => {
@@ -10030,7 +10046,13 @@ await t('дальняя доставка на экране: настройки �
   // карточки продавца: «Оплата получена» → «Отправил груз» (водитель, телефон, накладная); без оплаты кнопки отправки нет
   const fa = fn('farActs');
   assert.ok(/farpayopen/.test(fa) && /farsendopen/.test(fa) && !/data-to="ready"/.test(fa) && /farInPrice\(o\)&&!farFeeKnown\(o\)\)return cx\+pk/.test(fa), 'оплата → отправка; без цены перевозки оплату не записать');
-  assert.ok(/data-to="done"/.test(fa) && /if\(o\.far\)return farActs\(o,pk\)/.test(fn('sellerActs')), 'продавец закрывает «Доставлен» без вопроса про оплату');
+  assert.ok(!/data-to="done"/.test(fa) && /if\(o\.status==='ready'\)return pk;/.test(fa) && /if\(o\.far\)return farActs\(o,pk\)/.test(fn('sellerActs')), 'у продавца «Доставлен» нет: заказ закрывает покупатель');
+  assert.ok(/cx=o\.pay\?'':cancelBtn\(o\)/.test(fa), 'после «Оплата получена» кнопки «Отменить» нет');
+  assert.ok(/m==='seller'&&o\.pay&&live\)h\+='<div class="pmute">'/.test(fn('farCardHTML')) && /договоритесь с покупателем/.test(fn('farCardHTML')) && /xaridor bilan kelishing/.test(fn('farCardHTML')) && /когда покупатель нажмёт «Получил»/.test(fn('farCardHTML')), 'подсказка продавцу: отменить нельзя, заказ закроет покупатель');
+  assert.ok(/e==='paid_far'\?L\('Оплата получена, отменить нельзя/.test(html), 'ответ сервера «paid_far» понятен продавцу');
+  // узбекские фразы про оплату водителю: без прежней кальки «haydovchiga olganda»
+  assert.ok(!/haydovchiga olganda|Haydovchiga olganda/.test(html + fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8') + fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8')), 'калька «haydovchiga olganda» убрана везде');
+  assert.ok(/qabul qilganda haydovchiga toʻlanadi/.test(fn('farCardHTML')) && /Qabul qilganda haydovchiga: /.test(fn('farCardHTML')) && /Yuk tashish: qabul qilganda haydovchiga/.test(html), 'правильные фразы в карточке и в корзине');
   assert.ok(/\/api\/admin\/far\/paid/.test(html) && /\/api\/admin\/far\/sent/.test(html) && /\/api\/admin\/far\/fee/.test(html), 'три запроса');
   // у покупателя: реквизиты, «Получил» после отправки, отмена до оплаты
   const oc = fn('orderCard'), fc = fn('farCardHTML');

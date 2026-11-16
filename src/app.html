@@ -1614,7 +1614,7 @@ function paintCartSum(){
   const showFee=far||del&&feeSet&&!bzShop();
   const farRow=!far?'':fp==='in'
     ?'<div class="r"><span>'+L('Доставка','Yetkazib berish')+'</span><span id="cfeerow">'+(fc.need?L('цену назовёт продавец','narxini sotuvchi aytadi'):fc.fee>0?money(fc.fee):L('бесплатно','bepul'))+'</span></div>'
-    :'<div class="r"><span>'+L('Перевозка водителю при получении','Yuk tashish haydovchiga olganda')+'</span><span id="cfeerow">'+(fc.need?L('сумму назовёт продавец','summani sotuvchi aytadi'):fc.fee>0?money(fc.fee):L('бесплатно','bepul'))+'</span></div>';
+    :'<div class="r"><span>'+L('Перевозка водителю при получении','Yuk tashish: qabul qilganda haydovchiga')+'</span><span id="cfeerow">'+(fc.need?L('сумму назовёт продавец','summani sotuvchi aytadi'):fc.fee>0?money(fc.fee):L('бесплатно','bepul'))+'</span></div>';
   const farInfo=!far?'':(fc.w!==null?'<div class="r"><span>'+L('Вес','Ogʻirligi')+'</span><span>≈ '+kgTxt(fc.w)+'</span></div>':'')
     +(farCfg().m==='vol'&&fc.v!==null?'<div class="r"><span>'+L('Объём','Hajmi')+'</span><span>≈ '+nfKg.format(fc.v)+' '+L('м³','m³')+'</span></div>':'');
   el.innerHTML=(showFee||dc.amount>0?'<div class="r"><span>'+L('Товары','Mahsulotlar')+'</span><span id="csubrow">'+money(sub)+'</span></div>':'')
@@ -1652,7 +1652,7 @@ function farFormHTML(){
   const f=farCfg(),fp=farFp();
   return '<div class="full"><div class="note" role="status">🚚 '+L('Доставка из другого региона. Стоимость перевозки: '+farHowText(f)+'.','Boshqa hududdan yetkazib berish. Yuk tashish narxi: '+farHowText(f)+'.')+'</div>'
     +(f.pay==='both'
-      ?'<div class="seg" role="group" aria-label="'+esc(L('Как платить за перевозку','Yuk tashish uchun qanday toʻlash'))+'" style="margin-top:10px"><button type="button" data-act="farfp" data-v="in" aria-pressed="'+(fp==='in')+'">'+L('В цене заказа','Buyurtma narxida')+'</button><button type="button" data-act="farfp" data-v="drv" aria-pressed="'+(fp==='drv')+'">'+L('Водителю при получении','Haydovchiga olganda')+'</button></div>'
+      ?'<div class="seg" role="group" aria-label="'+esc(L('Как платить за перевозку','Yuk tashish uchun qanday toʻlash'))+'" style="margin-top:10px"><button type="button" data-act="farfp" data-v="in" aria-pressed="'+(fp==='in')+'">'+L('В цене заказа','Buyurtma narxida')+'</button><button type="button" data-act="farfp" data-v="drv" aria-pressed="'+(fp==='drv')+'">'+L('Водителю при получении','Qabul qilganda haydovchiga')+'</button></div>'
         +hintD(fp==='in'?'Перевозку вы оплачиваете сразу вместе с заказом, по тем же реквизитам.':'Заказ вы оплачиваете продавцу, а перевозку отдаёте водителю, когда он привезёт груз.',fp==='in'?'Yuk tashishni buyurtma bilan birga, shu rekvizitlar boʻyicha toʻlaysiz.':'Buyurtmani sotuvchiga toʻlaysiz, yuk tashishni esa haydovchi yukni olib kelganda berasiz.')
       :'<div class="note" style="margin-top:10px">'+(f.pay==='in'?L('Перевозка оплачивается вместе с заказом.','Yuk tashish buyurtma bilan birga toʻlanadi.'):L('Перевозку вы отдаёте водителю при получении.','Yuk tashishni olganda haydovchiga berasiz.'))+'</div>')
     +'</div>';
@@ -1662,7 +1662,7 @@ function farFeeRow(o,cls){
   if(!o.far)return '';
   const kn=farFeeKnown(o),inP=farInPrice(o);
   if(inP&&kn)return '';
-  return '<div class="'+cls+'"><span>'+(inP?L('Стоимость доставки','Yetkazib berish narxi'):L('Перевозка водителю при получении','Yuk tashish haydovchiga olganda'))+'</span><span>'+(kn?money(o.far.fee):L('назовёт продавец','sotuvchi aytadi'))+'</span></div>';
+  return '<div class="'+cls+'"><span>'+(inP?L('Стоимость доставки','Yetkazib berish narxi'):L('Перевозка водителю при получении','Yuk tashish: qabul qilganda haydovchiga'))+'</span><span>'+(kn?money(o.far.fee):L('назовёт продавец','sotuvchi aytadi'))+'</span></div>';
 }
 /* Поля заказа: способ получения, имя, телефон, адрес (для доставки), дата, время, комментарий */
 function formHTML(pk){
@@ -1895,9 +1895,9 @@ function sellerActs(o){
 }
 /* Дальняя доставка у продавца: оплата получена → груз отправлен (можно записать водителя) → доставлен. Без оплаты груз не отправить. */
 function farActs(o,pk){
-  const key=okey(o.id,S.did),fp=S.farp&&S.farp.key===key?S.farp:null,cx=cancelBtn(o),id=esc(o.id);
+  const key=okey(o.id,S.did),fp=S.farp&&S.farp.key===key?S.farp:null,cx=o.pay?'':cancelBtn(o),id=esc(o.id);   // после «Оплата получена» отмены нет
   const b=(act,label,cls)=>'<button type="button" class="btn '+(cls||'')+' sm" data-act="'+act+'" data-id="'+id+'">'+label+'</button>';
-  if(o.status==='ready')return '<button type="button" class="btn sm" data-act="status" data-id="'+id+'" data-to="done">'+L('Доставлен покупателю','Xaridorga yetkazildi')+'</button>'+cx+pk;
+  if(o.status==='ready')return pk;   // «Доставлен» у продавца нет: заказ закрывает покупатель кнопкой «Получил»
   if(o.status!=='accepted')return o.status==='done'?pk:'';
   if(!o.pay){
     if(farInPrice(o)&&!farFeeKnown(o))return cx+pk;   // сначала цена перевозки: без неё сумма к оплате не окончательная
@@ -1928,7 +1928,7 @@ function farCardHTML(o,m){
   if(f.w!=null)mt.push(L('вес','ogʻirligi')+' ≈ '+kgTxt(f.w));
   if(f.m==='vol'&&f.v!=null)mt.push(L('объём','hajmi')+' ≈ '+nfKg.format(f.v)+' '+L('м³','m³'));
   if(mt.length)h+='<div>'+mt.join(' · ')+'</div>';
-  h+='<div>'+(farInPrice(o)?L('Перевозка: в цене заказа','Yuk tashish: buyurtma narxida'):L('Перевозка: водителю при получении','Yuk tashish: haydovchiga olganda'))+'</div>';
+  h+='<div>'+(farInPrice(o)?L('Перевозка: в цене заказа','Yuk tashish: buyurtma narxida'):L('Перевозка: водителю при получении','Yuk tashish: qabul qilganda haydovchiga toʻlanadi'))+'</div>';
   if(m==='mine'&&st==='new')h+='<div>'+L('Ждёт подтверждения продавца. Реквизиты придут сюда и в чат.','Sotuvchi tasdiqlashini kutmoqda. Rekvizitlar shu yerga va chatga keladi.')+'</div>';
   if(m==='mine'&&st==='accepted'&&!o.pay){
     h+='<div><b>'+L('К оплате: ','Toʻlanadi: ')+money(o.total)+'</b>'+(farInPrice(o)&&!farFeeKnown(o)?' '+L('и доставка, цену назовёт продавец','va yetkazib berish, narxini sotuvchi aytadi'):'')+'</div>';
@@ -1940,8 +1940,9 @@ function farCardHTML(o,m){
     const drv=[d.n,d.ph].filter(Boolean);
     if(drv.length)h+='<div>'+L('Водитель: ','Haydovchi: ')+(d.ph?esc(d.n||'')+' <a href="'+esc(telHref(d.ph))+'">'+esc(d.ph)+'</a>':esc(d.n))+'</div>';
     if(d.wb)h+='<div>'+L('Накладная: ','Yuk xati: ')+esc(d.wb)+'</div>';
-    if(!farInPrice(o))h+='<div>'+L('Водителю при получении: ','Haydovchiga olganda: ')+(farFeeKnown(o)?money(f.fee):L('сумму назовёт продавец','summani sotuvchi aytadi'))+'</div>';
+    if(!farInPrice(o))h+='<div>'+L('Водителю при получении: ','Qabul qilganda haydovchiga: ')+(farFeeKnown(o)?money(f.fee):L('сумму назовёт продавец','summani sotuvchi aytadi'))+'</div>';
   }
+  if(m==='seller'&&o.pay&&live)h+='<div class="pmute">'+(st==='ready'?L('Заказ закроется, когда покупатель нажмёт «Получил». ','Buyurtma xaridor «Oldim» tugmasini bosganda yopiladi. '):'')+L('Оплата получена, отменить заказ нельзя. Если нужен возврат, договоритесь с покупателем.','Toʻlov olingan, buyurtmani bekor qilib boʻlmaydi. Qaytarish kerak boʻlsa, xaridor bilan kelishing.')+'</div>';
   if(m==='seller'&&!o.pay&&live)
     h+='<div class="pyrow"><label for="ff-'+id+'">'+(farFeeKnown(o)?L('Стоимость перевозки, сум (можно изменить до оплаты)','Yuk tashish narxi, soʻm (toʻlovgacha oʻzgartirish mumkin)'):L('Назовите стоимость перевозки, сум','Yuk tashish narxini ayting, soʻm'))+'</label>'
       +'<input type="number" id="ff-'+id+'" inputmode="numeric" min="0" step="1" value="'+(farFeeKnown(o)?esc(f.fee):'')+'"><button type="button" class="btn sm" data-act="farfee" data-id="'+id+'">'+L('Сообщить','Xabar berish')+'</button></div>';
@@ -2041,7 +2042,7 @@ function orderCard(o,m){
     +(o.ship?'<div class="note">✅ '+(m==='mine'?L('Продавец разрешил отправку в Навои','Sotuvchi Navoiyga joʻnatishga ruxsat berdi'):L('Отправка в Навои разрешена','Navoiyga joʻnatishga ruxsat berilgan'))+(o.ship.m==='later'?' · '+L('оплата при получении','olganda toʻlanadi'):'')+'</div>':'')
     +(o.sent?'<div class="note">🚚 '+L('Отправлен в Навои · ','Navoiyga joʻnatildi · ')+esc(fmtWhen(o.sent.at))+'</div>':'')
     +(o.got&&o.status!=='done'?'<div class="note">📥 '+(m==='mine'?L('Вы отметили, что получили заказ','Siz buyurtmani olganingizni belgiladingiz'):L('Покупатель получил заказ. Закройте заказ и отметьте оплату.','Xaridor buyurtmani oldi. Buyurtmani yoping va toʻlovni belgilang.'))+' · '+esc(fmtWhen(o.got.at))+'</div>':'')
-    +(m==='seller'&&o.got&&o.status==='done'?'<div class="note">🤝 '+(del?L('Доставлен покупателю','Xaridorga yetkazildi'):L('Выдан покупателю','Xaridorga topshirildi'))+' · '+esc(fmtWhen(o.got.at))+'</div>':'')
+    +(m==='seller'&&o.got&&o.status==='done'?'<div class="note">🤝 '+(o.far?L('Покупатель получил','Xaridor oldi'):del?L('Доставлен покупателю','Xaridorga yetkazildi'):L('Выдан покупателю','Xaridorga topshirildi'))+' · '+esc(fmtWhen(o.got.at))+'</div>':'')
     +((m==='seller'||m==='courier')?orderBaseHTML(o):'')
     +((m==='seller'||m==='courier')&&(o.loc||(o.bs&&o.bs.loc))?(l=>'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>')(o.loc||o.bs.loc):'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
@@ -4130,7 +4131,7 @@ function farEditHTML(){
   else if(f.m==='fix')h+=num('fix',L('Цена перевозки, сум (0 — бесплатно)','Yuk tashish narxi, soʻm (0 — bepul)'),['Одна сумма на весь заказ.','Butun buyurtma uchun bitta summa.']);
   else h+='<div class="note">'+L('Покупатель увидит «цену назовёт продавец». После заказа вы называете сумму в карточке заказа, и покупатель получает сообщение.','Xaridor «narxni sotuvchi aytadi» deb koʻradi. Buyurtmadan keyin buyurtma kartasida summani aytasiz, xaridorga xabar boradi.')+'</div>';
   h+='<div><label class="lab" for="s-far-pay">'+L('Как платят за перевозку','Yuk tashish uchun qanday toʻlanadi')+'</label><select id="s-far-pay" data-far="pay">'
-    +[['both',L('Покупатель выбирает сам','Xaridor oʻzi tanlaydi')],['in',L('В цене заказа (платит вам вместе с товаром)','Buyurtma narxida (tovar bilan birga sizga)')],['drv',L('Водителю при получении','Haydovchiga olganda')]].map(o=>'<option value="'+o[0]+'"'+(f.pay===o[0]?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select></div>'
+    +[['both',L('Покупатель выбирает сам','Xaridor oʻzi tanlaydi')],['in',L('В цене заказа (платит вам вместе с товаром)','Buyurtma narxida (tovar bilan birga sizga)')],['drv',L('Водителю при получении','Qabul qilganda haydovchiga')]].map(o=>'<option value="'+o[0]+'"'+(f.pay===o[0]?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select></div>'
     +num('days',L('Срок доставки после оплаты, дней','Toʻlovdan keyin yetkazish muddati, kun'),['Покупатель увидит «через N дн. после оплаты». Пример: 3.','Xaridor «toʻlovdan keyin N kun ichida» deb koʻradi. Masalan: 3.'])
     +'<div class="full"><label class="lab" for="s-far-req">'+L('Реквизиты для оплаты','Toʻlov rekvizitlari')+'</label><textarea id="s-far-req" data-far="req" rows="3" maxlength="400" placeholder="'+esc(L('Карта, расчётный счёт, имя получателя','Karta, hisob raqami, qabul qiluvchi ismi'))+'">'+esc(f.req)+'</textarea>'
     +hintD('Придут покупателю в Telegram после подтверждения заказа и будут в его заказе. Другим не показываются.','Tasdiqlangandan keyin xaridorga Telegramda keladi va buyurtmasida koʻrinadi. Boshqalarga koʻrinmaydi.')+'</div>'
@@ -4329,7 +4330,7 @@ async function setStatus(id,to,pay){
   const r=await api('POST','/api/admin/status',{id,to,pay});
   if(!r.ok){
     const e=r.data&&r.data.error;
-    toast(e==='bad_pay'?L('Проверьте способ оплаты, срок и сумму','Toʻlov usuli, muddat va summani tekshiring'):e==='use_courier'?L('Доставленным заказ отмечает доставщик','Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'):e==='buyer_closes'?L('Заказ закрывает покупатель кнопкой «Получил»','Buyurtmani xaridor «Oldim» tugmasi bilan yopadi'):e==='shipped'?L('Заказ уже отправлен со склада, отменить нельзя','Buyurtma ombordan joʻnatilgan, bekor qilib boʻlmaydi'):L('Не удалось обновить статус','Holatni yangilab boʻlmadi'));
+    toast(e==='bad_pay'?L('Проверьте способ оплаты, срок и сумму','Toʻlov usuli, muddat va summani tekshiring'):e==='use_courier'?L('Доставленным заказ отмечает доставщик','Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'):e==='buyer_closes'?L('Заказ закрывает покупатель кнопкой «Получил»','Buyurtmani xaridor «Oldim» tugmasi bilan yopadi'):e==='shipped'?L('Заказ уже отправлен со склада, отменить нельзя','Buyurtma ombordan joʻnatilgan, bekor qilib boʻlmaydi'):e==='paid_far'?L('Оплата получена, отменить нельзя. Возврат решите с покупателем','Toʻlov olingan, bekor qilib boʻlmaydi. Qaytarishni xaridor bilan hal qiling'):L('Не удалось обновить статус','Holatni yangilab boʻlmadi'));
     if(e==='use_courier'){S.pay=null;loadAdmin()}
     if(r.data&&r.data.order)applyOrder(r.data.order,r.data.stats);
     return;
@@ -4875,7 +4876,7 @@ const ABOUT_ROLES=[
  {h:['Дальняя доставка после оплаты','Toʻlovdan keyin uzoq yetkazib berish'],li:[
   ['В категории «Производители» в «Настройках» включается дальняя доставка: как считать перевозку (за кг, по габариту, фиксированная или по договорённости), кто её платит, срок доставки и реквизиты. Для расчёта «по габариту» в карточке товара есть размеры.','«Ishlab chiqaruvchilar» toifasida «Sozlamalar»da uzoq yetkazib berish yoqiladi: yuk tashish qanday hisoblanadi (kg, hajm boʻyicha, qatʼiy yoki kelishuv boʻyicha), kim toʻlaydi, yetkazish muddati va rekvizitlar. «Hajm boʻyicha» hisob uchun mahsulot kartasida oʻlchamlar bor.'],
   ['Заказ приходит без даты. Нажмите «Принять в работу»; если цена перевозки не посчитана, назовите её в карточке заказа. Покупатель получит сообщение с суммой и реквизитами. Когда деньги пришли, нажмите «Оплата получена»: срок доставки считается с этого дня.','Buyurtma sanasiz keladi. «Ishga qabul qilish»ni bosing; yuk tashish narxi hisoblanmagan boʻlsa, buyurtma kartasida ayting. Xaridor summa va rekvizitlar bilan xabar oladi. Pul kelgach, «Toʻlov olindi»ni bosing: yetkazish muddati shu kundan hisoblanadi.'],
-  ['Только после оплаты появляется «Отправил груз»: можно записать водителя, телефон и накладную. Заказ закрывается, когда покупатель нажал «Получил» или вы нажали «Доставлен покупателю».','Faqat toʻlovdan keyin «Yukni joʻnatdim» chiqadi: haydovchi, telefon va yuk xatini yozish mumkin. Buyurtma xaridor «Oldim»ni bosganda yoki siz «Xaridorga yetkazildi»ni bosganda yopiladi.']]},
+  ['Только после оплаты появляется «Отправил груз»: можно записать водителя, телефон и накладную. После оплаты заказ отменить нельзя: если нужен возврат, договоритесь с покупателем. Заказ закрывает только покупатель кнопкой «Получил»: вам придёт сообщение, а в карточке появится «Покупатель получил».','Faqat toʻlovdan keyin «Yukni joʻnatdim» chiqadi: haydovchi, telefon va yuk xatini yozish mumkin. Toʻlovdan keyin buyurtmani bekor qilib boʻlmaydi: qaytarish kerak boʻlsa, xaridor bilan kelishing. Buyurtmani faqat xaridor «Oldim» tugmasi bilan yopadi: sizga xabar keladi, kartochkada esa «Xaridor oldi» chiqadi.']]},
  {h:['Заказы Базара','Bozor buyurtmalari'],li:[
   ['Если вы в категории «Базары», покупатель видит другую форму: «Заберу сам в Навои» или «Доставка до двери», без даты и времени. Цену и срок доставки до двери вы обсуждаете с покупателем сами.','Agar siz «Bozorlar» kategoriyasida boʻlsangiz, xaridor boshqa shaklni koʻradi: «Navoiyda oʻzim olaman» yoki «Eshikkacha yetkazish», sana va vaqtsiz. Eshikkacha yetkazish narxi va muddatini xaridor bilan oʻzingiz kelishasiz.'],
   ['Нажмите «Принять в работу», соберите товар по сборочному листу, отвезите на склад Sarbon и нажмите «Отвёз на склад» (вместо «Готов к выдаче»).','«Ishga qabul qilish»ni bosing, tovarni yigʻish roʻyxati boʻyicha yigʻing, Sarbon omboriga olib boring va «Omborga olib bordim»ni bosing («Topshirishga tayyor» oʻrniga).'],
