@@ -8254,6 +8254,19 @@ await t('фото компании и строка адреса: продаве�
   assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.info.length, 100, 'не длиннее 100');
   cfg.shop.info = 5;
   assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.info, '', 'не строка — пусто');
+  // то же по-узбекски: отдельное поле, так же обрезается и доходит до списка продавцов
+  assert.equal(sh0.infoUz, '', 'узбекская строка по умолчанию пустая');
+  cfg.shop.info = 'Навои, ул. Галаба, 12'; cfg.shop.infoUz = '  Navoiy, Gʻalaba koʻchasi, 12  ';
+  r = await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } });
+  assert.equal((await jsonOf(r)).cfg.shop.infoUz, 'Navoiy, Gʻalaba koʻchasi, 12');
+  assert.equal((await cfgShop()).infoUz, 'Navoiy, Gʻalaba koʻchasi, 12', 'покупатель получает обе строки');
+  const pr = await pubRow();
+  assert.deepEqual([pr.info, pr.infoUz], ['Навои, ул. Галаба, 12', 'Navoiy, Gʻalaba koʻchasi, 12'], 'в общем списке обе строки');
+  cfg.shop.infoUz = 'Y'.repeat(300);
+  assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.infoUz.length, 100, 'узбекская не длиннее 100');
+  cfg.shop.infoUz = 7;
+  assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.infoUz, '', 'не строка — пусто');
+  cfg.shop.info = 'Навои'; cfg.shop.infoUz = '';
   // фото: только продавец, только JPEG нужного размера, до 200 КБ
   const jp = jpegBytes(480, 480, 12000);
   assert.equal((await putLogo(jp, iA())).status, 403, 'покупатель не может');
@@ -8295,13 +8308,13 @@ await t('фото компании и строка адреса: продаве�
 await t('юридическое название: экраны каталога, настроек продавца и списка владельца', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
-  assert.ok(/<\/h1>'\+\(sh\.legal\?'<div class="legal">'\+esc\(sh\.legal\)\+'<\/div>':''\)\+\(sh\.info/.test(fn('shopHeadHTML')) && /\+shopHeadHTML\(\)\+search/.test(html), 'в каталоге под названием, пусто — ничего');
+  assert.ok(/<\/h1>'\+\(sh\.legal\?'<div class="legal">'\+esc\(sh\.legal\)\+'<\/div>':''\)\+\(infoText\(sh\)/.test(fn('shopHeadHTML')) && /\+shopHeadHTML\(\)\+search/.test(html), 'в каталоге под названием, пусто — ничего');
   assert.ok(/id="s-legal" data-s="legal"[^>]*maxlength="80"/.test(fn('settingsHTML')), 'поле в настройках продавца');
   assert.ok(/data-olegal=/.test(fn('ownListHTML')) && /data-act="ownlegal"/.test(fn('ownListHTML')), 'поле и кнопка в списке владельца');
   assert.ok(/'\/api\/hub\/admin\/shops\/'\+encodeURIComponent\(id\)\+'\/legal',\{legal:v\}/.test(fn('ownLegal')), 'владелец сохраняет через площадку');
   assert.ok(/a==='ownlegal'\)ownLegal\(/.test(html) && /dataset\.olegal!==undefined\)S\.own\.legals\[/.test(html), 'нажатие и ввод');
   assert.ok(/\.shop \.legal\{/.test(html) && /\.dlegal\{/.test(html), 'стили подписи: в каталоге и в карточке');
-  assert.ok(/<h2>'\+esc\(r\.name\)\+'<\/h2>'\+\(r\.legal\?'<div class="dlegal">'\+esc\(r\.legal\)\+'<\/div>':''\)\+\(r\.info\?/.test(fn('shopCardHTML')), 'в карточке списка под названием, пусто — ничего');
+  assert.ok(/<h2>'\+esc\(r\.name\)\+'<\/h2>'\+\(r\.legal\?'<div class="dlegal">'\+esc\(r\.legal\)\+'<\/div>':''\)\+\(infoText\(r\)\?/.test(fn('shopCardHTML')), 'в карточке списка под названием, пусто — ничего');
   assert.equal(S.DEFAULT.shop.legal, '', 'в настройках по умолчанию пусто');
   assert.ok(/Юридическое название/.test(html) && /Yuridik nomi/.test(html), 'подписи на двух языках');
 });
@@ -8545,7 +8558,13 @@ await t('фото компании и строка адреса: экраны (�
   const st = fn('settingsHTML'), ed = fn('logoEditHTML');
   // настройки: блок фото вверху, строка адреса после юридического названия, подсказка в поле
   assert.ok(st.indexOf('id="lgbox"') > 0 && st.indexOf('id="lgbox"') < st.indexOf('id="s-name"'), 'блок «Фото компании» первый в настройках');
-  assert.ok(st.indexOf('id="s-legal"') < st.indexOf('id="s-info"') && st.indexOf('id="s-info"') < st.indexOf('id="s-phone"'), 'строка адреса после юридического названия');
+  assert.ok(st.indexOf('id="s-legal"') < st.indexOf('id="s-info"') && st.indexOf('id="s-info"') < st.indexOf('id="s-infouz"') && st.indexOf('id="s-infouz"') < st.indexOf('id="s-phone"'), 'строка адреса двумя полями (русское и узбекское) после юридического названия');
+  assert.ok(/id="s-infouz" data-s="infoUz"[^>]*maxlength="100"[^>]*placeholder=/.test(st) && /\(по-русски\)/.test(st) && /\(по-узбекски\)/.test(st) && /\(ruscha\)/.test(st) && /\(oʻzbekcha\)/.test(st), 'второе поле по-узбекски, подписи на двух языках');
+  // язык экрана: свой язык, нет его — другой, пусто — ничего
+  const it = lang => new Function('L', html.match(/^const infoText=.*$/m)[0] + '\nreturn infoText;')((ru, uz) => (lang === 'uz' ? uz : ru));
+  assert.equal(it('ru')({ info: 'Навои', infoUz: 'Navoiy' }), 'Навои'); assert.equal(it('uz')({ info: 'Навои', infoUz: 'Navoiy' }), 'Navoiy');
+  assert.equal(it('ru')({ info: '', infoUz: 'Navoiy' }), 'Navoiy', 'русского нет — показывается узбекский'); assert.equal(it('uz')({ info: 'Навои', infoUz: '' }), 'Навои', 'узбекского нет — показывается русский');
+  assert.equal(it('ru')({}), ''); assert.equal(it('uz')({ info: '', infoUz: '' }), '');
   assert.ok(/id="s-info" data-s="info"[^>]*maxlength="100"[^>]*placeholder="'\+esc\(L\('Адрес: город, улица, ориентир','Manzil: shahar, koʻcha, moʻljal'\)\)/.test(st), 'подсказка «Адрес…» в поле, до 100 знаков');
   assert.ok(/Фото компании/.test(ed) && /Kompaniya rasmi/.test(ed) && /data-logo="1"/.test(ed) && /accept="image\/\*"/.test(ed) && /data-act="logodel"/.test(ed), 'загрузка и «Убрать фото» на двух языках');
   assert.ok(/Добавьте фото или логотип/.test(ed) && /Rasm yoki logotip/.test(ed), 'пока фото нет — приглашение его добавить');
@@ -8559,10 +8578,10 @@ await t('фото компании и строка адреса: экраны (�
   assert.ok(/\/img\/'\+encodeURIComponent\(did\)\+'\/_logo\?v=/.test(html.match(/^const logoUrl=.*$/m)[0]), 'адрес фото с версией');
   assert.ok(/toUpperCase\(\)/.test(lb) && /v\?'<img/.test(lb), 'есть фото — картинка, нет — первая буква');
   const card = fn('shopCardHTML');
-  assert.ok(/<div class="dtop"><div class="dtx"><h2>/.test(card) && /\(r\.info\?'<div class="dinfo">'/.test(card) && /logoBox\(r\.name,r\.id,r\.logo\)/.test(card), 'карточка: название, юр. название, строка и фото справа');
+  assert.ok(/<div class="dtop"><div class="dtx"><h2>/.test(card) && /\(infoText\(r\)\?'<div class="dinfo">'/.test(card) && /logoBox\(r\.name,r\.id,r\.logo\)/.test(card), 'карточка: название, юр. название, строка и фото справа');
   // шапка каталога: фото слева, только если оно есть
   const hd = fn('shopHeadHTML');
-  assert.ok(/sh\.logo\?'<div class="shead">'\+logoBox\(sh\.name,S\.did,sh\.logo,'sm'\)/.test(hd) && /sh\.info\?'<div class="sinfo">/.test(hd), 'в каталоге фото и строка адреса');
+  assert.ok(/sh\.logo\?'<div class="shead">'\+logoBox\(sh\.name,S\.did,sh\.logo,'sm'\)/.test(hd) && /infoText\(sh\)\?'<div class="sinfo">/.test(hd), 'в каталоге фото и строка адреса');
   // в обычных текстах приложения нет запрещённых слов
   assert.ok(!/магазин|клиент|дистрибьютор/i.test(ed + st.slice(st.indexOf('id="lgbox"'), st.indexOf('id="s-name"')) + hd), 'новые тексты без «магазин», «клиент», «дистрибьютор»');
 });

@@ -47,7 +47,7 @@ function stOf(status,mode,o){
 
 const DEFAULT={
   v:3,
-  shop:{name:'Оптовая база',legal:'',info:'',logo:'',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],rates:{},far:{},home:'',category:'',bazaar:''}
+  shop:{name:'Оптовая база',legal:'',info:'',infoUz:'',logo:'',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],rates:{},far:{},home:'',category:'',bazaar:''}
 };
 /* Категории дистрибьюторов на первом экране. Пустая категория — не выбрана: такой дистрибьютор показывается в «Дистрибьюторах».
    Продавец выбирает её в настройках, владелец может поменять; ключ хранится у дистрибьютора (shop.category), площадка держит копию в списке. */
