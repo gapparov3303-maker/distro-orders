@@ -1,17 +1,17 @@
 // «Сервер» для скриншотов: отвечает приложению выдуманными данными (см. tools/shots.cjs).
 // Каждый экран может переопределить ответы через поле data: { '/api/путь': тело | функция(req, url, st) }.
 const D = require('./shots-data.cjs');
-const { DID, ROLES, PROD, SHOPS, PHOTOS } = D;
+const { DID, ROLES, PROD, SHOPS, PHOTOS, BAZAARS } = D;
 
 const ME = { shop: 'Малика', phone: '+998 90 123 45 01' };
 
 async function mockApi(page, role, st, over, lang) {
   const R = ROLES[role] || ROLES.shop;
   over = over || {};
-  const hubMe = () => ({ id: 7, owner: R.owner, region: '', sells: R.sells, delivers: R.delivers, agent: R.agent || undefined, card: null });
+  const hubMe = () => Object.assign({ id: 7, owner: R.owner, region: '', sells: R.sells, delivers: R.delivers, agent: R.agent || undefined, card: null }, R.wh ? { wh: R.wh } : {}, R.owner ? { fbn: 2 } : {});
   const isSeller = R.sells.length > 0;
   const base = {
-    '/api/shops': () => ({ title: 'Sarbon', about: { ru: '', uz: '', phone: '', tg: '', ig: '' }, shops: SHOPS, terrs: [{ id: 't1', name: 'Навои' }], me: hubMe() }),
+    '/api/shops': () => ({ title: 'Sarbon', about: { ru: '', uz: '', phone: '', tg: '', ig: '' }, shops: SHOPS, terrs: [{ id: 't1', name: 'Навои' }], bazaars: BAZAARS, me: hubMe() }),
     '/api/bootstrap': () => ({
       did: DID, off: false,
       cfg: { shop: { name: 'Навои Фуд', delivery: true, regions: [], home: '', minOrder: 300000, leadHours: 2, deliveryLeadHours: 4, openFrom: 9, openTo: 20 } },
@@ -46,7 +46,8 @@ async function mockApi(page, role, st, over, lang) {
       if (key) h = over[key];
     }
     if (h === undefined) return json({ error: 'not_found' }, 404);
-    const body = typeof h === 'function' ? await h(req, u, st) : h;
+    // обработчик из data получает и «обычный» ответ (если он есть), чтобы поправить в нём только нужное
+    const body = typeof h === 'function' ? await h(req, u, st, typeof base[p] === 'function' ? base[p]() : undefined) : h;
     return route.fulfill({ status: 200, contentType: 'application/json', body: lang === 'uz' ? D.toUz(JSON.stringify(body)) : JSON.stringify(body) });
   });
 }

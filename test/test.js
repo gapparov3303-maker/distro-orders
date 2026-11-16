@@ -7812,12 +7812,13 @@ await t('«О нас»: пункт меню последний и виден в�
   // тексты ролей
   const i0 = html.indexOf('const ABOUT_ROLES=['), i1 = html.indexOf('\n];', i0);
   const ROLES = new Function('return ' + html.slice(i0 + 'const ABOUT_ROLES='.length, i1 + 2))();
-  assert.deepEqual(ROLES.map(x => x.k), ['shop', 'seller', 'courier', 'agent', 'owner'], 'пять блоков в этом порядке');
+  assert.deepEqual(ROLES.map(x => x.k), ['shop', 'seller', 'courier', 'agent', 'wh', 'owner'], 'шесть блоков в этом порядке');
   assert.equal(ROLES.filter(x => x.only === 'owner').map(x => x.k).join(), 'owner', 'только «Владелец» скрыт от остальных');
   const pair = x => Array.isArray(x) && x.length === 2 && x.every(y => typeof y === 'string' && y.trim().length > 1);
   let imgs = 0, text = 0;
   for (const r of ROLES) {
     assert.ok(pair(r.n) && pair(r.lead), r.k + ': название и вступление на двух языках');
+    assert.ok(Array.isArray(r.adv) && r.adv.length >= 3 && r.adv.length <= 5 && r.adv.every(pair), r.k + ': рамка «Почему Sarbon», от трёх до пяти пунктов на двух языках');
     assert.ok(r.secs.length >= 2, r.k + ': разделов ' + r.secs.length);
     for (const sc of r.secs) {
       assert.ok(pair(sc.h), r.k + ': заголовок раздела на двух языках');
@@ -7829,8 +7830,8 @@ await t('«О нас»: пункт меню последний и виден в�
       for (const lang of ['ru', 'uz']) assert.ok(fs.existsSync(path.join(root, 'src/about', sc.img + '-' + lang + '.webp')), 'нет файла ' + sc.img + '-' + lang + '.webp (запустите tools/shots.cjs)');
     }
   }
-  assert.equal(imgs, 20, 'двадцать экранов со снимками');
-  assert.equal(text, 2, 'два текстовых раздела: «Отчёты, база и настройки» у продавца и «Деньги, аналитика и площадка» у владельца');
+  assert.equal(imgs, 24, 'двадцать четыре экрана со снимками');
+  assert.equal(text, 5, 'пять текстовых разделов: «Заказы Базара» и «Отчёты, база и настройки» у продавца, «Отправка в Навои» у склада, «Склад и Базары» и «Деньги, аналитика и площадка» у владельца');
   // комиссия в блоке продавца описана без процента
   assert.ok(!/\d\s*%/.test(JSON.stringify(ROLES.find(x => x.k === 'seller'))), 'в блоке продавца нет числа процентов');
   // каждый снимок используется: лишних файлов нет
@@ -9459,6 +9460,51 @@ await t('«Написать нам» на экране: пункт меню, ф�
   assert.ok(/\.fbt\{white-space:pre-wrap/.test(html), 'переводы строк в тексте сохраняются');
   for (const a of ['fbkind', 'fbsend', 'fbagain', 'fbf', 'fbdone', 'fbundo']) assert.ok(html.includes("a==='" + a + "'"), 'обработчик ' + a);
   for (const t of ['Написать нам', 'Bizga yozish', 'Спасибо, получили', 'Rahmat, qabul qildik', 'Обращения', 'Murojaatlar', 'Решено', 'Hal qilindi']) assert.ok(html.includes(t), t);
+});
+
+await t('«О нас»: у каждой роли рамка «Почему Sarbon» без обещаний цены, у кладовщика свой блок, новые разделы зовут кнопки так же, как приложение', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const wk = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8'), sh = fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  const i0 = html.indexOf('const ABOUT_ROLES=['), i1 = html.indexOf('\n];', i0) + 3;
+  const ROLES = new Function('return ' + html.slice(i0 + 'const ABOUT_ROLES='.length, i1 - 1))();
+  // рамка: между вступлением и разделами, открывается вместе с блоком
+  const rh = fn('aboutRoleHTML');
+  assert.ok(/r\.adv&&r\.adv\.length/.test(rh) && /class="abadv"/.test(rh) && /class="abck"/.test(rh) && rh.includes("L('Почему Sarbon','Nega Sarbon')"), 'рамка рисуется из adv, заголовок на двух языках');
+  assert.ok(rh.indexOf('class="ablead"') < rh.indexOf('class="abadv"') && rh.indexOf('class="abadv"') < rh.indexOf('class="absec"'), 'рамка стоит между вступлением и разделами');
+  assert.ok(/\.abadv\{[^}]*background:var\(--accent-soft\)/.test(html) && /\.abck li::before\{content:"✓"/.test(html), 'стиль рамки и галочки');
+  // кладовщику открыт его блок
+  assert.ok(/if\(me\.wh\)r\.push\('wh'\)/.test(fn('aboutMine')), 'у кладовщика блок «Склад» помечен «Ваша роль» и открыт сразу');
+  // пункты рамки: без цены, процентов, дохода (площадка не обещает того, чего не умеет проверить)
+  for (const r of ROLES) assert.ok(!/%|бесплат|bepul|комисси|komissiya|дешев|arzon|доход|daromad|гарант|kafolat/i.test(JSON.stringify(r.adv)), r.k + ': в рамке нет обещаний цены, дохода и гарантий');
+  // числа в текстах совпадают с настройками сервера
+  const num = (src, re) => Number((src.match(re) || [])[1]);
+  const texts = ROLES.flatMap(r => r.secs.flatMap(x => x.li.map(l => l[0]))).join('\n');
+  assert.ok(texts.includes('до 1000 знаков') && num(wk, /FB_LEN = (\d+)/) === 1000, '1000 знаков в «Написать нам» как на сервере');
+  assert.ok(texts.includes('Не больше 5 обращений в день') && num(wk, /FB_DAY = (\d+)/) === 5, '5 обращений в день как на сервере');
+  assert.ok(texts.includes('по умолчанию 500 сум за 1 кг') && num(wk, /WH_RATE_DEF = (\d+)/) === 500, 'ставка перевозки 500 сум как на сервере');
+  // каждое название кнопки в новых разделах есть в приложении (вне самих текстов «О нас»)
+  const rest = html.slice(0, i0) + html.slice(i1) + sh + wk;
+  const PLACEHOLDER = new Set(['Выдан покупателю · время', 'Xaridorga topshirildi · vaqt', 'Продавец · название', 'Sotuvchi · nomi', 'Faqat qutida · 10 dona', 'Только коробками · 10 шт', '1 л', '1 l', '1 кг', '1 kg']);
+  const names = [['shop', 'Заказ у продавца Базара'], ['shop', 'Написать нам'], ['seller', 'Заказы Базара'], ['seller', 'Каталог'], ['wh', null], ['owner', 'Склад и Базары'], ['owner', 'Обращения и «Смотреть как»']];
+  const miss = [];
+  for (const [k, n] of names) {
+    const r = ROLES.find(x => x.k === k);
+    for (const sc of r.secs.filter(x => !n || x.h[0] === n)) for (const l of sc.li) for (const lang of [0, 1]) for (const m of l[lang].matchAll(/«([^»]+)»/g)) if (!PLACEHOLDER.has(m[1]) && !rest.includes(m[1])) miss.push(k + '/' + sc.h[0] + ': ' + m[1]);
+  }
+  assert.deepEqual([...new Set(miss)], [], 'названия кнопок, которых нет в приложении');
+  // путь заказа Базара описан одинаково у покупателя, продавца и склада
+  const get = (k, n) => JSON.stringify(ROLES.find(x => x.k === k).secs.find(x => x.h[0] === n).li);
+  const b = get('shop', 'Заказ у продавца Базара'), sl = get('seller', 'Заказы Базара'), w1 = get('wh', 'Приём заказов'), w2 = get('wh', 'Отправка в Навои');
+  for (const x of ['Заберу сам в Навои', 'Доставка до двери', 'Получил', 'Навои', 'Navoiyda oʻzim olaman', 'Oldim']) assert.ok(b.includes(x), 'покупатель Базара: ' + x);
+  for (const x of ['Отвёз на склад', 'Разрешить отправку', 'Снять разрешение', 'Получил', 'Omborga olib bordim', 'Joʻnatishga ruxsat', 'Ruxsatni qaytarish']) assert.ok(sl.includes(x), 'продавец Базара: ' + x);
+  for (const x of ['/sklad', 'Принят на складе', 'Изменить вес', 'Omborga qabul qilindi', 'Ogʻirlikni oʻzgartirish']) assert.ok(w1.includes(x), 'склад, приём: ' + x);
+  for (const x of ['Отправлен в Навои', 'Вернуть из отправленных', 'Получил', 'Joʻnatilganlardan qaytarish']) assert.ok(w2.includes(x), 'склад, отправка: ' + x);
+  assert.ok(!/При получении|Olganda/.test(b), 'у Базара нет оплаты «при получении»');
+  // у каждой роли есть строка про «Написать нам»
+  for (const r of ROLES) assert.ok(JSON.stringify(r.secs).includes('Написать нам') && JSON.stringify(r.secs).includes('Bizga yozish'), r.k + ': сказано про «Написать нам»');
+  // в блоке покупателя нет прежнего «оплата только при получении»
+  assert.ok(!/Оплата только при получении/.test(JSON.stringify(ROLES.find(x => x.k === 'shop'))), 'устаревшая фраза убрана');
 });
 
 /* ---------- итог ---------- */

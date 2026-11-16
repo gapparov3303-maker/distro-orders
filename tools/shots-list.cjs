@@ -1,7 +1,7 @@
 // Список экранов для tools/shots.cjs: имя файла, под какой ролью открыть, адрес и что нажать перед снимком.
 // Имена совпадают с img: в ABOUT_ROLES (src/app.html).
 const D = require('./shots-data.cjs');
-const { DID, SHOP_ORDERS, MY_DEBT, SELLER_ORDERS, STK, DEBTORS, COURIERS, COURIER_ORDERS, COURIER_CASH, BASE_ITEMS, BASE_META, OWN_SHOPS, MOD_ITEMS, OWN_PPL, dayStr, when, created } = D;
+const { WH_ORDERS, FB_ITEMS, DID, SHOP_ORDERS, MY_DEBT, SELLER_ORDERS, STK, DEBTORS, COURIERS, COURIER_ORDERS, COURIER_CASH, BASE_ITEMS, BASE_META, OWN_SHOPS, MOD_ITEMS, OWN_PPL, dayStr, when, created } = D;
 const SELL_ORD = { '/api/admin/orders': () => ({ orders: SELLER_ORDERS, stats: { doneSum: 3420000, doneCount: 7 }, crs: COURIERS.map(c => ({ id: c.id, name: c.name, phone: c.phone })) }) };
 
 const click = (page, sel) => page.locator(sel).first().click();
@@ -90,10 +90,30 @@ const SHOTS = [
     await click(page, '.mgit[data-id="b6"]'); await wait(page, 900);
   } },
 
+  // форма заказа у продавца Базара: две кнопки «Заберу сам в Навои» / «Доставка до двери», без даты и времени
+  { name: 'bz-form', role: 'shop', url: U + 'shop', data: { '/api/bootstrap': (req, u, st, b) => { b.cfg.shop.category = 'bazaar'; b.cfg.shop.bz = 'b1'; b.cfg.shop.name = 'Мевазор'; return b; } }, prep: async (page) => {
+    await click(page, '#pc-p1 [data-act="padd"]'); await wait(page, 250);
+    await click(page, '#pc-p3 [data-act="padd"]'); await wait(page, 250);
+    await click(page, '[data-act="opencart"]'); await wait(page, 600);
+    await scrollTo(page, '.seg', 70);
+  } },
+  // «Написать нам»: тема и текст
+  { name: 'fb-form', role: 'shop', url: '/?v=feedback', prep: async (page, st, lang) => {
+    await page.locator('[data-act="fbkind"]').nth(1).click(); await wait(page, 200);
+    await page.fill('#fb-t', lang === 'uz' ? 'Buyurtmalarni kunlar boʻyicha Excelga yuklash kerak edi' : 'Нужна выгрузка заказов по дням в Excel'); await wait(page, 300);
+  } },
+
+  // склад: заказ ждёт веса, перевозка считается на лету
+  { name: 'wh-list', role: 'wh', url: '/?v=wh', data: { '/api/hub/wh': () => ({ wh: { id: 'w1', name: 'Салим', bz: '' }, rate: 500, orders: WH_ORDERS }) }, prep: async (page) => {
+    await page.fill('input[data-whkg]', '12,5'); await wait(page, 300);
+    await scrollTo(page, '.filters', 62);
+  } },
+
   // владелец
   { name: 'ow-dist', role: 'owner', url: '/?v=owner', data: OWNER_API, prep: async (page) => { await page.evaluate(() => ownOpen('dist')); await wait(page, 500); } },
   { name: 'ow-review', role: 'owner', url: '/?v=review', data: Object.assign({}, OWNER_API, { '/api/shops': OWNER_SHOPS }) },
-  { name: 'ow-people', role: 'owner', url: '/?v=owner', data: OWNER_API, prep: async (page) => { await page.evaluate(() => ownOpen('agents')); await wait(page, 500); } }
+  { name: 'ow-people', role: 'owner', url: '/?v=owner', data: OWNER_API, prep: async (page) => { await page.evaluate(() => ownOpen('agents')); await wait(page, 500); } },
+  { name: 'ow-fb', role: 'owner', url: '/?v=owner', data: Object.assign({}, OWNER_API, { '/api/hub/admin/feedback': (req, u, st) => ({ items: FB_ITEMS(st.lang), n: 3, max: 300 }) }), prep: async (page) => { await page.evaluate(() => ownOpen('fb')); await wait(page, 700); } }
 ];
 
 module.exports = SHOTS;

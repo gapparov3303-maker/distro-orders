@@ -156,13 +156,41 @@ const PHOTOS = {
 PHOTOS.xw1 = SVG.bag('#f7f7f4', '#d9d8d0', '#2a6fb8'); PHOTOS.xw2 = SVG.bag('#f6efdd', '#e5c76b', '#c4802a'); PHOTOS.xw3 = SVG.can('#c0392b', '#e8776a', '#2f7d4f');
 PHOTOS.w1 = PHOTOS.xw1; PHOTOS.w2 = PHOTOS.xw2; PHOTOS.w3 = PHOTOS.xw3;
 
+
+// склад Sarbon (кладовщик): заказы продавцов Базара
+const BAZAARS = [{ id: 'b1', name: 'Урикзор', uz: 'Oʻrikzor', how: '', howUz: '' }];
+const whOrder = (id, name, org, phone, items, o) => Object.assign({ did: 'mevazor', shopName: 'Мевазор', bz: 'b1', id, name, org, phone, createdAt: created(9, 40), items, total: items.reduce((s, x) => s + x.price * x.qty, 0), comment: '', status: 'accepted' }, o || {});
+const WH_ITEMS = [it('w3', 'Яблоки «Семиренко»', 'Olma «Semirenko»', 4, 145000, 10, 'kg'), it('w1', 'Лук репчатый', 'Piyoz', 2, 60000, 20, 'kg')];
+const WH_ORDERS = [
+  whOrder('N-4826', 'Дилором', 'Магазин «Бахор»', '+998901234502', WH_ITEMS.slice(0, 1), { createdAt: created(8, 15), comment: 'Позвоните за полчаса до приезда' }),
+  whOrder('N-4830', 'Малика', 'Магазин «Малика»', '+998901234501', WH_ITEMS, { createdAt: created(9, 40) }),
+  whOrder('N-4815', 'Шахло', 'Магазин «Гулистон»', '+998901234503', WH_ITEMS.slice(1), { createdAt: created(7, 5, -1), wh: { kg: 18.5, fee: 9250, at: created(10, 5), upd: created(10, 5) } }),
+  whOrder('N-4809', 'Бахтиёр', 'Магазин «Навруз»', '+998901234504', WH_ITEMS.slice(0, 1), { createdAt: created(7, 5, -1), wh: { kg: 12, fee: 6000, at: created(10, 20), upd: created(10, 20) }, ship: { m: 'cash', at: created(11, 0) } }),
+  whOrder('N-4797', 'Малика', 'Магазин «Малика»', '+998901234501', WH_ITEMS, { createdAt: created(7, 5, -2), wh: { kg: 31, fee: 15500, at: created(10, 20, -1), upd: created(10, 20, -1) }, ship: { m: 'credit', at: created(11, 0, -1) }, sent: true, sat: created(12, 10, -1) })
+];
+
+// обращения «Написать нам» глазами владельца (текст пишется на языке снимка)
+const FB_TEXT = {
+  ru: ['Не открывается корзина после выбора доставки', 'Хочу выгрузку заказов по дням и тёмную тему', 'Спасибо, всё работает'],
+  uz: ['Yetkazib berishni tanlagach savat ochilmayapti', 'Buyurtmalarni kunlar boʻyicha yuklash va qora mavzu kerak', 'Rahmat, hammasi ishlayapti']
+};
+const FB_ITEMS = lang => {
+  const t = FB_TEXT[lang === 'uz' ? 'uz' : 'ru'];
+  return [
+    { id: 'F-K3M7Q', uid: 11, nm: 'Малика', un: 'malika_shop', roles: [], k: 'bug', t: t[0], at: created(9, 20), st: 'new', shop: { name: 'Магазин «Малика»', phone: '+998 90 123 45 01' } },
+    { id: 'F-P2X9D', uid: 12, nm: 'Дилором', un: 'dilorom_n', roles: [{ r: 'seller', n: 'Навои Фуд' }], k: 'idea', t: t[1], at: created(8, 5), st: 'new' },
+    { id: 'F-R8T4B', uid: 13, nm: 'Шахло', un: '', roles: [], k: 'other', t: t[2], at: created(15, 30, -1), st: 'done', dt: created(9, 0), db: 'Азиз', shop: { name: 'Магазин «Гулистон»', phone: '+998 90 123 45 03' } }
+  ];
+};
+
 /* ---------- сценарии: какие данные отдаёт «сервер» ---------- */
 const ROLES = {
   shop: { sells: [], delivers: [], agent: null, owner: false },
   seller: { sells: [{ id: DID, name: 'Навои Фуд', link: '' }], delivers: [], agent: null, owner: false },
   courier: { sells: [], delivers: [{ id: DID, name: 'Навои Фуд' }], agent: null, owner: false },
   agent: { sells: [], delivers: [], agent: { id: 'a1', name: 'Азиз', link: 'https://t.me/sarbon_optom_bot?start=ag_k7f3q2' }, owner: false },
-  owner: { sells: [{ id: DID, name: 'Навои Фуд', link: '' }], delivers: [], agent: null, owner: true }
+  owner: { sells: [{ id: DID, name: 'Навои Фуд', link: '' }], delivers: [], agent: null, owner: true },
+  wh: { sells: [], delivers: [], agent: null, owner: false, wh: { id: 'w1', name: 'Салим', bz: '' } }
 };
 
-module.exports = { fs, path, chromium, repo, OUT, VIEW, DPR, html, DID, dayStr, TODAY, when, created, CATS, ITEMS, PROD, SHOPS, SHOP_ORDERS, MY_DEBT, SELLER_ORDERS, STK, DEBTORS, COURIERS, COURIER_ORDERS, COURIER_CASH, TERRS, BASE_ITEMS, BASE_META, OWN_SHOPS, MOD_ITEMS, OWN_PPL, toUz, PHOTOS, ROLES, it, P };
+module.exports = { BAZAARS, WH_ORDERS, FB_ITEMS, fs, path, chromium, repo, OUT, VIEW, DPR, html, DID, dayStr, TODAY, when, created, CATS, ITEMS, PROD, SHOPS, SHOP_ORDERS, MY_DEBT, SELLER_ORDERS, STK, DEBTORS, COURIERS, COURIER_ORDERS, COURIER_CASH, TERRS, BASE_ITEMS, BASE_META, OWN_SHOPS, MOD_ITEMS, OWN_PPL, toUz, PHOTOS, ROLES, it, P };
