@@ -880,6 +880,13 @@ div.lgd{cursor:default}
 .popb{padding:10px 12px 12px;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
 .popc .pn{font-size:12px;color:var(--ink-2)}
 .pcard.hl{outline:3px solid var(--accent);outline-offset:2px}
+.rtrow{margin-top:10px;padding:10px 12px;border:1.5px solid var(--edge);border-radius:12px;background:var(--surface)}
+.rtname{margin-bottom:8px;font-weight:700;font-size:14px}
+.rtgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:520px){.rtgrid{grid-template-columns:1fr}}
+.rtfld span{display:block;margin-bottom:4px;font-size:12px;color:var(--ink-2)}
+.rtfld input{width:100%}
+#regrate:empty{display:none}
 .srow{padding:12px 0;border-bottom:1px solid var(--line)}
 .srow:last-child{border-bottom:0}
 .srow b{display:block;margin-bottom:8px;font-size:15px}
@@ -1031,10 +1038,21 @@ function terrFieldHTML(){
     +S.hub.terrs.map(t=>'<option value="'+esc(t.id)+'"'+(t.id===cur?' selected':'')+'>'+esc(t.name)+'</option>').join('')
     +'<option value="-"'+(cur==='-'?' selected':'')+'>'+L('Другой район','Boshqa hudud')+'</option></select>'+hintD('Нужен, чтобы закрепить вашего покупателя за агентом вашего района.','Xaridoringizni hududingizdagi agentga biriktirish uchun kerak.')+'<div class="err" id="e-terr"></div></div>';
 }
+/* Что действует в выбранном регионе: цена доставки, бесплатно от, минимальный заказ. Показывается, только если у региона есть свои цифры. */
+function regRateText(reg){
+  const o=S.cfg.shop.rates&&S.cfg.shop.rates[reg];
+  if(!reg||!o||!zoneOn()||!zone().includes(reg)||!Object.keys(o).length)return '';
+  const rt=ratesFor(S.cfg.shop,'delivery',reg),ru=[],uz=[];
+  ru.push(rt.fee>0?'доставка '+money(rt.fee):'доставка бесплатно');uz.push(rt.fee>0?'yetkazib berish '+money(rt.fee):'yetkazib berish bepul');
+  if(rt.fee>0&&rt.free>0){ru.push('бесплатно от '+money(rt.free));uz.push(money(rt.free)+' dan bepul')}
+  if(rt.min>0){ru.push('минимальный заказ '+money(rt.min));uz.push('minimal buyurtma '+money(rt.min))}
+  return L('Для региона «'+regionName(reg)+'»: '+ru.join(', ')+'.','«'+regionName(reg)+'» hududi uchun: '+uz.join(', ')+'.');
+}
+function paintRegRate(){const el=$('#regrate');if(el)el.textContent=regRateText(orderRegion())}
 function regionFieldHTML(){
   const z=zone(),cur=orderRegion(),off=S.region&&!z.includes(S.region);
   return '<div class="full"><label class="lab" for="f-region">'+L('Регион доставки','Yetkazib berish hududi')+'</label><select id="f-region" data-f="region"><option value="">'+L('Выберите регион','Hududni tanlang')+'</option>'
-    +z.map(id=>'<option value="'+id+'"'+(id===cur?' selected':'')+'>'+esc(regionName(id))+'</option>').join('')+'</select>'+hintD('Продавец доставляет только в эти регионы. Самовывоз доступен всем.','Sotuvchi faqat shu hududlarga yetkazib beradi. Olib ketish hamma uchun ochiq.')+'<div class="err" id="e-region"></div>'
+    +z.map(id=>'<option value="'+id+'"'+(id===cur?' selected':'')+'>'+esc(regionName(id))+'</option>').join('')+'</select>'+hintD('Продавец доставляет только в эти регионы. Самовывоз доступен всем.','Sotuvchi faqat shu hududlarga yetkazib beradi. Olib ketish hamma uchun ochiq.')+'<div class="unit" id="regrate">'+esc(regRateText(cur))+'</div><div class="err" id="e-region"></div>'
     +(off?'<div class="note warnnote" role="status" style="margin-top:8px">'+esc(L('Этот продавец не доставляет в ваш регион ('+regionName(S.region)+'). Выберите самовывоз или регион из списка.','Bu sotuvchi sizning hududingizga ('+regionName(S.region)+') yetkazib bermaydi. Olib ketishni yoki roʻyxatdagi hududni tanlang.'))+'</div>':'')+'</div>';
 }
 /* в каталоге: куда доставляет этот дистрибьютор, и предупреждение, если не в регион магазина */
@@ -1151,9 +1169,10 @@ function cartQtyText(){
 /* цена за штуку зависит от количества (ступени), скидка от суммы, доставка: всё считается так же, как на сервере (общие функции unitPrice, orderDiscount, deliveryFee) */
 const cartTotal=()=>cartLines().reduce((s,l)=>s+l.qty*unitPrice(l.p,l.qty),0);
 const cartDisc=()=>orderDiscount(S.cfg,cartTotal());
-const cartFee=()=>deliveryFee(S.cfg,mode(),cartTotal());
+const cartFee=()=>deliveryFee(S.cfg,mode(),cartTotal(),orderRegion());
 const cartPay=()=>cartTotal()-cartDisc().amount+cartFee();
-const minOrder=()=>Number(S.cfg.shop.minOrder)||0;
+/* цена доставки, порог бесплатной и минимум: у региона из отмеченных могут быть свои (ratesFor), иначе общие */
+const minOrder=()=>ratesFor(S.cfg.shop,mode(),orderRegion()).min;
 /* Ставит количество в корзине (не больше остатка и 500). Возвращает, сколько в итоге стоит в корзине. */
 function cartSet(id,q){
   const p=S.prod.items.find(x=>x.id===id),cap=p?maxQty(p):MAX_QTY;
@@ -1539,7 +1558,7 @@ function paintCartLines(){
 /* Блок «Итого» в корзине: товары, доставка (если она платная), итог, подсказки про минимум и бесплатную доставку. */
 function paintCartSum(){
   const el=$('#csum');if(!el)return;
-  const sub=cartTotal(),dc=cartDisc(),fee=cartFee(),sh=S.cfg.shop,del=mode()==='delivery',feeSet=Number(sh.deliveryFee)>0,free=Number(sh.freeDeliveryFrom)||0;
+  const sub=cartTotal(),dc=cartDisc(),fee=cartFee(),del=mode()==='delivery',rt=ratesFor(S.cfg.shop,mode(),orderRegion()),feeSet=rt.fee>0,free=rt.free;
   const showFee=del&&feeSet&&!bzShop();
   el.innerHTML=(showFee||dc.amount>0?'<div class="r"><span>'+L('Товары','Mahsulotlar')+'</span><span id="csubrow">'+money(sub)+'</span></div>':'')
     +(dc.amount>0?'<div class="r disc"><span>'+L('Скидка '+dc.pct+'%','Chegirma '+dc.pct+'%')+'</span><span id="cdiscrow">−'+money(dc.amount)+'</span></div>':'')
@@ -3910,12 +3929,27 @@ function sellLinkHTML(){
   return '<div class="card"><h3>'+L('Ссылка для покупателей','Xaridorlar uchun havola')+'</h3><div class="unit">'+L('Отправьте её покупателям: она сразу открывает ваш каталог в боте.','Uni xaridorlarga yuboring: u botda darhol katalogingizni ochadi.')+'</div>'
     +'<div class="mono small">'+esc(l)+'</div><div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="copy" data-v="'+esc(l)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Копировать ссылку','Havolani nusxalash')+'</button></div></div>';
 }
+/* Цены по регионам у продавца: у каждого отмеченного региона три поля (цена доставки, бесплатно от, минимальный заказ).
+   Пустое поле — как в общих настройках выше (серая подсказка показывает, какие они), 0 — настоящий ноль. */
+function ratesEditHTML(){
+  const s=S.cfg.shop,z=cleanRegions(s.regions),only=S.regOnly===null?z.length>0:S.regOnly;
+  if(!only||!z.length)return '';
+  const rt=s.rates&&typeof s.rates==='object'?s.rates:{},def=ratesFor(s,'pickup','');
+  const f=(id,k,lab)=>{const v=rt[id]&&rt[id][k];return '<label class="rtfld"><span>'+lab+'</span><input type="number" inputmode="numeric" min="0" max="'+RATE_MAX+'" data-rate="'+id+':'+k+'" value="'+(typeof v==='number'?v:'')+'" placeholder="'+esc(L('как в общих: ','umumiy: ')+num(def[k]))+'" aria-label="'+esc(regionName(id)+': '+lab)+'"></label>'};
+  return '<div class="lab" style="margin-top:14px">'+L('Цены по регионам','Hududlar boʻyicha narxlar')+'</div>'
+    +'<div class="note">'+L('Для каждого отмеченного региона можно задать свои цену доставки, порог бесплатной доставки и минимальный заказ. Пустое поле значит «как в общих настройках выше», а 0 — настоящий ноль (бесплатно, нет порога, нет минимума). Минимальный заказ региона действует только на доставку, самовывоз считается по общему.','Har bir belgilangan hudud uchun yetkazib berish narxi, bepul yetkazish chegarasi va minimal buyurtmani alohida belgilash mumkin. Boʻsh maydon «yuqoridagi umumiy sozlamalardagidek» degani, 0 esa haqiqiy nol (bepul, chegarasiz, minimumsiz). Hududning minimal buyurtmasi faqat yetkazib berishga taʼsir qiladi, olib ketish umumiy boʻyicha hisoblanadi.')+'</div>'
+    +z.map(id=>'<div class="rtrow"><div class="rtname">'+esc(regionName(id))+'</div><div class="rtgrid">'
+      +f(id,'fee',L('Доставка, сум','Yetkazib berish, soʻm'))+f(id,'free',L('Бесплатно от, сум','Bepul boʻladigan summa, soʻm'))+f(id,'min',L('Минимальный заказ, сум','Minimal buyurtma, soʻm'))
+      +'</div></div>').join('');
+}
+function paintRates(){const b=$('#ratebox');if(b)b.innerHTML=ratesEditHTML()}
 /* Куда дистрибьютор доставляет и где его склад. Самовывоз доступен всем, ограничивается только доставка. */
 function regionsEditHTML(){
   const s=S.cfg.shop,z=cleanRegions(s.regions),only=S.regOnly===null?z.length>0:S.regOnly;
   return '<div class="full"><div class="lab">'+L('Куда вы доставляете','Qayerga yetkazib berasiz')+'</div>'
     +'<label class="chk"><input type="checkbox" id="s-regonly" data-s="regonly"'+(only?' checked':'')+'> '+L('Доставляю только в отмеченные регионы','Faqat belgilangan hududlarga yetkazaman')+'</label>'
     +'<div class="regs" id="regbox"'+(only?'':' hidden')+'>'+REGIONS.map(r=>'<label class="chk"><input type="checkbox" data-sreg="'+r.id+'"'+(z.includes(r.id)?' checked':'')+'> '+esc(regionName(r.id))+'</label>').join('')+'</div>'
+    +'<div id="ratebox">'+ratesEditHTML()+'</div>'
     +'<div class="note" style="margin-top:8px">'+L('Покупатель из неотмеченного региона не сможет заказать доставку, но самовывоз ему доступен. Если не отметить ни одного региона, доставка будет по всей стране.','Belgilanmagan hududdagi xaridor yetkazib berishni tanlay olmaydi, lekin olib ketish unga ochiq. Birorta hudud belgilanmasa, yetkazib berish butun mamlakat boʻylab boʻladi.')+'</div>'
     +'<div style="margin-top:12px"><label class="lab" for="s-home">'+L('Регион вашего склада (где самовывоз)','Omboringiz hududi (olib ketish joyi)')+'</label><select id="s-home" data-s="home"><option value="">'+L('Не указывать','Koʻrsatilmasin')+'</option>'
     +REGIONS.map(r=>'<option value="'+r.id+'"'+(s.home===r.id?' selected':'')+'>'+esc(regionName(r.id))+'</option>').join('')+'</select>'
@@ -6965,6 +6999,7 @@ document.addEventListener('input',e=>{
     if(f==='date')fillTimes();
     if(f==='name'||f==='phone'||f==='address'||f==='terr')saveForm();
     if(f==='address')markAddr();
+    if(f==='region'){paintCartSum();paintRegRate()}
     const er=$('#e-'+f);if(er&&er.textContent){er.textContent='';t.setAttribute('aria-invalid','false')}
   }
   else if(t.dataset.pid!==undefined){
@@ -6990,14 +7025,26 @@ document.addEventListener('input',e=>{
     const set=new Set(cleanRegions(S.cfg.shop.regions));
     if(t.checked)set.add(t.dataset.sreg);else set.delete(t.dataset.sreg);
     S.cfg.shop.regions=cleanRegions([...set]);
+    S.cfg.shop.rates=cleanRates(S.cfg.shop.rates,S.cfg.shop.regions);   // снятый регион теряет свои цены
+    paintRates();
+    queueSave();
+  }
+  else if(t.dataset.rate!==undefined){
+    const [id,k]=t.dataset.rate.split(':');
+    if(!REGION_IDS.includes(id)||!RATE_KEYS.includes(k))return;
+    const rt=S.cfg.shop.rates&&typeof S.cfg.shop.rates==='object'?S.cfg.shop.rates:(S.cfg.shop.rates={});
+    const v=t.value.trim(),n=Number(v);
+    if(v===''||!isFinite(n)||n<0){if(rt[id]){delete rt[id][k];if(!Object.keys(rt[id]).length)delete rt[id]}}
+    else{(rt[id]=rt[id]||{})[k]=Math.round(Math.min(RATE_MAX,n))}
     queueSave();
   }
   else if(t.dataset.s){
     const k=t.dataset.s;
     if(k==='regonly'){
       S.regOnly=t.checked;
-      if(!t.checked){S.cfg.shop.regions=[];document.querySelectorAll('[data-sreg]').forEach(x=>{x.checked=false})}
+      if(!t.checked){S.cfg.shop.regions=[];S.cfg.shop.rates={};document.querySelectorAll('[data-sreg]').forEach(x=>{x.checked=false})}
       const b=$('#regbox');if(b)b.hidden=!t.checked;
+      paintRates();
     }
     else if(k==='home')S.cfg.shop.home=cleanRegion(t.value);
     else if(k==='delivery')S.cfg.shop.delivery=t.checked;
