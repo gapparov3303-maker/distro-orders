@@ -509,6 +509,10 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .pf .avail{display:flex;align-items:flex-end;padding-bottom:10px}
 .chk{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
 .pact{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.psv{display:grid;gap:6px}
+.psv .btn{width:100%;min-height:48px}
+.psv .btn.done{background:var(--accent-soft);color:var(--tx);box-shadow:none}
+.psv .btn.done[disabled]{opacity:1}
 .crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;padding:8px 6px 8px 10px;margin:0 0 10px;background:var(--bg);border:1.5px solid var(--edge);border-radius:14px}
 .crow .cf{display:flex;align-items:center;gap:8px;min-width:0}
 .crow .cf .ltag{margin:0;flex:0 0 auto;width:28px;text-align:center;padding:1px 0}
@@ -982,7 +986,7 @@ const S={
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
   busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,ox:{},
   prod:{cats:[],items:[]},cart:{},shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
-  pfilter:'all',medit:{},pxo:{},upl:{},dirtyC:false,dirtyP:false,cd:null,
+  pfilter:'all',medit:{},pxo:{},psv:null,upl:{},dirtyC:false,dirtyP:false,cd:null,
   stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,
   profile:null,blocked:false,pfBusy:false,
   pm:false,xbusy:'',pick:null,pickBusy:false,
@@ -1000,7 +1004,7 @@ const S={
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
 };
 const view=$('#view');
-let toastT=null,saveT=null;
+let toastT=null,saveT=null,psvT=null;
 
 function toast(msg){
   const t=$('#toast');t.textContent=msg;t.hidden=false;
@@ -1032,7 +1036,7 @@ function resetShopState(){
   Object.assign(S,{
     cfg:clone(DEFAULT),prod:{cats:[],items:[]},cart:{},otherCart:null,shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
     admin:false,off:false,profile:null,blocked:false,fav:[],allOrders:[],stats:{doneSum:0,doneCount:0},
-    sellerTab:'orders',pfilter:'all',medit:{},pxo:{},upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
+    sellerTab:'orders',pfilter:'all',medit:{},pxo:{},psv:null,upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
     stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,dbt:newDebts(),pay:null,courier:null,cr:newCour(),dv:newDv(),
     pm:false,xbusy:'',pick:null,pickBusy:false,imp:null,impBusy:false,regOnly:null,
     rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
@@ -3236,6 +3240,31 @@ function modFootInner(p){
   if(p.ms!=='draft'&&p.ms!=='ret')return '';
   return '<button type="button" class="btn" data-act="msub1" data-id="'+esc(p.id)+'"'+(S.msubBusy?' disabled':'')+'>'+(p.ms==='ret'?L('Отправить снова','Qayta yuborish'):L('Отправить на проверку','Tekshiruvga yuborish'))+'</button>';
 }
+/* кнопка «Сохранить» внизу карточки товара: правки и так уходят сами через 0,7 с, кнопка отправляет их сразу и показывает, что всё записано */
+function psvHTML(p){
+  const id=esc(p.id),st=S.psv&&S.psv.id===p.id?S.psv.st:'';
+  return '<div class="full psv" id="psv-'+id+'"><button type="button" class="btn'+(st==='saved'?' done':'')+'" data-act="psave" data-id="'+id+'"'+(st==='saving'||st==='saved'?' disabled':'')+'>'
+    +(st==='saving'?L('Сохраняем…','Saqlanmoqda…'):st==='saved'?L('Сохранено ✓','Saqlandi ✓'):L('Сохранить','Saqlash'))+'</button>'
+    +(st==='error'?'<div class="err" role="alert">'+(S.saveState==='nodb'?L('Изменения не сохраняются: нет доступа к хранилищу.','Oʻzgarishlar saqlanmaydi: ombor mavjud emas.'):L('Не удалось сохранить. Проверьте соединение и нажмите ещё раз.','Saqlab boʻlmadi. Ulanishni tekshiring va yana bosing.'))+'</div>':'')+'</div>';
+}
+function paintPsv(id){
+  const el=document.getElementById('psv-'+id),p=S.prod.items.find(x=>x.id===id);
+  if(el&&p)el.outerHTML=psvHTML(p);
+}
+async function prodSave(id){
+  if(!S.prod.items.some(x=>x.id===id)||(S.psv&&S.psv.st==='saving'))return;
+  clearTimeout(psvT);
+  S.psv={id,st:'saving'};paintPsv(id);
+  let ok=false;
+  if(S.auth&&S.admin){
+    S.dirtyP=true;S.dirty=true;S.saveState='saving';paintSave();
+    await flushSave();
+    ok=S.saveState==='saved'&&!S.dirtyP;
+  }else{S.saveState='nodb';paintSave()}
+  if(!S.prod.items.some(x=>x.id===id)){S.psv=null;return}
+  S.psv={id,st:ok?'saved':'error'};paintPsv(id);
+  if(ok)psvT=setTimeout(()=>{if(S.psv&&S.psv.id===id&&S.psv.st==='saved'){S.psv=null;paintPsv(id)}},2500);
+}
 function modBanInner(){
   const n=S.prod.items.filter(p=>p.ms==='draft').length;
   if(!n)return '';
@@ -3415,6 +3444,7 @@ function prodBody(p){
       +hintD('Для доставки «за габарит»: объём считается в м³. Укажите все три размера, иначе цену назовёте вы. Пример: 50 × 40 × 20.','«Hajm boʻyicha» yetkazish uchun: hajm m³ da hisoblanadi. Uchala oʻlchamni yozing, aks holda narxni oʻzingiz aytasiz. Masalan: 50 × 40 × 20.')+'</div>':'')
     +'<div class="full unit" style="margin:0">'+L('Блок и коробка — для удобства: цена и остаток всегда считаются в штуках. Если указать, у покупателя появятся кнопки «+ блок» и «+ коробка», а в заказах будет видно, сколько это коробок. Допустимо от 2 до 500 штук. Галочка «Продаётся только…» — покупатель сможет взять товар лишь целыми упаковками (10, 20, 30 '+pcsWord(p)+').','Blok va quti — qulaylik uchun: narx va qoldiq doim donada hisoblanadi. Koʻrsatilsa, xaridorda «+ blok» va «+ quti» tugmalari paydo boʻladi, buyurtmalarda esa necha quti ekani koʻrinadi. 2 dan 500 donagacha. «Faqat … sotiladi» belgisi — xaridor mahsulotni faqat butun qadoqda oladi (10, 20, 30 '+pcsWord(p)+').')+'</div>'
     +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
+    +psvHTML(p)
     +'<div class="full pact"><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="-1" aria-label="'+esc(L('Выше','Yuqoriga'))+'">▲</button><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="1" aria-label="'+esc(L('Ниже','Pastga'))+'">▼</button>'
     +'<button type="button" class="btn ghost sm" data-act="pdel" data-id="'+id+'">'+(S.cd===p.id?L('Точно удалить?','Aniq oʻchirilsinmi?'):L('Удалить товар','Mahsulotni oʻchirish'))+'</button>'
     +'<button type="button" class="btn ghost sm pfi pfoldbtn" data-act="pfold" data-id="'+id+'" title="'+esc(L('Свернуть','Yigʻish'))+'" aria-label="'+esc(L('Свернуть','Yigʻish'))+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button></div>'
@@ -4292,6 +4322,7 @@ function paintSave(){
 function queueSave(kind){
   if(kind==='prod')S.dirtyP=true;else S.dirtyC=true;
   S.dirty=true;
+  if(kind==='prod'&&S.psv&&S.psv.st!=='saving'){const i=S.psv.id;S.psv=null;paintPsv(i)}
   if(!S.auth||!S.admin){S.saveState='nodb';paintSave();return}
   S.saveState='saving';paintSave();
   clearTimeout(saveT);saveT=setTimeout(doSave,700);
@@ -4892,7 +4923,7 @@ const ABOUT_ROLES=[
   ['Согласуйте оплату с покупателем и нажмите «Разрешить отправку»: «Наличные», «Карта», «Перечисление» или «В долг» (срок и часть, оплаченная сразу). Оплата записывается один раз: в заказ, в «Долги» и в Excel. Пока склад не отправил заказ, разрешение можно снять кнопкой «Снять разрешение» (кроме долга).','Toʻlovni xaridor bilan kelishib, «Joʻnatishga ruxsat»ni bosing: «Naqd», «Karta», «Oʻtkazma» yoki «Qarzga» (muddat va darhol toʻlangan qism). Toʻlov bir marta yoziladi: buyurtmaga, «Qarzlar»ga va Excelga. Ombor buyurtmani joʻnatmaguncha ruxsatni «Ruxsatni qaytarish» tugmasi bilan olib tashlash mumkin (qarzdan tashqari).'],
   ['Склад отправляет заказ в Навои. Покупатель нажимает «Получил»: только тогда заказ закрывается, вам приходит сообщение, а в карточке записывается «Выдан покупателю · время» («Доставлен покупателю» при доставке). Закрыть заказ за покупателя нельзя.','Ombor buyurtmani Navoiyga joʻnatadi. Xaridor «Oldim»ni bosadi: buyurtma faqat shundan keyin yopiladi, sizga xabar keladi, kartochkada esa «Xaridorga topshirildi · vaqt» yoziladi (yetkazishda «Xaridorga yetkazildi»). Buyurtmani xaridor oʻrniga yopib boʻlmaydi.']]},
  {img:'sel-catalog',h:['Каталог','Katalog'],cap:['Редактор товара','Tovar muharriri'],li:[
-  ['Создайте категории и товары: название по-русски и по-узбекски, вес или объём, цена и до трёх фото. Приложение само уменьшает фото, обычных снимков с телефона достаточно.','Kategoriya va tovarlarni yarating: rus va oʻzbek tilida nomi, ogʻirligi yoki hajmi, narxi va 3 tagacha rasm. Ilova rasmni oʻzi kichraytiradi, telefondagi oddiy suratlar yetarli.'],
+  ['Создайте категории и товары: название по-русски и по-узбекски, вес или объём, цена и до трёх фото. Приложение само уменьшает фото, обычных снимков с телефона достаточно. Правки сохраняются сами; большая кнопка «Сохранить» внизу карточки товара отправляет их сразу и пишет «Сохранено».','Kategoriya va tovarlarni yarating: rus va oʻzbek tilida nomi, ogʻirligi yoki hajmi, narxi va 3 tagacha rasm. Ilova rasmni oʻzi kichraytiradi, telefondagi oddiy suratlar yetarli. Oʻzgarishlar oʻzi saqlanadi; mahsulot kartochkasi pastidagi katta «Saqlash» tugmasi ularni darhol yuboradi va «Saqlandi» deb yozadi.'],
   ['Метки «Акция» (со старой ценой) и «Новинка», цены от количества, блоки и коробки, скидка на заказ от суммы. Прайс можно выгрузить в Excel, поправить цены и загрузить обратно: перед применением вы увидите, что изменится.','«Aksiya» (eski narx bilan) va «Yangilik» belgilari, miqdorga qarab narx, blok va qutilar, summaga qarab chegirma. Prays-listni Excelga yuklab, narxlarni tuzatib, qaytarib yuklash mumkin: qoʻllashdan oldin nima oʻzgarishini koʻrasiz.'],
   ['Новый товар сначала «Черновик». Нажмите «Отправить на проверку»: владелец площадки одобрит товар или вернёт с причиной, что исправить. Правки уже одобренных товаров проверки не требуют.','Yangi tovar avval «Qoralama» boʻladi. «Tekshiruvga yuborish»ni bosing: platforma egasi tovarni tasdiqlaydi yoki nimani tuzatish kerakligini sabab bilan qaytaradi. Tasdiqlangan tovarlarni oʻzgartirish tekshiruvsiz amalga oshadi.'],
   ['Пока товар не одобрен, покупатели видят его серым с надписью «На модерации».','Tovar tasdiqlanmaguncha xaridorlar uni «Tekshiruvda» yozuvli kulrang koʻrinishda koʻradi.'],
@@ -7004,6 +7035,7 @@ document.addEventListener('click',e=>{
   }
   else if(a==='pfilter'){S.pfilter=t.dataset.id;paintSeller()}
   else if(a==='pfold')pxSet(t.dataset.id,!S.pxo[t.dataset.id]);
+  else if(a==='psave')prodSave(t.dataset.id);
   else if(a==='pfoldall')pxAll(t.dataset.v==='1');
   else if(a==='rseg'){if(S.rv.seg!==t.dataset.v){S.rv.seg=t.dataset.v;S.rv.did='';S.rv.cat='';S.rv.items=[];loadReview()}}
   else if(a==='rvreload')loadReview();

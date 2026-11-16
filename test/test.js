@@ -10139,6 +10139,68 @@ await t('владелец: «Агенты» отдельно от «Добави
   assert.ok(!/L\('Отключить','Oʻchirish'\)/.test(html), 'узбекское «Отключить» не «Oʻchirish»');
 });
 
+await t('карточка товара: большая кнопка «Сохранить» отправляет правки сразу, пишет «Сохранено ✓», при ошибке красная подсказка', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('function psvHTML('), html.indexOf('function modBanInner('));
+  assert.ok(src.length > 400, 'функции найдены');
+  // кнопка стоит в карточке товара над рядом «▲ ▼ Удалить», один раз, и нажатие обработано
+  const body = html.slice(html.indexOf('function prodBody('), html.indexOf('/* ---------- прайс из Excel ---------- */'));
+  assert.equal((body.match(/psvHTML\(p\)/g) || []).length, 1, 'одна кнопка в карточке');
+  assert.ok(body.indexOf('psvHTML(p)') < body.indexOf('class="full pact"') && body.indexOf('psvHTML(p)') > body.indexOf('onlyRowHTML('), 'кнопка над рядом «▲ ▼ Удалить товар»');
+  assert.ok(/a==='psave'\)prodSave\(t\.dataset\.id\)/.test(html), 'нажатие');
+  assert.ok(/if\(kind==='prod'&&S\.psv&&S\.psv\.st!=='saving'\)\{const i=S\.psv\.id;S\.psv=null;paintPsv\(i\)\}/.test(html), 'новая правка убирает прежнюю отметку «Сохранено»');
+  // поведение на заглушках
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const mk = (uz, over) => {
+    const log = [], timers = [];
+    const S = Object.assign({ prod: { items: [{ id: 'p1' }, { id: 'p2' }] }, psv: null, saveState: '', auth: true, admin: true, dirtyP: false, dirty: false }, over || {});
+    const env = { S, L: (ru, u) => uz ? u : ru, esc, paintSave: () => log.push('bar:' + S.saveState), document: { getElementById: id => ({ set outerHTML(v) { log.push(v) } }) },
+      flushSave: async () => { log.push('flush dirtyP=' + S.dirtyP); S.saveState = env.result; S.dirtyP = env.result === 'error'; }, result: 'saved',
+      setTimeout: (f, ms) => { timers.push([f, ms]); return timers.length }, clearTimeout: () => {} };
+    const run = new Function('S', 'L', 'esc', 'paintSave', 'document', 'flushSave', 'setTimeout', 'clearTimeout', src + '\nlet psvT=null;\nreturn {psvHTML,paintPsv,prodSave};');
+    const f = run(S, env.L, esc, env.paintSave, env.document, env.flushSave, env.setTimeout, env.clearTimeout);
+    return { S, log, timers, env, f };
+  };
+  // вид кнопки в четырёх состояниях, два языка
+  let w = mk(false); const P = { id: 'p1' };
+  let h = w.f.psvHTML(P);
+  assert.ok(/data-act="psave" data-id="p1">Сохранить<\/button>/.test(h) && !/disabled|class="err"/.test(h));
+  w.S.psv = { id: 'p1', st: 'saving' }; h = w.f.psvHTML(P);
+  assert.ok(/disabled>Сохраняем…<\/button>/.test(h));
+  w.S.psv = { id: 'p1', st: 'saved' }; h = w.f.psvHTML(P);
+  assert.ok(/class="btn done"[^>]*disabled>Сохранено ✓<\/button>/.test(h));
+  w.S.psv = { id: 'p1', st: 'error' }; h = w.f.psvHTML(P);
+  assert.ok(/>Сохранить<\/button><div class="err" role="alert">Не удалось сохранить\. Проверьте соединение и нажмите ещё раз\.<\/div>/.test(h) && !/disabled/.test(h));
+  w.S.psv = { id: 'p2', st: 'saved' }; assert.ok(/>Сохранить<\/button>/.test(w.f.psvHTML(P)), 'отметка другого товара не влияет');
+  w = mk(true); h = w.f.psvHTML(P);
+  assert.ok(/>Saqlash<\/button>/.test(h));
+  w.S.psv = { id: 'p1', st: 'saved' }; assert.ok(/Saqlandi ✓/.test(w.f.psvHTML(P)));
+  w.S.psv = { id: 'p1', st: 'saving' }; assert.ok(/Saqlanmoqda…/.test(w.f.psvHTML(P)));
+  w.S.psv = { id: 'p1', st: 'error' }; assert.ok(/Saqlab boʻlmadi/.test(w.f.psvHTML(P)));
+  // успех: «Сохраняем…», правки отправлены принудительно, «Сохранено ✓», через 2,5 с кнопка снова «Сохранить»
+  w = mk(false); await w.f.prodSave('p1');
+  assert.ok(/flush dirtyP=true/.test(w.log.join('|')), 'перед отправкой помечено «есть правки»');
+  assert.ok(/disabled>Сохраняем…/.test(w.log[0]) && /bar:saving/.test(w.log[1]), 'сначала «Сохраняем…»');
+  assert.ok(/class="btn done"[^>]*>Сохранено ✓/.test(w.log[w.log.length - 1]) && w.S.psv.st === 'saved');
+  assert.equal(w.timers.length, 1); assert.equal(w.timers[0][1], 2500);
+  w.timers[0][0](); assert.equal(w.S.psv, null); assert.ok(/>Сохранить<\/button>/.test(w.log[w.log.length - 1]));
+  // ошибка: красная подсказка, кнопка снова нажимается, таймера нет
+  w = mk(false); w.env.result = 'error'; await w.f.prodSave('p1');
+  assert.equal(w.S.psv.st, 'error'); assert.equal(w.timers.length, 0);
+  assert.ok(/class="err"/.test(w.log[w.log.length - 1]) && !/disabled/.test(w.log[w.log.length - 1]));
+  // нет доступа к хранилищу: запрос не уходит, подсказка про хранилище
+  w = mk(false, { auth: false }); await w.f.prodSave('p1');
+  assert.ok(!/flush/.test(w.log.join('|')) && /нет доступа к хранилищу/.test(w.log[w.log.length - 1]) && w.S.saveState === 'nodb');
+  // второе нажатие во время сохранения игнорируется; нажатие на уже удалённом товаре тоже
+  w = mk(false, { psv: { id: 'p1', st: 'saving' } }); await w.f.prodSave('p1'); assert.equal(w.log.length, 0);
+  w = mk(false); await w.f.prodSave('p9'); assert.equal(w.log.length, 0);
+  // товар удалили, пока шло сохранение: отметки не остаётся
+  w = mk(false); w.env.flushSave = async () => { w.S.prod.items = []; w.S.saveState = 'saved'; };
+  const run2 = new Function('S', 'L', 'esc', 'paintSave', 'document', 'flushSave', 'setTimeout', 'clearTimeout', src + '\nlet psvT=null;\nreturn prodSave;');
+  await run2(w.S, w.env.L, esc, w.env.paintSave, w.env.document, w.env.flushSave, w.env.setTimeout, w.env.clearTimeout)('p1');
+  assert.equal(w.S.psv, null, 'удалённый товар не оставляет отметку');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
