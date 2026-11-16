@@ -40,7 +40,7 @@ class MockStorage {
     return Array.isArray(k) ? n : n > 0;
   }
 }
-let tgLog = [], tgFail = false, tgDocFail = false, tgDocDelay = 0, msgSeq = 1000, tgCopyFail = '';
+let tgLog = [], tgFail = false, tgDocFail = false, tgDocDelay = 0, msgSeq = 1000, tgCopyFail = '', tgCopyBtnFail = '';
 /* файлы Telegram для проигрывания видео: номер файла → путь → байты; tgFileRanges — умеет ли «Telegram» отдавать куски */
 const VID_ID = 'BAACAgIAAxkBAAIvideo01', THM_ID = 'AAMCAgADGQEAAthumb0001', VID2_ID = 'BAACAgIAAxkBAAIvideo02';
 const mkBytes = (n, k) => Uint8Array.from({ length: n }, (_, i) => (i * 7 + (k || 0)) % 251);
@@ -81,6 +81,7 @@ globalThis.fetch = async (url, init) => {
   if (tgDocDelay && method === 'sendDocument') await new Promise(r => setTimeout(r, tgDocDelay));
   if (tgDocFail && method === 'sendDocument') return new Response(JSON.stringify({ ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' }), { status: 403, headers: { 'content-type': 'application/json' } });
   if (tgCopyFail && method === 'copyMessage') return new Response(JSON.stringify({ ok: false, error_code: 400, description: tgCopyFail }), { status: 400, headers: { 'content-type': 'application/json' } });
+  if (tgCopyBtnFail && method === 'copyMessage' && payload.reply_markup) return new Response(JSON.stringify({ ok: false, error_code: 400, description: tgCopyBtnFail }), { status: 400, headers: { 'content-type': 'application/json' } });
   const res = { ok: true, result: true };
   if (method === 'copyMessage') res.result = { message_id: ++msgSeq };
   if (method === 'getFile') {
@@ -10271,6 +10272,11 @@ await t('видео товара: продавец жмёт «Добавить �
   const cp = lastTg('copyMessage');
   assert.ok(cp && cp.payload.chat_id === '@sarbon_video' && cp.payload.from_chat_id === DIL.id && cp.payload.message_id === 504);
   assert.equal(cp.payload.caption, 'Масло подсолнечное · Видео Трейд');
+  const cb = cp.payload.reply_markup.inline_keyboard;
+  assert.equal(cb.length, 1); assert.equal(cb[0].length, 1, 'под постом одна кнопка');
+  assert.equal(cb[0][0].url, 'https://t.me/distro_test_bot/app?startapp=p_' + sid + '_p1', 'ссылка на Mini App открывает этот товар этого продавца');
+  assert.ok(!cb[0][0].web_app && /^🛒 Ilovada ochish · Открыть в приложении$/.test(cb[0][0].text), 'в канале только кнопка-ссылка, подпись на двух языках, узбекский первым');
+  assert.ok(/^p_[a-z0-9]{2,12}_[A-Za-z0-9_-]{1,24}$/.test(cb[0][0].url.split('startapp=')[1]), 'параметр запуска в допустимом виде');
   const vd1 = 'sarbon_video/' + (msgSeq);
   let cfg = await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }));
   const it1 = cfg.prod.items.find(i => i.id === 'p1');
@@ -10595,6 +10601,59 @@ await t('видео в просмотре фото: четвёртый слай�
   assert.ok(/classList\.contains\('lb-poster'\)\)t\.remove\(\)/.test(lb), 'нет кадра-заставки — остаётся тёмный экран с ▶');
   assert.ok(/\.lb-play\{[^}]*min-height:42vh/.test(html) && /\.lb-video\{width:100%/.test(html), 'стили слайда есть');
   assert.ok(!/магазин|клиент|дистрибьютор/i.test(vsrc), 'в видимых текстах нет «магазин», «клиент», «дистрибьютор»');
+});
+
+await t('видео товара: кнопка под постом в канале — канал не принял кнопку, видео всё равно публикуется без неё; другая ошибка кнопку не повторяет', async () => {
+  const { sid } = await shopWorld('Видео Три');
+  const vmsg = mid => send({ update_id: 9800 + mid, message: { message_id: mid, from: DIL, chat: { id: DIL.id, type: 'private' }, video: { file_id: VID_ID, duration: 5, file_size: 1e6 } } });
+  tgCopyBtnFail = 'Bad Request: BUTTON_URL_INVALID';
+  tgLog = [];
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  await vmsg(700);
+  tgCopyBtnFail = '';
+  const cps = tgAll('copyMessage');
+  assert.equal(cps.length, 2, 'вторая попытка без кнопки');
+  assert.ok(cps[0].payload.reply_markup && !cps[1].payload.reply_markup);
+  assert.ok(lastTg('sendMessage', p => /Готово: видео опубликовано/.test(p.text)), 'продавец получил «Готово»');
+  const cfg = await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }));
+  assert.ok(/^sarbon_video\/\d+$/.test(cfg.prod.items.find(i => i.id === 'p1').vd), 'видео привязано');
+  // ошибка не про кнопку (бот не админ канала): повторять с другим содержимым незачем
+  tgCopyFail = 'Bad Request: chat not found';
+  tgLog = [];
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  await vmsg(701);
+  tgCopyFail = '';
+  assert.equal(tgAll('copyMessage').length, 1, 'повтор только когда не приняли кнопку');
+});
+
+await t('открытие по ссылке из канала: start_param «p_продавец_товар» открывает каталог продавца и обводит товар; чужое и подделанное игнорируется', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  const mk = (sp, qs, hash) => new Function('S', 'QS', 'location', fn('startProd') + '\nreturn startProd;')({ tg: sp === undefined ? null : { initDataUnsafe: { start_param: sp } } }, new URLSearchParams(qs || ''), { hash: hash || '' });
+  assert.deepEqual(mk('p_aa1_p1')(), { did: 'aa1', pid: 'p1' });
+  assert.deepEqual(mk('p_ab12cd_x-9_Z')(), { did: 'ab12cd', pid: 'x-9_Z' }, 'в номере товара бывают тире и подчёркивание');
+  assert.equal(mk('')(), null, 'пусто — ничего');
+  assert.deepEqual(mk('', 'tgWebAppStartParam=p_aa1_p2')(), { did: 'aa1', pid: 'p2' }, 'запасной путь: параметр в адресе');
+  assert.deepEqual(mk('', '', '#tgWebAppData=x&tgWebAppStartParam=p_aa1_p3&tgWebAppVersion=7')(), { did: 'aa1', pid: 'p3' }, 'и в хвосте адреса');
+  for (const bad of ['p_AA1_p1', 'p_a_p1', 'p_aa1_', 'p_aa1_<img>', 'p_aa1_' + 'x'.repeat(25), 'v_aa1_p1', 'd_aa1', 'p_aa1_p1_extra!', 'x'.repeat(600)]) assert.equal(mk(bad)(), null, 'не принимается: ' + bad.slice(0, 30));
+  assert.equal(mk(undefined)(), null, 'нет Telegram — ничего не ломается');
+  // обводка: выбранная категория сбрасывается на «Все», товар по центру, через 2 секунды обводка снимается; нет товара — тишина
+  const run = present => {
+    const log = [], timers = [], el = { classList: { add: c => log.push('add ' + c), remove: c => log.push('remove ' + c) }, scrollIntoView: o => log.push('scroll ' + o.block) };
+    const S = { shopCat: 'fav' };
+    new Function('S', 'renderShop', 'document', 'setTimeout', fn('hlProd') + '\nhlProd("p1");')(S, () => log.push('render'), { getElementById: id => { log.push('id ' + id); return present ? el : null } }, (f, ms) => timers.push([f, ms]));
+    const ms = [];
+    while (timers.length) { const [f, t] = timers.shift(); ms.push(t); f(); }
+    return { S, log, ms };
+  };
+  let r = run(true);
+  assert.equal(r.S.shopCat, 'all'); assert.deepEqual(r.log, ['render', 'id pc-p1', 'scroll center', 'add hl', 'remove hl']); assert.deepEqual(r.ms, [60, 2000]);
+  assert.doesNotThrow(() => run(false));
+  // подключено в запуск: адрес ?d= главнее, обводится только если каталог открылся именно этого продавца; открывается список, а не корзина
+  const init = html.slice(html.indexOf('(async function init()'));
+  assert.ok(/const sp=startProd\(\);\s*const want=QS\.get\('d'\)\|\|\(sp\?sp\.did:''\)/.test(init), 'продавец берётся из ссылки');
+  assert.ok(/const hp=sp&&!QS\.get\('d'\)&&v==='shop'&&S\.did===sp\.did\?sp\.pid:''/.test(init) && /if\(hp\)S\.shopStep='list';\s*render\(\);\s*if\(hp\)hlProd\(hp\);/.test(init), 'каталог, не корзина; обводка после показа');
+  assert.ok(/function openPop\(did,pid\)\{[^}]*hlProd\(pid\)/.test(fn('openPop')), '«Популярное сейчас» идёт тем же путём');
 });
 
 /* ---------- итог ---------- */
