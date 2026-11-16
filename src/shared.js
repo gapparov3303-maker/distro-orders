@@ -23,9 +23,20 @@ const STATUS_BZ={
   ship:{name:'Отправка разрешена',uz:'Joʻnatishga ruxsat berilgan'},
   sent:{name:'Отправлен в Навои',uz:'Navoiyga joʻnatildi'}
 };
+/* Заказ с дальней доставкой после оплаты (o.far): название статуса показывает, ждём ли мы оплату и едет ли груз */
+const STATUS_FAR={
+  wait:{name:'Ждёт оплаты',uz:'Toʻlov kutilmoqda',c:'warn'},
+  paid:{name:'Оплачен, готовим',uz:'Toʻlandi, tayyorlanmoqda',c:'ok'},
+  ready:{name:'Отправлен',uz:'Joʻnatildi',c:'ok'},
+  done:{name:'Доставлен',uz:'Yetkazildi',c:'mute'}
+};
 /* o (необязательно): сам заказ; по нему у заказа Базара статус «Готов» заменяется этапом на складе */
 function stOf(status,mode,o){
   const b=STATUS[status]||STATUS.new;
+  if(o&&o.far){   // дальняя доставка после оплаты: статус говорит, ждём ли мы деньги, едет ли груз
+    const z=status==='accepted'?(o.pay?STATUS_FAR.paid:STATUS_FAR.wait):STATUS_FAR[status];
+    if(z)return Object.assign({},b,z);
+  }
   if(o&&!o.pickupAt&&(status==='new'||status==='accepted'||status==='ready')){
     const z=o.sent?STATUS_BZ.sent:o.ship?STATUS_BZ.ship:o.wh?STATUS_BZ.wh:status==='ready'?STATUS_BZ.ready:null;
     if(z)return Object.assign({},b,z,{c:'ok'});
@@ -36,7 +47,7 @@ function stOf(status,mode,o){
 
 const DEFAULT={
   v:3,
-  shop:{name:'Оптовая база',legal:'',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],rates:{},home:'',category:'',bazaar:''}
+  shop:{name:'Оптовая база',legal:'',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],rates:{},far:{},home:'',category:'',bazaar:''}
 };
 /* Категории дистрибьюторов на первом экране. Пустая категория — не выбрана: такой дистрибьютор показывается в «Дистрибьюторах».
    Продавец выбирает её в настройках, владелец может поменять; ключ хранится у дистрибьютора (shop.category), площадка держит копию в списке. */
@@ -249,6 +260,56 @@ function ratesFor(sh,mode,reg){
   }
   return r;
 }
+/* «Дальняя доставка: после оплаты» (категория «Производители»). Производитель из другого региона везёт сам или нанимает водителя, а заказ начинает собирать
+   только после оплаты. Настройки shop.far: on — включено; m — как считается цена доставки (kg — за кг веса, vol — за м³ по габаритам, fix — фиксированная,
+   deal — по договорённости); kg, m3, fix — сум; pay — как платят за перевозку (in — в цене заказа, drv — водителю при получении, both — покупатель выбирает);
+   days — срок доставки после оплаты, дней; req — реквизиты для оплаты (текст). У товара необязательные габариты одной штуки в упаковке: dl, dw, dh (см). */
+const FAR_METHODS=['kg','vol','fix','deal'];
+const FAR_PAYS=['in','drv','both'];
+const FAR_DIM_MAX=1000;
+const cleanFar=v=>{
+  const s=v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+  const n=x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=RATE_MAX?Math.round(x):0;
+  const d=Math.round(Number(s.days));
+  return {
+    on:s.on===true,
+    m:FAR_METHODS.includes(s.m)?s.m:'kg',
+    kg:n(s.kg),m3:n(s.m3),fix:n(s.fix),
+    pay:FAR_PAYS.includes(s.pay)?s.pay:'both',
+    days:d>=1&&d<=30?d:3,
+    req:typeof s.req==='string'?s.req.replace(/\r/g,'').trim().slice(0,400):''
+  };
+};
+/* Габарит одной штуки: все три стороны, см (от 1 до 1000), иначе 0 */
+const cleanDim=v=>{const x=Math.round(Number(v)*10)/10;return x>=1&&x<=FAR_DIM_MAX?x:0};
+const hasDims=p=>!!p&&cleanDim(p.dl)>0&&cleanDim(p.dw)>0&&cleanDim(p.dh)>0;
+/* Работает ли у продавца дальняя доставка: включена и он в категории «Производители» (у остальных настройка молчит) */
+const farOn=sh=>!!sh&&sh.category==='maker'&&cleanFar(sh.far).on;
+/* Вес одной штуки, кг (г и мл считаем как граммы, л как кг); у товара «шт» без веса — 0 */
+const unitKg=p=>{
+  const a=Number(p&&p.amount)||0,u=p&&p.unit;
+  return u==='kg'||u==='l'?a:u==='g'||u==='ml'?a/1000:0;
+};
+/* Что везти и сколько это стоит: items — строки заказа (amount, unit, qty и габариты dl, dw, dh), sub — сумма товаров до скидки.
+   w — вес, кг, v — объём, м³; null, если у какой-то позиции веса (габаритов) нет. fee — стоимость перевозки или null, если её назовёт продавец
+   (need). «Бесплатно от суммы» из общих настроек действует и здесь. */
+function farCalc(sh,items,sub){
+  const f=cleanFar(sh&&sh.far);
+  let w=0,v=0,wOk=true,vOk=true;
+  (items||[]).forEach(it=>{
+    const q=Number(it.qty)||0,k=unitKg(it);
+    if(k>0)w+=k*q;else wOk=false;
+    if(hasDims(it))v+=cleanDim(it.dl)*cleanDim(it.dw)*cleanDim(it.dh)/1e6*q;else vOk=false;
+  });
+  const free=Number(sh&&sh.freeDeliveryFrom)||0;
+  const res={m:f.m,w:wOk?Math.round(w*100)/100:null,v:vOk?Math.round(v*1000)/1000:null,fee:null,need:false};
+  if(free>0&&Number(sub)>=free)res.fee=0;
+  else if(f.m==='fix')res.fee=f.fix;
+  else if(f.m==='kg'&&f.kg>0&&res.w!==null)res.fee=Math.round(res.w*f.kg);
+  else if(f.m==='vol'&&f.m3>0&&res.v!==null)res.fee=Math.round(res.v*f.m3);
+  res.need=res.fee===null;
+  return res;
+}
 /* Доставляет ли дистрибьютор (запись из списка или настройки) в регион. Нет региона у клиента — считаем, что доставляет. */
 const deliversTo=(sh,reg)=>!!sh&&sh.delivery!==false&&(!hasZone(sh.regions)||!reg||cleanRegions(sh.regions).includes(reg));
 /* Подходит ли дистрибьютор клиенту из региона reg: доставляет к нему или находится в его регионе (самовывоз). */
@@ -293,14 +354,31 @@ function fmtWhen(s){
 /* Заказ продавца категории «Базар» оформляется без даты и времени: вместо них хранится способ получения (самовывоз со склада в Навои или доставка до двери). */
 const isBzShop=sh=>!!sh&&sh.category==='bazaar';
 const noWhen=o=>!o.pickupAt;
+/* Срок дальней доставки: до оплаты «N дн. после оплаты», после оплаты ожидаемая дата (её ставит сервер, o.pickupAt). */
+const farDays=o=>Math.max(1,Math.round(Number(o&&o.far&&o.far.dy))||3);
+function farWhen(o){
+  if(o.status==='done')return L('доставлен','yetkazildi');
+  if(o.pay&&o.pickupAt){
+    const d=new Date(o.pickupAt);
+    if(!isNaN(d))return L('ожидаем около ','taxminan ')+(LANG==='uz'?d.getDate()+'-'+UZ_MO[d.getMonth()]:d.toLocaleDateString('ru-RU',{day:'numeric',month:'long'}));
+  }
+  return L('через '+farDays(o)+' дн. после оплаты','toʻlovdan keyin '+farDays(o)+' kun ichida');
+}
+/* «Платит ли покупатель за перевозку в цене заказа»: fp у заказа — in (в цене) или drv (водителю при получении) */
+const farInPrice=o=>!!(o&&o.far&&o.far.fp==='in');
+/* Стоимость перевозки названа? У заказа с доставкой «по договорённости» её называет продавец после заказа. */
+const farFeeKnown=o=>!!(o&&o.far&&Number.isFinite(o.far.fee)&&o.far.fee>=0);
+/* Груз уже отправлен продавцом: заказ закрывает «Получил» покупателя или «Доставлен» продавца */
+const farSent=o=>!!(o&&o.far&&o.far.sd);
 /* Заказ Базара закрывает только покупатель кнопкой «Получил»: ни продавец, ни склад, ни время его не закрывают. Исключение: заказы, разрешённые раньше с оплатой «при получении» (такого варианта больше нет): их закрывает продавец и записывает оплату */
 const buyerCloses=o=>noWhen(o)&&!(o.ship&&o.ship.m==='later');
 const bzReadyBtn=()=>L('Отвёз на склад','Omborga olib bordim');
 const recvName=o=>o.mode==='delivery'?L('Доставка до двери','Eshikkacha yetkazish'):L('Заберу сам в Навои','Navoiyda oʻzim olaman');
 /* «когда» заказа: дата и время, а у заказа Базара — способ получения */
-const whenText=o=>noWhen(o)?recvName(o):fmtWhen(o.pickupAt);
+const whenText=o=>o.far?farWhen(o):noWhen(o)?recvName(o):fmtWhen(o.pickupAt);
 /* строка «Доставка: …» / «Самовывоз: …» для сообщений */
 function whenLine(o){
+  if(o.far)return L('Доставка: ','Yetkazib berish: ')+farWhen(o);
   if(noWhen(o))return L('Получение: ','Olish usuli: ')+recvName(o);
   return (o.mode==='delivery'?L('Доставка: ','Yetkazib berish: '):L('Самовывоз: ','Olib ketish: '))+fmtWhen(o.pickupAt);
 }
@@ -329,8 +407,14 @@ function orderText(o,shop,maxItems){
   if(o.org)P.push(L('Организация: ','Tashkilot: ')+o.org);
   if(o.comment)P.push(L('Комментарий: ','Izoh: ')+o.comment);
   if(o.disc>0)P.push(L('Скидка '+o.dpct+'%: −','Chegirma '+o.dpct+'%: −')+money(o.disc));
-  if(o.fee>0)P.push(L('Стоимость доставки: ','Yetkazib berish narxi: ')+money(o.fee));
-  P.push(L('Итого: ','Jami: ')+money(o.total)+(noWhen(o)?L(', оплата по договорённости с продавцом',', toʻlov sotuvchi bilan kelishiladi'):L(', оплата при получении',', olganda toʻlanadi')));
+  if(o.far){
+    if(farInPrice(o)){
+      if(farFeeKnown(o)&&o.far.fee>0)P.push(L('Стоимость доставки: ','Yetkazib berish narxi: ')+money(o.far.fee));
+      else if(!farFeeKnown(o))P.push(L('Стоимость доставки: назовёт продавец','Yetkazib berish narxini sotuvchi aytadi'));
+    }else P.push(L('Перевозка водителю при получении: ','Yuk tashish haydovchiga olganda: ')+(farFeeKnown(o)?money(o.far.fee):L('сумму назовёт продавец','summani sotuvchi aytadi')));
+  }
+  else if(o.fee>0)P.push(L('Стоимость доставки: ','Yetkazib berish narxi: ')+money(o.fee));
+  P.push(L('Итого: ','Jami: ')+money(o.total)+(o.far?L(', оплата до отправки',', joʻnatishdan oldin toʻlanadi'):noWhen(o)?L(', оплата по договорённости с продавцом',', toʻlov sotuvchi bilan kelishiladi'):L(', оплата при получении',', olganda toʻlanadi')));
   return P.join('\n');
 }
 

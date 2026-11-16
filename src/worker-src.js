@@ -155,6 +155,7 @@ function sanitizeCfg(d) {
   s.discounts = cleanDiscounts(s.discounts);
   s.regions = cleanRegions(s.regions);
   s.rates = cleanRates(s.rates, s.regions);   // свои цена доставки, порог и минимум по регионам
+  s.far = cleanFar(s.far);   // «Дальняя доставка: после оплаты» (Производители)
   s.home = cleanRegion(s.home);
   s.category = cleanCat(s.category);
   s.bazaar = s.category === 'bazaar' ? cleanBz(s.bazaar) : '';   // базар выбирается только в категории «Базары»
@@ -226,6 +227,7 @@ function sanitizeProd(d, old, mod) {
       blk,
       box,
       only: cleanOnly(o.only, blk, box, prev && prev.only),
+      ...(hasDims(o) ? { dl: cleanDim(o.dl), dw: cleanDim(o.dw), dh: cleanDim(o.dh) } : {}),   // габариты одной штуки в упаковке, см (для доставки «за габарит»)
       on: o.on !== false,
       tag: o.tag === 'sale' || o.tag === 'new' ? o.tag : '',
       old: o.tag === 'sale' ? Math.round(clampN(o.old, 0, 1e8, 0)) : 0,
@@ -283,6 +285,13 @@ function validateForm(f, cfg) {
   const digits = phone.replace(/\D/g, '').length;
   const comment = cleanStr(f.comment, 500, true);
   if (!name || digits < 9 || digits > 15) return { err: 'bad_request' };
+  // дальняя доставка после оплаты (Производители): только доставка по адресу, времени нет — срок считается от оплаты
+  if (farOn(cfg.shop)) {
+    const address = cleanStr(f.address, 200);
+    if (address.length < 5) return { err: 'bad_request' };
+    const eta = ymd(new Date(shopNow().getTime() + Math.max(1, cleanFar(cfg.shop.far).days) * 86400000));
+    return { name, phone, comment, mode: 'delivery', address, region: '', pickupAt: eta + 'T12:00', far: true, loc: cleanLoc(f.loc) };
+  }
   const mode = f.mode === 'delivery' ? 'delivery' : 'pickup';
   // продавец категории «Базар»: покупатель в Навои, товар едет на склад в Навои. Дата и время не нужны, доставку до двери согласует продавец
   const bz = isBzShop(cfg.shop);
@@ -325,6 +334,7 @@ function validateOrder(b, cfg, prod, stk) {
     if (!it || it.on === false || it.ms) { missing = true; continue; }   // на проверке заказать нельзя
     const price = unitPrice(it, qty);    // цена за штуку с учётом ступеней: считает только сервер
     const line = { id: it.id, name: it.name, uz: it.uz || '', amount: it.amount, unit: it.unit, price, qty };
+    if (hasDims(it)) { line.dl = cleanDim(it.dl); line.dw = cleanDim(it.dw); line.dh = cleanDim(it.dh); }
     if (packSize(it, 'box')) line.box = packSize(it, 'box');
     if (packSize(it, 'blk')) line.blk = packSize(it, 'blk');
     const step = packStep(it);
@@ -347,11 +357,26 @@ function validateOrder(b, cfg, prod, stk) {
   // у доставки в отмеченный регион могут быть свои минимум, цена и порог; самовывоз и доставка без региона по общим
   const min = ratesFor(cfg.shop, fm.mode, fm.region).min;
   if (min > 0 && total < min) return { err: 'min_order', min };
-  const fee = deliveryFee(cfg, fm.mode, total, fm.region);
   const dc = orderDiscount(cfg, total);
-  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt, loc: fm.loc };
+  // дальняя доставка: цену перевозки считает сервер по весу, габаритам или договорённости; в итог она входит, только если оплата «в цене заказа»
+  let far = null, fee;
+  if (fm.far) {
+    const fc = cleanFar(cfg.shop.far), calc = farCalc(cfg.shop, items, total);
+    const fp = fc.pay === 'both' ? (b.form.fp === 'drv' ? 'drv' : b.form.fp === 'in' ? 'in' : '') : fc.pay;
+    if (!fp) return { err: 'bad_request' };
+    far = { m: calc.m, w: calc.w, v: calc.v, fee: calc.fee, fp, dy: fc.days, rq: fc.req };
+    fee = fp === 'in' && calc.fee > 0 ? calc.fee : 0;
+  } else fee = deliveryFee(cfg, fm.mode, total, fm.region);
+  return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt, loc: fm.loc, far };
 }
 
+/* Настройки для покупателей: реквизиты оплаты дальней доставки видит только продавец, покупателю они приходят в сообщении о заказе */
+const pubCfg = (cfg, admin) => {
+  if (admin || !cfg.shop.far || !cfg.shop.far.req) return cfg;
+  const c = clone(cfg);
+  c.shop.far.req = '';
+  return c;
+};
 const publicOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.tg; delete x.msgs; delete x.rs; delete x.cm; delete x.cr; delete x.crAt; delete x.whu; delete x.shu; delete x.sntu; return x; };
 const adminOrder = o => { const x = Object.assign({}, o); delete x.uid; delete x.msgs; delete x.rs; delete x.cm; delete x.whu; delete x.shu; delete x.sntu; return x; };
 /* Заказ для кладовщика: состав и данные покупателя, чтобы сверить привезённое; без внутренних полей. */
@@ -517,9 +542,10 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
     const st = stOf(o.status, o.mode, o);
     const tail = '\n\n' + (cLines ? cLines + '\n' : '') + (dLine ? dLine + '\n' : '') + 'Telegram: ' + who + (o.tg && o.tg.name ? ' (' + o.tg.name + ')' : '')
       + '\n' + L('Статус: ', 'Holat: ') + L(st.name, st.uz) + (o.crn ? '\n' + L('🚚 Доставщик: ', '🚚 Yetkazuvchi: ') + o.crn : o.mode === 'delivery' && o.status === 'ready' && hasCr ? '\n' + L('🚚 Ждёт доставщика', '🚚 Yetkazuvchi kutilmoqda') : '') + (o.pay ? '\n' + payLine(o.pay) : '');
+    const fnote = o.far && o.status !== 'cancelled' && o.status !== 'done' ? farAdminNote(o) : '';
     const ask = confirm === 'pay' ? '\n\n' + L('Как покупатель оплатил заказ? К оплате: ', 'Xaridor buyurtma uchun qanday toʻladi? Toʻlanadi: ') + money(o.total)
       : confirm === 'days' ? '\n\n' + L('На сколько дней записать долг?', 'Qarzni necha kunga yozamiz?') : '';
-    return STATUS_ICON[o.status] + ' ' + orderText(o, shop, k) + tail + ask;
+    return STATUS_ICON[o.status] + ' ' + orderText(o, shop, k) + tail + (fnote ? '\n' + fnote : '') + ask;
   });
   let text = part();
   for (let k = (o.items || []).length - 1; text.length > TEXT_MAX && k >= 1; k--) text = part(k);
@@ -541,7 +567,9 @@ function adminCard(o, shop, origin, confirm, cl, did, debt, hasCr) {
     rows.push([back]);
   } else {
     if (o.status === 'new') rows.push([btn(btn2('✅ Ishga olish', '✅ Принять в работу'), 's:' + px + o.id + ':accepted')]);
-    if (o.status === 'accepted') rows.push([btn(bzo ? btn2('📦 Omborga olib bordim', '📦 Отвёз на склад') : del ? btn2('📦 Joʻnatishga tayyor', '📦 Готов к отправке') : btn2('📦 Topshirishga tayyor', '📦 Готов к выдаче'), 's:' + px + o.id + ':ready')]);
+    // дальняя доставка: отправить можно только после оплаты, её и данные водителя продавец отмечает в приложении
+    if (o.status === 'accepted' && o.far) { if (o.pay) rows.push([btn(btn2('🚚 Joʻnatildi', '🚚 Отправлен'), 's:' + px + o.id + ':ready')]); }
+    else if (o.status === 'accepted') rows.push([btn(bzo ? btn2('📦 Omborga olib bordim', '📦 Отвёз на склад') : del ? btn2('📦 Joʻnatishga tayyor', '📦 Готов к отправке') : btn2('📦 Topshirishga tayyor', '📦 Готов к выдаче'), 's:' + px + o.id + ':ready')]);
     // доставку закрывает доставщик; продавцу кнопка нужна, только если доставщиков нет (или самовывоз)
     if (o.status === 'ready' && !(del && hasCr) && !buyerCloses(o)) rows.push([btn(del ? btn2('🚚 Yetkazildi', '🚚 Доставлен покупателю') : btn2('🤝 Topshirildi', '🤝 Выдан покупателю'), 's:' + px + o.id + ':done')]);
     if (NEXT[o.status] && !o.sent) rows.push([btn(btn2('❌ Bekor qilish', '❌ Отменить'), 'c:' + px + o.id)]);
@@ -577,6 +605,25 @@ function courierCard(o, shop, origin, did, state) {
   return { text, reply_markup: { inline_keyboard: rows } };
 }
 
+/* Что ещё нужно сделать продавцу по заказу с дальней доставкой (строка под карточкой) */
+function farAdminNote(o) {
+  if (o.pay && o.status === 'accepted') return L('✅ Оплата получена. Отправьте груз и отметьте это в приложении (можно указать водителя).', '✅ Toʻlov olindi. Yukni joʻnating va ilovada belgilang (haydovchini yozish mumkin).');
+  if (o.pay) return '';
+  const need = !farFeeKnown(o) ? L('\n⚠️ Назовите стоимость доставки в приложении.', '\n⚠️ Yetkazib berish narxini ilovada ayting.') : '';
+  return L('💳 Ждём оплату: груз отправляем только после неё. Оплату отмечайте в приложении.', 'Toʻlovni kutamiz: yuk faqat toʻlovdan keyin joʻnatiladi. Toʻlovni ilovada belgilang.') + need;
+}
+/* Блок про оплату в сообщениях покупателю: сколько платить, что водителю, реквизиты (вызывать после setLang) */
+function farPayBlock(o) {
+  const f = o.far || {}, P = [];
+  if (farInPrice(o)) {
+    P.push(L('К оплате: ', 'Toʻlanadi: ') + money(o.total) + (farFeeKnown(o) ? (f.fee > 0 ? L(' (вместе с доставкой ', ' (yetkazib berish bilan ') + money(f.fee) + ')' : '') : L(' + доставка, её цену назовёт продавец', ' + yetkazib berish, narxini sotuvchi aytadi')));
+  } else {
+    P.push(L('К оплате продавцу: ', 'Sotuvchiga toʻlanadi: ') + money(o.total));
+    P.push(L('Перевозка водителю при получении: ', 'Yuk tashish haydovchiga olganda: ') + (farFeeKnown(o) ? money(f.fee) : L('сумму назовёт продавец', 'summani sotuvchi aytadi')));
+  }
+  if (f.rq) P.push(L('Реквизиты для оплаты:\n', 'Toʻlov rekvizitlari:\n') + f.rq);
+  return P.join('\n');
+}
 function customerText(o, kind, shop) {
   setLang(o.lang === 'uz' ? 'uz' : 'ru');
   const del = o.mode === 'delivery';
@@ -587,6 +634,24 @@ function customerText(o, kind, shop) {
   const place = del ? L('\nАдрес доставки: ', '\nYetkazib berish manzili: ') + o.address
     : (addr ? L('\nАдрес: ', '\nManzil: ') + addr : '');
   const name = shop.name || DEFAULT.shop.name;
+  if (o.far && ['placed', 'faraccepted', 'farfee', 'farpaid', 'farsent', 'farremind'].includes(kind)) {
+    const head = {
+      placed: L('Заказ ' + o.id + ' отправлен продавцу. Когда он подтвердит, напишем сюда.', 'Buyurtma ' + o.id + ' sotuvchiga yuborildi. U tasdiqlagach, shu yerga yozamiz.'),
+      faraccepted: L('🛠 Заказ ' + o.id + ' принят. Отправим товар сразу после оплаты.', '🛠 Buyurtma ' + o.id + ' qabul qilindi. Yukni toʻlovdan keyin darhol joʻnatamiz.'),
+      farfee: L('💰 Заказ ' + o.id + ': продавец назвал стоимость доставки.', '💰 Buyurtma ' + o.id + ': sotuvchi yetkazib berish narxini aytdi.'),
+      farremind: L('💳 Заказ ' + o.id + ' ждёт оплаты. Товар отправим сразу после неё.', '💳 Buyurtma ' + o.id + ' toʻlovni kutmoqda. Yukni toʻlovdan keyin darhol joʻnatamiz.')
+    };
+    if (kind === 'farpaid') return L('✅ Заказ ' + o.id + ': оплата получена. Готовим к отправке.\n' + wl, '✅ Buyurtma ' + o.id + ': toʻlov olindi. Joʻnatishga tayyorlaymiz.\n' + wl);
+    if (kind === 'farsent') {
+      const d = (o.far && o.far.dsp) || {}, drv = [d.n, d.ph].filter(Boolean).join(', ');
+      const dl = (drv ? L('\nВодитель: ', '\nHaydovchi: ') + drv : '') + (d.wb ? L('\nНакладная / номер груза: ', '\nYuk xati / raqami: ') + d.wb : '');
+      const drvPay = !farInPrice(o) ? L('\nПеревозка водителю при получении: ', '\nYuk tashish haydovchiga olganda: ') + (farFeeKnown(o) ? money(o.far.fee) : L('сумму назовёт продавец', 'summani sotuvchi aytadi')) : '';
+      return L('🚚 Заказ ' + o.id + ' отправлен.' + dl + drvPay + '\nАдрес доставки: ' + o.address + '\nКогда получите, нажмите «Получил» в «Мои заказы».',
+        '🚚 Buyurtma ' + o.id + ' joʻnatildi.' + dl + drvPay + '\nYetkazib berish manzili: ' + o.address + '\nOlganingizda «Mening buyurtmalarim»da «Oldim» tugmasini bosing.');
+    }
+    return head[kind] + '\n' + wl + (kind === 'placed' ? L('\nАдрес доставки: ', '\nYetkazib berish manzili: ') + o.address : '') + '\n' + farPayBlock(o)
+      + (kind === 'farfee' || o.pay ? '' : L('\nТовар отправляется только после оплаты.', '\nYuk faqat toʻlovdan keyin joʻnatiladi.'));
+  }
   switch (kind) {
     case 'placed': return L(
       'Заказ ' + o.id + ' отправлен продавцу. Когда он подтвердит, напишем сюда.\n' + wl + place + (bzo ? '\nСумма заказа: ' + money(o.total) + '. Оплату и доставку согласуете с продавцом.' : '\nК оплате при получении: ' + money(o.total)),
@@ -1824,7 +1889,7 @@ export class Shop {
   async clientsIdx() { const x = await this.st.get('cx'); return Array.isArray(x) ? x : []; }
   /* Карточка заказа для продавца вместе с группой и заметкой клиента. */
   async card(o, shop, confirm) {
-    const hasCr = o.mode === 'delivery' && o.status === 'ready' ? (await this.crActive()).length > 0 : false;
+    const hasCr = o.mode === 'delivery' && !o.far && o.status === 'ready' ? (await this.crActive()).length > 0 : false;
     o = await this.bs1(o);
     return adminCard(o, shop, this.origin, confirm, o.uid ? await this.getClient(o.uid) : null, this.did, o.uid ? await this.st.get('lh:' + o.uid) : null, hasCr);
   }
@@ -2272,7 +2337,7 @@ export class Shop {
       if (path === '/webhook' && method === 'POST') return await this.webhook(request);
       if (path === '/setup') return await this.setup(request);
       if ((method === 'GET' || method === 'HEAD') && path.startsWith('/img/')) return await this.image(path.slice(5), new URL(request.url).searchParams.get('n'));
-      if (path === '/api/config' && method === 'GET') return json({ cfg: await this.getCfg(), prod: await this.pubProd(await this.adminIn(request)), off: await this.isOff() });
+      if (path === '/api/config' && method === 'GET') { const adm = await this.adminIn(request); return json({ cfg: pubCfg(await this.getCfg(), adm), prod: await this.pubProd(adm), off: await this.isOff() }); }
       if (path.startsWith('/api/')) return await this.api(request, path, method);
       return json({ error: 'not_found' }, 404);
     } catch (e) {
@@ -2538,7 +2603,7 @@ export class Shop {
     if (path === '/api/bootstrap' && method === 'GET') {
       await this.ensureClients();
       const cl = await this.getClient(uid);
-      return json({ did: this.did, off: await this.isOff(), cfg: await this.getCfg(), prod: await this.pubProd(admin), me: { id: uid, name: u.first_name || '', admin, courier: await this.courierMe(uid), profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
+      return json({ did: this.did, off: await this.isOff(), cfg: pubCfg(await this.getCfg(), admin), prod: await this.pubProd(admin), me: { id: uid, name: u.first_name || '', admin, courier: await this.courierMe(uid), profile: clientPublic(cl), blocked: !!(cl && cl.blocked), fav: await this.getFav(uid) }, orders: await this.myOrders(uid) });
     }
     if (path === '/api/profile' && method === 'PUT') {
       const r = await this.readBody(request, 6000);
@@ -2616,6 +2681,31 @@ export class Shop {
         const res = await this.whUnallow({ id: r.body.id });
         if (res.err) return json({ error: res.err, order: res.order ? adminOrder(await this.bs1(res.order)) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_request' ? 400 : 409);
         await this.afterStage(res.order, 'unship');
+        return json({ order: adminOrder(await this.bs1(res.order)) });
+      }
+      // дальняя доставка после оплаты: цена перевозки, получение оплаты, отправка груза
+      if (path === '/api/admin/far/fee' && method === 'POST') {
+        const r = await this.readBody(request, 1000);
+        if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
+        const res = await this.farFee(r.body);
+        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(await this.bs1(res.order)) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_request' ? 400 : 409);
+        await this.afterFar(res.order, 'farfee');
+        return json({ order: adminOrder(await this.bs1(res.order)) });
+      }
+      if (path === '/api/admin/far/paid' && method === 'POST') {
+        const r = await this.readBody(request, 1000);
+        if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
+        const res = await this.farPaid(r.body);
+        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(await this.bs1(res.order)) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_request' || res.err === 'bad_pay' ? 400 : 409);
+        await this.afterFar(res.order, 'farpaid');
+        return json({ order: adminOrder(await this.bs1(res.order)) });
+      }
+      if (path === '/api/admin/far/sent' && method === 'POST') {
+        const r = await this.readBody(request, 2000);
+        if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
+        const res = await this.farSend(r.body, { id: uid, name: whoName(u) });
+        if (res.err) return json({ error: res.err, order: res.order ? adminOrder(await this.bs1(res.order)) : undefined }, res.err === 'not_found' ? 404 : res.err === 'bad_request' ? 400 : 409);
+        if (res.changed) await this.afterChange(res.order, 'admin');
         return json({ order: adminOrder(await this.bs1(res.order)) });
       }
       // продавец назначает или меняет доставщика у готового заказа на доставку; пустой cid — вернуть заказ всем доставщикам
@@ -2980,6 +3070,7 @@ export class Shop {
     if (v.fee > 0 || v.disc > 0) order.sub = v.sub;
     if (v.disc > 0) { order.disc = v.disc; order.dpct = v.dpct; }
     if (v.fee > 0) order.fee = v.fee;
+    if (v.far) order.far = v.far;   // дальняя доставка после оплаты: способ расчёта, вес, габариты, цена перевозки, как платят за неё, реквизиты
     ids.unshift(id); act.unshift(id);
     // откладываем товар под заказ: пока заказ не выдан и не отменён, эти штуки другим покупателям недоступны
     const upd = { ['o:' + id]: order, ['m:' + uid]: ids.slice(0, 40), act };
@@ -3266,7 +3357,8 @@ export class Shop {
   async cancelMine(uid, id) {
     const o = await this.st.get('o:' + id);
     if (!o || o.uid !== uid) return json({ error: 'not_found' }, 404);
-    if (o.status !== 'new' || shipLocked(o)) return json({ error: 'not_cancellable', order: publicOrder(o) }, 409);
+    // покупатель отменяет заказ, пока его не приняли; дальний заказ можно отменить и после принятия, пока он не оплачен
+    if (!(o.status === 'new' || o.far && !o.pay && o.status === 'accepted') || shipLocked(o)) return json({ error: 'not_cancellable', order: publicOrder(o) }, 409);
     const res = await this.changeStatus(id, 'cancelled');
     if (res.err) return json({ error: res.err }, 409);
     await this.afterChange(res.order, 'customer');
@@ -3372,7 +3464,7 @@ export class Shop {
     const o = await this.st.get('o:' + id);
     if (!o || o.uid !== uid) return { err: 'not_found' };
     if (!NEXT[o.status]) return { err: 'closed', order: o };
-    if (!o.sent) return { err: 'not_sent', order: o };
+    if (!o.sent && !farSent(o)) return { err: 'not_sent', order: o };
     if (o.got) return { order: o, closed: false };
     o.got = { at: new Date().toISOString(), by: 'buyer' };
     await this.st.put('o:' + id, o);
@@ -3382,7 +3474,7 @@ export class Shop {
   async afterGot(o) {
     const who = [o.name, o.phone].filter(Boolean).join(', ');
     const lab = btn2('Buyurtmalar', 'Заказы');
-    if (!buyerCloses(o)) {
+    if (!buyerCloses(o) && !(o.far && o.pay)) {
       await this.afterChange(o, 'ship');
       await this.notifyAdmins(biL(() => L('📥 Покупатель получил заказ ' + o.id + '.\nПокупатель: ' + who + '.\nОплата при получении: закройте заказ и отметьте, как заплатил покупатель.',
         '📥 Xaridor ' + o.id + ' buyurtmasini oldi.\nXaridor: ' + who + '.\nOlganda toʻlanadi: buyurtmani yoping va xaridor qanday toʻlaganini belgilang.')), lab);
@@ -3427,16 +3519,19 @@ export class Shop {
     // доставщик закрывает только свой заказ на доставку
     if (cour && (o.mode !== 'delivery' || o.cr !== cour.id || to !== 'done')) return { err: 'not_yours', order: o };
     // продавец не закрывает доставку, если есть доставщики: «Доставлен клиенту» нажимает доставщик
-    if (!cour && to === 'done' && o.mode === 'delivery' && !noWhen(o) && (await this.crActive()).length) return { err: 'use_courier', order: o };
+    if (!cour && to === 'done' && o.mode === 'delivery' && !noWhen(o) && !o.far && (await this.crActive()).length) return { err: 'use_courier', order: o };
+    // дальняя доставка: груз везёт сам продавец или его водитель, отправлять без оплаты нельзя
+    if (to === 'ready' && o.far && !o.pay) return { err: 'not_paid', order: o };
     const nowIso = new Date().toISOString();
     // отправка со склада уже разрешена с оплатой: она записана тогда, при выдаче повторно не пишется
-    const prepaid = to === 'done' && !!(o.ship && o.pay);
+    const prepaid = to === 'done' && !!((o.ship || o.far) && o.pay);   // оплата записана раньше: при разрешении отправки со склада или при получении денег за дальнюю доставку
     const payRec = to === 'done' ? (prepaid ? o.pay : cleanPay(pay, Number(o.total) || 0, dayOf(nowIso))) : null;
     if (to === 'done' && !payRec) return { err: 'bad_pay', order: o };
     o.status = to;
     o.statusAt = nowIso;
+    if (to === 'ready' && o.far && !o.far.sd) o.far.sd = nowIso;   // груз отправлен: покупатель может нажать «Получил»
     // «Готов к отправке» с выбранным доставщиком: заказ сразу закреплён за ним
-    if (assign && to === 'ready' && o.mode === 'delivery') {
+    if (assign && to === 'ready' && o.mode === 'delivery' && !o.far) {
       o.cr = assign.id; o.crn = assign.name; o.crAt = nowIso;
       if (assign.phone) o.crp = assign.phone; else delete o.crp;
     }
@@ -3585,7 +3680,7 @@ export class Shop {
   /* Что видит доставщик: заказы на доставку, готовые к выезду (свободные и свои), и свои выданные сегодня. */
   async courierOrders(cour) {
     const act = (await this.st.get('act')) || [], hist = ((await this.st.get('hist')) || []).slice(0, 60);
-    const del = (await this.getOrders(act)).filter(o => o.mode === 'delivery');
+    const del = (await this.getOrders(act)).filter(o => o.mode === 'delivery' && !o.far);
     const today = dayOf(new Date().toISOString());
     const done = (await this.getOrders(hist)).filter(o => o.status === 'done' && o.mode === 'delivery' && o.cr === cour.id && dayOf(o.statusAt) === today);
     const list = await this.withBs(del.filter(o => o.status === 'ready').concat(done));
@@ -3923,6 +4018,7 @@ export class Shop {
   async morning(origin) {
     if (!this.env.BOT_TOKEN) return { sent: 0, why: 'no_token' };
     if (/^https:\/\/(?!internal)/.test(origin || '')) this.origin = origin;
+    try { await this.farRemind(); } catch (e) { console.error('far remind failed', e && e.message || e); }   // напоминания покупателям про оплату дальних заказов
     if ((await this.st.get('mrn')) === 0) return { sent: 0, why: 'off' };
     const day = dayOf(new Date().toISOString());
     if ((await this.st.get('mrd')) === day) return { sent: 0, why: 'done' };
@@ -4343,6 +4439,92 @@ export class Shop {
       await this.tg('sendMessage', { chat_id: o.uid, text: customerText(o, 'shipok', cfg.shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
     } catch (e) { console.error('ship notify failed', e && e.message || e); }
   }
+  /* --- дальняя доставка после оплаты: продавец называет цену перевозки, отмечает оплату и отправку --- */
+  /* Заказ с дальней доставкой, который ещё в работе */
+  async farOrder(id) {
+    id = String(id || '');
+    if (!validId(id)) return { err: 'bad_request' };
+    const o = await this.st.get('o:' + id);
+    if (!o) return { err: 'not_found' };
+    if (!o.far) return { err: 'not_far', order: o };
+    if (!NEXT[o.status]) return { err: 'closed', order: o };
+    return { o };
+  }
+  /* Продавец называет (или меняет) цену перевозки, пока заказ не оплачен. «В цене заказа» — меняется итог заказа, «водителю» — итог остаётся. */
+  async farFee(b) {
+    const r = await this.farOrder(b.id);
+    if (r.err) return r;
+    const o = r.o, fee = intIn(b.fee, 0, RATE_MAX);
+    if (fee === null) return { err: 'bad_request', order: o };
+    if (o.pay) return { err: 'paid', order: o };
+    o.far.fee = fee;
+    if (farInPrice(o)) {
+      const goods = (o.items || []).reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty) || 0), 0), disc = Number(o.disc) || 0;
+      if (fee > 0) o.fee = fee; else delete o.fee;
+      if (fee > 0 || disc > 0) o.sub = goods; else delete o.sub;
+      o.total = goods - disc + fee;
+    }
+    await this.st.put('o:' + o.id, o);
+    return { order: o };
+  }
+  /* Продавец получил оплату (наличные, карта или перечисление): это записывается, срок доставки считается от этого дня. Один раз. */
+  async farPaid(b) {
+    const r = await this.farOrder(b.id);
+    if (r.err) return r;
+    const o = r.o;
+    if (o.pay) return { err: 'already', order: o };
+    if (farInPrice(o) && !farFeeKnown(o)) return { err: 'fee_need', order: o };
+    const m = b.pay && typeof b.pay === 'object' ? b.pay.m : '';
+    if (!PAY_M.includes(m)) return { err: 'bad_pay', order: o };
+    const now = new Date();
+    o.pay = { m };
+    o.far.pd = now.toISOString();
+    if (o.status === 'new') { o.status = 'accepted'; o.statusAt = o.far.pd; }
+    o.pickupAt = ymd(new Date(shopNow().getTime() + farDays(o) * 86400000)) + 'T12:00';
+    await this.st.put('o:' + o.id, o);
+    return { order: o };
+  }
+  /* Продавец отправил груз: можно записать водителя (имя, телефон) и номер накладной. Заказ становится «Отправлен»; без оплаты нельзя. */
+  async farSend(b, by) {
+    const r = await this.farOrder(b.id);
+    if (r.err) return r;
+    const o = r.o;
+    if (!o.pay) return { err: 'not_paid', order: o };
+    if (o.status !== 'accepted') return { err: 'bad_transition', order: o };
+    const d = {}, n = cleanStr(b.drv, 60), ph = cleanStr(b.ph, 25), wb = cleanStr(b.wb, 120);
+    if (n) d.n = n;
+    if (ph) d.ph = ph;
+    if (wb) d.wb = wb;
+    if (Object.keys(d).length) { o.far.dsp = d; await this.st.put('o:' + o.id, o); }
+    return await this.changeStatus(o.id, 'ready', undefined, null, by);
+  }
+  /* Карточки продавцов обновляются, покупателю уходит сообщение (kind — farfee, farpaid, farsent, farremind) */
+  async afterFar(o, kind) {
+    await this.afterChange(o, 'ship');
+    if (!this.env.BOT_TOKEN || !o.uid) return;
+    try {
+      const cfg = await this.getCfg();
+      await this.tg('sendMessage', { chat_id: o.uid, text: customerText(o, kind, cfg.shop), reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
+    } catch (e) { console.error('far notify failed', e && e.message || e); }
+  }
+  /* Раз в сутки: покупателю, который не оплатил дальний заказ за сутки, одно напоминание (если цена перевозки уже известна) */
+  async farRemind() {
+    const day = dayOf(new Date().toISOString());
+    if ((await this.st.get('frd')) === day) return 0;
+    await this.st.put('frd', day);
+    const act = (await this.st.get('act')) || [];
+    let n = 0;
+    for (const o of await this.getOrders(act)) {
+      if (!o || !o.far || o.pay || o.far.rm || !o.uid || (o.status !== 'new' && o.status !== 'accepted')) continue;
+      if (Date.now() - Date.parse(o.createdAt) < 24 * 3600000) continue;
+      if (o.status === 'new' || (farInPrice(o) && !farFeeKnown(o))) continue;   // продавец ещё не принял заказ или не назвал цену: напоминать рано
+      o.far.rm = new Date().toISOString();
+      await this.st.put('o:' + o.id, o);
+      await this.afterFar(o, 'farremind');
+      n++;
+    }
+    return n;
+  }
   async afterChange(o, by, extraMsg) {
     const cfg = await this.getCfg();
     const card = await this.card(o, cfg.shop, false);
@@ -4356,8 +4538,9 @@ export class Shop {
     }
     if (by === 'admin') {
       // заказ сразу ушёл выбранному доставщику: клиенту вместо «собран» сразу пишем, кто везёт
-      const toCr = o.status === 'ready' && o.mode === 'delivery';
-      const text = customerText(o, toCr && o.cr ? 'taken' : o.status, cfg.shop);
+      const toCr = o.status === 'ready' && o.mode === 'delivery' && !o.far;
+      const kind = o.far ? (o.status === 'accepted' ? 'faraccepted' : o.status === 'ready' ? 'farsent' : o.status) : (toCr && o.cr ? 'taken' : o.status);
+      const text = customerText(o, kind, cfg.shop);
       if (text) await this.tg('sendMessage', { chat_id: o.uid, text, reply_markup: openBtn(this.origin, o.lang === 'uz' ? 'Buyurtmalarim' : 'Мои заказы', this.origin + '/?v=mine') });
       if (toCr) { if (o.cr) await this.afterAssign(o, null, true); else await this.notifyCouriers(o, cfg); }
     } else if (by === 'customer') {
@@ -4406,7 +4589,7 @@ export class Shop {
     if (kind === 'c') { await edit(await this.card(o, cfg.shop, true)); return answer(ans2('Отменить заказ ' + id + '?', 'Buyurtma ' + id + ' bekor qilinsinmi?')); }
     if (kind === 'b') { await edit(await this.card(o, cfg.shop, false)); return answer(''); }
     // доставку закрывает доставщик: в старых сообщениях кнопка «Доставлен» остаётся, но продавцу она не подходит
-    if ((kind === 's' && to === 'done' || kind === 'p') && o.mode === 'delivery' && !noWhen(o) && o.status === 'ready' && (await this.crActive()).length) {
+    if ((kind === 's' && to === 'done' || kind === 'p') && o.mode === 'delivery' && !noWhen(o) && !o.far && o.status === 'ready' && (await this.crActive()).length) {
       await edit(await this.card(o, cfg.shop, false));
       return answer(ans2('Доставленным заказ отмечает доставщик', 'Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'), true);
     }
@@ -4415,13 +4598,17 @@ export class Shop {
       await edit(await this.card(o, cfg.shop, false));
       return answer(ans2('Заказ закрывает покупатель кнопкой «Получил»', 'Buyurtmani xaridor «Oldim» tugmasi bilan yopadi'), true);
     }
-    // «Выдан клиенту» сначала спрашивает, как оплатил клиент (нажатия в старых сообщениях тоже придут сюда)
-    if (kind === 's' && to === 'done' && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'pay')); return answer(ans2('Как оплатил покупатель?', 'Xaridor qanday toʻladi?')); }
+    // «Выдан клиенту» сначала спрашивает, как оплатил клиент (нажатия в старых сообщениях тоже придут сюда); дальняя доставка оплачена заранее
+    if (kind === 's' && to === 'done' && o.status === 'ready' && !o.far) { await edit(await this.card(o, cfg.shop, 'pay')); return answer(ans2('Как оплатил покупатель?', 'Xaridor qanday toʻladi?')); }
     if (kind === 'p' && to === 'credit' && !days && o.status === 'ready') { await edit(await this.card(o, cfg.shop, 'days')); return answer(ans2('На сколько дней в долг?', 'Necha kunga qarzga?')); }
     if (kind === 's' || kind === 'p') {
       const pay = kind === 'p' ? (to === 'credit' ? { m: 'credit', days: Number(days) } : { m: to }) : undefined;
       const res = await this.changeStatus(id, kind === 'p' ? 'done' : to, pay, null, { id: cq.from.id, name: whoName(cq.from) });
       if (res.err === 'bad_pay') return answer(ans2('Не получилось: проверьте способ оплаты', 'Boʻlmadi: toʻlov usulini tekshiring'), true);
+      if (res.err === 'not_paid') {   // дальняя доставка: без оплаты груз не отправляем
+        await edit(await this.card(res.order, cfg.shop, false));
+        return answer(ans2('Сначала получите оплату: отметьте её в приложении', 'Avval toʻlovni oling: ilovada belgilang'), true);
+      }
       if (res.err === 'use_courier') {   // у заказа Базара доставщиков нет, сюда он не попадает
         await edit(await this.card(res.order, cfg.shop, false));
         return answer(ans2('Доставленным заказ отмечает доставщик', 'Buyurtmani yetkazilgan deb yetkazuvchi belgilaydi'), true);

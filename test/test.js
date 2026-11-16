@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa,ratesFor,cleanRates,RATE_KEYS,RATE_MAX}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa,ratesFor,cleanRates,RATE_KEYS,RATE_MAX,cleanFar,cleanDim,hasDims,farOn,unitKg,farCalc,farWhen,farInPrice,farFeeKnown,farSent,farDays}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -9657,6 +9657,192 @@ await t('цены по регионам: общая функция считае�
   assert.ok(/else if\(t\.dataset\.rate!==undefined\)/.test(html) && /if\(v===''\|\|!isFinite\(n\)\|\|n<0\)/.test(html), 'пустое поле убирает значение');
   assert.equal((html.match(/^\.rrow\{/gm) || []).length, 1, 'прежний .rrow отчётов не тронут');
   assert.ok(/^\.rtrow\{/m.test(html) && /^\.rtgrid\{/m.test(html), 'свои классы вёрстки');
+});
+
+
+/* ---------- дальняя доставка после оплаты ---------- */
+await t('дальняя доставка: настройки, расчёт цены перевозки по весу, габаритам, фиксу и договорённости; чистка', async () => {
+  assert.deepEqual(S.cleanFar(undefined), { on: false, m: 'kg', kg: 0, m3: 0, fix: 0, pay: 'both', days: 3, req: '' }, 'по умолчанию выключено');
+  const c = S.cleanFar({ on: true, m: 'vol', kg: 1500.4, m3: -5, fix: 'x', pay: 'drv', days: 99, req: '  Карта 1  ' });
+  assert.deepEqual(c, { on: true, m: 'vol', kg: 1500, m3: 0, fix: 0, pay: 'drv', days: 3, req: 'Карта 1' }, 'мусор и выход за границы отбрасываются');
+  assert.equal(S.cleanFar({ on: 'yes', m: 'zzz', pay: 'zzz', days: 7 }).on, false, 'включено только настоящим true');
+  assert.deepEqual([S.cleanFar({ m: 'zzz' }).m, S.cleanFar({ pay: 'zzz' }).pay, S.cleanFar({ days: 7 }).days], ['kg', 'both', 7]);
+  assert.deepEqual([S.cleanDim(12.34), S.cleanDim(0), S.cleanDim(1001), S.cleanDim('abc')], [12.3, 0, 0, 0]);
+  assert.equal(S.hasDims({ dl: 10, dw: 10, dh: 0 }), false, 'нужны все три стороны');
+  // вес одной штуки: кг и л как есть, г и мл делим на 1000, штучный товар без веса — 0
+  assert.deepEqual([{ amount: 25, unit: 'kg' }, { amount: 5, unit: 'l' }, { amount: 400, unit: 'g' }, { amount: 500, unit: 'ml' }, { amount: 3, unit: 'pc' }].map(S.unitKg), [25, 5, 0.4, 0.5, 0]);
+  // категория: только «Производители»
+  assert.equal(S.farOn({ category: 'maker', far: { on: true } }), true);
+  assert.equal(S.farOn({ category: 'importer', far: { on: true } }), false, 'у других категорий настройка молчит');
+  assert.equal(S.farOn({ category: 'maker', far: { on: false } }), false);
+  const it = (amount, unit, qty, d) => Object.assign({ amount, unit, qty }, d || {});
+  const sh = (far, over) => Object.assign({ category: 'maker', far }, over || {});
+  // за кг по весу
+  let r = S.farCalc(sh({ on: true, m: 'kg', kg: 1500 }), [it(25, 'kg', 2), it(400, 'g', 10)], 900000);
+  assert.deepEqual([r.w, r.fee, r.need], [54, 81000, false], '50 кг + 4 кг = 54 кг по 1 500');
+  r = S.farCalc(sh({ on: true, m: 'kg', kg: 1500 }), [it(25, 'kg', 2), it(3, 'pc', 1)], 900000);
+  assert.deepEqual([r.w, r.fee, r.need], [null, null, true], 'у товара нет веса: цену назовёт продавец');
+  r = S.farCalc(sh({ on: true, m: 'kg', kg: 0 }), [it(25, 'kg', 2)], 1);
+  assert.equal(r.need, true, 'цена за кг не задана: назовёт продавец');
+  // по габариту: объём по размерам одной штуки, см → м³
+  r = S.farCalc(sh({ on: true, m: 'vol', m3: 200000 }), [it(25, 'kg', 4, { dl: 50, dw: 40, dh: 20 })], 1);
+  assert.deepEqual([r.v, r.fee, r.need], [0.16, 32000, false], '4 мешка по 0,04 м³ = 0,16 м³');
+  r = S.farCalc(sh({ on: true, m: 'vol', m3: 200000 }), [it(25, 'kg', 4, { dl: 50, dw: 40, dh: 20 }), it(5, 'l', 1)], 1);
+  assert.deepEqual([r.v, r.fee, r.need], [null, null, true], 'у одной позиции нет габаритов: назовёт продавец');
+  // фиксированная и по договорённости
+  r = S.farCalc(sh({ on: true, m: 'fix', fix: 120000 }), [it(25, 'kg', 1)], 1);
+  assert.deepEqual([r.fee, r.need], [120000, false]);
+  r = S.farCalc(sh({ on: true, m: 'deal' }), [it(25, 'kg', 1)], 1);
+  assert.deepEqual([r.fee, r.need], [null, true], 'по договорённости: цену называет продавец');
+  // «бесплатно от суммы» из общих настроек действует и здесь
+  r = S.farCalc(sh({ on: true, m: 'fix', fix: 120000 }, { freeDeliveryFrom: 1000000 }), [it(25, 'kg', 1)], 1000000);
+  assert.deepEqual([r.fee, r.need], [0, false]);
+  r = S.farCalc(sh({ on: true, m: 'fix', fix: 120000 }, { freeDeliveryFrom: 1000000 }), [it(25, 'kg', 1)], 999999);
+  assert.equal(r.fee, 120000);
+  // сервер чистит настройки и габариты товара
+  const { sid } = await shopWorld();
+  const put = await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg: { shop: { far: { on: true, m: 'fix', fix: 5.5, pay: 'zzz', days: 0, req: 'x'.repeat(900) } } } } });
+  assert.equal(put.status, 200);
+  const far = (await jsonOf(put)).cfg.shop.far;
+  assert.deepEqual([far.on, far.m, far.fix, far.pay, far.days, far.req.length], [true, 'fix', 6, 'both', 3, 400]);
+  const prod = SAMPLE_PROD();
+  prod.items[1].dl = 50; prod.items[1].dw = 40; prod.items[1].dh = 20; prod.items[0].dl = 30; prod.items[0].dw = 0; prod.items[0].dh = 10;
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod } })).status, 200);
+  const items = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod.items;
+  assert.deepEqual([items[1].dl, items[1].dw, items[1].dh], [50, 40, 20], 'габариты сохраняются');
+  assert.ok(!('dl' in items[0]), 'неполные габариты не сохраняются');
+});
+
+await t('дальняя доставка: заказ только с доставкой, цена перевозки на сервере; реквизиты видит только продавец; без оплаты не отправить', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: 'maker' } })).status, 200);
+  const prod = SAMPLE_PROD();
+  const REQ = 'Карта 8600 0000 0000 0000, Иванов И.';
+  const setFar = async far => {
+    const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).cfg;
+    cfg.shop.far = far;
+    assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } })).status, 200);
+  };
+  await setFar({ on: true, m: 'kg', kg: 1500, pay: 'both', days: 4, req: REQ });
+  const buyerCfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg.shop.far;
+  assert.deepEqual([buyerCfg.on, buyerCfg.m, buyerCfg.kg, buyerCfg.days, buyerCfg.req], [true, 'kg', 1500, 4, ''], 'покупателю видны условия, но не реквизиты');
+  assert.equal((await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).cfg.shop.far.req, REQ, 'продавец реквизиты видит');
+  const buyer = newUser();
+  const form = over => Object.assign({ name: 'ООО Ориент', phone: '+998 91 555 44 33', mode: 'delivery', address: 'Навои, ул. Галаба 12, склад 3', comment: '', fp: 'in' }, over || {});
+  const body = (cart, f, extra) => ({ cart, form: f, lang: 'ru', ...(extra || {}) });
+  // 2 мешка риса по 25 кг = 50 кг × 1 500 = 75 000, в цене заказа: 820 000 + 75 000
+  let r = await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: body([{ id: 'p2', qty: 2 }], form(), { expectTotal: 895000 }) });
+  assert.equal(r.status, 200);
+  let o = (await jsonOf(r)).order;
+  assert.deepEqual([o.mode, o.total, o.fee, o.sub, o.far.m, o.far.w, o.far.fee, o.far.fp, o.far.dy], ['delivery', 895000, 75000, 820000, 'kg', 50, 75000, 'in', 4]);
+  assert.ok(o.pickupAt && !o.pay, 'срок виден, оплаты ещё нет');
+  assert.equal(S.stOf(o.status, o.mode, o).name, 'Новый');
+  const msg = sentTo(buyer.u.id).find(x => /отправлен продавцу/.test(x.payload.text));
+  assert.ok(msg && /895 000/.test(norm(msg.payload.text)) && msg.payload.text.includes(REQ) && /только после оплаты/.test(msg.payload.text), 'покупатель получил сумму и реквизиты');
+  // цену перевозки считает сервер: чужая сумма не проходит, лишние поля и самовывоз игнорируются
+  r = await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: body([{ id: 'p2', qty: 2 }], form(), { expectTotal: 820000 }) });
+  assert.equal(r.status, 409);
+  assert.equal((await jsonOf(r)).error, 'price_changed');
+  r = await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: body([{ id: 'p2', qty: 2 }], form({ mode: 'pickup', date: '2020-01-01', time: '09:00' }), { expectTotal: 895000 }) });
+  assert.equal(r.status, 200, 'самовывоза нет: заказ всё равно доставкой, даты не нужны');
+  assert.equal((await jsonOf(r)).order.mode, 'delivery');
+  r = await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: body([{ id: 'p2', qty: 2 }], form({ address: '' }), { expectTotal: 895000 }) });
+  assert.equal(r.status, 400, 'адрес нужен');
+  // оплата «водителю»: перевозка в итог не входит
+  r = await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: body([{ id: 'p2', qty: 2 }], form({ fp: 'drv' }), { expectTotal: 820000 }) });
+  assert.equal(r.status, 200);
+  const od = (await jsonOf(r)).order;
+  assert.deepEqual([od.total, od.fee, od.far.fee, od.far.fp], [820000, undefined, 75000, 'drv']);
+  r = await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: body([{ id: 'p2', qty: 2 }], form({ fp: undefined }), { expectTotal: 895000 }) });
+  assert.equal(r.status, 400, 'оба варианта разрешены: покупатель должен выбрать');
+  // без оплаты не отправить, ни в приложении, ни кнопкой в Telegram
+  const st = (id, to) => callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id, to } });
+  assert.equal((await st(o.id, 'accepted')).status, 200);
+  r = await st(o.id, 'ready');
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'not_paid']);
+  r = await callS(sid, 'POST', '/api/admin/far/sent', { init: iD(), body: { id: o.id } });
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'not_paid']);
+  // оплата получена: срок считается от этого дня, покупатель получает сообщение
+  const t0 = tgLog.length;
+  r = await callS(sid, 'POST', '/api/admin/far/paid', { init: iD(), body: { id: o.id, pay: { m: 'credit' } } });
+  assert.equal(r.status, 400, 'оплата в долг при предоплате не бывает');
+  r = await callS(sid, 'POST', '/api/admin/far/paid', { init: iD(), body: { id: o.id, pay: { m: 'bank' } } });
+  assert.equal(r.status, 200);
+  o = (await jsonOf(r)).order;
+  assert.deepEqual([o.pay, o.status, S.stOf(o.status, o.mode, o).name], [{ m: 'bank' }, 'accepted', 'Оплачен, готовим']);
+  const eta = S.ymd(new Date(S.shopNow().getTime() + 4 * 86400000));
+  assert.equal(o.pickupAt, eta + 'T12:00', 'срок: 4 дня от дня оплаты');
+  assert.ok(sentTo(buyer.u.id, t0).some(x => /оплата получена/.test(x.payload.text)), 'покупатель знает, что оплата дошла');
+  r = await callS(sid, 'POST', '/api/admin/far/paid', { init: iD(), body: { id: o.id, pay: { m: 'cash' } } });
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'already'], 'оплату записываем один раз');
+  // отправка с данными водителя
+  r = await callS(sid, 'POST', '/api/admin/far/sent', { init: iD(), body: { id: o.id, drv: 'Рустам', ph: '+998 90 111 11 11', wb: 'ТТН 4455' } });
+  assert.equal(r.status, 200);
+  o = (await jsonOf(r)).order;
+  assert.deepEqual([o.status, S.stOf(o.status, o.mode, o).name, !!o.far.sd, o.far.dsp], ['ready', 'Отправлен', true, { n: 'Рустам', ph: '+998 90 111 11 11', wb: 'ТТН 4455' }]);
+  assert.ok(sentTo(buyer.u.id, t0).some(x => /Водитель: Рустам, \+998 90 111 11 11/.test(x.payload.text) && /ТТН 4455/.test(x.payload.text) && /«Получил»/.test(x.payload.text)), 'покупатель видит водителя и накладную');
+  // доставщиков Sarbon у такого заказа нет, оплата уже записана: продавец закрывает «Доставлен» без вопроса про оплату
+  r = await st(o.id, 'done');
+  assert.equal(r.status, 200);
+  o = (await jsonOf(r)).order;
+  assert.deepEqual([o.status, o.pay, S.stOf(o.status, o.mode, o).name], ['done', { m: 'bank' }, 'Доставлен']);
+});
+
+await t('дальняя доставка: цена «по договорённости» называется после заказа; покупатель получает сумму; напоминание об оплате раз в сутки; не «Производитель» — всё по-старому', async () => {
+  const { sid } = await shopWorld();
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: 'maker' } })).status, 200);
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).cfg;
+  cfg.shop.far = { on: true, m: 'deal', pay: 'in', days: 3, req: 'Р/с 2020 8000 1234' };
+  assert.equal((await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } })).status, 200);
+  const buyer = newUser();
+  const form = { name: 'ООО Ориент', phone: '+998 91 555 44 33', mode: 'delivery', address: 'Навои, ул. Галаба 12', comment: '' };
+  let r = await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: { cart: [{ id: 'p2', qty: 1 }], form, lang: 'ru', expectTotal: 410000 } });
+  assert.equal(r.status, 200);
+  let o = (await jsonOf(r)).order;
+  assert.deepEqual([o.total, o.far.fee, o.far.fp], [410000, null, 'in'], 'цена не названа: в итоге только товары');
+  assert.equal(S.farFeeKnown(o), false);
+  const msgs = () => sentTo(buyer.u.id);
+  assert.ok(msgs().some(x => /назовёт продавец/.test(x.payload.text)), 'покупатель предупреждён, что цену скажет продавец');
+  assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id: o.id, to: 'accepted' } })).status, 200);
+  // оплату без названной цены не записываем: итог ещё не окончательный
+  r = await callS(sid, 'POST', '/api/admin/far/paid', { init: iD(), body: { id: o.id, pay: { m: 'cash' } } });
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'fee_need']);
+  // напоминание: до названия цены не приходит; через сутки после неё приходит один раз
+  assert.equal(await W.getShop(sid).shop.farRemind(), 0, 'рано: заказу нет суток');
+  r = await callS(sid, 'POST', '/api/admin/far/fee', { init: iD(), body: { id: o.id, fee: -5 } });
+  assert.equal(r.status, 400);
+  const t0 = tgLog.length;
+  r = await callS(sid, 'POST', '/api/admin/far/fee', { init: iD(), body: { id: o.id, fee: 90000 } });
+  assert.equal(r.status, 200);
+  o = (await jsonOf(r)).order;
+  assert.deepEqual([o.fee, o.sub, o.total, o.far.fee], [90000, 410000, 500000, 90000], 'в цене заказа: итог вырос на цену перевозки');
+  assert.ok(sentTo(buyer.u.id, t0).some(x => /назвал стоимость доставки/.test(x.payload.text) && /500 000/.test(norm(x.payload.text)) && /Р\/с 2020 8000 1234/.test(x.payload.text)), 'покупатель получил новую сумму и реквизиты');
+  // сутки прошли
+  const sto = W.getShop(sid).storage;
+  const raw = await sto.get('o:' + o.id);
+  raw.createdAt = new Date(Date.now() - 26 * 3600000).toISOString();
+  await sto.put('o:' + o.id, raw);
+  await sto.put('frd', '2000-01-01');
+  const t1 = tgLog.length;
+  assert.equal(await W.getShop(sid).shop.farRemind(), 1);
+  assert.ok(sentTo(buyer.u.id, t1).some(x => /ждёт оплаты/.test(x.payload.text) && /500 000/.test(norm(x.payload.text))), 'напоминание с суммой');
+  await sto.put('frd', '2000-01-01');
+  assert.equal(await W.getShop(sid).shop.farRemind(), 0, 'второй раз не напоминаем');
+  // после оплаты цену менять нельзя
+  assert.equal((await callS(sid, 'POST', '/api/admin/far/paid', { init: iD(), body: { id: o.id, pay: { m: 'card' } } })).status, 200);
+  r = await callS(sid, 'POST', '/api/admin/far/fee', { init: iD(), body: { id: o.id, fee: 1 } });
+  assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'paid']);
+  // покупатель может отменить неоплаченный принятый заказ; оплаченный нет
+  const o2 = (await jsonOf(await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: { cart: [{ id: 'p2', qty: 1 }], form, lang: 'ru', expectTotal: 410000 } }))).order;
+  assert.equal((await callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id: o2.id, to: 'accepted' } })).status, 200);
+  assert.equal((await callS(sid, 'POST', '/api/cancel', { init: buyer.init(), body: { id: o2.id } })).status, 200, 'до оплаты отменить можно');
+  // не «Производитель» или выключено: доставка и самовывоз, как раньше
+  assert.equal((await callS(sid, 'PUT', '/api/admin/category', { init: iD(), body: { cat: 'importer' } })).status, 200);
+  const pk = S.pickupInfo(S.DEFAULT, S.shopNow(), S.leadFor(S.DEFAULT, 'pickup'));
+  r = await callS(sid, 'POST', '/api/order', { init: buyer.init(), body: { cart: [{ id: 'p2', qty: 1 }], form: { name: 'ООО Ориент', phone: '+998 91 555 44 33', mode: 'pickup', address: '', date: pk.min, time: pk.slots(pk.min)[0], comment: '' }, lang: 'ru', expectTotal: 410000 } });
+  assert.equal(r.status, 200);
+  const o3 = (await jsonOf(r)).order;
+  assert.deepEqual([o3.mode, o3.far], ['pickup', undefined]);
 });
 
 /* ---------- итог ---------- */
