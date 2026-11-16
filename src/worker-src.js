@@ -69,6 +69,10 @@ function checkJpeg(u, lim) {
   return !(w < minW || h < minH || w > maxSide || h > maxSide);
 }
 const PROD_PHOTO_LIM = { minW: 64, minH: 64, maxSide: 2000 };
+/* Фото компании (логотип в списке продавцов): одно, JPEG до 200 КБ, лежит в хранилище компании под ключом logo;
+   версия (cfg.shop.logo) меняется с каждой загрузкой, поэтому адрес /img/<компания>/_logo?v=… кэшируется навсегда. */
+const LOGO_MAX = 200000, LOGO_LIM = { minW: 64, minH: 64, maxSide: 1200 }, LOGO_ID = '_logo';
+const cleanLogoV = v => (typeof v === 'string' && /^[A-Za-z0-9]{1,12}$/.test(v) ? v : '');
 /* Фото товара: до трёх. Первое (pv) показывается на карточке в каталоге и лежит там же, где лежало единственное фото раньше (p:<товар>);
    второе и третье (pv2, pv3) лежат в p2:<товар> и p3:<товар>. Фото всегда идут подряд, без дыр: убрали первое, второе встаёт на его место. */
 const PHOTOS_MAX = 3;
@@ -139,6 +143,8 @@ function sanitizeCfg(d) {
   const s = out.shop;
   s.name = cleanStr(s.name, 60) || DEFAULT.shop.name;
   s.legal = cleanStr(s.legal, 80);   // юридическое название: показывается под названием в каталоге
+  s.info = cleanStr(s.info, 100);    // строка для информации (адрес): под названием в списке продавцов
+  s.logo = cleanLogoV(s.logo);       // версия фото компании: меняется только загрузкой фото, не формой настроек
   s.phone = cleanStr(s.phone, 30);
   s.telegram = cleanStr(s.telegram, 40).replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '');
   s.address = cleanStr(s.address, 120);
@@ -2359,7 +2365,7 @@ export class Shop {
     const ok = prod.items.filter(isApproved);   // в списке продавцов считаются только одобренные товары
     const cats = prod.cats.filter(c => ok.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
     return {
-      name: cfg.shop.name || DEFAULT.shop.name, legal: cleanStr(cfg.shop.legal, 80), items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
+      name: cfg.shop.name || DEFAULT.shop.name, legal: cleanStr(cfg.shop.legal, 80), info: cleanStr(cfg.shop.info, 100), logo: cleanLogoV(cfg.shop.logo), items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
       delivery: cfg.shop.delivery !== false, minOrder: Number(cfg.shop.minOrder) || 0,
       regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home), cat: cleanCat(cfg.shop.category), bz: cleanBz(cfg.shop.bazaar)
     };
@@ -2725,6 +2731,7 @@ export class Shop {
         const cur = (await this.getCfg()).shop;
         cfg.shop.category = cleanCat(cur.category);
         cfg.shop.bazaar = cfg.shop.category === 'bazaar' ? cleanBz(cur.bazaar) : '';
+        cfg.shop.logo = cleanLogoV(cur.logo);   // фото компании меняется только своими запросами, форма настроек его не трогает
         await this.st.put('cfg', cfg);
         await this.hubSync();
         return json({ cfg });
@@ -2864,6 +2871,15 @@ export class Shop {
         const r = await this.readBody(request, 2000);
         if (r.err || !r.body) return json({ error: 'bad_request' }, 400);
         return await this.stockOp(u, r.body);
+      }
+      if (path === '/api/admin/logo' && (method === 'PUT' || method === 'DELETE')) {
+        if (method === 'DELETE') return await this.setLogo(null);
+        // как фото товара: JPEG байтами, без base64
+        if (Number(request.headers.get('content-length') || 0) > LOGO_MAX) return json({ error: 'too_big' }, 413);
+        const bytes = new Uint8Array(await request.arrayBuffer());
+        if (bytes.length > LOGO_MAX) return json({ error: 'too_big' }, 413);
+        if (!checkJpeg(bytes, LOGO_LIM)) return json({ error: 'bad_photo' }, 400);
+        return await this.setLogo(bytes);
       }
       if (path.startsWith('/api/admin/photo/') && (method === 'PUT' || method === 'DELETE')) {
         const id = path.slice('/api/admin/photo/'.length);
@@ -3344,12 +3360,26 @@ export class Shop {
     if (del.length) await this.st.delete(del);
     return json({ pv: it.pv, pv2: it.pv2, pv3: it.pv3 });
   }
+  /* Фото компании: кладёт новое (версия меняется) или убирает; список продавцов на площадке обновляется сразу. */
+  async setLogo(bytes) {
+    const cfg = await this.getCfg();
+    if (bytes) {
+      cfg.shop.logo = randId(6);
+      await this.st.put({ cfg, logo: bytes });
+    } else {
+      cfg.shop.logo = '';
+      await this.st.put('cfg', cfg);
+      await this.st.delete('logo');
+    }
+    await this.hubSync();
+    return json({ logo: cfg.shop.logo });
+  }
   /* Фото товара: открыто всем, как обычная картинка в каталоге. Адрес с ?v= меняется вместе с фото, поэтому кэш вечный.
      ?n=2 и ?n=3 — второе и третье фото; без n это первое. */
   async image(id, n) {
     if (!validId(id)) return new Response('not found', { status: 404 });
     const k = Number(n);
-    const bytes = await this.st.get(photoKey(id, Number.isInteger(k) && k >= 1 && k <= PHOTOS_MAX ? k : 1));
+    const bytes = await this.st.get(id === LOGO_ID ? 'logo' : photoKey(id, Number.isInteger(k) && k >= 1 && k <= PHOTOS_MAX ? k : 1));
     if (!bytes) return new Response('not found', { status: 404 });
     return new Response(bytes, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
   }
@@ -4672,12 +4702,12 @@ export class Shop {
 
 /* ---------- Площадка: реестр дистрибьюторов, их коды, вход продавцов, заказы клиента по всем компаниям ---------- */
 const newRec = (id, name, hash, sum) => ({
-  id, name: cleanStr(name, 60) || DEFAULT.shop.name, legal: cleanStr(sum && sum.legal, 80), on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
+  id, name: cleanStr(name, 60) || DEFAULT.shop.name, legal: cleanStr(sum && sum.legal, 80), info: cleanStr(sum && sum.info, 100), logo: cleanLogoV(sum && sum.logo), on: true, hash: hash || '', since: new Date().toISOString(), sellers: 0,
   items: sum && Number(sum.items) || 0, wait: sum && Number(sum.wait) || 0, cats: sum && Array.isArray(sum.cats) ? sum.cats : [], delivery: !sum || sum.delivery !== false, minOrder: sum && Number(sum.minOrder) || 0,
   regions: cleanRegions(sum && sum.regions), home: cleanRegion(sum && sum.home), cat: cleanCat(sum && sum.cat), bz: cleanCat(sum && sum.cat) === 'bazaar' ? cleanBz(sum && sum.bz) : ''
 });
 /* Что видит клиент в списке. Код и служебные поля не уходят. */
-const pubRec = r => ({ id: r.id, name: r.name, legal: cleanStr(r.legal, 80), items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat), bz: cleanCat(r.cat) === 'bazaar' ? cleanBz(r.bz) : '' });
+const pubRec = r => ({ id: r.id, name: r.name, legal: cleanStr(r.legal, 80), info: cleanStr(r.info, 100), logo: cleanLogoV(r.logo), items: r.items, cats: r.cats, delivery: r.delivery, minOrder: r.minOrder, regions: cleanRegions(r.regions), home: cleanRegion(r.home), cat: cleanCat(r.cat), bz: cleanCat(r.cat) === 'bazaar' ? cleanBz(r.bz) : '' });
 const newCode = () => randId(4) + '-' + randId(4) + '-' + randId(4);
 
 /* ---------- База магазинов: территории, агенты, записи ---------- */
@@ -4886,6 +4916,8 @@ export class Hub {
       const s = b.summary;
       rec.name = cleanStr(s.name, 60) || rec.name;
       rec.legal = cleanStr(s.legal, 80);
+      rec.info = cleanStr(s.info, 100);
+      rec.logo = cleanLogoV(s.logo);
       rec.items = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.items) || 0)));
       rec.wait = Math.max(0, Math.min(MAX_ITEMS, Math.round(Number(s.wait) || 0)));
       rec.cats = (Array.isArray(s.cats) ? s.cats : []).slice(0, 6).map(c => ({ name: cleanStr(c && c.name, 40), uz: cleanStr(c && c.uz, 40) })).filter(c => c.name);
