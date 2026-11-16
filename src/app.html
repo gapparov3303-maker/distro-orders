@@ -5367,9 +5367,7 @@ function renderShops(){
     if(bk&&bk!=='none')out+=bzHowHTML(bzList().find(x=>x.id===bk));
     const pc=pendingCart();
     if(pc)out+='<div class="note" style="margin-bottom:12px">🛒 '+esc(L('В корзине '+pc.n+' поз.'+(pc.name?' · «'+pc.name+'»':''),'Savatda '+pc.n+' ta mahsulot'+(pc.name?' · «'+pc.name+'»':'')))+' <button type="button" class="btn ghost sm" data-act="opencartshop" data-id="'+esc(pc.did)+'">'+L('Открыть корзину','Savatni ochish')+'</button></div>';
-    const sells=me&&me.sells||[];
     const as=viewAs();
-    if(!ck&&sells.length&&(!as||as==='seller'))out+='<div class="row-btns" style="margin-bottom:14px">'+sells.map(x=>'<button type="button" class="btn ghost sm" data-act="sellerof" data-id="'+esc(x.id)+'">'+esc(L('Панель продавца: ','Sotuvchi paneli: ')+x.name)+'</button>').join('')+'</div>';
     const dels=me&&me.delivers||[];
     if(!ck&&dels.length&&(!as||as==='courier'))out+='<div class="row-btns" style="margin-bottom:14px">'+dels.map(x=>'<button type="button" class="btn ghost sm" data-act="courierof" data-id="'+esc(x.id)+'">'+esc(L('Доставка: ','Yetkazib berish: ')+x.name)+'</button>').join('')+'</div>';
     if(!ck)out+=socHTML();
@@ -6721,7 +6719,6 @@ document.addEventListener('click',e=>{
   else if(a==='openshop')enterShop(t.dataset.id,'shop');
   else if(a==='openpop')openPop(t.dataset.id,t.dataset.p);
   else if(a==='opencartshop')enterShop(t.dataset.id,'shop',true);
-  else if(a==='sellerof')enterShop(t.dataset.id,'seller');
   else if(a==='ownadd')ownAdd();
   else if(a==='bzadd')bzAdd();
   else if(a==='bzsave')bzSaveRow(t.dataset.id);
