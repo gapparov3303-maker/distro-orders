@@ -4473,6 +4473,28 @@ function cleanHow(v) {
 /* У магазина один основной телефон и до пяти дополнительных номеров (ph): так одна точка заказывает с нескольких номеров. */
 const MAX_PH = 5;
 const PEOPLE_GAP = 600000, PEOPLE_MAX = 1000;
+/* «Написать нам»: обращения пользователей к владельцу площадки (ошибка, новая функция, другое). Не больше FB_DAY в день с человека, FB_MAX хранится, текст до FB_LEN знаков. */
+const FB_KINDS = ['bug', 'idea', 'other'], FB_DAY = 5, FB_MAX = 300, FB_LEN = 1000, FB_MIN = 5;
+const FB_KIND = { bug: ['Ошибка', 'Xato'], idea: ['Новая функция', 'Yangi funksiya'], other: ['Другое', 'Boshqa'] };
+const FB_ROLE = { owner: 'Владелец', seller: 'Продавец', courier: 'Доставщик', agent: 'Агент', wh: 'Склад' };
+const validFb = id => /^F-[A-Z0-9]{5}$/.test(String(id || ''));
+/* Текст обращения: переводы строк сохраняются (не больше двух подряд), лишние пробелы убираются. */
+function cleanMsg(v, n) {
+  if (typeof v !== 'string') return '';
+  return v.replace(/\r/g, '').split('\n').map(x => cleanStr(x, n, true)).join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, n);
+}
+/* Роли человека для обращения: «Продавец «X», Склад»; без ролей — «Покупатель» (и название магазина, если он заказывал). */
+function fbRoleText(it) {
+  const parts = (it.roles || []).map(r => FB_ROLE[r.r] ? FB_ROLE[r.r] + (r.n ? ' «' + r.n + '»' : '') : '').filter(Boolean);
+  if (!parts.length) parts.push('Покупатель' + (it.shop && it.shop.name ? ' «' + it.shop.name + '»' : ''));
+  return parts.join(', ');
+}
+/* Сообщение владельцу: заголовок на двух языках, текст обращения один раз. */
+function fbMessage(it) {
+  const who = [it.nm, it.un ? '@' + it.un : '', it.shop && it.shop.phone || ''].filter(Boolean).join(' · ') || 'ID ' + it.uid;
+  const k = FB_KIND[it.k] || FB_KIND.other;
+  return '📨 Murojaat / Обращение ' + it.id + '\n' + k[1] + ' · ' + k[0] + '\nKimdan / От: ' + who + '\nRol / Роль: ' + fbRoleText(it) + '\n\n' + it.t;
+}
 const BASE_STATUS = ['new', 'talk', 'refuse'];
 /* Тип точки (один на всех дистрибьюторов, ставит агент или владелец): магазин, супермаркет, оптовый покупатель, HoReCa. Пусто — не указан. */
 const BASE_TYPES = ['shop', 'super', 'whole', 'horeca'];
@@ -4828,6 +4850,75 @@ export class Hub {
     const all = [...rec.values()].filter(x => Number.isInteger(x.id) && x.id > 0);
     all.sort((a, b) => String(b.last).localeCompare(String(a.last)) || a.id - b.id);
     return { people: all.slice(0, PEOPLE_MAX), total: all.length, max: PEOPLE_MAX };
+  }
+  /* ---------- «Написать нам»: обращения к владельцу ----------
+     fb:<id> — обращение, fbx — номера (свежие первыми, не больше FB_MAX), fbn — сколько ещё не решено (число на значке владельца),
+     fbr:<uid> — сколько обращений человек отправил сегодня. */
+  async fbRoles(uid) {
+    const roles = [];
+    if ((await this.owners()).includes(uid)) roles.push({ r: 'owner' });
+    const recs = new Map((await this.allRecs()).map(r => [r.id, r.name]));
+    for (const did of await this.sellsOf(uid)) roles.push({ r: 'seller', n: recs.get(did) || did });
+    for (const did of (await this.st.get('dls:' + uid)) || []) if (recs.has(did)) roles.push({ r: 'courier', n: recs.get(did) });
+    const ag = await this.agentOf(uid);
+    if (ag) roles.push({ r: 'agent', n: ag.name });
+    const w = await this.whOf(uid);
+    if (w) roles.push({ r: 'wh', n: w.name });
+    return roles.slice(0, 6);
+  }
+  async fbItems() {
+    const idx = (await this.st.get('fbx')) || [];
+    if (!idx.length) return [];
+    const map = await this.getMany(idx.map(x => 'fb:' + x));
+    return idx.map(x => map.get('fb:' + x)).filter(Boolean);
+  }
+  /* Пересчёт «не решено» по списку: число на значке не может разойтись с самим списком. */
+  async fbRecount(items) {
+    const n = (items || await this.fbItems()).filter(x => x.st === 'new').length;
+    if ((await this.st.get('fbn')) !== n) await this.st.put('fbn', n);
+    return n;
+  }
+  async feedbackAdd(user, body) {
+    const kind = FB_KINDS.includes(body && body.kind) ? body.kind : '';
+    const text = cleanMsg(body && body.text, FB_LEN);
+    if (!kind) return { err: 'bad_kind' };
+    if (text.length < FB_MIN) return { err: 'short' };
+    const uid = user.id, now = new Date().toISOString(), day = dayOf(now);
+    const lim = await this.st.get('fbr:' + uid);
+    const n = lim && lim.d === day ? Number(lim.n) || 0 : 0;
+    if (n >= FB_DAY) return { err: 'limit' };
+    let id;
+    do { id = 'F-' + randId(5); } while (await this.st.get('fb:' + id));
+    const item = { id, uid, nm: whoName(user), un: cleanStr(user.username || '', 40), roles: await this.fbRoles(uid), k: kind, t: text, at: now, st: 'new' };
+    const bid = await this.st.get('bu:' + uid), br = bid ? await this.st.get('b:' + bid) : null;
+    if (br && (br.name || br.phone)) item.shop = { name: cleanStr(br.name || '', 60), phone: cleanStr(String(br.phone || ''), 30) };
+    const idx = (await this.st.get('fbx')) || [];
+    idx.unshift(id);
+    const drop = idx.splice(FB_MAX);
+    await this.st.put({ ['fb:' + id]: item, fbx: idx, ['fbr:' + uid]: { d: day, n: n + 1 } });
+    for (const d of drop) await this.st.delete('fb:' + d);
+    await this.fbRecount();
+    await this.notifyOwners(fbMessage(item));
+    return { item };
+  }
+  /* Владелец: список обращений (GET) и отметка «Решено» или «Вернуть в новые» (POST done). */
+  async adminFeedback(request, path, method, user) {
+    if (path === '/api/hub/admin/feedback' && method === 'GET') {
+      const items = await this.fbItems();
+      return json({ items, n: await this.fbRecount(items), max: FB_MAX });
+    }
+    if (path === '/api/hub/admin/feedback/done' && method === 'POST') {
+      const r = await this.readBody(request, 500);
+      const b = r.body && typeof r.body === 'object' ? r.body : null;
+      if (r.err || !b || !validFb(b.id) || typeof b.done !== 'boolean') return json({ error: 'bad_request' }, 400);
+      const it = await this.st.get('fb:' + b.id);
+      if (!it) return json({ error: 'not_found' }, 404);
+      if (b.done && it.st !== 'done') { it.st = 'done'; it.dt = new Date().toISOString(); it.db = whoName(user); }
+      else if (!b.done && it.st === 'done') { it.st = 'new'; delete it.dt; delete it.db; }
+      await this.st.put('fb:' + it.id, it);
+      return json({ item: it, n: await this.fbRecount() });
+    }
+    return null;
   }
   /* Сообщение всем владельцам площадки (кроме самого человека, если он владелец). */
   async notifyOwners(text, exceptUid) {
@@ -5562,6 +5653,8 @@ export class Hub {
       };
       // у владельца на вкладке «Проверка» горит число товаров, которые ждут решения
       if (out.me.owner) out.me.modN = all.reduce((n, r) => n + (Number(r.wait) || 0), 0);
+      // и число обращений («Написать нам»), которые ещё не решены
+      if (out.me.owner) out.me.fbn = Number(await this.st.get('fbn')) || 0;
       // доставщик: у каких дистрибьюторов человек возит заказы (запись сверяется с хранилищем, снятые и удалённые пропадают)
       const dl = (await this.st.get('dls:' + au.user.id)) || [];
       if (dl.length) {
@@ -5700,6 +5793,15 @@ export class Hub {
       return json({ ok: true, alone, name: rec.name });
     }
 
+    // «Написать нам»: любой вошедший человек пишет владельцу площадки об ошибке или новой функции (не больше FB_DAY в день)
+    if (path === '/api/hub/feedback' && method === 'POST') {
+      const r = await this.readBody(request, 8000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const res = await this.feedbackAdd(au.user, r.body);
+      if (res.err) return json({ error: res.err }, res.err === 'limit' ? 429 : 400);
+      return json({ ok: true, id: res.item.id });
+    }
+
     // регион магазина: запоминается, чтобы на другом телефоне список был тем же
     if (path === '/api/hub/region' && method === 'PUT') {
       const r = await this.readBody(request, 500);
@@ -5740,6 +5842,10 @@ export class Hub {
     if (!path.startsWith('/api/hub/admin/')) return json({ error: 'not_found' }, 404);
     if (!(await this.owners()).includes(uid)) return json({ error: 'forbidden' }, 403);
     if (path.startsWith('/api/hub/admin/mod')) return await this.adminMod(request, path, method);
+    if (path.startsWith('/api/hub/admin/feedback')) {
+      const res = await this.adminFeedback(request, path, method, au.user);
+      if (res) return res;
+    }
     if (path.startsWith('/api/hub/admin/people') || path.startsWith('/api/hub/admin/terr') || path.startsWith('/api/hub/admin/agents') || path.startsWith('/api/hub/admin/wh') || path === '/api/hub/admin/base/import') {
       const res = await this.adminPeople(request, path, method);
       if (res) return res;
