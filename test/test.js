@@ -8353,29 +8353,40 @@ await t('«Покупатель» вместо «магазин» и «клие�
   assert.ok(/baseTypeName = k => \(\{ shop: L\('Магазин', 'Doʻkon'\)/.test(fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8')), 'тип точки «Магазин» остался');
 });
 
-await t('меню: у продавца «Продавец» раскрыт сразу, если он не внутри другой группы; нажатие по-прежнему сворачивает', () => {
+await t('меню: при открытии все группы свёрнуты (раскрывает человек сам); на широком экране, где меню всегда сбоку, раскрыта текущая группа', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const line = name => { const m = html.match(new RegExp('^const ' + name + '=.*$', 'm')); assert.ok(m, 'нет ' + name); return m[0]; };
-  const mk = st => new Function('S', 'menuGroups', line('parentHere') + '\n' + line('menuSubOpen') + '\nreturn menuSubOpen;')(st, () => { throw new Error('группы переданы'); });
+  const mk = (st, wide) => new Function('S', 'menuGroups', 'menuWide', line('parentHere') + '\n' + line('menuSubOpen') + '\nreturn menuSubOpen;')(st, () => { throw new Error('группы переданы'); }, () => wide);
   const seller = ['seller', 'Продавец', 0, '', [['orders', 'Заказы']], 'stab'];
   const courier = ['courier', 'Доставка', 0, '', [['today', 'Сегодня']], 'ctab'];
   const owner = ['o_dists', 'Продавцы', 0, '', [['dists', 'Список']], 'otab'];
   const base = ['base', 'База'];
   const gs = [['Покупатель', [['shop', 'Каталог']]], ['Работа', [seller, courier, base]], ['Владелец', [owner]]];
+  // узкий экран (шторка): при открытии свёрнуто всё, в том числе группа, где человек сейчас
   const st = { msub: null, own: { sec: 'dists' }, cr: { tab: 'today' }, sellerTab: 'orders' };
-  const open = mk(st);
-  assert.equal(open(seller, 'shop', gs), true, 'каталог: «Продавец» раскрыт сразу');
-  assert.equal(open(seller, 'seller', gs), true, 'в панели продавца раскрыт');
-  assert.equal(open(courier, 'shop', gs), false, 'доставка сама не раскрывается');
-  assert.equal(open(courier, 'courier', gs), true, 'в доставке раскрыта доставка');
-  assert.equal(open(seller, 'courier', gs), false, 'в доставке «Продавец» не раскрывается');
-  assert.equal(open(owner, 'owner', gs), true, 'у владельца раскрыт его раздел');
-  assert.equal(open(seller, 'owner', gs), false, 'в разделе владельца «Продавец» не раскрывается');
+  const open = mk(st, false);
+  for (const [g, cur, what] of [[seller, 'shop', 'каталог: «Продавец»'], [seller, 'seller', 'в панели продавца'], [courier, 'courier', 'в доставке'], [owner, 'owner', 'у владельца'], [courier, 'shop', 'доставка']]) assert.equal(open(g, cur, gs), false, 'при открытии свёрнуто: ' + what);
   st.msub = '';
-  assert.equal(open(seller, 'shop', gs), false, 'нажали «Продавец»: всё свёрнуто');
+  assert.equal(open(seller, 'shop', gs), false, 'нажали на раскрытую группу: всё свёрнуто');
   st.msub = 'seller';
   assert.equal(open(seller, 'shop', gs), true, 'раскрыли «Продавец» руками');
   assert.equal(open(courier, 'shop', gs), false, 'руками раскрыта одна группа');
+  assert.equal(open(seller, 'courier', gs), true, 'раскрытую руками группу экран не сворачивает');
+  // широкий экран (меню лежит сбоку всегда): прежнее правило, раскрыта группа, где человек сейчас
+  const sw = { msub: null, own: { sec: 'dists' }, cr: { tab: 'today' }, sellerTab: 'orders' };
+  const wideOpen = mk(sw, true);
+  assert.equal(wideOpen(seller, 'shop', gs), true, 'широкий экран, каталог: «Продавец» раскрыт');
+  assert.equal(wideOpen(courier, 'shop', gs), false, 'широкий экран: доставка сама не раскрывается');
+  assert.equal(wideOpen(courier, 'courier', gs), true, 'широкий экран, доставка: раскрыта');
+  assert.equal(wideOpen(seller, 'courier', gs), false, 'широкий экран, доставка: «Продавец» не раскрывается');
+  assert.equal(wideOpen(owner, 'owner', gs), true, 'широкий экран, владелец: его раздел раскрыт');
+  sw.msub = '';
+  assert.equal(wideOpen(seller, 'shop', gs), false, 'широкий экран: нажали, свёрнуто');
+  // шторка при каждом открытии сбрасывает раскрытое и ставит фокус на видимый пункт
+  const ms = html.slice(html.indexOf('function menuSet('), html.indexOf('function menuSet(') + 900);
+  assert.ok(/if\(S\.msub!==null\)\{S\.msub=null;renderNav\(\)\}/.test(ms), 'при открытии шторки раскрытое сбрасывается');
+  assert.ok(/\[aria-current="page"\],\.mgrp\[data-here="1"\]/.test(ms) && /!x\.closest\('\[hidden\]'\)/.test(ms), 'фокус не уходит в спрятанный пункт');
+  assert.ok(/\.mgrp\[data-here="1"\]\[aria-expanded="false"\]\{background:var\(--accent-soft\)\}/.test(html), 'свёрнутая группа с текущим экраном подсвечена');
   assert.ok(/const open=menuSubOpen\(i,cur,groups\);/.test(html), 'меню рисуется по тому же правилу');
   assert.ok(/S\.msub=it&&menuSubOpen\(it,cur\)\?'':t\.dataset\.v/.test(html), 'нажатие переключает по тому же правилу');
 });
@@ -8400,12 +8411,14 @@ await t('меню: «Продавец» виден и тогда, когда к�
   assert.ok(/a==='sof'\)\{menuSet\(false\);enterSeller\(t\.dataset\.id,t\.dataset\.t\)\}/.test(html), 'обработчик sof');
   const es = html.slice(html.indexOf('async function enterSeller('), html.indexOf('/* Переключатель «Смотреть как»'));
   assert.ok(/openShop\(did\)/.test(es) && /sellerOpen\(tab\)/.test(es) && /if\(!S\.admin\)\{go\('shop'\)/.test(es), 'открывает компанию, раздел; без прав — каталог');
-  // раскрыта по умолчанию только первая группа «Продавец»
-  const pick = new Function('S', 'menuGroups', fnLine(html, /^const parentHere=.*$/m, 'parentHere') + '\n' + fnLine(html, /^const menuSubOpen=.*$/m, 'menuSubOpen') + '\nreturn menuSubOpen;');
+  // на широком экране раскрыта по умолчанию только первая группа «Продавец», на узком все свёрнуты
+  const pick = new Function('S', 'menuGroups', 'menuWide', fnLine(html, /^const parentHere=.*$/m, 'parentHere') + '\n' + fnLine(html, /^const menuSubOpen=.*$/m, 'menuSubOpen') + '\nreturn menuSubOpen;');
   const g1 = ['seller', 'Продавец · A', 0, '', [['orders', 'Заказы']], 'sof', 'a'], g2 = ['seller:b', 'Продавец · B', 0, '', [['orders', 'Заказы']], 'sof', 'b'];
   const gs = [['Работа', [g1, g2, ['base', 'База']]]];
   const st = { msub: null, own: { sec: 'dists' }, cr: { tab: 'today' }, sellerTab: 'orders' };
-  const open = pick(st, () => { throw new Error('группы переданы'); });
+  const narrow = pick({ ...st }, () => { throw new Error('группы переданы'); }, () => false);
+  assert.equal(narrow(g1, 'shop', gs) || narrow(g2, 'shop', gs), false, 'узкий экран: обе компании свёрнуты');
+  const open = pick(st, () => { throw new Error('группы переданы'); }, () => true);
   assert.equal(open(g1, 'shop', gs), true, 'первая компания раскрыта');
   assert.equal(open(g2, 'shop', gs), false, 'вторая свёрнута');
   st.msub = 'seller:b';
