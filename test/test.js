@@ -232,8 +232,9 @@ await t('бот: /start зовёт открыть каталог сразу на
   // русскому интерфейсу: узбекский всё равно сверху, русский ниже
   assert.ok(m.payload.text.includes('Нажмите «Заказать»') && m.payload.text.includes('«Buyurtma» tugmasini bosing'));
   assert.ok(!/Каталог|Katalog/.test(m.payload.text), 'в приветствии нет слова «каталог»');
-  assert.ok(m.payload.text.includes('Самовывоз или доставка. Оплата при получении заказа.'));
-  assert.ok(m.payload.text.includes('Toʻlovni buyurtmangizni olganda qilasiz.'));
+  assert.ok(m.payload.text.includes('Самовывоз или доставка. Способ оплаты зависит от продавца.'));
+  assert.ok(m.payload.text.includes('Toʻlov usuli sotuvchiga bogʻliq.'));
+  assert.ok(!/при получении|olganda/.test(m.payload.text), 'про оплату «при получении» в приветствии больше нет (у Базара оплата договорная)');
   assert.ok(m.payload.text.indexOf('Assalomu alaykum') < m.payload.text.indexOf('Здравствуйте'));
   assert.equal(m.payload.reply_markup.inline_keyboard[0][0].text, '🛒 Заказать / Buyurtma');
   assert.equal(m.payload.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
@@ -3605,12 +3606,14 @@ await t('площадка: приветствие бота зависит от �
   let m = await start(ANNA, '/start');
   assert.ok(m.text.includes('Альфа Трейд') && m.text.includes('Самовывоз или доставка'));
   assert.ok(m.text.includes('выберите товары и оформите') && !m.text.includes('выберите продавца'), 'продавец один: выбирать из списка нечего');
+  assert.ok(m.text.includes('Bu Альфа Трейд 🛒') && m.text.includes('Это Альфа Трейд 🛒') && !/platformasi|платформа/.test(m.text), 'от имени продавца слова «платформа» нет');
   assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
   await send(adminMsg(SELLER, CODE, 70));
   assert.equal((await putProd(SAMPLE_PROD())).status, 200);
   // два: от имени площадки
   m = await start(ANNA, '/start');
   assert.ok(m.text.includes('Sarbon') && m.text.includes('Нажмите «Заказать», выберите продавца и товары') && !m.text.includes('Вы продавец'));
+  assert.ok(m.text.includes('Assalomu alaykum! Bu Sarbon platformasi 🛒') && m.text.includes('Здравствуйте! Это платформа Sarbon 🛒'), 'от имени площадки: «Bu Sarbon platformasi» и «Это платформа Sarbon»');
   assert.equal(m.reply_markup.inline_keyboard[0][0].text, '🛒 Заказать / Buyurtma');
   // продавцу приветствие то же самое: строки «Вы продавец…» нет ни на одном языке
   const annaText = m.text;
@@ -3624,7 +3627,7 @@ await t('площадка: приветствие бота зависит от �
   assert.ok(m.text.includes('Альфа Трейд') && m.text.includes('выберите товары и оформите') && !m.text.includes('выберите продавца'), 'по ссылке на продавца выбирать продавца не нужно');
   assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/?d=' + sid);
   m = await start(ANNA, '/start d_zzzzzz');
-  assert.ok(m.text.includes('Sarbon'));
+  assert.ok(m.text.includes('Sarbon') && m.text.includes('Bu Sarbon platformasi 🛒'), 'неизвестная ссылка: говорит площадка');
   assert.equal(m.reply_markup.inline_keyboard[0][0].web_app.url, HOST + '/');
   // название площадки меняет владелец
   assert.equal((await call('PUT', '/api/hub/admin/title', { init: iA(), body: { title: 'X' } })).status, 403);
@@ -3632,7 +3635,7 @@ await t('площадка: приветствие бота зависит от �
   assert.equal((await jsonOf(await call('PUT', '/api/hub/admin/title', { init: iS(), body: { title: '  Навои Опт  ' } }))).title, 'Навои Опт');
   assert.equal((await jsonOf(await call('GET', '/api/shops'))).title, 'Навои Опт');
   m = await start(ANNA, '/start');
-  assert.ok(m.text.includes('Навои Опт'));
+  assert.ok(m.text.includes('Bu Навои Опт platformasi 🛒') && m.text.includes('Это платформа Навои Опт 🛒'), 'название площадки подставляется в приветствие');
   // ссылка на каталог в кабинете владельца
   const l = await jsonOf(await call('GET', '/api/hub/admin/shops', { init: iS() }));
   assert.equal(l.shops.find(x => x.id === sid).link, 'https://t.me/distro_test_bot?start=d_' + sid);
