@@ -36,7 +36,7 @@ function stOf(status,mode,o){
 
 const DEFAULT={
   v:3,
-  shop:{name:'Оптовая база',legal:'',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],home:'',category:'',bazaar:''}
+  shop:{name:'Оптовая база',legal:'',phone:'',telegram:'',address:'',addressUz:'',delivery:true,leadHours:2,deliveryLeadHours:24,openFrom:9,openTo:20,minOrder:0,deliveryFee:0,freeDeliveryFrom:0,discounts:[],regions:[],rates:{},home:'',category:'',bazaar:''}
 };
 /* Категории дистрибьюторов на первом экране. Пустая категория — не выбрана: такой дистрибьютор показывается в «Дистрибьюторах».
    Продавец выбирает её в настройках, владелец может поменять; ключ хранится у дистрибьютора (shop.category), площадка держит копию в списке. */
@@ -180,11 +180,12 @@ function stkPublic(s,cap){
   return {av:lw||!(cap>0)?a:Math.min(a,cap),lw};
 }
 
-/* Стоимость доставки: берётся только при доставке; если указан порог «бесплатно от» и сумма товаров его достигла, доставка бесплатна. */
-function deliveryFee(cfg,mode,sub){
-  const sh=cfg.shop,fee=Number(sh.deliveryFee)||0,free=Number(sh.freeDeliveryFrom)||0;
-  if(mode!=='delivery'||fee<=0||isBzShop(sh))return 0;   // у Базара доставку до двери согласует продавец, стоимости в заказе нет
-  return free>0&&Number(sub)>=free?0:fee;
+/* Стоимость доставки: берётся только при доставке; если указан порог «бесплатно от» и сумма товаров его достигла, доставка бесплатна.
+   reg — регион доставки: у региона могут быть свои цена и порог (см. ratesFor). */
+function deliveryFee(cfg,mode,sub,reg){
+  const sh=cfg.shop,r=ratesFor(sh,mode,reg);
+  if(mode!=='delivery'||r.fee<=0||isBzShop(sh))return 0;   // у Базара доставку до двери согласует продавец, стоимости в заказе нет
+  return r.free>0&&Number(sub)>=r.free?0:r.fee;
 }
 function mergeCfg(d){
   const out=clone(DEFAULT);
@@ -223,6 +224,31 @@ const cleanRegions=a=>{const set=new Set(Array.isArray(a)?a:[]);return REGION_ID
 const REGIONS_DEFAULT=false;
 const regionsOn=()=>typeof globalThis.__regionsOn==='boolean'?globalThis.__regionsOn:REGIONS_DEFAULT;
 const hasZone=a=>{if(!regionsOn())return false;const n=cleanRegions(a).length;return n>0&&n<REGION_IDS.length};
+/* Цены по регионам. У каждого отмеченного региона могут быть свои цена доставки (fee), порог бесплатной доставки (free) и минимальный заказ (min), сум, 0…1 000 000 000.
+   Пустое поле — как в общих настройках (поля нет в записи), а 0 — настоящий ноль: бесплатно, нет порога, нет минимума. Лишние регионы и неверные числа отбрасываются. */
+const RATE_KEYS=['fee','free','min'];
+const RATE_MAX=1000000000;
+const cleanRates=(v,regions)=>{
+  const out={},src=v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+  cleanRegions(regions).forEach(id=>{
+    const o=src[id];
+    if(!o||typeof o!=='object'||Array.isArray(o))return;
+    const r={};
+    RATE_KEYS.forEach(k=>{const x=o[k];if(typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=RATE_MAX)r[k]=Math.round(x)});
+    if(Object.keys(r).length)out[id]=r;
+  });
+  return out;
+};
+/* Что действует для заказа: общие цена доставки, порог бесплатной и минимум, а при доставке в один из отмеченных регионов (доставка ограничена регионами) его собственные поля поверх общих.
+   Самовывоз и доставка без региона всегда по общим. */
+function ratesFor(sh,mode,reg){
+  const r={fee:Number(sh.deliveryFee)||0,free:Number(sh.freeDeliveryFrom)||0,min:Number(sh.minOrder)||0};
+  if(mode==='delivery'&&reg&&hasZone(sh.regions)&&cleanRegions(sh.regions).includes(reg)){
+    const o=sh.rates&&sh.rates[reg];
+    if(o&&typeof o==='object')RATE_KEYS.forEach(k=>{if(typeof o[k]==='number'&&Number.isFinite(o[k])&&o[k]>=0)r[k]=Math.round(o[k])});
+  }
+  return r;
+}
 /* Доставляет ли дистрибьютор (запись из списка или настройки) в регион. Нет региона у клиента — считаем, что доставляет. */
 const deliversTo=(sh,reg)=>!!sh&&sh.delivery!==false&&(!hasZone(sh.regions)||!reg||cleanRegions(sh.regions).includes(reg));
 /* Подходит ли дистрибьютор клиенту из региона reg: доставляет к нему или находится в его регионе (самовывоз). */

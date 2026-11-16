@@ -11,7 +11,7 @@ const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
 const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa}')();
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa,ratesFor,cleanRates,RATE_KEYS,RATE_MAX}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -9565,6 +9565,98 @@ await t('витрина на экране: плашки и «Популярно�
   // склонения: «покупатель с заказом» (RU) и без слов «магазин» и «клиент» в тексте
   const sandbox = {}; new Function('o', html.match(/const plBuyerOrd=[^\n]+/)[0] + ';o.f=plBuyerOrd')(sandbox);
   assert.deepEqual([11, 21, 22, 25, 120, 121].map(sandbox.f), ['покупателей с заказами', 'покупатель с заказом', 'покупателя с заказами', 'покупателей с заказами', 'покупателей с заказами', 'покупатель с заказом']);
+});
+
+/* ---------- цены доставки по регионам ---------- */
+await tr('цены по регионам: у региона свои цена доставки, порог бесплатной и минимум; пустое поле — общие; самовывоз по общим; чистка', async () => {
+  const { sid } = await shopWorld();
+  const put = async mut => {
+    const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+    mut(cfg.shop);
+    const r = await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } });
+    assert.equal(r.status, 200);
+    return (await jsonOf(r)).cfg.shop;
+  };
+  const order = async (cart, mode, region, total) => {
+    const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+    const r = await callS(sid, 'POST', '/api/order', { init: newUser().init(), body: { cart, form: formFor(cfg, mode, region ? { region } : {}), lang: 'ru', expectTotal: total } });
+    return { status: r.status, d: await jsonOf(r) };
+  };
+  const ONE = [{ id: 'p2', qty: 1 }], THREE = [{ id: 'p2', qty: 3 }], SMALL = [{ id: 'p4', qty: 1 }];   // 410 000, 1 230 000, 7 500
+  const shop = await put(s => {
+    s.regions = ['nv', 'sa', 'tk']; s.minOrder = 300000; s.deliveryFee = 20000; s.freeDeliveryFrom = 1000000;
+    // мусор чистится: регион не из списка, отрицательное, не число, слишком большое
+    s.rates = { sa: { fee: 50000, free: 3000000, min: 1000000 }, tk: { fee: 0 }, kk: { fee: 1 }, nv: { fee: -5, free: 'x', min: 1.4e9 }, zz: { fee: 5 } };
+  });
+  assert.deepEqual(shop.rates, { sa: { fee: 50000, free: 3000000, min: 1000000 }, tk: { fee: 0 } }, 'остаются только отмеченные регионы и верные числа; пустое — не записывается');
+  // регион без своих цен — общие: 410 000 меньше порога 1 000 000, доставка 20 000
+  let r = await order(ONE, 'delivery', 'nv', 430000);
+  assert.equal(r.status, 200); assert.deepEqual([r.d.order.fee, r.d.order.sub, r.d.order.total, r.d.order.region], [20000, 410000, 430000, 'nv']);
+  r = await order(THREE, 'delivery', 'nv', 1230000);
+  assert.equal(r.status, 200); assert.equal(r.d.order.fee, undefined, 'порог 1 000 000 достигнут: бесплатно');
+  // Самарканд: минимум 1 000 000, доставка 50 000, бесплатно от 3 000 000
+  r = await order(ONE, 'delivery', 'sa', 460000);
+  assert.deepEqual([r.status, r.d.error, r.d.min], [409, 'min_order', 1000000], 'свой минимум региона');
+  r = await order(THREE, 'delivery', 'sa', 1280000);
+  assert.equal(r.status, 200); assert.deepEqual([r.d.order.fee, r.d.order.total, r.d.order.region], [50000, 1280000, 'sa']);
+  r = await order(THREE, 'delivery', 'sa', 1230000);
+  assert.deepEqual([r.status, r.d.error], [409, 'price_changed'], 'покупатель, у которого в корзине общая цена, получает «цены изменились»');
+  // Ташкент: доставка 0 (бесплатно), минимум общий
+  r = await order(ONE, 'delivery', 'tk', 410000);
+  assert.equal(r.status, 200); assert.equal(r.d.order.fee, undefined);
+  r = await order(SMALL, 'delivery', 'tk', 7500);
+  assert.deepEqual([r.status, r.d.error, r.d.min], [409, 'min_order', 300000]);
+  // самовывоз: всегда общие цифры, региональный минимум на него не действует
+  r = await order(SMALL, 'pickup', '', 7500);
+  assert.deepEqual([r.status, r.d.error, r.d.min], [409, 'min_order', 300000]);
+  r = await order(ONE, 'pickup', '', 410000);
+  assert.equal(r.status, 200);
+  // снятый регион теряет свои цены
+  const s2 = await put(s => { s.regions = ['nv', 'sa']; });
+  assert.deepEqual(Object.keys(s2.rates), ['sa'], 'у Ташкента цены пропали вместе с регионом');
+  // если доставка по всей стране (регионы не ограничены), региональные цены не действуют
+  const s3 = await put(s => { s.regions = []; s.rates = { sa: { fee: 1 } }; });
+  assert.deepEqual(s3.rates, {});
+  // фильтр регионов выключен: цены по регионам ничего не меняют
+  await put(s => { s.regions = ['sa', 'tk']; s.rates = { sa: { fee: 50000, min: 1000000 } }; });
+  globalThis.__regionsOn = false;
+  r = await order(ONE, 'delivery', 'sa', 430000);
+  assert.equal(r.status, 200, 'при выключенных регионах считается по общим: минимум 300 000 и доставка 20 000');
+  assert.equal(r.d.order.fee, 20000);
+});
+
+await t('цены по регионам: общая функция считает так же в приложении и на сервере; экран продавца и корзины', () => {
+  globalThis.__regionsOn = true;
+  try {
+    const sh = { deliveryFee: 20000, freeDeliveryFrom: 1000000, minOrder: 300000, regions: ['nv', 'sa'], rates: { sa: { fee: 50000, free: 0, min: 1000000 }, nv: {} }, category: '' };
+    assert.deepEqual(S.ratesFor(sh, 'delivery', 'sa'), { fee: 50000, free: 0, min: 1000000 }, 'поле free=0 — настоящий ноль: порога нет');
+    assert.deepEqual(S.ratesFor(sh, 'delivery', 'nv'), { fee: 20000, free: 1000000, min: 300000 }, 'у региона нет своих цен — общие');
+    assert.deepEqual(S.ratesFor(sh, 'pickup', 'sa'), { fee: 20000, free: 1000000, min: 300000 }, 'самовывоз по общим');
+    assert.deepEqual(S.ratesFor(sh, 'delivery', 'tk'), { fee: 20000, free: 1000000, min: 300000 }, 'регион не из списка — общие');
+    assert.deepEqual(S.ratesFor(sh, 'delivery', ''), { fee: 20000, free: 1000000, min: 300000 }, 'регион ещё не выбран — общие');
+    assert.equal(S.deliveryFee({ shop: sh }, 'delivery', 5000000, 'sa'), 50000, 'порога у региона нет: платно при любой сумме');
+    assert.equal(S.deliveryFee({ shop: sh }, 'delivery', 5000000, 'nv'), 0);
+    assert.equal(S.deliveryFee({ shop: sh }, 'delivery', 500000), 20000, 'вызов без региона, как раньше');
+    assert.equal(S.deliveryFee({ shop: Object.assign({}, sh, { category: 'bazaar' }) }, 'delivery', 1, 'sa'), 0, 'у Базара цены доставки нет');
+    assert.deepEqual(S.cleanRates({ sa: { fee: 5.6, bad: 1 }, kk: { fee: 1 } }, ['sa']), { sa: { fee: 6 } });
+    assert.deepEqual(S.cleanRates('x', ['sa']), {}); assert.deepEqual(S.cleanRates([], ['sa']), {});
+    assert.deepEqual(S.mergeCfg(null).shop.rates, {}, 'в настройках по умолчанию своих цен нет');
+  } finally { delete globalThis.__regionsOn; }
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  assert.ok(/const cartFee=\(\)=>deliveryFee\(S\.cfg,mode\(\),cartTotal\(\),orderRegion\(\)\)/.test(html), 'доставка в корзине считается по региону заказа');
+  assert.ok(/const minOrder=\(\)=>ratesFor\(S\.cfg\.shop,mode\(\),orderRegion\(\)\)\.min/.test(html), 'минимум по региону');
+  assert.ok(/rt=ratesFor\(S\.cfg\.shop,mode\(\),orderRegion\(\)\),feeSet=rt\.fee>0,free=rt\.free/.test(fn('paintCartSum')), 'итог в корзине и подсказка про бесплатную доставку по региону');
+  assert.ok(/if\(f==='region'\)\{paintCartSum\(\);paintRegRate\(\)\}/.test(html), 'выбрали регион: итог и подсказка пересчитываются');
+  assert.ok(/id="regrate"/.test(fn('regionFieldHTML')) && /минимальный заказ/.test(fn('regRateText')) && /minimal buyurtma/.test(fn('regRateText')), 'под выбором региона написано, что в нём действует, на двух языках');
+  const re = fn('ratesEditHTML');
+  assert.ok(/data-rate="'\+id\+':'\+k\+'"/.test(re) && /Цены по регионам/.test(re) && /Hududlar boʻyicha narxlar/.test(re) && /как в общих/.test(re), 'у продавца три поля у каждого отмеченного региона, пустое — «как в общих»');
+  for (const l of ['Доставка, сум', 'Бесплатно от, сум', 'Минимальный заказ, сум', 'Yetkazib berish, soʻm', 'Bepul boʻladigan summa, soʻm', 'Minimal buyurtma, soʻm']) assert.ok(re.includes(l), l);
+  assert.ok(/regionsOn\(\)\?regionsEditHTML\(\)/.test(html) && /id="ratebox"/.test(fn('regionsEditHTML')), 'блок виден только при включённых регионах');
+  assert.ok(/S\.cfg\.shop\.rates=cleanRates\(S\.cfg\.shop\.rates,S\.cfg\.shop\.regions\);[\s\S]{0,90}paintRates\(\)/.test(html) && /S\.cfg\.shop\.rates=\{\};/.test(html), 'снятый регион теряет цены, список перерисовывается');
+  assert.ok(/else if\(t\.dataset\.rate!==undefined\)/.test(html) && /if\(v===''\|\|!isFinite\(n\)\|\|n<0\)/.test(html), 'пустое поле убирает значение');
+  assert.equal((html.match(/^\.rrow\{/gm) || []).length, 1, 'прежний .rrow отчётов не тронут');
+  assert.ok(/^\.rtrow\{/m.test(html) && /^\.rtgrid\{/m.test(html), 'свои классы вёрстки');
 });
 
 /* ---------- итог ---------- */

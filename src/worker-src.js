@@ -154,6 +154,7 @@ function sanitizeCfg(d) {
   s.freeDeliveryFrom = Math.round(clampN(s.freeDeliveryFrom, 0, 1e9, 0));
   s.discounts = cleanDiscounts(s.discounts);
   s.regions = cleanRegions(s.regions);
+  s.rates = cleanRates(s.rates, s.regions);   // свои цена доставки, порог и минимум по регионам
   s.home = cleanRegion(s.home);
   s.category = cleanCat(s.category);
   s.bazaar = s.category === 'bazaar' ? cleanBz(s.bazaar) : '';   // базар выбирается только в категории «Базары»
@@ -343,9 +344,10 @@ function validateOrder(b, cfg, prod, stk) {
   const fm = validateForm(b.form, cfg);
   if (fm.err) return fm;
   // минимальная сумма и порог бесплатной доставки считаются по товарам до скидки, доставка к ним не прибавляется
-  const min = Number(cfg.shop.minOrder) || 0;
+  // у доставки в отмеченный регион могут быть свои минимум, цена и порог; самовывоз и доставка без региона по общим
+  const min = ratesFor(cfg.shop, fm.mode, fm.region).min;
   if (min > 0 && total < min) return { err: 'min_order', min };
-  const fee = deliveryFee(cfg, fm.mode, total);
+  const fee = deliveryFee(cfg, fm.mode, total, fm.region);
   const dc = orderDiscount(cfg, total);
   return { items, sub: total, disc: dc.amount, dpct: dc.pct, fee, total: total - dc.amount + fee, name: fm.name, phone: fm.phone, comment: fm.comment, mode: fm.mode, address: fm.address, region: fm.region, pickupAt: fm.pickupAt, loc: fm.loc };
 }
