@@ -42,7 +42,7 @@ async function toWebp(png, file) {
       const page = await ctx.newPage();
       const errs = [];
       page.on('pageerror', e => errs.push(e.message));
-      const st = {};
+      const st = { lang };
       await mockApi(page, sh.role, st, sh.data, lang);
       await page.goto('http://app.test' + sh.url);
       await page.waitForTimeout(sh.wait || 1300);
