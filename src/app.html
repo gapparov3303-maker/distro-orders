@@ -866,6 +866,20 @@ div.lgd{cursor:default}
 .cat.em{background:var(--surface-2);border-style:dashed}
 .cat.em .cic{background:var(--bg);color:var(--ink-2)}
 .cat .chev{flex:none;color:var(--ink-2)}
+.soc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 4px}
+.soc .sc{background:var(--surface);border:1.5px solid var(--edge);border-radius:12px;padding:8px 10px;min-width:0}
+.soc .sc b{display:block;font:700 20px/1.2 var(--f-display);font-variant-numeric:tabular-nums}
+.soc .sc span{display:block;margin-top:2px;font-size:12px;line-height:1.25;color:var(--ink-2);overflow-wrap:anywhere}
+.soc .sc.hot{background:var(--accent-soft);border-color:var(--accent)}
+.socn{margin:0 2px 14px;font-size:12px;color:var(--ink-2)}
+.pophd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 8px}
+.pophd h2{margin:0;font:700 18px var(--f-display)}
+.pophd span{font-size:12px;color:var(--ink-2)}
+.poprow{display:flex;gap:10px;overflow-x:auto;margin:0 -16px;padding:4px 16px 12px;scroll-snap-type:x proximity;scroll-padding:0 16px;-webkit-overflow-scrolling:touch}
+.popc{flex:0 0 138px;scroll-snap-align:start;appearance:none;padding:0;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
+.popb{padding:10px 12px 12px;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.popc .pn{font-size:12px;color:var(--ink-2)}
+.pcard.hl{outline:3px solid var(--accent);outline-offset:2px}
 .srow{padding:12px 0;border-bottom:1px solid var(--line)}
 .srow:last-child{border-bottom:0}
 .srow b{display:block;margin-bottom:8px;font-size:15px}
@@ -932,7 +946,7 @@ const S={
   rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0},
   an:{days:30,sh:'',tab:'cats',sort:'sum',all:false,data:null,shops:[],err:false,seq:0},
   did:'',epoch:0,switching:false,leaving:false,vam:false,off:false,otherCart:null,
-  hub:{title:'',about:{ru:'',uz:'',phone:'',tg:'',ig:''},shops:[],me:null,terrs:[],bazaars:[],loaded:false,err:false},
+  hub:{title:'',about:{ru:'',uz:'',phone:'',tg:'',ig:''},shops:[],me:null,terrs:[],bazaars:[],pop:{b:0,items:[]},loaded:false,err:false},
   ab:{open:null},
   wh:{ok:false,err:false,rate:500,info:null,orders:[],tab:'wait',q:'',kg:{},ed:{},open:{},busy:''},
   fb:{kind:'',text:'',busy:false,sent:'',err:''},   // «Написать нам»: форма обращения
@@ -4529,6 +4543,8 @@ const ABOUT_ROLES=[
  secs:[
  {img:'shop-list',h:['Выбор продавца','Sotuvchini tanlash'],cap:['Главный экран: категории','Bosh ekran: kategoriyalar'],li:[
   ['На главном экране пять категорий: Производители, Импортеры, Оптовики, Дистрибьюторы и Базары. У каждой видно, сколько в ней продавцов; пустые помечены «Пока пусто».','Bosh ekranda beshta kategoriya: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar va Bozorlar. Har birida nechta sotuvchi borligi koʻrinadi; boʻshlari «Hozircha boʻsh» deb belgilangan.'],
+  ['Над категориями три плашки с цифрами: сколько продавцов, товаров и покупателей с заказами за последние 30 дней. Они появляются, когда покупателей уже достаточно много; имён нигде не показывается.','Kategoriyalar ustida uchta raqam: nechta sotuvchi, tovar va soʻnggi 30 kunda buyurtma bergan xaridor borligi. Ular xaridorlar yetarlicha koʻp boʻlganda chiqadi; ismlar hech qayerda koʻrsatilmaydi.'],
+  ['Под категориями блок «Популярное сейчас»: что чаще заказывали за неделю у всех продавцов. Цифры обновляются раз в сутки, утром. Нажмите на товар: откроется каталог его продавца, а товар будет обведён.','Kategoriyalar ostida «Hozir mashhur» bloki: bir hafta ichida barcha sotuvchilarda koʻproq buyurtma qilingan tovarlar. Raqamlar kuniga bir marta, ertalab yangilanadi. Tovarni bosing: uning sotuvchisi katalogi ochiladi, tovar esa belgilab koʻrsatiladi.'],
   ['Нажмите на категорию: откроется список её продавцов (название, сколько товаров, есть ли доставка и минимальная сумма заказа). Кнопка «← Категории» вернёт назад.','Kategoriyani bosing: uning sotuvchilari roʻyxati ochiladi (nomi, tovarlar soni, yetkazib berish bor-yoʻqligi va minimal buyurtma summasi). «← Kategoriyalar» tugmasi orqaga qaytaradi.'],
   ['В категории «Базары» сначала выберите базар, потом продавца. Продавцы, которые не указали базар, собраны в группе «Без базара».','«Bozorlar» kategoriyasida avval bozorni, keyin sotuvchini tanlang. Bozorini koʻrsatmaganlar «Bozor koʻrsatilmagan» guruhida.'],
   ['Нажмите «Открыть каталог» у нужного. В одной корзине бывают товары только одного продавца.','Kerakli sotuvchida «Katalogni ochish» tugmasini bosing. Bitta savatda faqat bitta sotuvchining tovarlari boʻladi.'],
@@ -4758,6 +4774,7 @@ function renderAbout(){
   const a=S.hub.about||{},d=ABOUT_DEF(),intro=(LANG==='uz'?a.uz:a.ru)||(LANG==='uz'?d.uz:d.ru),mine=aboutMine(),ok=aboutOpenKey();
   let h='<div class="wrap page abt"><div class="abhead"><span class="logo big" role="img" aria-label="Sarbon"></span><div><div class="eyebrow">'+L('Оптовая площадка в Telegram','Telegramdagi ulgurji savdo maydonchasi')+'</div><h1>'+L('О нас','Biz haqimizda')+'</h1></div></div>';
   h+='<div class="card"><p class="abintro">'+esc(intro)+'</p>'+aboutContactsHTML(a)+'</div>';
+  h+=socHTML();
   h+='<h2 class="abtitle">'+L('Что умеет приложение: по ролям','Ilova nimalarga qodir: rollar boʻyicha')+'</h2><div class="unit abhint">'+L('Нажмите на свою роль, чтобы прочитать подробно. Нажмите на картинку, чтобы открыть её на весь экран.','Batafsil oʻqish uchun oʻz rolingizni bosing. Rasmni butun ekranga ochish uchun uni bosing.')+'</div>';
   ABOUT_ROLES.filter(r=>!r.only||(r.only==='owner'&&isOwner()&&!viewAs())).forEach(r=>{h+=aboutRoleHTML(r,ok===r.k,mine)});
   view.innerHTML=h+'</div>';
@@ -5052,6 +5069,51 @@ function catsHTML(){
       +'<span class="ct"><b>'+esc(shopCatName(k))+'</b><span>'+(n?esc(L(n+' '+plDistr(n),n+' ta sotuvchi')):esc(L('Пока пусто','Hozircha boʻsh')))+'</span></span>'+(n?'<span class="cn">'+n+'</span>':'')+chev+'</button>';
   }).join('')+'</div>';
 }
+/* Витрина для покупателей: сколько магазинов заказывает и что чаще берут за неделю. Площадка считает раз в сутки и присылает только числа и товары, без имён.
+   Мало данных — сервер присылает b=0 и пустой список, и блоки не рисуются. */
+function cleanPop(v){
+  const o=v&&typeof v==='object'?v:{};
+  const items=(Array.isArray(o.items)?o.items:[]).filter(x=>x&&typeof x==='object'&&validDid(x.did)&&x.id&&Number(x.n)>0).slice(0,5);
+  return {b:Math.max(0,Math.round(Number(o.b)||0)),items};
+}
+const plBuyerOrd=n=>{const a=n%100,b=n%10;return a>=11&&a<=14?'покупателей с заказами':b===1?'покупатель с заказом':b>=2&&b<=4?'покупателя с заказами':'покупателей с заказами'};
+const plZakaz=n=>{const a=n%100,b=n%10;return a>=11&&a<=14?'заказов':b===1?'заказ':b>=2&&b<=4?'заказа':'заказов'};
+function socHTML(){
+  const h=S.hub,p=h.pop;
+  if(!h.loaded||!p||!(p.b>0)||!h.shops.length)return '';
+  const n=h.shops.length,it=h.shops.reduce((t,r)=>t+(Number(r.items)||0),0);
+  return '<div class="soc" role="group" aria-label="'+esc(L('Площадка в цифрах','Maydonchaning raqamlari'))+'">'
+    +'<div class="sc"><b>'+num(n)+'</b><span>'+esc(L(plDistr(n),'sotuvchi'))+'</span></div>'
+    +'<div class="sc"><b>'+num(it)+'</b><span>'+esc(L(plTovar(it),'tovar'))+'</span></div>'
+    +'<div class="sc hot"><b>'+num(p.b)+'</b><span>'+esc(L(plBuyerOrd(p.b),'xaridor buyurtma bergan'))+'</span></div></div>'
+    +'<div class="socn">'+esc(L('Покупатели: за последние 30 дней','Xaridorlar: soʻnggi 30 kun ichida'))+'</div>';
+}
+function popHTML(){
+  const h=S.hub,items=h.pop&&h.pop.items||[];
+  if(!h.loaded||!items.length||!h.shops.length)return '';
+  const ids=new Set(h.shops.map(r=>r.id)),list=items.filter(x=>ids.has(x.did));
+  if(list.length<3)return '';
+  return '<div class="pophd"><h2>'+L('Популярное сейчас','Hozir mashhur')+'</h2><span>'+L('за неделю','bir hafta ichida')+'</span></div><div class="poprow">'
+    +list.map(x=>{
+      const w=weightLabel(x);
+      return '<button type="button" class="pcard popc" data-act="openpop" data-id="'+esc(x.did)+'" data-p="'+esc(x.id)+'"><div class="pimg">'
+        +(x.pv?'<img src="'+imgUrl(x,1,x.did)+'" alt="" loading="lazy" decoding="async">':'<span class="ph" aria-hidden="true">📦</span>')+'</div>'
+        +'<div class="popb"><div class="pname">'+esc(nm(x))+'</div>'+(w?'<div class="pw">'+esc(w)+'</div>':'')
+        +'<div class="pprice">'+money(x.price)+'</div><div class="pn">'+esc(L(num(x.n)+' '+plZakaz(x.n),num(x.n)+' ta buyurtma'))+'</div></div></button>';
+    }).join('')+'</div>';
+}
+/* Нажали на популярный товар: открывается каталог продавца, товар показан по центру и обведён */
+async function openPop(did,pid){
+  if(!(await enterShop(did,'shop')))return;
+  if(S.shopCat!=='all'){S.shopCat='all';renderShop()}
+  setTimeout(()=>{
+    const el=document.getElementById('pc-'+pid);
+    if(!el)return;
+    el.scrollIntoView({block:'center'});
+    el.classList.add('hl');
+    setTimeout(()=>el.classList.remove('hl'),2000);
+  },60);
+}
 /* Базары: внутри категории «Базары» продавцы разложены по базарам, список ведёт владелец. Магазин видит все базары владельца, и пустые тоже (с пометкой «Пока пусто»).
    Без базара (или с удалённым) — группа «Без базара», но только когда в ней есть продавцы. Если владелец не добавил ни одного базара, групп нет: сразу список продавцов. */
 const bzList=()=>S.hub.bazaars||[];
@@ -5109,7 +5171,9 @@ function renderShops(){
     if(!ck&&sells.length&&(!as||as==='seller'))out+='<div class="row-btns" style="margin-bottom:14px">'+sells.map(x=>'<button type="button" class="btn ghost sm" data-act="sellerof" data-id="'+esc(x.id)+'">'+esc(L('Панель продавца: ','Sotuvchi paneli: ')+x.name)+'</button>').join('')+'</div>';
     const dels=me&&me.delivers||[];
     if(!ck&&dels.length&&(!as||as==='courier'))out+='<div class="row-btns" style="margin-bottom:14px">'+dels.map(x=>'<button type="button" class="btn ghost sm" data-act="courierof" data-id="'+esc(x.id)+'">'+esc(L('Доставка: ','Yetkazib berish: ')+x.name)+'</button>').join('')+'</div>';
+    if(!ck)out+=socHTML();
     out+=ck?catListHTML(ck):catsHTML();
+    if(!ck)out+=popHTML();
   }
   view.innerHTML=out+'</div>';
 }
@@ -5121,7 +5185,7 @@ async function loadHub(){
   }
   const d=r.data,h=S.hub;
   const ab=d.about&&typeof d.about==='object'?d.about:{};
-  const next={title:d.title||'',about:{ru:String(ab.ru||''),uz:String(ab.uz||''),phone:String(ab.phone||''),tg:String(ab.tg||''),ig:String(ab.ig||'')},shops:Array.isArray(d.shops)?d.shops:[],me:d.me||null,terrs:Array.isArray(d.terrs)?d.terrs:[],bazaars:Array.isArray(d.bazaars)?d.bazaars:[]};
+  const next={title:d.title||'',about:{ru:String(ab.ru||''),uz:String(ab.uz||''),phone:String(ab.phone||''),tg:String(ab.tg||''),ig:String(ab.ig||'')},shops:Array.isArray(d.shops)?d.shops:[],me:d.me||null,terrs:Array.isArray(d.terrs)?d.terrs:[],bazaars:Array.isArray(d.bazaars)?d.bazaars:[],pop:cleanPop(d.pop)};
   if(d.me){
     S.auth=true;S.uid=d.me.id;
     // регион: что выбрано на этом телефоне, то главнее; если здесь пусто, берём с площадки
@@ -5129,7 +5193,7 @@ async function loadHub(){
     if(sr&&!S.region){S.region=sr;saveRegionLocal()}
     else if(S.region&&sr!==S.region&&!S.regSent){S.regSent=true;api('PUT','/api/hub/region',{region:S.region})}
   }
-  const same=h.loaded&&JSON.stringify([h.title,h.about,h.shops,h.me,h.terrs,h.bazaars])===JSON.stringify([next.title,next.about,next.shops,next.me,next.terrs,next.bazaars]);
+  const same=h.loaded&&JSON.stringify([h.title,h.about,h.shops,h.me,h.terrs,h.bazaars,h.pop])===JSON.stringify([next.title,next.about,next.shops,next.me,next.terrs,next.bazaars,next.pop]);
   Object.assign(h,next,{loaded:true,err:false});
   if(isOwner()&&h.me&&typeof h.me.fbn==='number')S.own.fbn=h.me.fbn;   // число новых обращений у владельца
   if(same)return true;
@@ -6452,6 +6516,7 @@ document.addEventListener('click',e=>{
   else if(a==='dispres')dispResolve(t.dataset.did,Number(t.dataset.uid),Number(t.dataset.n),t.dataset.cid||'')
   else if(a==='ownreload'){S.own.loaded=false;S.own.err=false;renderOwner();loadOwner()}
   else if(a==='openshop')enterShop(t.dataset.id,'shop');
+  else if(a==='openpop')openPop(t.dataset.id,t.dataset.p);
   else if(a==='opencartshop')enterShop(t.dataset.id,'shop',true);
   else if(a==='sellerof')enterShop(t.dataset.id,'seller');
   else if(a==='ownadd')ownAdd();
