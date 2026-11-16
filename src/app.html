@@ -899,6 +899,11 @@ div.lgd{cursor:default}
 .asbar[hidden]{display:none}
 .asbar b{color:var(--ink);font-weight:700}
 .asbar .btn{flex:none}
+.hsbar{background:var(--accent-soft);border-bottom:1px solid var(--line)}
+.hsbar[hidden]{display:none}
+.hsbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;padding-top:9px;padding-bottom:9px}
+.hsbar p{flex:1 1 210px;margin:0;font-size:13px;line-height:1.35;color:var(--ink)}
+.hsbar .hsb{display:flex;gap:8px;flex:none}
 /* «Смотреть как»: одна строка в самом низу меню, роли раскрываются списком по нажатию */
 .mas{margin:14px 12px 18px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .masb{appearance:none;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:48px;padding:8px 10px;background:transparent;border:0;font:inherit;font-size:13px;color:var(--ink-2);text-align:left;cursor:pointer}
@@ -979,6 +984,7 @@ div.lgd{cursor:default}
   <div class="mrole" id="mrole" hidden></div>
   <nav class="mnav" id="nav"></nav>
 </aside>
+<div class="hsbar" id="hsbar" hidden></div>
 <main id="view"></main>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
@@ -1268,7 +1274,35 @@ function switchLang(){
   try{localStorage.setItem('sh-lang',next)}catch(e){}
   document.documentElement.setAttribute('lang',next);
   render();
+  hsPaint();
 }
+/* Значок на главном экране телефона: плашка над каталогом, один раз на устройство. Только если Telegram это умеет (Mini Apps 8.0+) и значка ещё нет. */
+const HS_KEY='sh-hs';
+function hsSeen(){try{return !!localStorage.getItem(HS_KEY)}catch(e){return false}}
+function hsMark(){try{localStorage.setItem(HS_KEY,'1')}catch(e){}}
+function hsHide(){const b=document.getElementById('hsbar');if(b){b.hidden=true;b.innerHTML=''}}
+function hsPaint(){
+  const b=document.getElementById('hsbar');
+  if(!b||b.hidden)return;
+  b.innerHTML='<div class="wrap"><p>'+esc(L('Добавьте '+hubTitle()+' на главный экран: заказывать будет быстрее','Buyurtma berish tezroq boʻlishi uchun '+hubTitle()+'ni bosh ekranga qoʻshing'))+'</p>'
+    +'<div class="hsb"><button type="button" class="btn sm" data-act="hsadd">'+L('Добавить','Qoʻshish')+'</button><button type="button" class="btn ghost sm" data-act="hsno">'+L('Не сейчас','Hozir emas')+'</button></div></div>';
+}
+function hsInit(){
+  const tg=S.tg;
+  if(!tg||typeof tg.addToHomeScreen!=='function'||typeof tg.checkHomeScreenStatus!=='function'||hsSeen())return;
+  try{
+    if(typeof tg.isVersionAtLeast==='function'&&!tg.isVersionAtLeast('8.0'))return;
+    tg.checkHomeScreenStatus(st=>{
+      if((st!=='missed'&&st!=='unknown')||hsSeen())return;
+      const b=document.getElementById('hsbar');
+      if(!b)return;
+      hsMark();
+      b.hidden=false;hsPaint();
+    });
+    if(typeof tg.onEvent==='function')tg.onEvent('homeScreenAdded',hsHide);
+  }catch(e){}
+}
+function hsAdd(){hsHide();try{S.tg.addToHomeScreen()}catch(e){}}
 
 /* меню: разделы по группам; у «Продавца» внутри раскрываются его пять разделов */
 const sellerSubs=()=>{
@@ -6998,6 +7032,8 @@ document.addEventListener('click',e=>{
   }
   else if(a==='menu')menuSet(!menuIsOpen());
   else if(a==='menuclose')menuSet(false);
+  else if(a==='hsadd')hsAdd();
+  else if(a==='hsno')hsHide();
   else if(a==='viewas')setViewAs(t.dataset.v||'');
   else if(a==='vasw'){S.vam=!S.vam;renderNav();if(S.vam){const l=$('#masl');if(l)try{l.scrollIntoView({block:'nearest'})}catch(e){}}}
   else if(a==='msub'){const it=menuGroups().reduce((r,g)=>r.concat(g[1]),[]).find(x=>x[0]===t.dataset.v),cur=S.view==='shops'?'shop':S.view;S.msub=it&&menuSubOpen(it,cur)?'':t.dataset.v;S.msub2=null;renderNav()}
@@ -7745,6 +7781,7 @@ function tick(){
   if(hp)S.shopStep='list';
   render();
   if(hp)hlProd(hp);
+  hsInit();
   if(v==='debt')loadMyDebt(true);
   if(v==='owner')loadOwner();
   if(v==='base')loadBase(true);

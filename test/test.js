@@ -10656,6 +10656,59 @@ await t('открытие по ссылке из канала: start_param «p_�
   assert.ok(/function openPop\(did,pid\)\{[^}]*hlProd\(pid\)/.test(fn('openPop')), '«Популярное сейчас» идёт тем же путём');
 });
 
+await t('значок на главном экране: плашка один раз на устройство, только если Telegram умеет и значка нет; «Добавить» зовёт Telegram, «Не сейчас» закрывает; два языка', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf("const HS_KEY="), html.indexOf('/* меню: разделы по группам'));
+  assert.ok(src.length > 600 && /function hsAdd\(\)/.test(src) && !/function renderNav/.test(src), 'кусок кода найден');
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const mk = (tg, { uz = false, store = {}, lsThrow = false, bar = true, title = 'Sarbon' } = {}) => {
+    const el = bar ? { hidden: true, innerHTML: '' } : null;
+    const ls = { getItem: k => { if (lsThrow) throw new Error('нет доступа'); return k in store ? store[k] : null; }, setItem: (k, v) => { if (lsThrow) throw new Error('нет доступа'); store[k] = String(v); } };
+    const S = { tg };
+    const f = new Function('S', 'localStorage', 'document', 'L', 'esc', 'hubTitle', src + '\nreturn {hsInit,hsPaint,hsAdd,hsHide,hsSeen};')(S, ls, { getElementById: id => id === 'hsbar' ? el : null }, (ru, u) => uz ? u : ru, esc, () => title);
+    return Object.assign({ el, store, S }, f);
+  };
+  const tgWith = (status, extra) => { const t = { calls: [], events: {}, isVersionAtLeast: v => { t.calls.push('ver ' + v); return true; }, checkHomeScreenStatus: cb => { t.calls.push('check'); cb(status); }, addToHomeScreen: () => t.calls.push('add'), onEvent: (n, fn) => { t.events[n] = fn; } }; return Object.assign(t, extra || {}); };
+  // значка нет: плашка на русском, помечено «показано», кнопки на месте
+  let tg = tgWith('missed'), w = mk(tg);
+  w.hsInit();
+  assert.equal(w.el.hidden, false);
+  assert.ok(/Добавьте Sarbon на главный экран: заказывать будет быстрее/.test(w.el.innerHTML) && />Добавить</.test(w.el.innerHTML) && />Не сейчас</.test(w.el.innerHTML), w.el.innerHTML);
+  assert.ok(/data-act="hsadd"/.test(w.el.innerHTML) && /data-act="hsno"/.test(w.el.innerHTML));
+  assert.equal(w.store['sh-hs'], '1', 'на этом устройстве плашка больше не покажется');
+  assert.ok(tg.calls.includes('ver 8.0') && tg.calls.includes('check'));
+  // узбекский, статус «неизвестно» тоже показывает; название берётся с площадки
+  w = mk(tgWith('unknown'), { uz: true, title: 'Sarbon Optom' }); w.hsInit();
+  assert.equal(w.el.hidden, false);
+  assert.ok(/Buyurtma berish tezroq boʻlishi uchun Sarbon Optomni bosh ekranga qoʻshing/.test(w.el.innerHTML) && />Qoʻshish</.test(w.el.innerHTML) && />Hozir emas</.test(w.el.innerHTML), w.el.innerHTML);
+  w.S.tg = tgWith('missed'); w.hsPaint(); assert.ok(/data-act="hsadd"/.test(w.el.innerHTML), 'при смене языка плашка перерисовывается');
+  // значок уже есть, телефон не умеет, статус неизвестного вида: плашки нет и ничего не помечается
+  for (const st of ['added', 'unsupported', 'weird', undefined]) { w = mk(tgWith(st)); w.hsInit(); assert.equal(w.el.hidden, true, 'статус ' + st); assert.equal(w.store['sh-hs'], undefined); }
+  // уже показывали на этом устройстве: Telegram даже не спрашиваем
+  tg = tgWith('missed'); w = mk(tg, { store: { 'sh-hs': '1' } }); w.hsInit();
+  assert.equal(w.el.hidden, true); assert.ok(!tg.calls.includes('check'));
+  // старый Telegram, нет методов, нет Telegram вообще, нет места под плашку, нет доступа к памяти: ничего не падает
+  tg = tgWith('missed', { isVersionAtLeast: () => false }); w = mk(tg); assert.doesNotThrow(() => w.hsInit()); assert.equal(w.el.hidden, true); assert.ok(!tg.calls.includes('check'), 'версия ниже 8.0');
+  w = mk({ isVersionAtLeast: () => true }); assert.doesNotThrow(() => w.hsInit()); assert.equal(w.el.hidden, true);
+  w = mk(null); assert.doesNotThrow(() => w.hsInit());
+  w = mk(tgWith('missed'), { bar: false }); assert.doesNotThrow(() => w.hsInit()); assert.equal(w.store['sh-hs'], undefined, 'нет плашки — не считаем показанной');
+  w = mk(tgWith('missed'), { lsThrow: true }); assert.doesNotThrow(() => w.hsInit()); assert.equal(w.el.hidden, false, 'память недоступна — плашка всё равно работает');
+  w = mk(tgWith('missed', { checkHomeScreenStatus: () => { throw new Error('сбой'); } })); assert.doesNotThrow(() => w.hsInit());
+  // «Добавить»: плашка уходит и просит Telegram; «Не сейчас» и событие «значок добавлен» просто закрывают; сбой Telegram не ломает
+  tg = tgWith('missed'); w = mk(tg); w.hsInit(); tg.calls.length = 0;
+  w.hsAdd(); assert.equal(w.el.hidden, true); assert.equal(w.el.innerHTML, ''); assert.deepEqual(tg.calls, ['add']);
+  tg = tgWith('missed'); w = mk(tg); w.hsInit(); w.hsHide(); assert.equal(w.el.hidden, true); assert.ok(!tg.calls.includes('add'), '«Не сейчас» Telegram не трогает');
+  tg = tgWith('missed'); w = mk(tg); w.hsInit(); assert.equal(typeof tg.events.homeScreenAdded, 'function'); tg.events.homeScreenAdded(); assert.equal(w.el.hidden, true, 'значок добавили — плашка уходит');
+  tg = tgWith('missed', { addToHomeScreen: () => { throw new Error('сбой'); } }); w = mk(tg); w.hsInit(); assert.doesNotThrow(() => w.hsAdd());
+  // подключено: место над каталогом, кнопки, запуск после первого показа, перерисовка при смене языка, стили; в текстах нет запрещённых слов
+  assert.ok(/<div class="hsbar" id="hsbar" hidden><\/div>\s*<main id="view">/.test(html), 'плашка над каталогом, скрыта');
+  assert.ok(/a==='hsadd'\)hsAdd\(\)/.test(html) && /a==='hsno'\)hsHide\(\)/.test(html), 'кнопки подключены');
+  assert.ok(/render\(\);\s*if\(hp\)hlProd\(hp\);\s*hsInit\(\);/.test(html), 'запуск после первого показа экрана');
+  assert.ok(/function switchLang\(\)[\s\S]{0,300}hsPaint\(\);/.test(html), 'смена языка перерисовывает плашку');
+  assert.ok(/\.hsbar\[hidden\]\{display:none\}/.test(html) && /\.hsbar \.wrap\{[^}]*flex-wrap:wrap/.test(html), 'стили есть');
+  assert.ok(!/магазин|клиент|дистрибьютор/i.test(src), 'в видимых текстах нет «магазин», «клиент», «дистрибьютор»');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
