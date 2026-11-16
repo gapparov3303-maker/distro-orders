@@ -1524,6 +1524,9 @@ function debtRemindText(h, shop, today, ords) {
    Самих заказов в панели хранится не больше 150 завершённых, поэтому отчёты берут данные не из них. Старше 400 дней записи удаляются. */
 const RP_KEEP = 400;
 const RP_RANGES = [7, 30, 90, 365];
+/* Витрина площадки для покупателей: сколько магазинов заказывало за POP_BUYER_DAYS дней и какие товары чаще берут за POP_ITEM_DAYS дней.
+   Считается раз в сутки (утром) и лежит в Hub. Мало данных (меньше POP_MIN_BUYERS магазинов или меньше POP_MIN_ITEMS товаров) — блок не показывается. */
+const POP_BUYER_DAYS = 30, POP_ITEM_DAYS = 7, POP_MIN_BUYERS = 10, POP_MIN_ITEMS = 3, POP_SHOW = 5, POP_STALE_MS = 36 * 3600000;
 const RP_COVER = 14;          // на сколько дней считаем запас в подсказке «что пора закупать»
 const dayOf = iso => { const t = Date.parse(iso); return new Date((Number.isFinite(t) ? t : Date.now()) + SHOP_TZ * 3600000).toISOString().slice(0, 10); };
 const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
@@ -2294,6 +2297,32 @@ export class Shop {
       regions: cleanRegions(cfg.shop.regions), home: cleanRegion(cfg.shop.home), cat: cleanCat(cfg.shop.category), bz: cleanBz(cfg.shop.bazaar)
     };
   }
+  /* Для витрины площадки: кто заказывал за последние POP_BUYER_DAYS дней (только номера, без имён) и какие товары чаще берут за POP_ITEM_DAYS дней.
+     Берётся из дневных записей отчётов, то есть из выданных заказов. В список попадают только товары, которые можно заказать прямо сейчас. */
+  async popData() {
+    await this.ensureReports();
+    const today = dayOf(new Date().toISOString());
+    const from = addDays(today, -(POP_BUYER_DAYS - 1)), fromI = addDays(today, -(POP_ITEM_DAYS - 1));
+    const idx = ((await this.st.get('rpx')) || []).filter(d => d >= from);
+    const map = await this.getMany(idx.map(d => 'rp:' + d));
+    const uids = new Set(), cnt = new Map();
+    map.forEach((r, k) => {
+      if (!r || typeof r !== 'object') return;
+      (Array.isArray(r.cl) ? r.cl : []).forEach(c => { if (c && Number.isSafeInteger(c.uid)) uids.add(c.uid); });
+      if (k.slice(3) >= fromI && r.v === 2) (Array.isArray(r.items) ? r.items : []).forEach(x => { if (x && x.id && Number(x.n) > 0) cnt.set(String(x.id), (cnt.get(String(x.id)) || 0) + Number(x.n)); });
+    });
+    const top = [];
+    if (cnt.size && !(await this.isOff())) {
+      const items = (await this.pubProd(false)).items;
+      for (const it of items) {
+        const n = cnt.get(it.id);
+        if (!n || it.ms || it.on === false || it.av === 0 || !(Number(it.price) > 0)) continue;
+        top.push({ id: it.id, n, name: cleanStr(it.name, 60), uz: cleanStr(it.uz || '', 60), amount: Number(it.amount) || 0, unit: it.unit || '', price: Math.round(Number(it.price)), pv: it.pv || '' });
+      }
+      top.sort((x, y) => y.n - x.n || (x.id < y.id ? -1 : 1));
+    }
+    return { uids: [...uids], top: top.slice(0, POP_SHOW) };
+  }
   /* Есть ли такой базар в списке площадки (без площадки базаров нет). */
   async hubHasBz(id) {
     if (!this.env.HUB) return false;
@@ -2364,6 +2393,7 @@ export class Shop {
       const idx = await this.clientsIdx(), map = await this.getMany(idx.map(x => 'c:' + x));
       return json({ clients: idx.map(x => map.get('c:' + x)).filter(Boolean).map(c => ({ uid: c.uid, name: c.name, phone: c.phone, org: c.org, addr: (c.addrs || [])[0] || '' })) });
     }
+    if (path === '/__/pop') return json(await this.popData());
     // склад Sarbon: заказы в работе для кладовщика и приём заказа с весом
     if (path === '/__/wh-list') return json({ orders: (await this.getOrders((await this.st.get('act')) || [])).filter(o => NEXT[o.status]).map(whOrder) });
     if (path === '/__/wh-receive') return await this.whReceive(b);
@@ -4652,6 +4682,7 @@ export class Hub {
       await this.ensure();
       const origin = (await this.st.get('origin')) || '';
       let sent = 0, shops = 0;
+      try { await this.popBuild(); } catch (e) { console.error('pop build failed', e && e.message || e); }
       for (const rec of await this.allRecs()) {
         if (!rec.on) continue;
         try { const r = await shopCall(this.env, rec.id, '/__/morning', { origin }); shops++; sent += (r.data && r.data.sent) || 0; }
@@ -5637,10 +5668,45 @@ export class Hub {
     return verifyInitData(request.headers.get('x-init-data') || '', this.env.BOT_TOKEN);
   }
   /* Главный экран: дистрибьюторы, у которых есть товары и которые не отключены. Без входа через Telegram виден только список. */
+  /* --- витрина для покупателей: «магазинов заказывает» и «Популярное сейчас» --- */
+  /* Собирает у всех включённых продавцов, кто заказывал и что чаще берут, и кладёт в кэш. Вызывается утром по расписанию. */
+  async popBuild() {
+    const recs = (await this.allRecs()).filter(r => r.on && r.items > 0);
+    const buyers = new Set(), all = [];
+    for (let i = 0; i < recs.length; i += 8) {
+      await Promise.all(recs.slice(i, i + 8).map(async rec => {
+        try {
+          const d = (await shopCall(this.env, rec.id, '/__/pop', {})).data;
+          if (!d || typeof d !== 'object') return;
+          (Array.isArray(d.uids) ? d.uids : []).forEach(u => { if (Number.isSafeInteger(u)) buyers.add(u); });
+          (Array.isArray(d.top) ? d.top : []).forEach(x => all.push(Object.assign({}, x, { did: rec.id })));
+        } catch (e) { console.error('pop shop failed', rec.id, e && e.message || e); }
+      }));
+    }
+    all.sort((x, y) => y.n - x.n || (x.did + x.id < y.did + y.id ? -1 : 1));
+    const pop = { at: Date.now(), b: buyers.size, top: all.slice(0, POP_SHOW * 3) };
+    await this.st.put('pop', pop);
+    return pop;
+  }
+  /* Кэш витрины. Если его нет совсем или он старше 36 часов (расписание не сработало), собирает заново; одновременные запросы ждут один расчёт. */
+  async popGet() {
+    const c = await this.st.get('pop');
+    if (c && typeof c === 'object' && Date.now() - Number(c.at) < POP_STALE_MS) return c;
+    if (!this.popP) this.popP = this.popBuild().catch(e => { console.error('pop build failed', e && e.message || e); return c || null; }).finally(() => { this.popP = null; });
+    return await this.popP;
+  }
+  /* Что видят покупатели. Мало данных — поле пустое, и экран ничего не рисует: items пусто при меньше POP_MIN_ITEMS товаров, b = 0 при меньше POP_MIN_BUYERS магазинов. Продавцы, которых уже нет в списке, пропускаются. */
+  popPub(c, recs) {
+    if (!c || typeof c !== 'object') return { b: 0, items: [] };
+    const ids = new Set(recs.map(r => r.id));
+    const items = (Array.isArray(c.top) ? c.top : []).filter(x => ids.has(x.did)).slice(0, POP_SHOW);
+    return { b: Number(c.b) >= POP_MIN_BUYERS ? Number(c.b) : 0, items: items.length >= POP_MIN_ITEMS ? items : [] };
+  }
   async publicList(request) {
     const recs = (await this.allRecs()).filter(r => r.on && r.items > 0);
     const terrs = (await this.terrs()).map(t => ({ id: t.id, name: t.name }));
     const out = { title: await this.title(), about: await this.about(), shops: recs.map(pubRec), terrs, bazaars: await this.bazaars() };
+    out.pop = this.popPub(await this.popGet(), recs);
     const au = await this.auth(request);
     if (au.user) {
       await this.touchPerson(au.user);

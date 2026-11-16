@@ -9510,6 +9510,63 @@ await t('«О нас»: у каждой роли рамка «Почему Sarbo
   assert.ok(!/Оплата только при получении/.test(JSON.stringify(ROLES.find(x => x.k === 'shop'))), 'устаревшая фраза убрана');
 });
 
+/* ---------- витрина для покупателей: «покупателей с заказами» и «Популярное сейчас» ---------- */
+await t('витрина: раз в сутки утром площадка считает покупателей за 30 дней и топ товаров за неделю; мало данных — скрыто; личных данных нет', async () => {
+  const { sid, sid2 } = await twoShopWorld();
+  const pop = async () => (await jsonOf(await call('GET', '/api/shops'))).pop;
+  const buyers = [];
+  const order = async (i, sellerId, init, cart) => placeDone(sellerId, init, buyers[i], cart, { name: 'Покупатель Семь' + i, phone: '+998 90 700 00 0' + i });
+  assert.deepEqual(await pop(), { b: 0, items: [] }, 'пока заказов нет: пусто');
+  // 9 покупателей: в первых четырёх по три товара, у остальных только масло
+  for (let i = 0; i < 9; i++) buyers.push(newUser());
+  for (let i = 0; i < 9; i++) await order(i, sid, iD(), i < 4 ? [{ id: 'p1', qty: 1 }, { id: 'p2', qty: 1 }, { id: 'p4', qty: 1 }] : [{ id: 'p1', qty: 1 }]);
+  assert.deepEqual(await pop(), { b: 0, items: [] }, 'число считается раз в сутки: до утра витрина прежняя');
+  await runMorning();
+  let p = await pop();
+  assert.equal(p.b, 0, 'меньше 10 покупателей: число скрыто');
+  assert.deepEqual(p.items.map(x => [x.did, x.id, x.n]), [[sid, 'p1', 9], [sid, 'p2', 4], [sid, 'p4', 4]], 'товары: сначала те, что чаще заказывали; при равенстве по порядку');
+  // 10-й покупатель; трое покупают ещё и у второго продавца: покупатель считается один раз
+  buyers.push(newUser());
+  await order(9, sid, iD(), [{ id: 'p1', qty: 2 }]);
+  for (let i = 0; i < 3; i++) await order(i, sid2, iJ2(), [{ id: 'p4', qty: 1 }]);
+  await runMorning();
+  p = await pop();
+  assert.equal(p.b, 10, 'всего 10 разных покупателей, хотя заказов у двух продавцов больше');
+  assert.deepEqual(p.items.map(x => [x.did, x.id, x.n]), [[sid, 'p1', 10], [sid, 'p2', 4], [sid, 'p4', 4], [sid2, 'p4', 3]]);
+  const top = p.items[0];
+  assert.deepEqual([top.name, top.uz, top.amount, top.unit, top.price], ['Масло подсолнечное', 'Kungaboqar yogʻi', 5, 'l', 82000], 'для карточки: название на двух языках, вес, цена');
+  assert.deepEqual(Object.keys(top).sort(), ['amount', 'did', 'id', 'n', 'name', 'price', 'pv', 'unit', 'uz'], 'в ответе только данные товара');
+  const raw = JSON.stringify(await jsonOf(await call('GET', '/api/shops')));
+  assert.ok(!/Покупатель Семь|\+998 90 700|"uid"|"cl"/.test(raw), 'ни имён, ни телефонов, ни номеров покупателей');
+  // выключенного продавца в витрине нет
+  assert.equal((await call('PUT', '/api/hub/admin/shops/' + sid2, { init: iS(), body: { on: false } })).status, 200);
+  p = await pop();
+  assert.deepEqual(p.items.map(x => [x.did, x.id]), [[sid, 'p1'], [sid, 'p2'], [sid, 'p4']], 'выключенного продавца в витрине нет сразу, до утра ждать не надо');
+});
+
+await t('витрина на экране: плашки и «Популярное сейчас» на первом экране покупателя и в «О нас», пороги, нажатие открывает каталог продавца', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const wk = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  const num = (src, re) => Number((src.match(re) || [])[1]);
+  assert.equal(num(wk, /POP_BUYER_DAYS = (\d+)/), 30); assert.equal(num(wk, /POP_ITEM_DAYS = (\d+)/), 7);
+  assert.equal(num(wk, /POP_MIN_BUYERS = (\d+)/), 10); assert.equal(num(wk, /POP_MIN_ITEMS = (\d+)/), 3); assert.equal(num(wk, /POP_SHOW = (\d+)/), 5);
+  assert.ok(/'\/__\/morning'[\s\S]{0,400}popBuild\(\)/.test(wk), 'утренний запуск пересчитывает витрину');
+  const rs = fn('renderShops');
+  assert.ok(/if\(!ck\)out\+=socHTML\(\);\s*out\+=ck\?catListHTML\(ck\):catsHTML\(\);\s*if\(!ck\)out\+=popHTML\(\);/.test(rs), 'плашки над категориями, «Популярное» под ними, внутри категории их нет');
+  assert.ok(/h\+=socHTML\(\);/.test(fn('renderAbout')), 'те же плашки в «О нас»');
+  const so = fn('socHTML'), po = fn('popHTML');
+  assert.ok(/!\(p\.b>0\)/.test(so) && /Покупатели: за последние 30 дней/.test(so) && /Xaridorlar: soʻnggi 30 kun ichida/.test(so), 'плашки скрыты при b=0, период подписан');
+  assert.ok(/list\.length<3/.test(po) && /Популярное сейчас/.test(po) && /Hozir mashhur/.test(po) && /за неделю/.test(po) && /bir hafta ichida/.test(po), 'блок скрыт при меньше трёх товаров, заголовок и период на двух языках');
+  assert.ok(/data-act="openpop"/.test(po) && /imgUrl\(x,1,x\.did\)/.test(po), 'карточка ведёт к продавцу, фото берётся у своего продавца');
+  assert.ok(/a==='openpop'\)openPop\(/.test(html) && /enterShop\(did,'shop'\)/.test(fn('openPop')), 'нажатие открывает каталог');
+  assert.ok(/pop:cleanPop\(d\.pop\)/.test(html) && /h\.me,h\.terrs,h\.bazaars,h\.pop\]/.test(html), 'ответ площадки читается и сравнивается');
+  assert.ok(/scroll-padding:0 16px/.test(html) && /^\.popb\{/m.test(html) && !/class="pbody" data-act="openpop"/.test(html), 'своя вёрстка карточки, класс .pbody не занят');
+  // склонения: «покупатель с заказом» (RU) и без слов «магазин» и «клиент» в тексте
+  const sandbox = {}; new Function('o', html.match(/const plBuyerOrd=[^\n]+/)[0] + ';o.f=plBuyerOrd')(sandbox);
+  assert.deepEqual([11, 21, 22, 25, 120, 121].map(sandbox.f), ['покупателей с заказами', 'покупатель с заказом', 'покупателя с заказами', 'покупателей с заказами', 'покупателей с заказами', 'покупатель с заказом']);
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
