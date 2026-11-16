@@ -669,7 +669,15 @@ button.mtag{border:0;font-family:inherit;cursor:pointer}
 .trow .dtag{min-width:24px;text-align:center}
 .trow{flex-wrap:nowrap}.trow .btn.sm{flex:none;min-width:40px;padding:0 10px}
 .page>.search{margin-bottom:10px}
-.tsel{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0 10px}
+.pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0 6px}
+.pl{display:flex;align-items:center;gap:8px;min-width:0;min-height:40px;padding:8px 10px;border:1.5px solid var(--edge);border-radius:10px;background:var(--bg);font-size:14px;overflow-wrap:anywhere;cursor:pointer}
+.pl.on{background:var(--accent-soft);border-color:var(--accent)}
+.pl input{flex:none}
+.tline{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tline .t{min-width:0;font-size:14px;line-height:1.35}
+.tline .t small{display:block;color:var(--ink-2);font-size:12px;margin-bottom:1px}
+.tline .t b{font-weight:600;overflow-wrap:anywhere}
+.tline .btn{flex:none}
 .regbar select{width:100%}
 .hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .hrow h1{margin-bottom:0}
@@ -986,7 +994,7 @@ const S={
   ab:{open:null},
   wh:{ok:false,err:false,rate:500,info:null,orders:[],tab:'wait',q:'',kg:{},ed:{},open:{},busy:''},
   fb:{kind:'',text:'',busy:false,sent:'',err:''},   // «Написать нам»: форма обращения
-  own:{sec:'dist',dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
+  own:{sec:'dist',dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -2945,7 +2953,7 @@ function dvCardHTML(c){
     +btn('dvdl',L('Срок сдачи','Topshirish muddati'),'',open&&d.mode==='dl'?' aria-pressed="true"':'')
     +btn('dvhist',L('История','Tarix'))
     +(c.joined?btn('dvflag',c.credit?L('Долг: разрешён','Qarz: ruxsat'):L('Долг: запрещён','Qarz: taqiqlangan'),'',' data-k="credit"'):'')
-    +(c.joined?btn('dvflag',c.on?L('Отключить','Oʻchirish'):L('Включить','Yoqish'),'',' data-k="on"'):'')
+    +(c.joined?btn('dvflag',c.on?L('Отключить','Oʻchirib qoʻyish'):L('Включить','Yoqish'),'',' data-k="on"'):'')
     +btn('dvlink',c.joined?L('Новая ссылка','Yangi havola'):L('Обновить ссылку','Havolani yangilash'))
     +btn('dvdel',L('Удалить','Oʻchirish'),'dangerbtn')+'</div>';
   if(open&&d.mode==='hand'){
@@ -4999,7 +5007,7 @@ const ABOUT_ROLES=[
   ['Пункт «Проверка» собирает все новые товары продавцов в одном списке с названием продавца. Число на значке — сколько товаров ждёт решения.','«Tekshiruv» boʻlimi sotuvchilarning barcha yangi tovarlarini bitta roʻyxatga sotuvchi nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
   ['Исправьте ошибки в карточке сами или нажмите «Вернуть» и напишите причину: продавец её увидит. «Одобрить» открывает товар покупателям. Ваши товары одобряются сразу.','Kartochkadagi xatolarni oʻzingiz tuzating yoki «Qaytarish»ni bosib sababini yozing: sotuvchi uni koʻradi. «Tasdiqlash» tovarni xaridorlarga ochadi. Oʻzingizning tovarlaringiz darhol tasdiqlanadi.']]},
  {img:'ow-people',h:['Люди, агенты и территории','Odamlar, agentlar va hududlar'],cap:['Люди и территории','Odamlar va hududlar'],li:[
-  ['«Территории»: создайте районы и города, по которым работают агенты. «Агенты»: имя, территории и личный код (он показывается один раз); у каждого агента своя ссылка.','«Hududlar»: agentlar ishlaydigan tuman va shaharlarni yarating. «Agentlar»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi); har bir agentning oʻz havolasi bor.'],
+  ['«Территории»: создайте районы и города, по которым работают агенты. «Агенты»: список агентов; у каждого видно территории, их меняет кнопка «Изменить», есть «Новый код» и своя ссылка. «Добавить агента»: имя, территории и личный код (он показывается один раз).','«Hududlar»: agentlar ishlaydigan tuman va shaharlarni yarating. «Agentlar»: agentlar roʻyxati; har birining hududlari koʻrinadi, ularni «Oʻzgartirish» tugmasi almashtiradi, «Yangi kod» va oʻz havolasi bor. «Agent qoʻshish»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi).'],
   ['«Люди»: все, кто открывал приложение или писал боту, и их роли: владелец, продавец, агент, доставщик или покупатель.','«Odamlar»: ilovani ochgan yoki botga yozgan hamma va ularning rollari: ega, sotuvchi, agent, yetkazuvchi yoki xaridor.']]},
  {h:['Склад и Базары','Ombor va bozorlar'],li:[
   ['☰ → «Владелец» → «Люди и территории» → «Склад»: впишите имя кладовщика (можно привязать к одному базару), нажмите «Добавить кладовщика» и сохраните личный код: он показывается один раз. Кладовщика можно отключить, сменить ему базар или выдать новый код.','☰ → «Ega» → «Odamlar va hududlar» → «Ombor»: omborchi ismini yozing (bitta bozorga biriktirish mumkin), «Omborchi qoʻshish»ni bosing va shaxsiy kodni saqlang: u bir marta koʻrsatiladi. Omborchini oʻchirib qoʻyish, bozorini almashtirish yoki yangi kod berish mumkin.'],
@@ -6253,7 +6261,7 @@ async function commAddOwn(did){
 /* раздел владельца: каждый блок на своём экране, заходят в него из меню ☰ (категория → подраздел) */
 const ownSecs=()=>[
   ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['cats',L('Категории','Kategoriyalar'),L('Категории продавцов','Sotuvchi kategoriyalari')],['bz',L('Базары','Bozorlar'),L('Базары','Bozorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить продавца','Sotuvchi qoʻshish')]]],
-  ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['wh',L('Склад','Ombor'),L('Склад','Ombor')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
+  ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['agadd',L('Добавить агента','Agent qoʻshish'),L('Добавить агента','Agent qoʻshish')],['wh',L('Склад','Ombor'),L('Склад','Ombor')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
   ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
   ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База покупателей','Xaridorlar bazasi'),L('База покупателей','Xaridorlar bazasi')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]]
 ];
@@ -6661,7 +6669,7 @@ function ownPeopleHTML(part){
   h+=(p.wh||[]).map(w=>'<div class="bcard"><div class="hrow"><h3>'+esc(w.name)+'</h3><span class="dtag">'+(w.on?L('работает','ishlaydi'):L('отключён','oʻchirilgan'))+'</span></div>'
     +'<div class="dmeta">'+esc(w.used?L('вошёл по коду','kod bilan kirgan'):L('ещё не входил','hali kirmagan'))+'</div>'
     +'<label class="lab" for="whbz-'+esc(w.id)+'">'+L('Какой базар принимает','Qaysi bozorni qabul qiladi')+'</label><select id="whbz-'+esc(w.id)+'" data-whbz="'+esc(w.id)+'"'+dis+'>'+bzOpts(w.bz||'')+'</select>'
-    +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn ghost sm" data-act="whon" data-id="'+esc(w.id)+'"'+dis+'>'+(w.on?L('Отключить','Oʻchirish'):L('Включить','Yoqish'))+'</button>'
+    +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn ghost sm" data-act="whon" data-id="'+esc(w.id)+'"'+dis+'>'+(w.on?L('Отключить','Oʻchirib qoʻyish'):L('Включить','Yoqish'))+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="whcode" data-id="'+esc(w.id)+'"'+dis+'>'+L('Новый код','Yangi kod')+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="whdel" data-id="'+esc(w.id)+'"'+dis+'>'+L('Удалить','Oʻchirish')+'</button></div></div>').join('');
   h+='<div class="form" style="margin-top:12px"><div><label class="lab" for="o-wname">'+L('Имя кладовщика','Omborchi ismi')+'</label><input type="text" id="o-wname" data-own="wname" maxlength="60" value="'+esc(o.wname)+'" autocomplete="off">'+hintD('Как вы зовёте кладовщика. Пример: Салим.','Omborchini qanday chaqirasiz. Masalan: Salim.')+'</div>'
@@ -6669,27 +6677,48 @@ function ownPeopleHTML(part){
     +(bzList().length?'<div class="full"><label class="lab" for="o-wbz">'+L('Какой базар принимает','Qaysi bozorni qabul qiladi')+'</label><select id="o-wbz" data-own="wbz">'+bzOpts(o.wbz)+'</select></div>':'')+'</div>'
     +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="whadd"'+dis+'>'+L('Добавить кладовщика','Omborchi qoʻshish')+'</button></div>';
   }
-  else if(part==='agents'){
+  else if(part==='agents'||part==='agadd'){
   h+=o.perr?'<div class="err" role="alert" style="margin-bottom:10px">'+esc(o.perr)+'</div>':'';
-  h+='<div class="card"><h3>'+L('Агенты','Agentlar')+'</h3><div class="unit">'+L('Каждому агенту вы даёте личный код. Он пишет боту «/agent КОД», в приложении открывается вкладка «База». Агент видит покупателей своих территорий и покупателей без территории.','Har bir agentga shaxsiy kod berasiz. U botga «/agent KOD» deb yozadi, ilovada «Baza» boʻlimi ochiladi. Agent oʻz hududlaridagi va hududsiz xaridorlarni koʻradi.')+'</div>';
-  if(o.amade){
-    const m=o.amade;
-    h+='<div class="codebox" style="margin:12px 0"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Агент добавлен: ','Agent qoʻshildi: ')+m.name)+'</h3><div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его агенту.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni agentga yuboring.')+'</div><div class="mono">'+esc(m.code)+'</div>'
-      +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="">'+L('Копировать код','Kodni nusxalash')+'</button>'
-      +'<button type="button" class="btn ghost" data-act="copy" data-v="/agent '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/agent КОД»','«/agent KOD» nusxalash')+'</button></div>'
-      +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="amadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
-  }
-  h+=p.agents.map(a=>'<div class="bcard"><div class="hrow"><h3>'+esc(a.name)+'</h3><span class="dtag">'+(a.on?L('работает','ishlaydi'):L('отключён','oʻchirilgan'))+'</span></div>'
+  const tn=p.terr.length,tids=new Set(p.terr.map(t=>t.id));
+  const cnt=k=>L('выбрано '+k+' из '+tn,'tanlandi: '+k+' / '+tn);
+  const chip=(t,on,attr)=>'<label class="pl'+(on?' on':'')+'"><input type="checkbox" '+attr+(on?' checked':'')+dis+'> '+esc(t.name)+'</label>';
+  const made=m=>'<div class="codebox" style="margin:12px 0"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Агент добавлен: ','Agent qoʻshildi: ')+m.name)+'</h3><div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его агенту.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni agentga yuboring.')+'</div><div class="mono">'+esc(m.code)+'</div>'
+    +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="">'+L('Копировать код','Kodni nusxalash')+'</button>'
+    +'<button type="button" class="btn ghost" data-act="copy" data-v="/agent '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/agent КОД»','«/agent KOD» nusxalash')+'</button></div>'
+    +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="amadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
+  if(part==='agents'){
+  h+='<p class="lead">'+L('Каждому агенту вы даёте личный код. Он пишет боту «/agent КОД», в приложении открывается вкладка «База». Агент видит покупателей своих территорий и покупателей без территории.','Har bir agentga shaxsiy kod berasiz. U botga «/agent KOD» deb yozadi, ilovada «Baza» boʻlimi ochiladi. Agent oʻz hududlaridagi va hududsiz xaridorlarni koʻradi.')+'</p>';
+  if(o.amade)h+=made(o.amade);
+  if(!p.agents.length)h+='<div class="empty"><b>'+L('Агентов пока нет','Hozircha agentlar yoʻq')+'</b>'+L('Добавьте первого агента.','Birinchi agentni qoʻshing.')+'</div>';
+  h+=p.agents.map(a=>{
+    const mine=a.terr.filter(id=>tids.has(id)),open=!!o.agopen[a.id];
+    const names=p.terr.filter(t=>mine.includes(t.id)).map(t=>t.name);
+    const sum=!mine.length?L('не выбраны','tanlanmagan'):mine.length===tn?L('все '+tn,'barchasi: '+tn):names.length<=2?names.join(', '):names.slice(0,2).join(', ')+L(' и ещё '+(names.length-2),' va yana '+(names.length-2)+' ta');
+    return '<div class="bcard"><div class="hrow"><h3>'+esc(a.name)+'</h3><span class="dtag">'+(a.on?L('работает','ishlaydi'):L('отключён','oʻchirilgan'))+'</span></div>'
     +'<div class="dmeta">'+esc(L('покупателей: '+a.n+' · ','xaridorlar: '+a.n+' · ')+(a.used?L('вошёл по коду','kod bilan kirgan'):L('ещё не входил','hali kirmagan')))+'</div>'
-    +(p.terr.length?'<div class="tsel" role="group" aria-label="'+esc(L('Территории агента','Agent hududlari'))+'">'+p.terr.map(t=>'<label class="chk"><input type="checkbox" data-agterr="'+esc(a.id+':'+t.id)+'"'+(a.terr.includes(t.id)?' checked':'')+dis+'> '+esc(t.name)+'</label>').join('')+'</div>':'')
-    +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="agenton" data-id="'+esc(a.id)+'"'+dis+'>'+(a.on?L('Отключить','Oʻchirish'):L('Включить','Yoqish'))+'</button>'
+    +(tn?(open
+      ?'<div class="tline"><div class="t"><small>'+esc(L('Территории','Hududlar'))+': '+esc(cnt(mine.length))+'</small></div><button type="button" class="btn sm" data-act="agtopen" data-id="'+esc(a.id)+'">'+L('Готово','Tayyor')+'</button></div>'
+        +'<div class="pgrid" role="group" aria-label="'+esc(L('Территории агента','Agent hududlari'))+'">'+p.terr.map(t=>chip(t,a.terr.includes(t.id),'data-agterr="'+esc(a.id+':'+t.id)+'"')).join('')+'</div>'
+      :'<div class="tline"><div class="t"><small>'+esc(L('Территории','Hududlar'))+'</small><b>'+esc(sum)+'</b></div><button type="button" class="btn ghost sm" data-act="agtopen" data-id="'+esc(a.id)+'">'+L('Изменить','Oʻzgartirish')+'</button></div>'):'')
+    +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="agenton" data-id="'+esc(a.id)+'"'+dis+'>'+(a.on?L('Отключить','Oʻchirib qoʻyish'):L('Включить','Yoqish'))+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="agentcode" data-id="'+esc(a.id)+'"'+dis+'>'+L('Новый код','Yangi kod')+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="agentdel" data-id="'+esc(a.id)+'"'+dis+'>'+L('Удалить','Oʻchirish')+'</button>'
-    +(a.link?'<button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(a.link)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Ссылка агента','Agent havolasi')+'</button>':'')+'</div></div>').join('');
-  h+='<div class="form" style="margin-top:12px"><div><label class="lab" for="o-aname">'+L('Имя агента','Agent ismi')+'</label><input type="text" id="o-aname" data-own="aname" maxlength="60" value="'+esc(o.aname)+'" autocomplete="off">'+hintD('Как вы зовёте агента. Пример: Бобур.','Agentni qanday chaqirasiz. Masalan: Bobur.')+'</div>'
+    +(a.link?'<button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(a.link)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Ссылка агента','Agent havolasi')+'</button>':'')+'</div></div>';
+  }).join('');
+  h+='<div class="row-btns" style="margin-top:4px"><button type="button" class="btn" data-act="otab" data-t="agadd">'+L('Добавить агента','Agent qoʻshish')+'</button></div>';
+  }
+  else{
+  if(o.amade&&!o.amade.reset)h+=made(o.amade);
+  else{
+  const all=tn&&o.aterr.length===tn;
+  h+='<p class="lead">'+L('Агент получает личный код и пишет боту «/agent КОД»: в приложении открывается вкладка «База». Агент видит покупателей своих территорий и покупателей без территории.','Agent shaxsiy kod oladi va botga «/agent KOD» deb yozadi: ilovada «Baza» boʻlimi ochiladi. Agent oʻz hududlaridagi va hududsiz xaridorlarni koʻradi.')+'</p>'
+    +'<div class="form"><div><label class="lab" for="o-aname">'+L('Имя агента','Agent ismi')+'</label><input type="text" id="o-aname" data-own="aname" maxlength="60" value="'+esc(o.aname)+'" autocomplete="off">'+hintD('Как вы зовёте агента. Пример: Бобур.','Agentni qanday chaqirasiz. Masalan: Bobur.')+'</div>'
     +'<div><label class="lab" for="o-acode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-acode" data-own="acode" maxlength="64" value="'+esc(o.acode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Агент отправит этот код боту командой «/agent КОД». Если оставить пустым, бот придумает код сам.','Agent bu kodni botga «/agent KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div></div>'
-    +(p.terr.length?'<div class="lab" style="margin-top:8px">'+L('Территории нового агента','Yangi agent hududlari')+'</div><div class="tsel">'+p.terr.map(t=>'<label class="chk"><input type="checkbox" data-aterr="'+esc(t.id)+'"'+(o.aterr.includes(t.id)?' checked':'')+'> '+esc(t.name)+'</label>').join('')+'</div>':'')
-    +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="agentadd"'+dis+'>'+L('Добавить агента','Agent qoʻshish')+'</button></div></div>';
+    +(tn?'<div class="tline" style="margin-top:12px"><div class="t"><small>'+esc(L('Территории нового агента','Yangi agent hududlari'))+'</small><b id="ag-cnt">'+esc(cnt(o.aterr.length))+'</b></div><button type="button" class="btn ghost sm" data-act="agtall">'+(all?L('Снять все','Hammasini olib tashlash'):L('Выбрать все','Hammasini tanlash'))+'</button></div>'
+      +'<div class="pgrid" role="group" aria-label="'+esc(L('Территории нового агента','Yangi agent hududlari'))+'">'+p.terr.map(t=>chip(t,o.aterr.includes(t.id),'data-aterr="'+esc(t.id)+'"')).join('')+'</div>':'')
+    +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn" data-act="agentadd"'+dis+'>'+L('Добавить агента','Agent qoʻshish')+'</button></div>';
+  }
+  }
   }
   return h;
 }
@@ -6916,7 +6945,9 @@ document.addEventListener('click',e=>{
       if(d){S.own.amade={name:ag.name,code:d.code,reset:true};renderOwner();window.scrollTo(0,0)}
     });
   }
-  else if(a==='amadeclose'){S.own.amade=null;renderOwner()}
+  else if(a==='amadeclose'){S.own.amade=null;if(S.own.sec==='agadd')ownOpen('agents');else renderOwner()}
+  else if(a==='agtopen'){const o=S.own;o.agopen[t.dataset.id]=!o.agopen[t.dataset.id];renderOwner()}
+  else if(a==='agtall'){const o=S.own,ids=(o.ppl?o.ppl.terr:[]).map(x=>x.id);o.aterr=o.aterr.length===ids.length?[]:ids;renderOwner()}
   else if(a==='agentdel'){
     const ag=S.own.ppl&&S.own.ppl.agents.find(x=>x.id===t.dataset.id);
     if(ag)askConfirm(L('Удалить агента «'+ag.name+'»? Доступ закроется сразу, его покупатели останутся в базе без агента.','Agent «'+ag.name+'» oʻchirilsinmi? Kirish darhol yopiladi, xaridorlari agentsiz bazada qoladi.'),()=>{peopleCall('DELETE','/agents/'+encodeURIComponent(ag.id)).then(d=>{if(d)loadHub()})});
@@ -7237,7 +7268,13 @@ document.addEventListener('input',e=>{
   else if(t.dataset.bph!==undefined)S.base.fm.ph[Number(t.dataset.bph)]=t.value;
   else if(t.dataset.mgq!==undefined){const g=S.base.mg;if(g){g.q=t.value;clearTimeout(g.qt);g.qt=setTimeout(mergeSearch,350)}}
   else if(t.dataset.bfLink!==undefined)S.base.link=t.value;
-  else if(t.dataset.aterr!==undefined){const set=new Set(S.own.aterr);if(t.checked)set.add(t.dataset.aterr);else set.delete(t.dataset.aterr);S.own.aterr=[...set]}
+  else if(t.dataset.aterr!==undefined){
+    const set=new Set(S.own.aterr);if(t.checked)set.add(t.dataset.aterr);else set.delete(t.dataset.aterr);S.own.aterr=[...set];
+    const lb=t.closest('label'),tn=S.own.ppl?S.own.ppl.terr.length:0,c=$('#ag-cnt'),bt=document.querySelector('[data-act="agtall"]');
+    if(lb)lb.classList.toggle('on',t.checked);
+    if(c)c.textContent=L('выбрано '+S.own.aterr.length+' из '+tn,'tanlandi: '+S.own.aterr.length+' / '+tn);
+    if(bt)bt.textContent=S.own.aterr.length===tn?L('Снять все','Hammasini olib tashlash'):L('Выбрать все','Hammasini tanlash');
+  }
   else if(t.dataset.agterr!==undefined){
     const [aid,tid]=t.dataset.agterr.split(':'),ag=S.own.ppl&&S.own.ppl.agents.find(x=>x.id===aid);
     if(ag){const set=new Set(ag.terr);if(t.checked)set.add(tid);else set.delete(tid);peopleCall('PUT','/agents/'+encodeURIComponent(aid),{terr:[...set]})}

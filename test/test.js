@@ -10064,6 +10064,81 @@ await t('дальняя доставка на экране: настройки �
   assert.ok(/const toCr = o\.status === 'ready' && o\.mode === 'delivery' && !o\.far/.test(wk) && /filter\(o => o\.mode === 'delivery' && !o\.far\)/.test(wk), 'доставщикам такой заказ не уходит');
 });
 
+await t('владелец: «Агенты» отдельно от «Добавить агента», территории свёрнуты, сетка в две колонки, «Выбрать все»', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('function ownPeopleHTML('), html.indexOf('async function ownTerrAdd('));
+  assert.ok(src.length > 500, 'функция найдена');
+  // меню: два пункта рядом, у каждого свой заголовок экрана
+  assert.ok(/\['agents',L\('Агенты','Agentlar'\),L\('Агенты','Agentlar'\)\],\['agadd',L\('Добавить агента','Agent qoʻshish'\),L\('Добавить агента','Agent qoʻshish'\)\],\['wh'/.test(html), 'пункты «Агенты» и «Добавить агента» в меню владельца');
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const names = ['Navoiy shahri', 'Karmana', 'Nurota', 'Navbahor', 'Konimex', 'Xatirchi', 'Qiziltepa', 'Ziyovuddin', 'Mirbozor', 'Oqtosh', 'Zarafshon', 'Uchquduq', 'Tomdi', 'Zafarobod'];
+  const terr = names.map((n, i) => ({ id: 't' + i, name: n, n: 0 }));
+  const ids = terr.map(x => x.id);
+  const agents = [
+    { id: 'a1', name: 'Жасур', on: true, used: true, n: 3, terr: ids, link: 'https://t.me/x' },
+    { id: 'a2', name: 'Бобур', on: false, used: false, n: 0, terr: ['t0', 't1', 't10'], link: '' },
+    { id: 'a3', name: 'Азиз', on: true, used: true, n: 1, terr: ['tZZ'], link: '' }
+  ];
+  const own = (extra, ag) => Object.assign({ ppl: { terr, agents: ag || agents }, pbusy: false, perr: '', aname: '', acode: '', aterr: [], agopen: {}, amade: null }, extra);
+  const draw = (uz, part, extra, ag) => { const S = { own: own(extra, ag) }; return new Function('S', 'L', 'esc', 'hintD', 'ownSecInfo', 'num', src + '\nreturn ownPeopleHTML;')(S, (ru, u) => uz ? u : ru, esc, () => '', () => ({ title: '' }), x => x)(part); };
+  const count = (h, re) => (h.match(re) || []).length;
+  // список: один заголовок, у каждого агента строка территорий и «Изменить», галочек нет
+  let h = draw(false, 'agents');
+  assert.ok(!/<h3>Агенты<\/h3>/.test(h), 'второго заголовка «Агенты» в списке нет');
+  assert.equal(count(h, /class="bcard"/g), 3, 'три карточки агентов');
+  assert.ok(/все 14/.test(h) && /Navoiy shahri, Karmana и ещё 1/.test(h) && /не выбраны/.test(h), 'сводка территорий: все / названия и «ещё» / не выбраны (чужой id не считается)');
+  assert.equal(count(h, /data-act="agtopen"/g), 3);
+  assert.equal(count(h, /Изменить/g), 3);
+  assert.ok(!/data-agterr/.test(h) && !/pgrid/.test(h), 'пока не нажали «Изменить», галочек нет');
+  assert.ok(/data-act="otab" data-t="agadd"/.test(h), 'внизу списка кнопка «Добавить агента» ведёт на свой экран');
+  assert.ok(!/data-aterr|data-own="aname"/.test(h), 'формы добавления в списке нет');
+  assert.equal(count(h, /data-act="agentdel"/g), 3);
+  // раскрытая карточка: четырнадцать плашек в сетке, отмечены три, счётчик и «Готово»
+  h = draw(false, 'agents', { agopen: { a2: true } });
+  assert.equal(count(h, /data-agterr=/g), 14);
+  assert.equal(count(h, /data-agterr="[^"]*" checked/g), 3);
+  assert.equal(count(h, /class="pl on"/g), 3);
+  assert.ok(/class="pgrid"/.test(h) && /Территории: выбрано 3 из 14/.test(h) && />Готово<\/button>/.test(h));
+  assert.equal(count(h, /Изменить/g), 2, 'у раскрытой карточки вместо «Изменить» «Готово»');
+  // пустой список и код после «Новый код»
+  h = draw(false, 'agents', {}, []);
+  assert.ok(/Агентов пока нет/.test(h) && /data-t="agadd"/.test(h));
+  h = draw(false, 'agents', { amade: { name: 'Бобур', code: 'k-123456789012', reset: true } });
+  assert.ok(/Новый код: Бобур/.test(h) && /k-123456789012/.test(h) && /data-act="amadeclose"/.test(h));
+  // узбекский вариант
+  h = draw(true, 'agents', { agopen: { a2: true } });
+  assert.ok(/barchasi: 14/.test(h) && /Hududlar: tanlandi: 3 \/ 14/.test(h) && /tanlanmagan/.test(h) && />Tayyor<\/button>/.test(h) && /Oʻzgartirish/.test(h));
+  assert.ok(/Oʻchirib qoʻyish/.test(h) && /Yoqish/.test(h), 'у агента «отключить» и «удалить» по-узбекски разные слова');
+  assert.ok(!/Oʻchirish<\/button><button[^>]*data-act="agentcode"/.test(h), 'узбекские подписи «Отключить» и «Удалить» не совпадают');
+  h = draw(true, 'agents', {}, [agents[0], agents[2]]);
+  assert.ok(/va yana|barchasi: 14/.test(h) && /Agent qoʻshish/.test(h));
+  // экран «Добавить агента»: форма, счётчик, сетка, «Выбрать все»
+  h = draw(false, 'agadd');
+  assert.ok(/data-own="aname"/.test(h) && /data-own="acode"/.test(h) && /data-act="agentadd"/.test(h), 'форма');
+  assert.equal(count(h, /data-aterr=/g), 14);
+  assert.ok(/id="ag-cnt">выбрано 0 из 14</.test(h) && /data-act="agtall">Выбрать все</.test(h) && /class="pgrid"/.test(h));
+  assert.ok(!/data-agterr|data-act="agenton"|class="bcard"/.test(h), 'списка агентов на этом экране нет');
+  h = draw(false, 'agadd', { aterr: ids });
+  assert.ok(/выбрано 14 из 14/.test(h) && /data-act="agtall">Снять все</.test(h) && count(h, /data-aterr="[^"]*" checked/g) === 14);
+  h = draw(true, 'agadd', { aterr: ['t0'] });
+  assert.ok(/tanlandi: 1 \/ 14/.test(h) && /Hammasini tanlash/.test(h) && /Agent shaxsiy kod oladi/.test(h));
+  // после добавления вместо формы код; после «Нового кода» (reset) форма остаётся
+  h = draw(false, 'agadd', { amade: { name: 'Бобур', code: 'k-123456789012', reset: false } });
+  assert.ok(/Агент добавлен: Бобур/.test(h) && !/data-own="aname"/.test(h) && /data-act="amadeclose"/.test(h));
+  h = draw(false, 'agadd', { amade: { name: 'Бобур', code: 'k-123456789012', reset: true } });
+  assert.ok(/data-own="aname"/.test(h) && !/Новый код: Бобур/.test(h));
+  // без территорий строки территорий нет
+  h = draw(false, 'agadd', { ppl: { terr: [], agents: [] } });
+  assert.ok(!/pgrid|ag-cnt|agtall/.test(h));
+  // обработчики
+  assert.ok(/a==='agtopen'\)\{const o=S\.own;o\.agopen\[t\.dataset\.id\]=!o\.agopen\[t\.dataset\.id\];renderOwner\(\)\}/.test(html), 'agtopen открывает и закрывает правку территорий');
+  assert.ok(/a==='agtall'\)\{[^}]*o\.aterr=o\.aterr\.length===ids\.length\?\[\]:ids/.test(html), 'agtall выбирает всё или снимает всё');
+  assert.ok(/a==='amadeclose'\)\{S\.own\.amade=null;if\(S\.own\.sec==='agadd'\)ownOpen\('agents'\);else renderOwner\(\)\}/.test(html), 'после «Готово, код сохранён» открывается список');
+  assert.ok(/classList\.toggle\('on',t\.checked\)/.test(html) && /id="ag-cnt"/.test(html), 'плашка и счётчик меняются сразу, без перерисовки');
+  // три узбекских «Отключить» больше не совпадают с «Удалить»
+  assert.ok(!/L\('Отключить','Oʻchirish'\)/.test(html), 'узбекское «Отключить» не «Oʻchirish»');
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
