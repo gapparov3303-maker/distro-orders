@@ -7834,7 +7834,7 @@ await t('«О нас»: пункт меню последний и виден в�
     }
   }
   assert.equal(imgs, 24, 'двадцать четыре экрана со снимками');
-  assert.equal(text, 5, 'пять текстовых разделов: «Заказы Базара» и «Отчёты, база и настройки» у продавца, «Отправка в Навои» у склада, «Склад и Базары» и «Деньги, аналитика и площадка» у владельца');
+  assert.equal(text, 7, 'семь текстовых разделов: «Доставка из другого региона» у покупателя, «Дальняя доставка после оплаты», «Заказы Базара» и «Отчёты, база и настройки» у продавца, «Отправка в Навои» у склада, «Склад и Базары» и «Деньги, аналитика и площадка» у владельца');
   // комиссия в блоке продавца описана без процента
   assert.ok(!/\d\s*%/.test(JSON.stringify(ROLES.find(x => x.k === 'seller'))), 'в блоке продавца нет числа процентов');
   // каждый снимок используется: лишних файлов нет
@@ -9120,12 +9120,12 @@ await t('форма Базара на экране: две кнопки полу
   const fm = slice('function formHTML(pk){', '/* сохранённые адреса');
   assert.ok(fm.includes('bzShop()') && fm.includes('Заберу сам в Навои') && fm.includes('Доставка до двери'), 'кнопки получения Базара');
   assert.ok(fm.includes('Заберёте на складе в Навои, когда товар придёт.') && fm.includes('Стоимость и время доставки согласует с вами продавец.'), 'подсказки под кнопками');
-  assert.ok(/\(bz\?'':'<div><label class="lab" for="f-date">/.test(fm) && fm.includes('id="e-time"></div></div>\')'), 'дата и время скрыты у Базара');
+  assert.ok(/\(bz\|\|far\?'':'<div><label class="lab" for="f-date">/.test(fm) && fm.includes('id="e-time"></div></div>\')'), 'дата и время скрыты у Базара');
   assert.ok(fm.includes('f-address') && fm.includes('locBoxHTML()'), 'адрес и «моё местоположение» остаются');
   const note = slice('function cartNote(){', 'function renderCart(){');
   assert.ok(note.startsWith('function cartNote(){\n  if(bzShop())return L(\'Продавец соберёт заказ и отправит на склад в Навои. Оплату и доставку согласуете с продавцом.\''), 'нижняя заметка Базара');
   const val = slice('function validate(){', 'const FIELDS=');
-  assert.ok(/if\(!bzShop\(\)\)\{[^}]*f\.date[^}]*f\.time/.test(val.replace(/\n/g, '')), 'клиент не требует дату и время у Базара');
+  assert.ok(/if\(!bzShop\(\)&&!farShop\(\)\)\{[^}]*f\.date[^}]*f\.time/.test(val.replace(/\n/g, '')), 'клиент не требует дату и время у Базара');
   // помощники: тексты на двух языках, оба способа
   const w = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8') + '\n;return {setLang,isBzShop,noWhen,recvName,whenText,whenLine,deliveryFee,orderText,DEFAULT}')();
   assert.ok(w.isBzShop({ category: 'bazaar' }) && !w.isBzShop({ category: 'distributor' }) && !w.isBzShop(null));
@@ -9329,7 +9329,7 @@ await t('склад, часть 3 на экране: «Отвёз на скла�
   assert.ok(/cx=o\.sent\?'':cancelBtn\(o\)/.test(sa) && /\+cx\+pk/.test(sa), '«Отменить» пропадает, когда склад отправил заказ');
   const oc = html.slice(html.indexOf('function orderCard('), html.indexOf('function renderMine('));
   assert.ok(/unshipBtn=m==='seller'&&o\.ship&&!o\.sent&&!\(o\.pay&&o\.pay\.m==='credit'\)&&NEXT_LIVE\.includes\(o\.status\)/.test(oc), '«Снять разрешение»: до отправки и не для долга');
-  assert.ok(/gotBtn=m==='mine'&&o\.sent&&!o\.got&&NEXT_LIVE\.includes\(o\.status\)/.test(oc) && /Получил/.test(oc) && /Oldim/.test(oc), '«Получил» у покупателя после отправки');
+  assert.ok(/gotBtn=m==='mine'&&\(o\.sent\|\|farSent\(o\)\)&&!o\.got&&NEXT_LIVE\.includes\(o\.status\)/.test(oc) && /Получил/.test(oc) && /Oldim/.test(oc), '«Получил» у покупателя после отправки');
   assert.ok(/o\.sent\?'<div class="note">🚚/.test(oc) && /o\.got&&o\.status!=='done'/.test(oc), 'в карточке виден этап');
   assert.ok(/m==='seller'&&o\.got&&o\.status==='done'\?'<div class="note">🤝 '\+\(del\?L\('Доставлен покупателю','Xaridorga yetkazildi'\):L\('Выдан покупателю','Xaridorga topshirildi'\)\)\+' · '\+esc\(fmtWhen\(o\.got\.at\)\)/.test(oc), 'у продавца после «Получил» в карточке строка «Доставлен покупателю · время» (самовывоз: «Выдан покупателю»)');
   const wf = html.slice(html.indexOf('function whFiltered('), html.indexOf('function renderWh('));
@@ -9339,7 +9339,7 @@ await t('склад, часть 3 на экране: «Отвёз на скла�
   const fn = html.slice(html.indexOf('async function whSent('), html.indexOf('/* ---------- дистрибьюторы: список'));
   for (const e of ['/api/hub/wh/unsent', '/api/hub/wh/sent', '/api/admin/unship', '/api/hub/orders/got', "e==='not_allowed'", "e==='received'", "e==='sent'", "e==='credit'"]) assert.ok(fn.includes(e), e);
   assert.ok(/if\(!o\|\|W\.busy\)return/.test(fn) && /if\(S\.gotBusy\)return/.test(fn), 'двойное нажатие');
-  assert.ok(/\['cr','crn','crAt','crp','ship','pay','sent','got'\]/.test(html), 'после «Снять разрешение» старые поля не остаются');
+  assert.ok(/\['cr','crn','crAt','crp','ship','pay','sent','got','fee','sub'\]/.test(html), 'после «Снять разрешение» старые поля не остаются');
   // подписи на двух языках
   for (const t of ['Снять разрешение', 'Ruxsatni qaytarish', 'Joʻnatilganlardan qaytarish', 'Navoiyga joʻnatildi', 'Omborga olib bordim', 'Отвёз на склад']) assert.ok(html.includes(t) || fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8').includes(t), t);
 });
@@ -9644,7 +9644,7 @@ await t('цены по регионам: общая функция считае�
   } finally { delete globalThis.__regionsOn; }
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
-  assert.ok(/const cartFee=\(\)=>deliveryFee\(S\.cfg,mode\(\),cartTotal\(\),orderRegion\(\)\)/.test(html), 'доставка в корзине считается по региону заказа');
+  assert.ok(/const cartFee=\(\)=>\{if\(farShop\(\)\)\{[^}]*\}return deliveryFee\(S\.cfg,mode\(\),cartTotal\(\),orderRegion\(\)\)\}/.test(html), 'доставка в корзине считается по региону заказа');
   assert.ok(/const minOrder=\(\)=>ratesFor\(S\.cfg\.shop,mode\(\),orderRegion\(\)\)\.min/.test(html), 'минимум по региону');
   assert.ok(/rt=ratesFor\(S\.cfg\.shop,mode\(\),orderRegion\(\)\),feeSet=rt\.fee>0,free=rt\.free/.test(fn('paintCartSum')), 'итог в корзине и подсказка про бесплатную доставку по региону');
   assert.ok(/if\(f==='region'\)\{paintCartSum\(\);paintRegRate\(\)\}/.test(html), 'выбрали регион: итог и подсказка пересчитываются');
@@ -9758,6 +9758,9 @@ await t('дальняя доставка: заказ только с доста�
   // без оплаты не отправить, ни в приложении, ни кнопкой в Telegram
   const st = (id, to) => callS(sid, 'POST', '/api/admin/status', { init: iD(), body: { id, to } });
   assert.equal((await st(o.id, 'accepted')).status, 200);
+  const kb = () => JSON.stringify(((lastTg('editMessageText', p => /Z-/.test(p.text)) || { payload: {} }).payload.reply_markup) || {});
+  const cardTxt = () => (lastTg('editMessageText', p => p.text.includes(o.id)) || { payload: { text: '' } }).payload.text;
+  assert.ok(!/:ready/.test(kb()) && /Ждём оплату/.test(cardTxt()) && /Ожидаем|Ждём/.test(cardTxt()), 'карточка продавца в Telegram: без оплаты кнопки «Отправлен» нет, написано, что ждём оплату');
   r = await st(o.id, 'ready');
   assert.deepEqual([r.status, (await jsonOf(r)).error], [409, 'not_paid']);
   r = await callS(sid, 'POST', '/api/admin/far/sent', { init: iD(), body: { id: o.id } });
@@ -9770,6 +9773,7 @@ await t('дальняя доставка: заказ только с доста�
   assert.equal(r.status, 200);
   o = (await jsonOf(r)).order;
   assert.deepEqual([o.pay, o.status, S.stOf(o.status, o.mode, o).name], [{ m: 'bank' }, 'accepted', 'Оплачен, готовим']);
+  assert.ok(/:ready/.test(kb()) && /Оплата получена/.test(cardTxt()), 'после оплаты в карточке продавца появилась кнопка «Отправлен»');
   const eta = S.ymd(new Date(S.shopNow().getTime() + 4 * 86400000));
   assert.equal(o.pickupAt, eta + 'T12:00', 'срок: 4 дня от дня оплаты');
   assert.ok(sentTo(buyer.u.id, t0).some(x => /оплата получена/.test(x.payload.text)), 'покупатель знает, что оплата дошла');
@@ -9843,6 +9847,43 @@ await t('дальняя доставка: цена «по договорённо
   assert.equal(r.status, 200);
   const o3 = (await jsonOf(r)).order;
   assert.deepEqual([o3.mode, o3.far], ['pickup', undefined]);
+});
+
+
+await t('дальняя доставка на экране: настройки «Производителей», габариты товара, корзина без даты, карточки заказа и кнопки', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const wk = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  // настройки: только у категории «Производители», четыре способа расчёта, три способа оплаты перевозки, срок и реквизиты
+  const fe = fn('farEditHTML');
+  assert.ok(/cleanCat\(s\.category\)!=='maker'\)return ''/.test(fe), 'блок только у Производителей');
+  for (const k of ['kg', 'vol', 'fix', 'deal', 'both', 'in', 'drv']) assert.ok(fe.includes("['" + k + "',"), 'вариант ' + k);
+  for (const k of ['on', 'm', 'pay', 'req']) assert.ok(fe.includes('data-far="' + k + '"'), 'поле ' + k);
+  assert.ok(fe.includes("num('days'"), 'поле «срок»');
+  assert.ok(/data-far="'\+k\+'"/.test(fe) && /num\('kg'/.test(fe) && /num\('m3'/.test(fe) && /num\('fix'/.test(fe) && /Другим не показываются/.test(fe), 'цены и пометка про реквизиты');
+  assert.ok(/'#farbox'|id="farbox"/.test(html) && /paintFar\(\);/.test(fn('catSave')), 'блок перерисовывается при смене категории');
+  assert.ok(/t\.dataset\.far\)\{[\s\S]{0,700}queueSave\(\)/.test(html), 'правка настроек сохраняется');
+  // габариты товара видны, только когда дальняя доставка включена
+  assert.ok(/farOn\(S\.cfg\.shop\)\?'<div class="full"><div class="lab">'\+L\('Габариты одной штуки в упаковке, см'/.test(html) && /k==='dl'\|\|k==='dw'\|\|k==='dh'\)p\[k\]=cleanDim\(t\.value\)/.test(html), 'габариты товара');
+  // корзина: без выбора получения, даты и времени; перевозка считается той же функцией, что и на сервере
+  const fm = fn('formHTML');
+  assert.ok(fm.includes('farFormHTML()') && /canDel&&!far\?/.test(fm) && /bz\|\|far\?''/.test(fm), 'нет кнопок самовывоза и даты у дальней доставки');
+  assert.ok(/const mode=\(\)=>farShop\(\)\?'delivery'/.test(html) && /farCalc\(S\.cfg\.shop,cartLines\(\)/.test(html), 'только доставка, цена считается общей функцией');
+  assert.ok(/farFp=\(\)=>\{const f=farCfg\(\);return f\.pay==='both'\?\(S\.form\.fp==='drv'\?'drv':'in'\):f\.pay\}/.test(html) && /a==='farfp'/.test(html), 'выбор «в цене заказа» / «водителю»');
+  assert.ok(/fp:farShop\(\)\?farFp\(\):undefined/.test(fn('submitOrder')) && /Итого, оплата до отправки/.test(fn('paintShopBar')), 'в заказ уходит способ оплаты перевозки; внизу «оплата до отправки»');
+  // карточки продавца: «Оплата получена» → «Отправил груз» (водитель, телефон, накладная); без оплаты кнопки отправки нет
+  const fa = fn('farActs');
+  assert.ok(/farpayopen/.test(fa) && /farsendopen/.test(fa) && !/data-to="ready"/.test(fa) && /farInPrice\(o\)&&!farFeeKnown\(o\)\)return cx\+pk/.test(fa), 'оплата → отправка; без цены перевозки оплату не записать');
+  assert.ok(/data-to="done"/.test(fa) && /if\(o\.far\)return farActs\(o,pk\)/.test(fn('sellerActs')), 'продавец закрывает «Доставлен» без вопроса про оплату');
+  assert.ok(/\/api\/admin\/far\/paid/.test(html) && /\/api\/admin\/far\/sent/.test(html) && /\/api\/admin\/far\/fee/.test(html), 'три запроса');
+  // у покупателя: реквизиты, «Получил» после отправки, отмена до оплаты
+  const oc = fn('orderCard'), fc = fn('farCardHTML');
+  assert.ok(/farSent\(o\)/.test(oc) && /o\.far&&!o\.pay&&o\.status==='accepted'/.test(oc) && /farCardHTML\(o,m\)/.test(oc), 'карточка заказа');
+  assert.ok(/f\.rq\?'<div class="farrq">'/.test(fc) && /Водитель: /.test(fc) && /Накладная: /.test(fc), 'реквизиты и водитель');
+  // сервер: три метода, напоминание раз в сутки утром, заказы без доставщиков Sarbon
+  assert.ok(/'\/__\/morning'[\s\S]{0,300}morning\(/.test(wk) && /try \{ await this\.farRemind\(\);/.test(wk), 'напоминания идут из утреннего запуска');
+  assert.ok(/to === 'ready' && o\.far && !o\.pay\) return \{ err: 'not_paid'/.test(wk) && /!o\.far && \(await this\.crActive\(\)\)\.length\) return \{ err: 'use_courier'/.test(wk), 'без оплаты не отправить; закрывает продавец, доставщики не нужны');
+  assert.ok(/const toCr = o\.status === 'ready' && o\.mode === 'delivery' && !o\.far/.test(wk) && /filter\(o => o\.mode === 'delivery' && !o\.far\)/.test(wk), 'доставщикам такой заказ не уходит');
 });
 
 /* ---------- итог ---------- */
