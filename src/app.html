@@ -600,6 +600,26 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .dcard h2{font:700 16px/1.25 var(--f-display);overflow-wrap:anywhere}
 .dmeta{font-size:13px;color:var(--ink-2)}
 .dlegal{font-size:13px;color:var(--ink-2);margin:-4px 0 0;overflow-wrap:anywhere}
+/* фото компании: справа в карточке списка (заглушка — первая буква названия), в шапке каталога и в настройках */
+.dtop{display:flex;gap:12px;align-items:flex-start}
+.dtx{flex:1;min-width:0;display:grid;gap:4px}
+.dtx .dlegal{margin:0}
+.dinfo{font-size:13px;line-height:1.35;color:var(--ink-2);overflow-wrap:anywhere}
+.lgb{flex:none;width:64px;height:64px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:linear-gradient(160deg,var(--stage-a),var(--stage-b));display:flex;align-items:center;justify-content:center;font:700 26px/1 var(--f-display);color:var(--tx)}
+.lgb img{width:100%;height:100%;object-fit:cover;display:block}
+.lgb.sm{width:52px;height:52px;border-radius:12px}
+.shead{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+.shead .stx{min-width:0}
+.shop .shead h1{margin:0}
+.shop .shead .legal{margin:2px 0 0}
+.shop .shead .sinfo{margin:2px 0 0}
+.shop .sinfo{color:var(--ink-2);font-size:13px;line-height:1.35;overflow-wrap:anywhere;margin:-8px 0 12px}
+.lgedit{display:flex;gap:14px;align-items:center}
+.lgedit .lgtx{flex:1;min-width:0}
+.lgslot{position:relative;flex:none;width:88px;height:88px;border-radius:16px;overflow:hidden;cursor:pointer;display:block}
+.lgslot .lgb{width:88px;height:88px;border-radius:16px;font-size:34px}
+.lgslot.add{border:2px dashed var(--accent);background:var(--accent-soft);color:var(--tx);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:300;line-height:1}
+.lgslot.busy{opacity:.55;pointer-events:none}
 .dcats{display:flex;flex-wrap:wrap;gap:6px}
 .dcats span{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--edge);border-radius:999px;padding:3px 9px;font-size:12px}
 .dtag{font-size:12px;font-weight:600;color:var(--tx)}
@@ -1535,8 +1555,13 @@ function renderShop(){
   const chips=cats.length>1||specials.length||pend?'<div class="pchips" role="group" aria-label="'+esc(L('Категории','Kategoriyalar'))+'">'
     +(aprN?[['all',L('Все','Barchasi')]].concat(specials,cats.length>1?cats.map(c=>[c.id,nm(c)]):[]):[]).concat(modChip).map(c=>'<button type="button" class="chip'+(c[0]==='mod'?' mod':'')+'" data-act="scat" data-id="'+esc(c[0])+'" aria-pressed="'+(S.shopCat===c[0])+'">'+(c[0]==='mod'?c[1]:esc(c[1]))+'</button>').join('')+'</div>':'';
   const search=aprN+pend>8?'<div class="search"><input type="search" id="q" value="'+esc(S.q)+'" placeholder="'+esc(L('Поиск по названию и описанию','Nomi va tavsifi boʻyicha qidirish'))+'" autocomplete="off" aria-label="'+esc(L('Поиск по названию и описанию','Nomi va tavsifi boʻyicha qidirish'))+'"></div>':'';
-  view.innerHTML='<div class="wrap shop">'+backHTML()+offHTML()+bannerSlot()+regionNoteHTML()+'<div class="eyebrow">'+L('Каталог','Katalog')+'</div><h1>'+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</h1>'+(S.cfg.shop.legal?'<div class="legal">'+esc(S.cfg.shop.legal)+'</div>':'')+search+chips+'<div id="pgrid"></div></div><div class="bar" id="bar"></div>';
+  view.innerHTML='<div class="wrap shop">'+backHTML()+offHTML()+bannerSlot()+regionNoteHTML()+'<div class="eyebrow">'+L('Каталог','Katalog')+'</div>'+shopHeadHTML()+search+chips+'<div id="pgrid"></div></div><div class="bar" id="bar"></div>';
   paintGrid();paintShopBar();
+}
+/* Шапка каталога: название, юридическое название, строка адреса; слева фото компании, если оно есть */
+function shopHeadHTML(){
+  const sh=S.cfg.shop,t='<h1>'+esc(sh.name||DEFAULT.shop.name)+'</h1>'+(sh.legal?'<div class="legal">'+esc(sh.legal)+'</div>':'')+(sh.info?'<div class="sinfo">'+esc(sh.info)+'</div>':'');
+  return sh.logo?'<div class="shead">'+logoBox(sh.name,S.did,sh.logo,'sm')+'<div class="stx">'+t+'</div></div>':t;
 }
 function toggleFav(id){
   if(!S.auth)return;
@@ -4113,12 +4138,63 @@ function farEditHTML(){
   return h;
 }
 function paintFar(){const b=$('#farbox');if(b)b.innerHTML=farEditHTML()}
+/* Блок «Фото компании» в настройках: квадрат, нажатие выбирает фото (снять или из галереи), «Убрать» стирает */
+function logoEditHTML(){
+  const s=S.cfg.shop,has=!!s.logo,busy=!!S.logoBusy;
+  const inp='<input type="file" class="sr" id="s-logo" accept="image/*" data-logo="1"'+(busy?' disabled':'')+'>';
+  return '<div class="lgedit"><label class="lgslot'+(has?'':' add')+(busy?' busy':'')+'" for="s-logo" aria-label="'+esc(has?L('Заменить фото компании','Kompaniya rasmini almashtirish'):L('Добавить фото компании','Kompaniya rasmini qoʻshish'))+'">'+(has?logoBox(s.name,S.did,s.logo,'big'):'<span aria-hidden="true">+</span>')+'</label>'+inp
+    +'<div class="lgtx"><div class="lab">'+L('Фото компании','Kompaniya rasmi')+'</div><div class="hint">'+(has?L('Его видят покупатели в списке продавцов и в каталоге. Чтобы заменить, нажмите на фото.','Uni xaridorlar sotuvchilar roʻyxatida va katalogda koʻradi. Almashtirish uchun rasmni bosing.'):L('Добавьте фото или логотип: так вас легче найти в списке. Нажмите на квадрат.','Rasm yoki logotip qoʻshing: roʻyxatda sizni topish oson boʻladi. Kvadratni bosing.'))+'</div>'
+    +(has?'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="logodel"'+(busy?' disabled':'')+'>'+L('Убрать фото','Rasmni olib tashlash')+'</button></div>':'')+'</div></div>';
+}
+function paintLogo(){const b=$('#lgbox');if(b)b.innerHTML=logoEditHTML()}
+/* Квадрат по центру снимка, 480 px, JPEG до ~190 КБ */
+async function shrinkLogo(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((ok,no)=>{const im=new Image();im.onload=()=>ok(im);im.onerror=no;im.src=url});
+    const w=img.naturalWidth,h=img.naturalHeight;
+    if(!w||!h)return null;
+    const side=Math.min(w,h),sx=(w-side)/2,sy=(h-side)/2;
+    let size=Math.max(64,Math.min(480,side));
+    for(let attempt=0;attempt<4;attempt++){
+      const cv=document.createElement('canvas');cv.width=size;cv.height=size;
+      const g=cv.getContext('2d');g.fillStyle='#FFFFFF';g.fillRect(0,0,size,size);g.drawImage(img,sx,sy,side,side,0,0,size,size);
+      for(const q of [0.85,0.72,0.6]){
+        const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',q));
+        if(blob&&blob.size<=190000)return blob;
+      }
+      size=Math.max(64,Math.round(size*0.8));
+    }
+    return null;
+  }finally{URL.revokeObjectURL(url)}
+}
+async function uploadLogo(file){
+  if(!S.auth||!S.admin||S.logoBusy)return;
+  S.logoBusy=true;paintLogo();
+  let ok=false;
+  try{
+    const blob=await shrinkLogo(file);
+    if(blob){const r=await apiBin('PUT','/api/admin/logo',blob);if(r.ok&&r.data&&r.data.logo){S.cfg.shop.logo=r.data.logo;ok=true}}
+  }catch(e){}
+  S.logoBusy=false;paintLogo();
+  toast(ok?L('Фото компании сохранено','Kompaniya rasmi saqlandi'):L('Не удалось загрузить фото. Попробуйте другое изображение.','Rasmni yuklab boʻlmadi. Boshqa rasm tanlang.'));
+}
+async function removeLogo(){
+  if(!S.auth||!S.admin||S.logoBusy||!S.cfg.shop.logo)return;
+  S.logoBusy=true;paintLogo();
+  const r=await api('DELETE','/api/admin/logo');
+  if(r.ok&&r.data)S.cfg.shop.logo=r.data.logo||'';
+  else toast(L('Не удалось убрать фото','Rasmni olib tashlab boʻlmadi'));
+  S.logoBusy=false;paintLogo();
+}
 function settingsHTML(){
   const s=S.cfg.shop;
   const num=(id,lab,k,min,max,hint)=>'<div><label class="lab" for="s-'+id+'">'+lab+'</label><input type="number" id="s-'+id+'" inputmode="numeric" min="'+min+'" max="'+max+'" data-s="'+k+'" value="'+esc(s[k])+'">'+(hint?hintD(hint[0],hint[1]):'')+'</div>';
   return '<div class="savebar" id="savebar"></div><div class="card"><div class="settings">'
+    +'<div class="full" id="lgbox">'+logoEditHTML()+'</div>'
     +'<div><label class="lab" for="s-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="s-name" data-s="name" value="'+esc(s.name)+'" maxlength="60">'+hintD('Так вас видят покупатели в списке продавцов и в сообщениях бота. Пример: Навои Фуд.','Xaridorlar sizni sotuvchilar roʻyxatida va bot xabarlarida shunday koʻradi. Masalan: Navoiy Fud.')+'</div>'
     +'<div><label class="lab" for="s-legal">'+L('Юридическое название','Yuridik nomi')+'</label><input type="text" id="s-legal" data-s="legal" value="'+esc(s.legal||'')+'" maxlength="80" placeholder="'+esc(L('ООО «Навои Фуд»','«Navoiy Fud» MChJ'))+'">'+hintD('Полное название компании, как в документах. Покупатели видят его под названием в каталоге. Можно не заполнять.','Kompaniyaning hujjatlardagi toʻliq nomi. Xaridorlar uni katalogda nom ostida koʻradi. Toʻldirmasangiz ham boʻladi.')+'</div>'
+    +'<div><label class="lab" for="s-info">'+L('Адрес или коротко о компании','Manzil yoki kompaniya haqida qisqacha')+'</label><input type="text" id="s-info" data-s="info" value="'+esc(s.info||'')+'" maxlength="100" placeholder="'+esc(L('Адрес: город, улица, ориентир','Manzil: shahar, koʻcha, moʻljal'))+'">'+hintD('Одна строка под названием в списке продавцов и в каталоге: адрес или пара слов о вас. Можно не заполнять.','Sotuvchilar roʻyxatida va katalogda nom ostidagi bir qator: manzil yoki oʻzingiz haqingizda bir-ikki soʻz. Toʻldirmasangiz ham boʻladi.')+'</div>'
     +'<div><label class="lab" for="s-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="s-phone" data-s="phone" value="'+esc(s.phone)+'" placeholder="+998 …">'+hintD('Покупатель увидит его в сообщениях бота о заказе и сможет позвонить. Пример: +998 90 123 45 67.','Xaridor uni bot xabarlarida koʻradi va qoʻngʻiroq qila oladi. Masalan: +998 90 123 45 67.')+'</div>'
     +'<div><label class="lab" for="s-tg">'+L('Telegram для вопросов по заказу, без @','Buyurtma savollari uchun Telegram, @ belgisisiz')+'</label><input type="text" id="s-tg" data-s="telegram" value="'+esc(s.telegram)+'">'+hintD('Логин без @: покупатель сможет написать вам из карточки заказа. Пример: navoi_food.','Login @ belgisisiz: xaridor buyurtma kartochkasidan sizga yoza oladi. Masalan: navoi_food.')+'</div>'
     +'<div><label class="lab" for="s-cat">'+L('Категория','Kategoriya')+'</label><select id="s-cat" data-catsel="1"><option value="">'+L('Не выбрана','Tanlanmagan')+'</option>'+SHOP_CATS.map(k=>'<option value="'+k+'"'+(cleanCat(s.category)===k?' selected':'')+'>'+esc(shopCatName(k))+'</option>').join('')+'</select>'+hintD('Покупатели увидят вас в этой категории. Если не выбрать, вас покажут в «Дистрибьюторах». Владелец тоже может её изменить.','Xaridorlar sizni shu kategoriyada koʻradi. Tanlamasangiz, «Distribyutorlar» ichida koʻrsatiladi. Egasi ham oʻzgartira oladi.')+'</div>'
@@ -4829,6 +4905,7 @@ const ABOUT_ROLES=[
   ['«База»: общая база покупателей площадки с адресами, телефонами и точкой на карте. «Мои покупатели» оставляет тех, кто заказывал у вас. Заметка, группа и блокировка у каждого продавца свои, другие их не видят.','«Baza»: platformaning umumiy xaridorlar bazasi — manzil, telefon va xaritadagi nuqta bilan. «Mening xaridorlarim» sizdan buyurtma bergan xaridorlarni qoldiradi. Izoh, guruh va bloklash har bir sotuvchida alohida, boshqalar koʻrmaydi.'],
   ['«Настройки»: минимальная сумма заказа, стоимость доставки и бесплатная доставка от суммы, часы работы, адрес самовывоза, районы доставки, ссылка на ваш каталог для покупателей, резервная копия.','«Sozlamalar»: buyurtmaning minimal summasi, yetkazib berish narxi va summadan bepul yetkazish, ish vaqti, olib ketish manzili, yetkazib berish tumanlari, xaridorlar uchun katalogingiz havolasi, zaxira nusxa.'],
   ['«Юридическое название» в настройках: полное название компании, как в документах. Покупатели видят его мелким шрифтом под названием в каталоге. Можно не заполнять; владелец площадки тоже может его изменить.','«Yuridik nomi» sozlamalarda: kompaniyaning hujjatlardagi toʻliq nomi. Xaridorlar uni katalogda nom ostida mayda shriftda koʻradi. Toʻldirmasangiz ham boʻladi; platforma egasi ham uni oʻzgartira oladi.'],
+  ['«Фото компании» в настройках: нажмите на квадрат и выберите фото или логотип. Покупатели видят его справа в карточке в списке продавцов и рядом с названием в каталоге; пока фото нет, там первая буква названия. Строка «Адрес или коротко о компании» стоит под названием в списке и в каталоге. Фото и строку вы ставите сами, их можно не заполнять.','«Kompaniya rasmi» sozlamalarda: kvadratni bosing va rasm yoki logotip tanlang. Xaridorlar uni sotuvchilar roʻyxatidagi kartochkaning oʻng tomonida va katalogda nom yonida koʻradi; rasm boʻlmaguncha nomning birinchi harfi turadi. «Manzil yoki kompaniya haqida qisqacha» qatori roʻyxatda va katalogda nom ostida turadi. Rasm va qatorni oʻzingiz qoʻyasiz, toʻldirmasangiz ham boʻladi.'],
   ['«Категория» в настройках: выберите, где вас увидят покупатели: Производители, Импортеры, Оптовики, Дистрибьюторы или Базары. Выбор сохраняется сразу. Пока не выбрана, вас показывают в «Дистрибьюторах». Если выбрали «Базары», ниже появится поле «Базар»: выберите свой из списка. Нет своего базара? Выберите другую категорию. Владелец площадки тоже может её поменять.','Sozlamalardagi «Kategoriya»: xaridorlar sizni qayerda koʻrishini tanlang: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar yoki Bozorlar. Tanlov darhol saqlanadi. Tanlanmaguncha sizni «Distribyutorlar» ichida koʻrsatadi. «Bozorlar»ni tanlasangiz, pastda «Bozor» maydoni chiqadi: roʻyxatdan oʻzingiznikini tanlang. Bozoringiz yoʻqmi? Boshqa kategoriyani tanlang. Platforma egasi ham uni oʻzgartirishi mumkin.'],
   ['«Комиссия»: площадка ведёт учёт комиссии с выданных заказов. Накопленная сумма уменьшается, когда вы вписываете оплаченное, нажимаете «Оплатил», а владелец подтверждает.','«Komissiya»: platforma topshirilgan buyurtmalardan komissiya hisobini yuritadi. Toʻplangan summa siz toʻlanganini yozib «Toʻladim»ni bosganingizda va ega tasdiqlaganida kamayadi.'],
   ['Внизу раздела «Настройки» кнопка «Выйти из роли продавца»: например, когда вы только помогали настроить чужой каталог. Перед выходом приложение сохраняет настройки и спрашивает подтверждение.','«Sozlamalar» boʻlimining pastida «Sotuvchi rolidan chiqish» tugmasi bor: masalan, siz faqat birovning katalogini sozlashga yordam bergan boʻlsangiz. Chiqishdan oldin ilova sozlamalarni saqlaydi va tasdiq soʻraydi.'],
@@ -5209,6 +5286,9 @@ function gotOrder(id,d){
 /* ---------- дистрибьюторы: список, переход, раздел владельца ---------- */
 /* Региональный фильтр работает, только если кто-то из дистрибьюторов уже отметил регионы или склад */
 const regionsInUse=()=>regionsOn()&&S.hub.shops.some(r=>hasZone(r.regions)||r.home);
+/* Фото компании: адрес /img/<компания>/_logo?v=<версия>, версия меняется с каждой загрузкой. Нет фото — первая буква названия. */
+const logoUrl=(did,v)=>'/img/'+encodeURIComponent(did)+'/_logo?v='+encodeURIComponent(v||'');
+const logoBox=(name,did,v,cls)=>'<span class="lgb'+(cls?' '+cls:'')+'" aria-hidden="true">'+(v?'<img src="'+logoUrl(did,v)+'" alt="" loading="lazy" decoding="async">':esc(([...String(name||'').trim()][0]||'•').toUpperCase()))+'</span>';
 function shopCardHTML(r){
   const meta=[],reg=S.region&&regionsInUse()?S.region:'';
   if(r.items)meta.push(L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'));
@@ -5220,7 +5300,7 @@ function shopCardHTML(r){
   else meta.push(L('есть доставка','yetkazib berish bor'));
   if(regionsOn()&&r.home&&regionName(r.home))meta.push(L('склад: ','ombor: ')+regionName(r.home));
   if(r.minOrder>0)meta.push(L('мин. заказ ','min. buyurtma ')+money(r.minOrder));
-  return '<article class="dcard"><h2>'+esc(r.name)+'</h2>'+(r.legal?'<div class="dlegal">'+esc(r.legal)+'</div>':'')+'<div class="dmeta">'+esc(meta.join(' · '))+'</div>'
+  return '<article class="dcard"><div class="dtop"><div class="dtx"><h2>'+esc(r.name)+'</h2>'+(r.legal?'<div class="dlegal">'+esc(r.legal)+'</div>':'')+(r.info?'<div class="dinfo">'+esc(r.info)+'</div>':'')+'</div>'+logoBox(r.name,r.id,r.logo)+'</div><div class="dmeta">'+esc(meta.join(' · '))+'</div>'
     +((r.cats||[]).length?'<div class="dcats">'+r.cats.map(c=>'<span>'+esc(nm(c))+'</span>').join('')+'</div>':'')
     +'<button type="button" class="btn" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button></article>';
 }
@@ -6942,6 +7022,7 @@ document.addEventListener('click',e=>{
     const row=document.getElementById('prow-'+id);if(row)try{row.scrollIntoView({block:'center'})}catch(x){}
   }
   else if(a==='phdel')removePhoto(t.dataset.id,t.dataset.n);
+  else if(a==='logodel')removeLogo();
   else if(a==='pzoom')openViewer(t.dataset.id);
   else if(a==='lbclose')closeViewer();
   else if(a==='lbbg'){if(e.target.tagName!=='IMG')closeViewer()}
@@ -7254,6 +7335,11 @@ document.addEventListener('change',e=>{
   if(t&&t.type==='file'&&t.dataset.imp){
     const f=t.files&&t.files[0];
     if(f)importFile(f);
+    try{t.value=''}catch(x){}
+  }
+  else if(t&&t.type==='file'&&t.dataset.logo){
+    const f=t.files&&t.files[0];
+    if(f)uploadLogo(f);
     try{t.value=''}catch(x){}
   }
   else if(t&&t.type==='file'&&t.dataset.photo){

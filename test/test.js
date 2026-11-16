@@ -8235,16 +8235,73 @@ await t('юридическое название: продавец вводит 
   assert.equal((await cfgShop()).category, '', 'категория осталась');
 });
 
+await t('фото компании и строка адреса: продавец ставит сам, покупатель и список продавцов видят, форма настроек фото не трогает', async () => {
+  const { sid } = await shopWorld('Фото Трейд');
+  const cfgShop = async () => (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iA() }))).cfg.shop;
+  const pubRow = async () => (await jsonOf(await call('GET', '/api/shops', { init: iA() }))).shops.find(x => x.id === sid);
+  const putLogo = (bytes, init) => callS(sid, 'PUT', '/api/admin/logo', { init: init || iD(), body: bytes, headers: { 'content-type': 'image/jpeg' } });
+  const sh0 = await cfgShop();
+  assert.equal(sh0.info, '', 'строка по умолчанию пустая'); assert.equal(sh0.logo, '', 'фото по умолчанию нет');
+  assert.deepEqual([(await pubRow()).info, (await pubRow()).logo], ['', ''], 'в списке пусто');
+  // строка адреса: обрезается до 100 знаков, не строка — пусто, видна и в настройках, и в списке продавцов
+  const cfg = (await jsonOf(await callS(sid, 'GET', '/api/config'))).cfg;
+  cfg.shop.info = '  Навои, ул. Галаба, 12  ';
+  let r = await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } });
+  assert.equal(r.status, 200); assert.equal((await jsonOf(r)).cfg.shop.info, 'Навои, ул. Галаба, 12');
+  assert.equal((await cfgShop()).info, 'Навои, ул. Галаба, 12', 'покупатель получает её с настройками');
+  assert.equal((await pubRow()).info, 'Навои, ул. Галаба, 12', 'в общем списке продавцов она есть');
+  cfg.shop.info = 'Я'.repeat(300);
+  assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.info.length, 100, 'не длиннее 100');
+  cfg.shop.info = 5;
+  assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.info, '', 'не строка — пусто');
+  // фото: только продавец, только JPEG нужного размера, до 200 КБ
+  const jp = jpegBytes(480, 480, 12000);
+  assert.equal((await putLogo(jp, iA())).status, 403, 'покупатель не может');
+  assert.equal((await putLogo(jpegBytes(30, 30, 3000))).status, 400, 'слишком маленькое');
+  assert.equal((await putLogo(jpegBytes(5000, 4000, 3000))).status, 400, 'слишком большое по сторонам');
+  assert.equal((await putLogo(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))).status, 400, 'не JPEG');
+  assert.equal((await putLogo(jpegBytes(480, 480, 250000))).status, 413, 'тяжелее 200 КБ');
+  assert.equal((await cfgShop()).logo, '', 'отклонённые файлы ничего не меняют');
+  r = await putLogo(jp);
+  assert.equal(r.status, 200);
+  const v1 = (await jsonOf(r)).logo;
+  assert.ok(/^[A-Za-z0-9]{4,12}$/.test(v1), 'версия фото');
+  assert.equal((await cfgShop()).logo, v1, 'версия в настройках, которые получает покупатель');
+  assert.equal((await pubRow()).logo, v1, 'версия в списке продавцов');
+  // отдаётся всем, кэш вечный; адрес с версией
+  const img = await call('GET', '/img/' + sid + '/_logo?v=' + v1, { init: iB() });
+  assert.equal(img.status, 200); assert.equal(img.headers.get('content-type'), 'image/jpeg');
+  assert.ok(img.headers.get('cache-control').includes('immutable'));
+  assert.deepEqual(new Uint8Array(await img.arrayBuffer()), jp);
+  // форма настроек (в том числе устаревшая) фото не трогает: ни ставит, ни стирает
+  cfg.shop.info = 'Навои'; cfg.shop.logo = 'EVIL';
+  assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.logo, v1, 'чужая версия не принимается');
+  cfg.shop.logo = '';
+  assert.equal((await jsonOf(await callS(sid, 'PUT', '/api/admin/config', { init: iD(), body: { cfg } }))).cfg.shop.logo, v1, 'пустая версия фото не стирает');
+  // замена даёт новую версию, удаление убирает фото везде
+  const jp2 = jpegBytes(500, 500, 9000);
+  const v2 = (await jsonOf(await putLogo(jp2))).logo;
+  assert.notEqual(v2, v1, 'замена — новая версия');
+  assert.deepEqual(new Uint8Array(await (await call('GET', '/img/' + sid + '/_logo?v=' + v2)).arrayBuffer()), jp2);
+  assert.equal((await callS(sid, 'DELETE', '/api/admin/logo', { init: iA() })).status, 403, 'покупатель не может убрать');
+  r = await callS(sid, 'DELETE', '/api/admin/logo', { init: iD() });
+  assert.equal(r.status, 200); assert.equal((await jsonOf(r)).logo, '');
+  assert.equal((await cfgShop()).logo, ''); assert.equal((await pubRow()).logo, '', 'из списка продавцов фото убрано');
+  assert.equal((await call('GET', '/img/' + sid + '/_logo?v=' + v2)).status, 404, 'файл удалён');
+  // у товара с таким номером своя картинка не появляется: фото компании живёт отдельно от товаров
+  assert.equal((await call('GET', '/img/' + sid + '/_logo')).status, 404);
+});
+
 await t('юридическое название: экраны каталога, настроек продавца и списка владельца', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
-  assert.ok(/<\/h1>'\+\(S\.cfg\.shop\.legal\?'<div class="legal">'\+esc\(S\.cfg\.shop\.legal\)\+'<\/div>':''\)\+search/.test(html), 'в каталоге под названием, пусто — ничего');
+  assert.ok(/<\/h1>'\+\(sh\.legal\?'<div class="legal">'\+esc\(sh\.legal\)\+'<\/div>':''\)\+\(sh\.info/.test(fn('shopHeadHTML')) && /\+shopHeadHTML\(\)\+search/.test(html), 'в каталоге под названием, пусто — ничего');
   assert.ok(/id="s-legal" data-s="legal"[^>]*maxlength="80"/.test(fn('settingsHTML')), 'поле в настройках продавца');
   assert.ok(/data-olegal=/.test(fn('ownListHTML')) && /data-act="ownlegal"/.test(fn('ownListHTML')), 'поле и кнопка в списке владельца');
   assert.ok(/'\/api\/hub\/admin\/shops\/'\+encodeURIComponent\(id\)\+'\/legal',\{legal:v\}/.test(fn('ownLegal')), 'владелец сохраняет через площадку');
   assert.ok(/a==='ownlegal'\)ownLegal\(/.test(html) && /dataset\.olegal!==undefined\)S\.own\.legals\[/.test(html), 'нажатие и ввод');
   assert.ok(/\.shop \.legal\{/.test(html) && /\.dlegal\{/.test(html), 'стили подписи: в каталоге и в карточке');
-  assert.ok(/<h2>'\+esc\(r\.name\)\+'<\/h2>'\+\(r\.legal\?'<div class="dlegal">'\+esc\(r\.legal\)\+'<\/div>':''\)\+'<div class="dmeta">/.test(fn('shopCardHTML')), 'в карточке списка под названием, пусто — ничего');
+  assert.ok(/<h2>'\+esc\(r\.name\)\+'<\/h2>'\+\(r\.legal\?'<div class="dlegal">'\+esc\(r\.legal\)\+'<\/div>':''\)\+\(r\.info\?/.test(fn('shopCardHTML')), 'в карточке списка под названием, пусто — ничего');
   assert.equal(S.DEFAULT.shop.legal, '', 'в настройках по умолчанию пусто');
   assert.ok(/Юридическое название/.test(html) && /Yuridik nomi/.test(html), 'подписи на двух языках');
 });
@@ -8480,6 +8537,34 @@ await t('главный экран: кнопок «Панель продавца
   // продавца без открытой компании меню по-прежнему ведёт в его компанию
   const mg = html.slice(html.indexOf('function menuGroups()'), html.indexOf('/* сумма оповещений на кнопке'));
   assert.ok(/mine\.forEach\(x=>work\.push\(\['seller'/.test(mg) && /'sco'/.test(mg), 'вход продавца есть в меню ☰');
+});
+
+await t('фото компании и строка адреса: экраны (настройки, карточка в списке, шапка каталога), текст на двух языках', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
+  const st = fn('settingsHTML'), ed = fn('logoEditHTML');
+  // настройки: блок фото вверху, строка адреса после юридического названия, подсказка в поле
+  assert.ok(st.indexOf('id="lgbox"') > 0 && st.indexOf('id="lgbox"') < st.indexOf('id="s-name"'), 'блок «Фото компании» первый в настройках');
+  assert.ok(st.indexOf('id="s-legal"') < st.indexOf('id="s-info"') && st.indexOf('id="s-info"') < st.indexOf('id="s-phone"'), 'строка адреса после юридического названия');
+  assert.ok(/id="s-info" data-s="info"[^>]*maxlength="100"[^>]*placeholder="'\+esc\(L\('Адрес: город, улица, ориентир','Manzil: shahar, koʻcha, moʻljal'\)\)/.test(st), 'подсказка «Адрес…» в поле, до 100 знаков');
+  assert.ok(/Фото компании/.test(ed) && /Kompaniya rasmi/.test(ed) && /data-logo="1"/.test(ed) && /accept="image\/\*"/.test(ed) && /data-act="logodel"/.test(ed), 'загрузка и «Убрать фото» на двух языках');
+  assert.ok(/Добавьте фото или логотип/.test(ed) && /Rasm yoki logotip/.test(ed), 'пока фото нет — приглашение его добавить');
+  // загрузка: квадрат по центру, JPEG, свой адрес; форма настроек фото не отправляет
+  const sl = fn('shrinkLogo');
+  assert.ok(/Math\.min\(w,h\)/.test(sl) && /drawImage\(img,sx,sy,side,side,0,0,size,size\)/.test(sl) && /image\/jpeg/.test(sl) && /190000/.test(sl), 'квадрат по центру, JPEG до 190 КБ');
+  assert.ok(/apiBin\('PUT','\/api\/admin\/logo',blob\)/.test(fn('uploadLogo')) && /api\('DELETE','\/api\/admin\/logo'\)/.test(fn('removeLogo')), 'загрузка и удаление своими запросами');
+  assert.ok(/t\.dataset\.logo\)\{[^}]*uploadLogo\(f\)/.test(html) && /a==='logodel'\)removeLogo\(\)/.test(html), 'выбор файла и «Убрать»');
+  // список продавцов: фото справа, без фото — первая буква названия, строка адреса под названием
+  const lb = html.match(/^const logoBox=.*$/m)[0];
+  assert.ok(/\/img\/'\+encodeURIComponent\(did\)\+'\/_logo\?v=/.test(html.match(/^const logoUrl=.*$/m)[0]), 'адрес фото с версией');
+  assert.ok(/toUpperCase\(\)/.test(lb) && /v\?'<img/.test(lb), 'есть фото — картинка, нет — первая буква');
+  const card = fn('shopCardHTML');
+  assert.ok(/<div class="dtop"><div class="dtx"><h2>/.test(card) && /\(r\.info\?'<div class="dinfo">'/.test(card) && /logoBox\(r\.name,r\.id,r\.logo\)/.test(card), 'карточка: название, юр. название, строка и фото справа');
+  // шапка каталога: фото слева, только если оно есть
+  const hd = fn('shopHeadHTML');
+  assert.ok(/sh\.logo\?'<div class="shead">'\+logoBox\(sh\.name,S\.did,sh\.logo,'sm'\)/.test(hd) && /sh\.info\?'<div class="sinfo">/.test(hd), 'в каталоге фото и строка адреса');
+  // в обычных текстах приложения нет запрещённых слов
+  assert.ok(!/магазин|клиент|дистрибьютор/i.test(ed + st.slice(st.indexOf('id="lgbox"'), st.indexOf('id="s-name"')) + hd), 'новые тексты без «магазин», «клиент», «дистрибьютор»');
 });
 
 await t('выход из роли продавца: кнопка внизу настроек, перед выходом сохранение и вопрос, после — главный экран', async () => {
