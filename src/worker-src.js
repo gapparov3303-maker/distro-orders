@@ -181,6 +181,10 @@ const VIDEO_WAIT_MS = 15 * 60 * 1000;       // сколько бот ждёт в
 const VIDEO_DAY_MAX = 30;                   // видео от одного человека в сутки
 const TG_MINIAPP = 'app';                   // короткое имя Mini App в BotFather (t.me/<бот>/app): по нему кнопка под видео в канале открывает приложение сразу на товаре
 const miniLink = (bot, did, pid) => 'https://t.me/' + bot + '/' + TG_MINIAPP + '?startapp=p_' + did + '_' + pid;
+/* Кнопка под постом в канале (в каналах разрешены только кнопки-ссылки) */
+const videoMarkup = (bot, did, pid) => bot && validDid(did) && validId(pid) ? { inline_keyboard: [[{ text: btn2('🛒 Ilovada ochish', '🛒 Открыть в приложении'), url: miniLink(bot, did, pid) }]] } : undefined;
+const VIDEO_CAP_MAX = 1000;                 // подпись под видео: у Telegram предел 1024 знака, оставляем запас
+const VIDEO_CAP_EDITS = 20;                 // сколько подписей правим за один раз (дальше Telegram начинает отказывать)
 const cleanVd = v => typeof v === 'string' && /^[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(v) ? v : '';
 const cleanVch = v => { const t = String(v || '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').replace(/[/?#].*$/, ''); return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(t) ? t : ''; };
 /* Как проиграть видео в приложении: номера файлов в Telegram (видео, кадр-заставка) и тип. Это знает только сервер, покупателю и клиенту не отдаётся. */
@@ -202,6 +206,39 @@ function parseRange(h, size) {
   return a <= b && a < size ? [a, b] : null;
 }
 const vdParts = vd => { const m = cleanVd(vd).match(/^(.+)\/(\d+)$/); return m ? { ch: m[1], id: Number(m[2]) } : null; };
+/* Подпись под видео в канале: два блока (узбекский, потом русский) и в конце продавец. В блоке название с весом, цена, акция или новинка,
+   упаковка, ступени цены и описание; строки без данных не пишутся, без узбекского названия остаётся один русский блок.
+   Не длиннее VIDEO_CAP_MAX знаков: при нехватке места обрезается описание, сначала более длинное. */
+function videoCaption(it, seller) {
+  const was = LANG;
+  const block = lang => {
+    setLang(lang);
+    const uz = lang === 'uz', name = cleanStr(uz ? it.uz : it.name, 60);
+    if (!name) return null;
+    const w = weightLabel(it), lines = [name + (w ? ', ' + w : '')], price = Number(it.price) || 0;
+    if (price > 0) lines.push('💰 ' + money(price) + ' / ' + pcsWord(it));
+    if (it.tag === 'sale') lines.push('🔥 ' + tagName('sale') + (oldPrice(it) ? ' −' + salePct(it) + '% (' + L('было ', 'avval ') + money(oldPrice(it)) + ')' : ''));
+    else if (it.tag === 'new') lines.push('🆕 ' + tagName('new'));
+    const pk = PACK_KEYS.filter(k => packSize(it, k)).map((k, i) => (uz ? (k === 'box' ? 'qutida ' : 'blokda ') : (i ? 'в ' : 'В ') + (k === 'box' ? 'коробке ' : 'блоке ')) + packSize(it, k) + ' ' + pcsWord(it));
+    if (pk.length) lines.push('📦 ' + (uz ? pk[0].charAt(0).toUpperCase() + pk[0].slice(1) : pk[0]) + pk.slice(1).map(x => ', ' + x).join('') + (packOnly(it) ? ' · ' + L('только ', 'faqat ') + packOnlyWord(it) : ''));
+    const tr = tiersOf(it).filter(t => Number(t.n) >= 2 && Number(t.price) > 0).map(t => qtyFrom(it, t.n) + ': ' + money(t.price));
+    if (tr.length) lines.push('📉 ' + tr.join('; '));
+    return { lines, label: L('Описание: ', 'Tavsif: '), desc: String((uz ? it.descUz : it.desc) || '').replace(/\s+/g, ' ').trim() };
+  };
+  const blocks = [block('uz'), block('ru')].filter(Boolean);
+  setLang(was);
+  const tail = cleanStr(seller, 60);
+  const render = () => blocks.map(b => b.lines.concat(b.desc ? [b.label + b.desc] : []).join('\n')).join('\n\n') + (tail ? '\n\n' + tail : '');
+  let out = render();
+  while (out.length > VIDEO_CAP_MAX) {
+    const b = blocks.slice().sort((x, y) => y.desc.length - x.desc.length)[0];
+    if (!b || !b.desc) break;
+    const over = out.length - VIDEO_CAP_MAX;
+    b.desc = over + 1 >= b.desc.length ? '' : b.desc.slice(0, b.desc.length - over - 1).replace(/[\uD800-\uDBFF]$/, '').trimEnd() + '…';
+    out = render();
+  }
+  return out.slice(0, VIDEO_CAP_MAX);
+}
 const emptyProd = () => ({ cats: [], items: [] });
 function normProd(d) {
   const out = emptyProd();
@@ -2488,6 +2525,7 @@ export class Shop {
     if (path === '/__/video-set') return json(await this.videoSet(String(b.pid || ''), String(b.vd || ''), b.vx));
     if (path === '/__/video-remove') return json(await this.videoRemove(String(b.pid || '')));
     if (path === '/__/video-list') return json({ items: await this.videoList() });
+    if (path === '/__/video-caps') return json({ items: await this.videoCaps() });
     if (path === '/__/summary') return json(await this.summary());
     if (path === '/__/set-cat') {
       // владелец площадки поменял категорию: хранится здесь, площадка обновляет свою копию сама
@@ -3223,6 +3261,7 @@ export class Shop {
     await this.st.put(upd);
     if (gone.length) await this.st.delete(gone.flatMap(id => [1, 2, 3].map(n => photoKey(id, n))));   // фото удалённых товаров не копим
     await Promise.all(old.items.filter(i => gone.includes(i.id) && cleanVd(i.vd)).map(i => this.videoDrop(i.vd)));   // и посты с их видео в канале
+    await this.videoResync(old.items, prod);   // у остальных постов подпись следует за товаром
     await this.hubSync();
     if (mod && mod.state === 'wait') {
       const fresh = prod.items.filter(i => i.ms === 'wait' && !oldIds.has(i.id));
@@ -3317,6 +3356,7 @@ export class Shop {
     F.forEach(k => { if (b.item[k] !== undefined) patch[k] = b.item[k]; });
     const prod = sanitizeProd({ cats: old.cats, items: old.items.map(x => x.id === b.id ? Object.assign({}, x, patch) : x) }, old);
     await this.st.put('prod', prod);
+    await this.videoResync(old.items, prod);
     await this.hubSync();
     return json({ item: prod.items.find(x => x.id === b.id) });
   }
@@ -3399,7 +3439,29 @@ export class Shop {
   /* Видео товара (см. VIDEO_CH). Бот спрашивает название, привязывает пост и убирает прежний; продавец и владелец убирают видео сами. */
   async videoInfo(pid) {
     const it = (await this.getProd()).items.find(x => x.id === pid);
-    return it ? { ok: true, name: it.name, uz: it.uz || '', vd: cleanVd(it.vd) } : { ok: false };
+    return it ? { ok: true, name: it.name, uz: it.uz || '', vd: cleanVd(it.vd), cap: videoCaption(it, await this.videoSeller()) } : { ok: false };
+  }
+  /* Имя продавца в подписи: то же, что площадка показывает в списке (summary().name) */
+  async videoSeller() { return cleanStr((await this.getCfg()).shop.name || DEFAULT.shop.name, 60); }
+  /* Подписи всех постов этого продавца: {pid, vd, cap} (владелец обновляет их кнопкой) */
+  async videoCaps() {
+    const prod = await this.getProd(), seller = await this.videoSeller();
+    return prod.items.filter(i => cleanVd(i.vd)).map(i => ({ pid: i.id, vd: i.vd, cap: videoCaption(i, seller) }));
+  }
+  /* Товар изменили (цена, акция, упаковка, описание...): у постов, чья подпись из-за этого поменялась, правим подпись в канале.
+     Сравниваем подпись до и после, поэтому лишнего не трогаем. Сбой не страшен: пост останется со старой подписью. */
+  async videoResync(oldItems, prod) {
+    if (!this.env.HUB) return;
+    try {
+      const was = new Map(oldItems.map(i => [i.id, i])), seller = await this.videoSeller(), edits = [];
+      prod.items.forEach(it => {
+        const o = was.get(it.id);
+        if (!o || !cleanVd(it.vd) || it.vd !== o.vd) return;   // нет видео или видео только что заменили (подпись уже свежая)
+        const cap = videoCaption(it, seller);
+        if (cap !== videoCaption(o, seller)) edits.push({ pid: it.id, vd: it.vd, cap });
+      });
+      if (edits.length) await hubCall(this.env, '/__/video-edit', { did: this.did, edits: edits.slice(0, VIDEO_CAP_EDITS) });
+    } catch (e) { console.error('video resync failed', e && e.message || e); }
   }
   async videoSet(pid, vd, vx) {
     const prod = await this.getProd();
@@ -5054,6 +5116,7 @@ export class Hub {
       }
       return json({ ok: true, shops, sent });
     }
+    if (path === '/__/video-edit') return json(validDid(b.did) && (await this.getRec(b.did)) ? await this.videoEdit(b.did, b.edits) : { done: 0, failed: 0 });
     if (path === '/__/bot') { if (typeof b.username === 'string' && /^[A-Za-z0-9_]{3,64}$/.test(b.username)) await this.st.put('bot', b.username); return json({ ok: true }); }
     if (path === '/__/sync') {
       const rec = validDid(b.did) ? await this.getRec(b.did) : null;
@@ -6313,6 +6376,15 @@ export class Hub {
       await this.st.put('vch', ch);
       return json(await this.videoState());
     }
+    if (path === '/api/hub/admin/video/captions' && method === 'POST') {   // владелец переписывает подписи всех постов
+      let done = 0, failed = 0;
+      for (const rec of await this.allRecs()) {
+        const r = await shopCall(this.env, rec.id, '/__/video-caps', {}), items = ((r.data && r.data.items) || []).slice(0, 60);
+        const x = await this.videoEdit(rec.id, items);
+        done += x.done; failed += x.failed;
+      }
+      return json({ done, failed });
+    }
     if (path === '/api/hub/admin/video/remove' && method === 'POST') {
       const r = await this.readBody(request, 400);
       const b = r.body && typeof r.body === 'object' ? r.body : null;
@@ -6763,6 +6835,22 @@ export class Hub {
     if (!(await this.sellsOf(uid)).includes(did) && !(await this.owners()).includes(uid)) return null;
     return await this.getRec(did);
   }
+  /* Правит подписи постов в канале (их присылает хранилище продавца или владелец кнопкой). Кнопку под постом ставим заново: без неё Telegram её убирает.
+     Ответ: сколько исправлено и сколько нет (пост удалён, канал недоступен, Telegram просит подождать). «Не изменилось» считается удачей. */
+  async videoEdit(did, edits) {
+    const bot = await this.botName(), list = (Array.isArray(edits) ? edits : []).filter(e => e && validId(e.pid) && vdParts(e.vd) && typeof e.cap === 'string' && e.cap).slice(0, VIDEO_CAP_EDITS * 3);
+    let done = 0, failed = 0;
+    for (let i = 0; i < list.length; i += 5) {
+      await Promise.all(list.slice(i, i + 5).map(async e => {
+        const v = vdParts(e.vd), p = { chat_id: '@' + v.ch, message_id: v.id, caption: e.cap.slice(0, 1024) }, mk = videoMarkup(bot, did, e.pid);
+        if (mk) p.reply_markup = mk;
+        const r = await this.tg('editMessageCaption', p);
+        if (r.ok || /not modified/i.test(String(r.description || ''))) done++;
+        else { failed++; console.error('video caption failed', e.vd, r && r.description); }
+      }));
+    }
+    return { done, failed };
+  }
   async videoStart(uid, chat, did, pid) {
     const say = (ru, uz, markup) => this.tg('sendMessage', { chat_id: chat, text: biU(ru, uz), reply_markup: markup });
     const rec = await this.videoCan(uid, did);
@@ -6801,8 +6889,9 @@ export class Hub {
     const ch = await this.vch();
     /* Под постом кнопка «Открыть в приложении»: ссылка на Mini App открывает каталог продавца с этим товаром (в канале разрешены только кнопки-ссылки) */
     const bot = await this.botName();
-    const cp = { chat_id: '@' + ch, from_chat_id: chat, message_id: msg.message_id, caption: cleanStr(info.name + ' · ' + rec.name, 200) };
-    if (bot && validId(pend.pid)) cp.reply_markup = { inline_keyboard: [[{ text: btn2('🛒 Ilovada ochish', '🛒 Открыть в приложении'), url: miniLink(bot, pend.did, pend.pid) }]] };
+    const cp = { chat_id: '@' + ch, from_chat_id: chat, message_id: msg.message_id, caption: info.cap || cleanStr(info.name + ' · ' + rec.name, 200) };   // подпись: цена, упаковка, описание на двух языках (videoCaption)
+    const mk = videoMarkup(bot, pend.did, pend.pid);
+    if (mk) cp.reply_markup = mk;
     let res = await this.tg('copyMessage', cp);
     if (!res.ok && cp.reply_markup && /button|reply.?markup/i.test(String(res.description || ''))) { delete cp.reply_markup; res = await this.tg('copyMessage', cp); }   // кнопку не приняли — видео всё равно публикуем
     if (!res.ok || !res.result || !Number.isInteger(res.result.message_id)) {
