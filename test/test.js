@@ -40,7 +40,7 @@ class MockStorage {
     return Array.isArray(k) ? n : n > 0;
   }
 }
-let tgLog = [], tgFail = false, tgDocFail = false, tgDocDelay = 0, msgSeq = 1000, tgCopyFail = '', tgCopyBtnFail = '';
+let tgLog = [], tgFail = false, tgDocFail = false, tgDocDelay = 0, msgSeq = 1000, tgCopyFail = '', tgCopyBtnFail = '', tgEditFail = '';
 /* файлы Telegram для проигрывания видео: номер файла → путь → байты; tgFileRanges — умеет ли «Telegram» отдавать куски */
 const VID_ID = 'BAACAgIAAxkBAAIvideo01', THM_ID = 'AAMCAgADGQEAAthumb0001', VID2_ID = 'BAACAgIAAxkBAAIvideo02';
 const mkBytes = (n, k) => Uint8Array.from({ length: n }, (_, i) => (i * 7 + (k || 0)) % 251);
@@ -82,6 +82,7 @@ globalThis.fetch = async (url, init) => {
   if (tgDocFail && method === 'sendDocument') return new Response(JSON.stringify({ ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' }), { status: 403, headers: { 'content-type': 'application/json' } });
   if (tgCopyFail && method === 'copyMessage') return new Response(JSON.stringify({ ok: false, error_code: 400, description: tgCopyFail }), { status: 400, headers: { 'content-type': 'application/json' } });
   if (tgCopyBtnFail && method === 'copyMessage' && payload.reply_markup) return new Response(JSON.stringify({ ok: false, error_code: 400, description: tgCopyBtnFail }), { status: 400, headers: { 'content-type': 'application/json' } });
+  if (tgEditFail && method === 'editMessageCaption') return new Response(JSON.stringify({ ok: false, error_code: 400, description: tgEditFail }), { status: 400, headers: { 'content-type': 'application/json' } });
   const res = { ok: true, result: true };
   if (method === 'copyMessage') res.result = { message_id: ++msgSeq };
   if (method === 'getFile') {
@@ -160,6 +161,7 @@ const SAMPLE_PROD = () => ({
   ]
 });
 const PRICE = { p1: 82000, p2: 410000, p4: 7500 };
+const nb = s => String(s).replace(/\u00a0|\u202f/g, ' ');   // в числах Telegram стоит неразрывный пробел: в проверках сравниваем с обычным
 const totalOf = cart => Array.isArray(cart) ? cart.reduce((s, c) => s + (c && PRICE[c.id] ? PRICE[c.id] * c.qty : 0), 0) : undefined;
 const CART = [{ id: 'p1', qty: 2 }, { id: 'p2', qty: 3 }];            // 164 000 + 1 230 000 = 1 394 000
 const putProd = (prod, init) => call('PUT', '/api/admin/products', { init: init || iS(), body: { prod } });
@@ -10271,7 +10273,8 @@ await t('видео товара: продавец жмёт «Добавить �
   await vmsg(DIL, {}, 504);
   const cp = lastTg('copyMessage');
   assert.ok(cp && cp.payload.chat_id === '@sarbon_video' && cp.payload.from_chat_id === DIL.id && cp.payload.message_id === 504);
-  assert.equal(cp.payload.caption, 'Масло подсолнечное · Видео Трейд');
+  assert.equal(nb(cp.payload.caption), ['Kungaboqar yogʻi, 5 l', '💰 82 000 soʻm / dona', 'Tavsif: Tozalangan', '', 'Масло подсолнечное, 5 л', '💰 82 000 сум / шт', 'Описание: Рафинированное', '', 'Видео Трейд'].join('\n'), 'подпись: два блока и продавец в конце');
+  assert.ok(/82\u00a0000/.test(cp.payload.caption), 'число с неразрывным пробелом, не рвётся на строке');
   const cb = cp.payload.reply_markup.inline_keyboard;
   assert.equal(cb.length, 1); assert.equal(cb[0].length, 1, 'под постом одна кнопка');
   assert.equal(cb[0][0].url, 'https://t.me/distro_test_bot/app?startapp=p_' + sid + '_p1', 'ссылка на Mini App открывает этот товар этого продавца');
@@ -10717,6 +10720,124 @@ await t('значок на главном экране: плашка один р
   assert.ok(/function switchLang\(\)[\s\S]{0,300}hsPaint\(\);/.test(html), 'смена языка перерисовывает плашку');
   assert.ok(/\.hsbar\[hidden\]\{display:none\}/.test(html) && /\.hsbar \.wrap\{[^}]*flex-wrap:wrap/.test(html), 'стили есть');
   assert.ok(!/магазин|клиент|дистрибьютор/i.test(src), 'в видимых текстах нет «магазин», «клиент», «дистрибьютор»');
+});
+
+await t('подпись под видео: два языка, цена, акция или новинка, упаковка, ступени цены и описание; пустые строки не пишутся; длинное описание обрезается под лимит', async () => {
+  const { sid } = await shopWorld('Видео Шесть');
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  await send({ update_id: 9990, message: { message_id: 820, from: DIL, chat: { id: DIL.id, type: 'private' }, video: { file_id: VID_ID, duration: 5, file_size: 1e6 } } });
+  // подпись товара p1 после любой правки: правим, просим владельца обновить подписи и читаем, что ушло в канал
+  const capFor = async (patch, seller) => {
+    const c = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod, i = c.items.findIndex(x => x.id === 'p1');
+    c.items[i] = Object.assign({ id: 'p1', cat: 'oil', name: 'Товар', amount: 0, unit: 'g', price: 0, on: true }, patch);
+    assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c } })).status, 200);
+    tgLog = [];
+    assert.deepEqual(await jsonOf(await call('POST', '/api/hub/admin/video/captions', { init: iS(), body: {} })), { done: 1, failed: 0 });
+    return nb(lastTg('editMessageCaption').payload.caption);
+  };
+  // полный товар
+  const full = { name: 'Лаваш тесто', uz: 'Lavash xamiri', desc: 'Свежее\nтесто для лаваша', descUz: 'Lavash uchun yangi xamir', amount: 500, unit: 'g', price: 12500, tag: 'sale', old: 14700, box: 48, blk: 12, tiers: [{ n: 100, price: 11800 }, { n: 300, price: 11000 }] };
+  assert.equal(await capFor(full), [
+    'Lavash xamiri, 500 g', '💰 12 500 soʻm / dona', '🔥 Aksiya −15% (avval 14 700 soʻm)', '📦 Qutida 48 dona, blokda 12 dona', '📉 100 donadan: 11 800 soʻm; 300 donadan: 11 000 soʻm', 'Tavsif: Lavash uchun yangi xamir', '',
+    'Лаваш тесто, 500 г', '💰 12 500 сум / шт', '🔥 Акция −15% (было 14 700 сум)', '📦 В коробке 48 шт, в блоке 12 шт', '📉 от 100 шт: 11 800 сум; от 300 шт: 11 000 сум', 'Описание: Свежее тесто для лаваша', '', 'Видео Шесть'].join('\n'));
+  // голый товар: нет узбекского названия — один русский блок; описание без перевода не дублируется
+  assert.equal(await capFor({ name: 'Рис', amount: 25, unit: 'kg', price: 410000, desc: 'Круглый' }), ['Рис, 25 кг', '💰 410 000 сум / шт', 'Описание: Круглый', '', 'Видео Шесть'].join('\n'));
+  assert.equal(await capFor({ name: 'Соль', uz: 'Tuz', amount: 1, unit: 'kg', price: 3000 }), ['Tuz, 1 kg', '💰 3 000 soʻm / kg', '', 'Соль, 1 кг', '💰 3 000 сум / кг', '', 'Видео Шесть'].join('\n'), 'товар на вес: цена за кг, без описания');
+  // новинка, цены нет, только упаковками, ступень из одной штуки не пишется
+  let c = (await capFor({ name: 'Чай', uz: 'Choy', tag: 'new', price: 0, box: 20, only: 'box', tiers: [{ n: 1, price: 5 }] })).split('\n');
+  assert.ok(c.includes('🆕 Yangilik') && c.includes('🆕 Новинка') && c.includes('📦 Qutida 20 dona · faqat qutida') && c.includes('📦 В коробке 20 шт · только коробками'), c.join('|'));
+  assert.ok(!c.some(x => x.includes('💰') || x.includes('📉') || x.includes('🔥')), 'нет цены, акции и ступеней — нет строк');
+  // акция без старой цены: просто метка
+  c = (await capFor({ name: 'Чай', uz: 'Choy', tag: 'sale', price: 100, old: 0 })).split('\n');
+  assert.ok(c.includes('🔥 Aksiya') && c.includes('🔥 Акция'));
+  // лимит 1000 знаков: длинное описание режется (сначала более длинное), название и цена целы, эмодзи не разрезан
+  const big = { name: 'Н'.repeat(60), uz: 'U'.repeat(60), amount: 12.5, unit: 'kg', price: 99999999, tag: 'sale', old: 100000000, box: 500, blk: 499, only: 'box', tiers: [{ n: 400, price: 90000000 }, { n: 450, price: 80000000 }, { n: 500, price: 70000000 }] };
+  for (const d of [{ desc: 'я'.repeat(300), descUz: 'u'.repeat(300) }, { desc: '😀'.repeat(300), descUz: '😀'.repeat(300) }]) {
+    const cap = await capFor(Object.assign({}, big, d));
+    assert.ok(cap.length <= 1000, 'длина ' + cap.length);
+    assert.ok(cap.includes('U'.repeat(60)) && cap.includes('Н'.repeat(60)) && cap.endsWith('Видео Шесть'), 'название и продавец на месте');
+    assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(cap) && !/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(cap), 'эмодзи не разрезан');
+  }
+  const cut = await capFor(Object.assign({}, big, { desc: 'я'.repeat(200), descUz: 'u'.repeat(300) }));
+  assert.ok(cut.length <= 1000 && cut.length > 950, 'длина ' + cut.length + ': обрезано ровно по лимиту');
+  assert.ok(cut.includes('я'.repeat(200) + '\n') && /uu…\n\nНН/.test(cut) && !/я…/.test(cut), 'короткое описание цело, длинное обрезано многоточием');
+  // оба описания по 300: режется первое из равных (узбекское), русское цело; названия, цены и продавец на месте
+  const both = await capFor(Object.assign({}, big, { desc: 'я'.repeat(300), descUz: 'u'.repeat(300) }));
+  assert.ok(both.length <= 1000 && /u…\n\nН/.test(both) && both.includes('я'.repeat(300)) && both.endsWith('Видео Шесть'), 'длина ' + both.length);
+});
+
+await t('подпись под видео следует за товаром: цена, акция, упаковка или описание поменялись — бот правит подпись в канале (с кнопкой); не менялось — не трогает', async () => {
+  const { sid } = await shopWorld('Видео Четыре');
+  const vmsg = mid => send({ update_id: 9900 + mid, message: { message_id: mid, from: DIL, chat: { id: DIL.id, type: 'private' }, video: { file_id: VID_ID, duration: 5, file_size: 1e6 } } });
+  await startMsg(DIL, 'v_' + sid + '_p1'); await vmsg(800);
+  await startMsg(DIL, 'v_' + sid + '_p2'); await vmsg(801);
+  const prodOf = async () => (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod;
+  const save = async mut => { const c = await prodOf(); mut(c); const r = await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c } }); assert.equal(r.status, 200); };
+  const vd = async id => (await prodOf()).items.find(i => i.id === id).vd;
+  const [v1, v2] = [await vd('p1'), await vd('p2')];
+  // ничего не менялось — подписи не трогаем
+  tgLog = [];
+  await save(() => {});
+  assert.equal(tgAll('editMessageCaption').length, 0, 'каталог сохранили без изменений');
+  // цена первого товара изменилась: правится только его пост, кнопка под постом остаётся
+  await save(c => { c.items.find(i => i.id === 'p1').price = 90000; c.items.find(i => i.id === 'p4').price = 9000; });
+  let ed = tgAll('editMessageCaption');
+  assert.equal(ed.length, 1, 'у p4 видео нет, у p2 цена та же');
+  assert.equal(ed[0].payload.chat_id, '@sarbon_video'); assert.equal(ed[0].payload.message_id, Number(v1.split('/')[1]));
+  assert.ok(/💰 90 000 soʻm \/ dona/.test(nb(ed[0].payload.caption)) && /💰 90 000 сум \/ шт/.test(nb(ed[0].payload.caption)) && /Видео Четыре$/.test(ed[0].payload.caption));
+  assert.equal(ed[0].payload.reply_markup.inline_keyboard[0][0].url, 'https://t.me/distro_test_bot/app?startapp=p_' + sid + '_p1', 'кнопку ставим заново, иначе Telegram её убирает');
+  // акция, упаковка, описание второго товара
+  tgLog = [];
+  await save(c => { const x = c.items.find(i => i.id === 'p2'); x.tag = 'sale'; x.old = 500000; x.box = 10; x.desc = 'Круглозёрный'; x.descUz = 'Dumaloq'; });
+  ed = tgAll('editMessageCaption');
+  assert.equal(ed.length, 1); assert.equal(ed[0].payload.message_id, Number(v2.split('/')[1]));
+  const cap2 = nb(ed[0].payload.caption);
+  assert.ok(/🔥 Aksiya −18% \(avval 500 000 soʻm\)/.test(cap2) && /🔥 Акция −18% \(было 500 000 сум\)/.test(cap2) && /📦 Qutida 10 dona/.test(cap2) && /📦 В коробке 10 шт/.test(cap2) && /Tavsif: Dumaloq/.test(cap2) && /Описание: Круглозёрный/.test(cap2), cap2);
+  // то, чего в подписи нет (остаток, порядок, фото), её не трогает; выключенный товар: подпись остаётся
+  tgLog = [];
+  await save(c => { c.items.find(i => i.id === 'p1').on = false; });
+  assert.equal(tgAll('editMessageCaption').length, 0, 'включён или выключен — подпись та же');
+  // Telegram отказал: сохранение каталога всё равно проходит
+  tgEditFail = 'Bad Request: message to edit not found';
+  tgLog = [];
+  await save(c => { c.items.find(i => i.id === 'p1').price = 91000; });
+  tgEditFail = '';
+  assert.equal(tgAll('editMessageCaption').length, 1);
+  assert.equal((await prodOf()).items.find(i => i.id === 'p1').price, 91000, 'цена сохранена, хотя подпись не исправилась');
+  // «подпись не изменилась» для Telegram — не ошибка (человек вернул прежнюю цену, пока шла правка)
+  tgEditFail = 'Bad Request: message is not modified: specified new message content and reply markup are exactly the same';
+  await save(c => { c.items.find(i => i.id === 'p1').price = 92000; });
+  tgEditFail = '';
+  // владелец правит товар сам (карточка владельца): подпись тоже следует
+  tgLog = [];
+  const me = await call('PUT', '/api/hub/admin/mod/edit', { init: iS(), body: { did: sid, id: 'p1', item: { price: 95000 } } });
+  assert.equal(me.status, 200);
+  assert.ok(/95 000/.test(nb(lastTg('editMessageCaption').payload.caption)), 'правка владельца');
+});
+
+await t('владелец: «Обновить подписи в канале» переписывает подписи всех постов; не владелец не может; ошибки считаются', async () => {
+  const { sid } = await shopWorld('Видео Пять');
+  const vmsg = mid => send({ update_id: 9950 + mid, message: { message_id: mid, from: DIL, chat: { id: DIL.id, type: 'private' }, video: { file_id: VID_ID, duration: 5, file_size: 1e6 } } });
+  await startMsg(DIL, 'v_' + sid + '_p1'); await vmsg(810);
+  await startMsg(DIL, 'v_' + sid + '_p2'); await vmsg(811);
+  assert.equal((await call('POST', '/api/hub/admin/video/captions', { init: iA(), body: {} })).status, 403, 'покупатель');
+  assert.equal((await call('POST', '/api/hub/admin/video/captions', { body: {} })).status, 401, 'без входа');
+  tgLog = [];
+  let r = await call('POST', '/api/hub/admin/video/captions', { init: iS(), body: {} });
+  assert.equal(r.status, 200);
+  assert.deepEqual(await jsonOf(r), { done: 2, failed: 0 });
+  const ed = tgAll('editMessageCaption');
+  assert.equal(ed.length, 2);
+  assert.ok(ed.every(e => e.payload.reply_markup && e.payload.caption.includes('Видео Пять')), 'у всех кнопка и продавец');
+  // часть не получилось (удалён пост): считается, остальное исправлено
+  tgEditFail = 'Bad Request: message to edit not found';
+  r = await call('POST', '/api/hub/admin/video/captions', { init: iS(), body: {} });
+  tgEditFail = '';
+  assert.deepEqual(await jsonOf(r), { done: 0, failed: 2 });
+  // Telegram: «не изменилось» — это уже готово
+  tgEditFail = 'Bad Request: message is not modified';
+  assert.deepEqual(await jsonOf(await call('POST', '/api/hub/admin/video/captions', { init: iS(), body: {} })), { done: 2, failed: 0 });
+  tgEditFail = '';
 });
 
 /* ---------- итог ---------- */
