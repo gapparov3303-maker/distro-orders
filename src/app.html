@@ -477,6 +477,11 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .prow.off{box-shadow:inset 4px 0 0 var(--mute)}
 .prow.fold{padding:8px 12px;margin-top:10px}
 .pfbody{display:grid;grid-template-columns:232px minmax(0,1fr);gap:14px;margin-top:12px;padding-top:12px;border-top:1.5px solid var(--line)}
+.phead{display:flex;align-items:center;gap:6px}
+.phead .psum{width:auto;flex:1 1 0;min-width:0}
+.pmv{display:flex;flex-direction:column;gap:4px;flex:none}
+.pmvb{width:40px;height:34px;padding:0;font-size:14px;line-height:1}
+.pmvb:disabled{opacity:.3;cursor:default;box-shadow:none}
 .psum{appearance:none;width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;border-radius:10px;min-height:56px}
 .psum .pth{width:48px;height:48px;border-radius:10px;overflow:hidden;background:var(--mute-soft);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;flex:none}
 .psum .pth img{width:100%;height:100%;object-fit:cover}
@@ -3487,9 +3492,17 @@ function pxSumInner(p){
   return '<span class="pth">'+th+'</span><span class="ptx"><b>'+(n?esc(n):'<i>'+L('Без названия','Nomsiz')+'</i>')+'</b><small>'+(w?esc(w)+' · ':'')+(p.price>0?money(p.price):'<em>'+L('цена не указана','narx koʻrsatilmagan')+'</em>')+'</small><span class="ppills">'+pxPills(p)+'</span></span><span class="lchev">'+ICO.chev+'</span>';
 }
 function pxLive(p){const s=document.getElementById('psum-'+p.id);if(s)s.innerHTML=pxSumInner(p)}
+/* товары, которые продавец видит в списке (без «На проверке», с учётом категории): по ним и считаются ▲ ▼ */
+function visProd(){return S.prod.items.filter(p=>!inModGroup(p)&&(S.pfilter==='all'||p.cat===S.pfilter))}
+/* ▲ ▼ стоят в строке товара справа, видны и у свёрнутого, и у раскрытого; у первого серая ▲, у последнего серая ▼ */
+function pmvHTML(p){
+  const id=esc(p.id),v=visProd(),i=v.indexOf(p);
+  const b=(d,ch,lab,off)=>'<button type="button" class="btn ghost pmvb" data-act="pmove" data-id="'+id+'" data-d="'+d+'" aria-label="'+esc(lab)+'"'+(off?' disabled':'')+'>'+ch+'</button>';
+  return '<div class="pmv">'+b(-1,'▲',L('Выше','Yuqoriga'),i<=0)+b(1,'▼',L('Ниже','Pastga'),i<0||i>=v.length-1)+'</div>';
+}
 function prodRow(p){
   const id=esc(p.id),open=!!S.pxo[p.id];
-  return '<div class="prow'+(p.on===false?' off':'')+(open?' open':' fold')+'" id="prow-'+id+'"><button type="button" class="psum" id="psum-'+id+'" data-act="pfold" data-id="'+id+'" aria-expanded="'+open+'" aria-controls="pfbody-'+id+'">'+pxSumInner(p)+'</button>'
+  return '<div class="prow'+(p.on===false?' off':'')+(open?' open':' fold')+'" id="prow-'+id+'"><div class="phead"><button type="button" class="psum" id="psum-'+id+'" data-act="pfold" data-id="'+id+'" aria-expanded="'+open+'" aria-controls="pfbody-'+id+'">'+pxSumInner(p)+'</button>'+pmvHTML(p)+'</div>'
     +(open?'<div class="pfbody" id="pfbody-'+id+'">'+prodBody(p)+'</div>':'')+'</div>';
 }
 /* раскрыть или свернуть один товар: перерисовывается только его карточка, страница не прыгает */
@@ -3546,7 +3559,7 @@ function prodBody(p){
     +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
     +vidHTML(p)
     +psvHTML(p)
-    +'<div class="full pact"><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="-1" aria-label="'+esc(L('Выше','Yuqoriga'))+'">▲</button><button type="button" class="btn ghost sm" data-act="pmove" data-id="'+id+'" data-d="1" aria-label="'+esc(L('Ниже','Pastga'))+'">▼</button>'
+    +'<div class="full pact">'
     +'<button type="button" class="btn ghost sm" data-act="pdel" data-id="'+id+'">'+(S.cd===p.id?L('Точно удалить?','Aniq oʻchirilsinmi?'):L('Удалить товар','Mahsulotni oʻchirish'))+'</button>'
     +'<button type="button" class="btn ghost sm pfi pfoldbtn" data-act="pfold" data-id="'+id+'" title="'+esc(L('Свернуть','Yigʻish'))+'" aria-label="'+esc(L('Свернуть','Yigʻish'))+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button></div>'
     +'<div class="full mf" id="mf-'+id+'">'+modFootInner(p)+'</div>'
@@ -7295,12 +7308,17 @@ document.addEventListener('click',e=>{
   }
   else if(a==='pmove'){
     const id=t.dataset.id,d=Number(t.dataset.d)||0,arr=S.prod.items;
-    const vis=arr.map((p,i)=>i).filter(i=>S.pfilter==='all'||arr[i].cat===S.pfilter);
+    const vis=arr.map((p,i)=>i).filter(i=>!inModGroup(arr[i])&&(S.pfilter==='all'||arr[i].cat===S.pfilter));
     const pos=vis.indexOf(arr.findIndex(p=>p.id===id)),to=pos+d;
     if(pos<0||to<0||to>=vis.length)return;
     const a1=vis[pos],b1=vis[to],tmp=arr[a1];arr[a1]=arr[b1];arr[b1]=tmp;
     queueSave('prod');paintSeller();
-    const row=document.getElementById('prow-'+id);if(row)try{row.scrollIntoView({block:'center'})}catch(x){}
+    const row=document.getElementById('prow-'+id);
+    if(row){
+      try{row.scrollIntoView({block:'center'})}catch(x){}
+      const nb=row.querySelector('[data-act="pmove"][data-d="'+d+'"]');   // фокус остаётся на той же стрелке: можно нажимать подряд
+      if(nb&&!nb.disabled)try{nb.focus({preventScroll:true})}catch(x){}
+    }
   }
   else if(a==='phdel')removePhoto(t.dataset.id,t.dataset.n);
   else if(a==='logodel')removeLogo();
