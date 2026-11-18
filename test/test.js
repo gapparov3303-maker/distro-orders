@@ -4081,6 +4081,71 @@ await t('проверка: покупатель видит товар на пр�
   assert.ok(!JSON.stringify(await dSee(sid, A.init())).includes('30000'), 'цена на проверке не утекает покупателю');
 });
 
+await t('скрытие товара: покупатель не видит скрытое и не может заказать, продавец видит с пометкой, счётчик в списке, возврат сразу', async () => {
+  const { sid, cur } = await modWorld();
+  const A = newUser();
+  const cnt = async () => (await jsonOf(await call('GET', '/api/shops'))).shops.find(x => x.id === sid).items;
+  const putHid = ids => dPut(sid, { cats: cur.cats, items: cur.items.map(i => { const { hid, ...r } = i; return ids.includes(i.id) ? { ...r, hid: true } : r; }) });
+  const order = id => callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: [{ id, qty: 4 }], form: formFor(S.DEFAULT, 'pickup', {}), lang: 'ru' } });
+  assert.equal(await cnt(), 4);
+  assert.ok((await dSee(sid, A.init())).items.every(i => !('hid' in i)), 'пока ничего не скрыто, поля hid нет');
+  // продавец скрывает масло
+  assert.equal((await putHid(['p1'])).status, 200);
+  const buyer = (await dSee(sid, A.init())).items;
+  assert.deepEqual(buyer.map(i => i.id), ['p2', 'p3', 'p4'], 'покупатель скрытого товара не получает');
+  assert.ok(!JSON.stringify(buyer).includes('Масло подсолнечное') && !JSON.stringify(buyer).includes('"hid"'), 'ни названия, ни метки');
+  assert.ok(!JSON.stringify(await dSee(sid)).includes('Масло подсолнечное'), 'и гость без входа тоже');
+  const seller = (await dSee(sid, iD())).items;
+  assert.equal(seller.find(i => i.id === 'p1').hid, true, 'продавец видит товар с меткой hid');
+  assert.deepEqual(seller.map(i => i.id), ['p1', 'p2', 'p3', 'p4'], 'и порядок у него прежний');
+  assert.equal(await cnt(), 3, 'в списке продавцов скрытый товар не считается');
+  // заказать скрытый товар нельзя, в ответе свежий каталог без него
+  const r = await order('p1');
+  assert.equal(r.status, 409);
+  const d = await jsonOf(r);
+  assert.equal(d.error, 'unavailable');
+  assert.ok(d.prod.items.every(i => i.id !== 'p1'), 'свежий каталог в ответе тоже без скрытого');
+  // правка цены владельцем и повторное сохранение продавцом не снимают скрытие
+  assert.equal((await oAct('edit', { did: sid, id: 'p1', item: { price: 90000 } })).status, 200);
+  assert.equal((await dSee(sid, iD())).items.find(i => i.id === 'p1').hid, true, 'владелец поправил цену, товар остался скрытым');
+  assert.ok((await dSee(sid, A.init())).items.every(i => i.id !== 'p1'));
+  // скрыть и второй: список для покупателей без обоих
+  const cur2 = (await dSee(sid, iD())).items;
+  assert.equal((await dPut(sid, { cats: cur.cats, items: cur2.map(i => i.id === 'p4' ? { ...i, hid: true } : i) })).status, 200);
+  assert.deepEqual((await dSee(sid, A.init())).items.map(i => i.id), ['p2', 'p3']);
+  assert.equal(await cnt(), 2);
+  // возврат: переключатель включён, товар снова виден и заказывается
+  assert.equal((await dPut(sid, { cats: cur.cats, items: (await dSee(sid, iD())).items.map(i => { const { hid, ...r } = i; return r; }) })).status, 200);
+  const back = (await dSee(sid, A.init())).items;
+  assert.deepEqual(back.map(i => i.id), ['p1', 'p2', 'p3', 'p4']);
+  assert.ok(back.every(i => !('hid' in i)), 'метка hid после возврата не остаётся');
+  assert.equal(await cnt(), 4);
+  assert.equal((await order('p1')).status, 200, 'после возврата товар заказывается');
+  // мусор в поле hid скрытием не считается
+  assert.equal((await dPut(sid, { cats: cur.cats, items: back.map(i => i.id === 'p2' ? { ...i, hid: 'yes' } : i) })).status, 200);
+  assert.ok((await dSee(sid, A.init())).items.some(i => i.id === 'p2'), 'скрывает только настоящее true');
+});
+
+await t('скрытие товара: переключатель в карточке, пометка «Скрыт» в строке, покупательский каталог их не показывает', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
+  const body = fn('prodBody'), pills = fn('pxPills'), row = fn('prodRow');
+  assert.ok(/data-pp="show"'\+\(p\.hid\?'':' checked'\)/.test(body) && /Показывать покупателям/.test(body) && /Xaridorlarga koʻrsatish/.test(body), 'переключатель включён, пока товар не скрыт, подписан на двух языках');
+  assert.ok(body.indexOf("pfHintRow('show')") > body.indexOf('data-pp="show"'), 'под переключателем подсказка');
+  assert.ok(/if\(p\.hid\)h\+='<span class="mtag hid">'\+L\('Скрыт','Yashirin'\)/.test(pills), 'пометка «Скрыт» в свёрнутой строке');
+  assert.ok(/p\.on===false\|\|p\.hid\?' off'/.test(row), 'строка скрытого товара с серой полосой');
+  assert.ok(/else if\(k==='show'\)\{if\(t\.checked\)delete p\.hid;else p\.hid=true;/.test(html), 'обработчик: включили — метка убирается, выключили — ставится');
+  assert.ok(/const apr=p=>!p\.ms&&!p\.hid/.test(html), 'каталог покупателя, избранное, поиск, метки «Акция»/«Новинка» и категории не берут скрытое');
+  assert.ok(/const soldOut=p=>[^\n]*!!p\.hid/.test(html), 'скрытое нельзя положить в корзину, из корзины пропадает');
+  // подсказки и «Как это работает» на двух языках, без слов «магазин»/«клиент»
+  const hint = html.slice(html.indexOf('  show:L('), html.indexOf('  oldS:L('));
+  assert.ok(/Выключите, и покупатели не увидят товар совсем/.test(hint) && /xaridorlar mahsulotni umuman koʻrmaydi/.test(hint), 'подсказка на двух языках');
+  assert.ok(/Выключите «Показывать покупателям», чтобы убрать товар из каталога совсем/.test(html) && /«Xaridorlarga koʻrsatish» ni oʻchiring/.test(html), 'в описании каталога и в «О приложении»');
+  // сервер: скрытое не уходит покупателю и не заказывается
+  const w = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
+  assert.ok(/\.\.\.\(o\.hid === true \? \{ hid: true \} : \{\}\)/.test(w) && /if \(it\.hid && !admin\) return;/.test(w) && /it\.ms \|\| it\.hid\) \{ missing = true/.test(w) && /filter\(isShown\)/.test(w), 'сервер: поле, фильтр каталога, заказ, счётчик');
+});
+
 await t('проверка: владелец видит товары всех дистрибьюторов, возвращает с причиной, продавец исправляет и отправляет снова', async () => {
   const { sid, cur } = await modWorld();
   await dPut(sid, { cats: cur.cats, items: cur.items.concat([NEWP('n1'), NEWP('n2', { name: 'Рис «Лазер»', cat: 'groats' })]) });

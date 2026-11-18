@@ -494,6 +494,7 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .ppills:empty{display:none}
 .psum[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .mtag.off{background:var(--bad-soft);color:var(--bad)}
+.mtag.hid{background:var(--mute-soft);color:var(--ink-2)}
 .mtag.sale{background:var(--warn-soft);color:var(--warn)}
 .mtag.new{background:var(--info-soft);color:var(--info)}
 .pfoldbar{margin:10px 0 0}
@@ -1209,9 +1210,9 @@ function applyProfile(){
 const blockedTxt=()=>L('Оформление заказов для вас сейчас недоступно. Свяжитесь с продавцом','Hozir siz uchun buyurtma berish mavjud emas. Sotuvchi bilan bogʻlaning')+(S.cfg.shop.phone?': '+S.cfg.shop.phone:'.');
 /* Товар нельзя заказать: продавец снял галочку «В наличии» или свободный остаток равен нулю. Поле av приходит с сервера у товаров с учётом (сколько можно заказать, не больше 500), lw — товара мало. */
 /* Проверка товаров: без метки ms товар одобрен; wait — ждёт проверки (клиент видит серым, без цены); draft и ret видит только продавец. */
-const apr=p=>!p.ms;
+const apr=p=>!p.ms&&!p.hid;   // покупатель видит одобренные и не скрытые продавцом (продавцу сервер отдаёт и скрытые)
 const isPend=p=>p.ms==='wait';
-const soldOut=p=>p.on===false||p.av===0||!!p.ms||(!!packOnly(p)&&typeof p.av==='number'&&p.av<packStep(p));
+const soldOut=p=>p.on===false||p.av===0||!!p.ms||!!p.hid||(!!packOnly(p)&&typeof p.av==='number'&&p.av<packStep(p));
 /* Сколько штук можно положить в корзину: до 500, а у товаров с учётом — не больше свободного остатка. */
 const maxQty=p=>{const m=typeof p.av==='number'?Math.min(MAX_QTY,p.av):MAX_QTY,n=packStep(p);return n>1?Math.floor(m/n)*n:m};
 const capOf=id=>{const p=S.prod.items.find(x=>x.id===id);return p?maxQty(p):MAX_QTY};
@@ -3450,6 +3451,7 @@ const PF_HINT=()=>({
   amount:L('Сколько в одной единице: для банки 325 г впишите 325 и выберите «'+unitName('g')+'».','Bitta birlikda qancha: 325 g li banka uchun 325 yozing va «'+unitName('g')+'» ni tanlang.'),
   price:L('Цена одной единицы (банки, пачки). Метка «'+tagName('sale')+'» или «'+tagName('new')+'» появится на карточке товара.','Bitta birlik (banka, pachka) narxi. «'+tagName('sale')+'» yoki «'+tagName('new')+'» belgisi mahsulot kartasida koʻrinadi.'),
   old:L('Старая цена показывается зачёркнутой рядом с новой, нужна для акции. Снимите «В наличии», если товара нет: покупатели увидят его серым.','Eski narx yangisi yonida chizilgan holda koʻrinadi, aksiya uchun kerak. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: xaridorlar uni kulrang koʻradi.'),
+  show:L('Выключите, и покупатели не увидят товар совсем. Включите, и он сразу вернётся в каталог.','Oʻchirsangiz, xaridorlar mahsulotni umuman koʻrmaydi. Yoqsangiz, u darhol katalogga qaytadi.'),
   oldS:L('Старая цена показывается зачёркнутой рядом с новой, нужна только для акции.','Eski narx yangisi yonida chizilgan holda koʻrinadi, faqat aksiya uchun kerak.')});
 const pfHint=k=>'<span class="hint">'+esc(PF_HINT()[k])+'</span>';
 const pfHintRow=k=>'<div class="full hint">'+esc(PF_HINT()[k])+'</div>';
@@ -3480,6 +3482,7 @@ function onlySync(p,root){
    Какие товары раскрыты, помнит S.pxo (только на время работы, на сервер не уходит) */
 function pxPills(p){
   let h=modTag(p);
+  if(p.hid)h+='<span class="mtag hid">'+L('Скрыт','Yashirin')+'</span>';
   if(p.on===false)h+='<span class="mtag off">'+L('Нет в наличии','Mavjud emas')+'</span>';
   else if(p.av===0)h+='<span class="mtag off">'+L('Остаток закончился','Qoldiq tugagan')+'</span>';
   if(p.tag==='sale'||p.tag==='new')h+='<span class="mtag '+p.tag+'">'+tagName(p.tag)+'</span>';
@@ -3502,7 +3505,7 @@ function pmvHTML(p){
 }
 function prodRow(p){
   const id=esc(p.id),open=!!S.pxo[p.id];
-  return '<div class="prow'+(p.on===false?' off':'')+(open?' open':' fold')+'" id="prow-'+id+'"><div class="phead"><button type="button" class="psum" id="psum-'+id+'" data-act="pfold" data-id="'+id+'" aria-expanded="'+open+'" aria-controls="pfbody-'+id+'">'+pxSumInner(p)+'</button>'+pmvHTML(p)+'</div>'
+  return '<div class="prow'+(p.on===false||p.hid?' off':'')+(open?' open':' fold')+'" id="prow-'+id+'"><div class="phead"><button type="button" class="psum" id="psum-'+id+'" data-act="pfold" data-id="'+id+'" aria-expanded="'+open+'" aria-controls="pfbody-'+id+'">'+pxSumInner(p)+'</button>'+pmvHTML(p)+'</div>'
     +(open?'<div class="pfbody" id="pfbody-'+id+'">'+prodBody(p)+'</div>':'')+'</div>';
 }
 /* раскрыть или свернуть один товар: перерисовывается только его карточка, страница не прыгает */
@@ -3548,6 +3551,8 @@ function prodBody(p){
     +fld('old',L('Старая цена для акции, сум','Aksiya uchun eski narx, soʻm'),inp('old','number',p.old||0,' inputmode="numeric" step="500" min="0"'))
     +'<div class="avail"><label class="chk"><input type="checkbox" data-pid="'+id+'" data-pp="on"'+(p.on!==false?' checked':'')+'> '+L('В наличии','Mavjud')+'</label></div>'
     +pfHintRow('old')
+    +'<div class="full"><label class="chk"><input type="checkbox" data-pid="'+id+'" data-pp="show"'+(p.hid?'':' checked')+'> '+L('Показывать покупателям','Xaridorlarga koʻrsatish')+'</label></div>'
+    +pfHintRow('show')
     +tiersEditHTML(p)
     +fld('blk',packLab(p,'blk'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
     +fld('box',packLab(p,'box'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
@@ -3631,7 +3636,7 @@ function prodHTML(){
   if(S.pfilter!=='all'&&!P.cats.some(c=>c.id===S.pfilter))S.pfilter='all';
   const pend=P.items.filter(inModGroup);
   const list=P.items.filter(p=>!inModGroup(p)&&(S.pfilter==='all'||p.cat===S.pfilter));
-  let h='<div class="note" style="margin-bottom:14px">'+L('Каталог товаров. Сначала создайте категории, затем добавляйте товары: название, описание, вес, цену и фото. Покупатели видят изменения сразу. Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым.','Mahsulotlar katalogi. Avval kategoriyalar yarating, keyin mahsulotlar qoʻshing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Xaridorlar oʻzgarishlarni darhol koʻradi. Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi.')+'</div>'
+  let h='<div class="note" style="margin-bottom:14px">'+L('Каталог товаров. Сначала создайте категории, затем добавляйте товары: название, описание, вес, цену и фото. Покупатели видят изменения сразу. Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым. Выключите «Показывать покупателям», чтобы убрать товар из каталога совсем; включите, и он вернётся.','Mahsulotlar katalogi. Avval kategoriyalar yarating, keyin mahsulotlar qoʻshing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Xaridorlar oʻzgarishlarni darhol koʻradi. Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi. Mahsulotni katalogdan butunlay olib qoʻyish uchun «Xaridorlarga koʻrsatish» ni oʻchiring; yoqsangiz, u qaytadi.')+'</div>'
     +'<div class="savebar" id="savebar"></div>';
   h+=impCardHTML();
   h+='<div class="card"><h3>'+L('Категории','Kategoriyalar')+'</h3><div class="unit">'+L('Каждая категория называется на двух языках: покупатель видит название на языке своего приложения. Если узбекское пустое, покажется русское. Удалить можно только пустую категорию.','Har bir kategoriya ikki tilda nomlanadi: xaridor oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
@@ -5069,6 +5074,7 @@ const ABOUT_ROLES=[
   ['Метки «Акция» (со старой ценой) и «Новинка», цены от количества, блоки и коробки, скидка на заказ от суммы. Прайс можно выгрузить в Excel, поправить цены и загрузить обратно: перед применением вы увидите, что изменится.','«Aksiya» (eski narx bilan) va «Yangilik» belgilari, miqdorga qarab narx, blok va qutilar, summaga qarab chegirma. Prays-listni Excelga yuklab, narxlarni tuzatib, qaytarib yuklash mumkin: qoʻllashdan oldin nima oʻzgarishini koʻrasiz.'],
   ['Новый товар сначала «Черновик». Нажмите «Отправить на проверку»: владелец площадки одобрит товар или вернёт с причиной, что исправить. Правки уже одобренных товаров проверки не требуют.','Yangi tovar avval «Qoralama» boʻladi. «Tekshiruvga yuborish»ni bosing: platforma egasi tovarni tasdiqlaydi yoki nimani tuzatish kerakligini sabab bilan qaytaradi. Tasdiqlangan tovarlarni oʻzgartirish tekshiruvsiz amalga oshadi.'],
   ['Пока товар не одобрен, покупатели видят его серым с надписью «На модерации».','Tovar tasdiqlanmaguncha xaridorlar uni «Tekshiruvda» yozuvli kulrang koʻrinishda koʻradi.'],
+  ['Товар не нужен на время? Выключите «Показывать покупателям»: он пропадёт из каталога, а у вас останется с пометкой «Скрыт». Включите, и товар вернётся сразу.','Mahsulot vaqtincha kerak emasmi? «Xaridorlarga koʻrsatish» ni oʻchiring: u katalogdan yoʻqoladi, sizda «Yashirin» belgisi bilan qoladi. Yoqsangiz, mahsulot darhol qaytadi.'],
   ['«Продаётся только блоками» или «Продаётся только коробками»: покупатель берёт целыми упаковками, а «−» и «+» шагают упаковкой. У товара «1 кг» или «1 л» одна штука равна 1 кг (1 л), поэтому везде пишется «кг» или «л».','«Faqat blokda sotiladi» yoki «Faqat qutida sotiladi»: xaridor butun qadoqlarda oladi, «−» va «+» esa bitta qadoq bilan siljiydi. «1 kg» yoki «1 l» tovarda bir dona 1 kg (1 l)ga teng, shuning uchun hamma joyda «kg» yoki «l» yoziladi.'],
   ['Видео товара: в карточке нажмите «Добавить видео», откроется бот. Пришлите ему ролик до 60 секунд и до 20 МБ: бот сам выложит его в канал и привяжет к товару. «Заменить» ставит новое видео, «Убрать видео» удаляет. Под видео в канале бот ставит кнопку «Открыть в приложении»: она ведёт покупателя прямо на этот товар. Подпись (цена, акция, упаковка, описание) бот пишет сам на двух языках и обновляет, когда вы меняете товар.','Tovar videosi: kartochkada «Video qoʻshish» tugmasini bosing, bot ochiladi. Unga 60 soniyagacha va 20 MB gacha video yuboring: bot uni kanalga oʻzi joylaydi va tovarga bogʻlaydi. «Almashtirish» yangi videoni qoʻyadi, «Videoni olib tashlash» oʻchiradi. Kanaldagi video ostida bot «Ilovada ochish» tugmasini qoʻyadi: u xaridorni toʻgʻri shu tovarga olib boradi. Izohni (narx, aksiya, qadoq, tavsif) bot ikki tilda oʻzi yozadi va tovarni oʻzgartirsangiz yangilaydi.']]},
  {img:'sel-stock',h:['Остатки','Qoldiq'],cap:['Остатки на складе','Ombor qoldigʻi'],li:[
@@ -7577,7 +7583,8 @@ document.addEventListener('input',e=>{
   else if(t.dataset.pid!==undefined){
     const p=S.prod.items.find(x=>x.id===t.dataset.pid),k=t.dataset.pp;
     if(!p)return;
-    if(k==='on'){p.on=t.checked;const row=t.closest('.prow');if(row)row.classList.toggle('off',!t.checked)}
+    if(k==='on'){p.on=t.checked;const row=t.closest('.prow');if(row)row.classList.toggle('off',p.on===false||!!p.hid)}
+    else if(k==='show'){if(t.checked)delete p.hid;else p.hid=true;const row=t.closest('.prow');if(row)row.classList.toggle('off',p.on===false||!!p.hid)}
     else if(k==='amount'||k==='price'||k==='old'){const v=Number(t.value);p[k]=isFinite(v)&&v>=0?v:0;if(k==='price')syncTiers(p)}
     else if(k==='dl'||k==='dw'||k==='dh')p[k]=cleanDim(t.value);
     else if(k==='blk'||k==='box'){const v=Math.round(Number(t.value));p[k]=v>=2&&v<=500?v:0;onlySync(p,t.closest('.pf'))}

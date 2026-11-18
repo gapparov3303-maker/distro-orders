@@ -257,7 +257,7 @@ const cleanOnly = (v, blk, box, prevOnly) => { const k = v === undefined ? prevO
    mt — когда статус менялся в последний раз, ma — когда владелец одобрил. Эти поля продавец не задаёт: берутся из сохранённых данных. */
 const MOD_BAD_NAMES = ['', 'Без названия', 'Новый товар'];
 const MOD_REASON_MAX = 300;
-const isApproved = it => !it.ms;
+const isShown = it => !it.ms && !it.hid;   // одобрен и не скрыт продавцом: такие считаются в списке продавцов
 const ruCount = (n, w) => { const m = n % 100, k = n % 10; return m > 10 && m < 15 ? w[2] : k === 1 ? w[0] : k > 1 && k < 5 ? w[1] : w[2]; };
 const ruTovar = n => n + ' ' + ruCount(n, ['товар', 'товара', 'товаров']);
 /* Что мешает отправить товар на проверку: название, цена, категория. */
@@ -304,6 +304,7 @@ function sanitizeProd(d, old, mod) {
       only: cleanOnly(o.only, blk, box, prev && prev.only),
       ...(hasDims(o) ? { dl: cleanDim(o.dl), dw: cleanDim(o.dw), dh: cleanDim(o.dh) } : {}),   // габариты одной штуки в упаковке, см (для доставки «за габарит»)
       on: o.on !== false,
+      ...(o.hid === true ? { hid: true } : {}),   // продавец скрыл товар: покупатели его не видят, продавцу он виден с пометкой «Скрыт»
       tag: o.tag === 'sale' || o.tag === 'new' ? o.tag : '',
       old: o.tag === 'sale' ? Math.round(clampN(o.old, 0, 1e8, 0)) : 0,
       pv: prev && typeof prev.pv === 'string' ? prev.pv : '',
@@ -326,10 +327,12 @@ function sanitizeProd(d, old, mod) {
 /* ---------- остатки ---------- */
 /* Каталог для покупателей: у товаров с учётом добавляется av (сколько можно заказать, не больше 500) и lw (товара мало).
    Товар на проверке виден покупателю без цены (серой карточкой «На модерации»), черновики и возвращённые не видны совсем.
-   admin: продавцу отдаётся всё, с метками проверки. */
+   Скрытый продавцом товар (hid) покупателю не отдаётся вовсе.
+   admin: продавцу отдаётся всё, с метками проверки и скрытое тоже. */
 function publicProd(prod, stk, admin) {
   const items = [];
   prod.items.forEach(it => {
+    if (it.hid && !admin) return;
     if (it.ms && !admin) {
       if (it.ms !== 'wait') return;
       items.push({ id: it.id, cat: it.cat, name: it.name, uz: it.uz || '', desc: it.desc, descUz: it.descUz, amount: it.amount, unit: it.unit, price: 0, tiers: [], blk: 0, box: 0, on: true, tag: '', old: 0, pv: it.pv, pv2: it.pv2, pv3: it.pv3, ms: 'wait' });
@@ -408,7 +411,7 @@ function validateOrder(b, cfg, prod, stk) {
     if (typeof qty !== 'number' || !Number.isInteger(qty) || qty < 1 || qty > MAX_QTY || typeof c.id !== 'string' || seen.has(c.id)) return { err: 'bad_request' };
     seen.add(c.id);
     const it = prod.items.find(x => x.id === c.id);
-    if (!it || it.on === false || it.ms) { missing = true; continue; }   // на проверке заказать нельзя
+    if (!it || it.on === false || it.ms || it.hid) { missing = true; continue; }   // на проверке и скрытое заказать нельзя
     const price = unitPrice(it, qty);    // цена за штуку с учётом ступеней: считает только сервер
     const line = { id: it.id, name: it.name, uz: it.uz || '', amount: it.amount, unit: it.unit, price, qty };
     if (hasDims(it)) { line.dl = cleanDim(it.dl); line.dw = cleanDim(it.dw); line.dh = cleanDim(it.dh); }
@@ -2441,7 +2444,7 @@ export class Shop {
   /* Краткая карточка дистрибьютора для списка: название, сколько товаров, категории, есть ли доставка. */
   async summary() {
     const cfg = await this.getCfg(), prod = await this.getProd();
-    const ok = prod.items.filter(isApproved);   // в списке продавцов считаются только одобренные товары
+    const ok = prod.items.filter(isShown);   // в списке продавцов считаются только одобренные и не скрытые товары
     const cats = prod.cats.filter(c => ok.some(p => p.cat === c.id)).slice(0, 6).map(c => ({ name: c.name, uz: c.uz || '' }));
     return {
       name: cfg.shop.name || DEFAULT.shop.name, legal: cleanStr(cfg.shop.legal, 80), info: cleanStr(cfg.shop.info, 100), infoUz: cleanStr(cfg.shop.infoUz, 100), logo: cleanLogoV(cfg.shop.logo), items: ok.length, wait: prod.items.filter(i => i.ms === 'wait').length, cats,
