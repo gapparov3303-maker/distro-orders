@@ -10,8 +10,8 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
-const S = new Function(fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa,ratesFor,cleanRates,RATE_KEYS,RATE_MAX,cleanFar,cleanDim,hasDims,farOn,unitKg,farCalc,farWhen,farInPrice,farFeeKnown,farSent,farDays}')();
+const S = new Function('const MAX_QTY = 500;\n' + fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packSize,packShort,minQty,minText,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa,ratesFor,cleanRates,RATE_KEYS,RATE_MAX,cleanFar,cleanDim,hasDims,farOn,unitKg,farCalc,farWhen,farInPrice,farFeeKnown,farSent,farDays}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -4124,6 +4124,72 @@ await t('скрытие товара: покупатель не видит ск�
   // мусор в поле hid скрытием не считается
   assert.equal((await dPut(sid, { cats: cur.cats, items: back.map(i => i.id === 'p2' ? { ...i, hid: 'yes' } : i) })).status, 200);
   assert.ok((await dSee(sid, A.init())).items.some(i => i.id === 'p2'), 'скрывает только настоящее true');
+});
+
+await t('минимум для заказа: расчёт по упаковке и текст на двух языках', () => {
+  const q = S.minQty;
+  assert.deepEqual([{ mn: 2, mu: 'box', box: 24 }, { mn: 3, mu: 'blk', blk: 6 }, { mn: 10 }, { mn: 1 }, { mn: 0 }, {}, { mn: 'x' }, { mn: 2.9 }].map(q), [48, 18, 10, 0, 0, 0, 0, 2], 'коробки, блоки, штуки; один штучный и пустое — без минимума');
+  assert.equal(q({ mn: 2, mu: 'box' }), 0, 'коробка не указана — минимум не действует');
+  assert.equal(q({ mn: 1, mu: 'box', box: 24 }), 24, 'одна коробка — это уже минимум');
+  assert.equal(q({ mn: 30, box: 12, only: 'box' }), 36, 'только коробками: округляется вверх до целой коробки');
+  assert.equal(q({ mn: 100, mu: 'box', box: 12, only: 'box' }), 492, 'не больше 500 и кратно коробке');
+  assert.equal(q({ mn: 900 }), 500, 'не больше 500 штук');
+  assert.equal(S.minText({ mn: 2, mu: 'box', box: 24, amount: 400, unit: 'g' }), 'Минимум: 2 кор. · 48 шт');
+  assert.equal(S.minText({ mn: 10, amount: 400, unit: 'g' }), 'Минимум: 10 шт');
+  assert.equal(S.minText({ mn: 5, amount: 1, unit: 'kg' }), 'Минимум: 5 кг', 'товар на вес: кг');
+  assert.equal(S.minText({ mn: 30, box: 12, only: 'box' }), 'Минимум: 36 шт', 'после округления не делится на упаковку заданного вида — пишем штуки');
+  assert.equal(S.minText({}), '');
+  S.setLang('uz');
+  try { assert.equal(S.minText({ mn: 2, mu: 'box', box: 24 }), 'Minimum: 2 quti · 48 dona'); assert.equal(S.minText({ mn: 10 }), 'Minimum: 10 dona'); }
+  finally { S.setLang('ru'); }
+});
+
+await t('минимум для заказа: сервер не принимает меньше, значения чистятся, пересчёт при смене коробки, остаток меньше минимума', async () => {
+  const { sid, cur } = await modWorld();
+  const A = newUser();
+  const put = async patch => dPut(sid, { cats: cur.cats, items: (await dSee(sid, iD())).items.map(i => ({ ...i, ...(patch[i.id] || {}) })) });
+  const get = async id => (await dSee(sid, iD())).items.find(i => i.id === id);
+  const order = (id, qty) => callS(sid, 'POST', '/api/order', { init: A.init(), body: { cart: [{ id, qty }], form: formFor(S.DEFAULT, 'pickup', {}), lang: 'ru' } });
+  // p2 «Рис», коробка 10, минимум 2 коробки = 20 шт
+  assert.equal((await put({ p2: { box: 10, mn: 2, mu: 'box' } })).status, 200);
+  assert.deepEqual([(await get('p2')).mn, (await get('p2')).mu], [2, 'box']);
+  let r = await order('p2', 19);
+  assert.equal(r.status, 409);
+  let d = await jsonOf(r);
+  assert.deepEqual([d.error, d.id, d.minq], ['min_qty', 'p2', 20], 'меньше минимума — отказ, в ответе сам минимум');
+  assert.ok(d.prod.items.some(i => i.id === 'p2' && i.mn === 2), 'в ответе свежий каталог с минимумом');
+  assert.equal((await order('p2', 20)).status, 200, 'ровно минимум проходит');
+  assert.equal((await order('p2', 21)).status, 200, 'больше минимума тоже');
+  // товар без минимума по-прежнему берётся поштучно
+  assert.notEqual((await jsonOf(await order('p1', 1))).error, 'min_qty');
+  // меньше минимума раньше суммы: у «Макарон» 7500 сум, минимум 5 шт
+  assert.equal((await put({ p4: { mn: 5 } })).status, 200);
+  assert.equal((await jsonOf(await order('p4', 4))).error, 'min_qty');
+  assert.notEqual((await jsonOf(await order('p4', 5))).error, 'min_qty', 'ровно минимум по штукам проходит');
+  // чистка: одна штука, мусор и ноль минимума не дают; коробка без коробки превращается в штуки
+  for (const [mn, mu, ex] of [[1, '', undefined], ['abc', '', undefined], [0, 'box', undefined], [-4, '', undefined], [7.9, '', 7]]) {
+    await put({ p4: { mn, mu, box: 0, blk: 0 } });
+    assert.equal((await get('p4')).mn, ex, 'mn=' + JSON.stringify(mn) + ' → ' + ex);
+  }
+  await put({ p4: { mn: 3, mu: 'box', box: 0, blk: 0 } });
+  const p4 = await get('p4');
+  assert.deepEqual([p4.mn, p4.mu], [3, undefined], 'коробки нет: единица «штуки», поле mu не хранится');
+  await put({ p4: { mn: 9999, mu: 'box', box: 12 } });
+  assert.equal((await get('p4')).mn, 41, 'не больше 500 штук: 41 коробка по 12 = 492');
+  await put({ p4: { mn: 9999, mu: '', box: 0 } });
+  assert.equal((await get('p4')).mn, 500, 'в штуках не больше 500');
+  // продавец убрал коробку: минимум в коробках не остаётся висеть
+  await put({ p2: { box: 0 } });
+  const p2 = await get('p2');
+  assert.deepEqual([p2.mn, p2.mu], [2, undefined], 'без коробки минимум 2 превращается в 2 шт');
+  // владелец поправил цену, минимум на месте
+  assert.equal((await oAct('edit', { did: sid, id: 'p4', item: { price: 8000 } })).status, 200);
+  assert.equal((await get('p4')).mn, 500);
+  // «только коробками»: минимум 30 шт при коробке 12 округляется до 36
+  await put({ p2: { box: 12, only: 'box', mn: 30, mu: '' } });
+  assert.equal((await jsonOf(await order('p2', 24))).error, 'min_qty');
+  assert.equal((await jsonOf(await order('p2', 24))).minq, 36);
+  assert.equal((await order('p2', 36)).status, 200);
 });
 
 await t('скрытие товара: переключатель в карточке, пометка «Скрыт» в строке, покупательский каталог их не показывает', async () => {
@@ -9220,8 +9286,8 @@ await t('только упаковками на экране: шаг, метка
   const mk = (cart, items) => {
     const St = { cart, prod: { items } };
     const src = ['soldOut', 'maxQty', 'capOf', 'pruneCart', 'cartSet'].map(line).join('\n');
-    return new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'packOnlyWord', 'pcsWord', 'qtyStr', 'qtyTa', 'saveCart', 'toast', 'L', src + '\nreturn {soldOut,maxQty,pruneCart,cartSet};')
-      (St, 500, S.packOnly, S.packStep, S.packFit, () => 'коробками', S.pcsWord, S.qtyStr, S.qtyTa, () => {}, m => toasts.push(m), (ru) => ru);
+    return new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'minQty', 'minText', 'packOnlyWord', 'pcsWord', 'qtyStr', 'qtyTa', 'saveCart', 'toast', 'L', src + '\nreturn {soldOut,maxQty,pruneCart,cartSet};')
+      (St, 500, S.packOnly, S.packStep, S.packFit, S.minQty, S.minText, () => 'коробками', S.pcsWord, S.qtyStr, S.qtyTa, () => {}, m => toasts.push(m), (ru) => ru);
   };
   const bx = { id: 'a', box: 10, only: 'box', on: true };                // только коробками по 10
   const plain = { id: 'b', box: 10, on: true };
@@ -9240,8 +9306,8 @@ await t('только упаковками на экране: шаг, метка
   // старая корзина: округляем вверх, но не выше остатка
   delete bx.av; delete plain.av;
   const St = { cart: { a: 13, b: 7 }, prod: { items: [bx, plain] } };
-  const run = new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'saveCart', 'toast', 'L', ['soldOut', 'maxQty', 'pruneCart'].map(line).join('\n') + '\nreturn pruneCart;')
-    (St, 500, S.packOnly, S.packStep, S.packFit, () => {}, () => {}, (ru) => ru);
+  const run = new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'minQty', 'saveCart', 'toast', 'L', ['soldOut', 'maxQty', 'pruneCart'].map(line).join('\n') + '\nreturn pruneCart;')
+    (St, 500, S.packOnly, S.packStep, S.packFit, S.minQty, () => {}, () => {}, (ru) => ru);
   run();
   assert.deepEqual(St.cart, { a: 20, b: 7 });
   bx.av = 25; run();
@@ -9249,11 +9315,11 @@ await t('только упаковками на экране: шаг, метка
   bx.av = 15; run();
   assert.deepEqual(St.cart, { a: 10, b: 7 });
   // исходный код: кнопки «+/−» шагают упаковкой, метка и галочки есть, «Повторить заказ» и ошибка заказа знают про упаковки
-  assert.ok(/cartSet\(id,a==='pminus'\?cur-st:cur\+st\)/.test(html), '«+/−» в каталоге шагают упаковкой');
-  assert.ok(/cartSet\(id,a==='cminus'\?cur-st:cur\+st\)/.test(html), '«+/−» в корзине шагают упаковкой');
-  assert.ok(/qty0=Number\(it\.qty\)\|\|0,qty=p\?packFit\(p,qty0\):qty0/.test(html), '«Повторить заказ» округляет вверх');
-  assert.ok(html.includes("er==='price_changed'||er==='unavailable'||er==='no_delivery'||er==='pack'"), 'ошибка pack обновляет корзину');
-  assert.ok(html.includes('class="ponly">\'+esc(packOnlyText(p))'), 'метка под ценой в каталоге');
+  assert.ok(/cartSet\(id,a==='pminus'\?\(mq&&cur-st<mq\?0:cur-st\):\(cur\?cur\+st:Math\.max\(st,mq\)\)\)/.test(html), '«+/−» в каталоге шагают упаковкой (с учётом минимума)');
+  assert.ok(/cartSet\(id,a==='cminus'\?\(mq&&cur-st<mq\?0:cur-st\):cur\+st\)/.test(html), '«+/−» в корзине шагают упаковкой (с учётом минимума)');
+  assert.ok(/qty0=Number\(it\.qty\)\|\|0,qty=p\?Math\.max\(packFit\(p,qty0\),minQty\(p\)\):qty0/.test(html), '«Повторить заказ» округляет вверх и поднимает до минимума');
+  assert.ok(html.includes("er==='price_changed'||er==='unavailable'||er==='no_delivery'||er==='pack'||er==='min_qty'"), 'ошибки pack и min_qty обновляют корзину');
+  assert.ok(html.includes('class="ponly">\'+esc(packOnlyText(p))') && html.includes('class="ponly pmin">\'+esc(minText(p))'), 'метки под ценой в каталоге: «Только коробками» и «Минимум»');
   assert.ok(/mtag pko">'\+esc\(packOnlyText\(p\)\)/.test(html), 'метка в списке товаров продавца');
   assert.equal((html.match(/onlyRowHTML\(p,'data-pid=/g) || []).length, 1, 'строка с галочками в редакторе продавца');
   assert.equal((html.match(/onlyRowHTML\(p,'data-rf="only"'\)/g) || []).length, 1, 'строка с галочками в окне владельца');
@@ -9268,6 +9334,54 @@ await t('только упаковками на экране: шаг, метка
   assert.equal(kinds(chips({ id: 'x', blk: 6, box: 12, only: 'blk' }, 'p')), 'box', 'только блоками: коробка (кратна) осталась, блок — это «+»');
   assert.equal(kinds(chips({ id: 'x', blk: 6, box: 12, only: 'box' }, 'p')), '', 'только коробками: ни блока (меньше), ни коробки (это «+»)');
   assert.equal(kinds(chips({ id: 'x', blk: 5, box: 12, only: 'blk' }, 'p')), '', 'коробка не кратна блоку — кнопки нет');
+});
+
+await t('минимум для заказа на экране: «В корзину» кладёт минимум, «−» на минимуме убирает товар, ввод ниже минимума поднимается, остаток меньше минимума закрывает товар', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const line = name => { const m = html.match(new RegExp('^(?:const|function) ' + name + '\\b[^]*?(?=\\n(?:const|function|/\\*|let) )', 'm')); assert.ok(m, 'нет ' + name); return m[0]; };
+  const toasts = [];
+  const mk = (cart, items) => {
+    const St = { cart, prod: { items } };
+    return new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'minQty', 'minText', 'packOnlyWord', 'pcsWord', 'qtyStr', 'qtyTa', 'saveCart', 'toast', 'L', ['soldOut', 'maxQty', 'capOf', 'pruneCart', 'cartSet'].map(line).join('\n') + '\nreturn {soldOut,maxQty,pruneCart,cartSet};')
+      (St, 500, S.packOnly, S.packStep, S.packFit, S.minQty, S.minText, () => 'коробками', S.pcsWord, S.qtyStr, S.qtyTa, () => {}, m => toasts.push(m), (ru) => ru);
+  };
+  const a = { id: 'a', box: 24, mn: 2, mu: 'box', on: true };   // минимум 48 шт
+  const b = { id: 'b', on: true };
+  const C = mk({}, [a, b]);
+  // ввод ниже минимума поднимается и сообщает, выше или равно — как есть, ноль убирает
+  assert.equal(C.cartSet('a', 1), 48);
+  assert.ok(toasts.includes('Минимум: 2 кор. · 48 шт'), toasts.join('|'));
+  assert.equal(C.cartSet('a', 48), 48); assert.equal(C.cartSet('a', 60), 60); assert.equal(C.cartSet('a', 0), 0);
+  assert.equal(C.cartSet('b', 1), 1, 'у товара без минимума поштучно');
+  // остаток меньше минимума: заказать нечего; ровно минимум можно
+  a.av = 47; assert.equal(C.soldOut(a), true);
+  a.av = 48; assert.equal(C.soldOut(a), false); assert.equal(C.maxQty(a), 48);
+  a.av = 100; assert.equal(C.cartSet('a', 90), 90);
+  delete a.av;
+  // старая корзина: меньше минимума поднимается, остальное не трогаем; закончился — убираем
+  const St = { cart: { a: 10, b: 3 }, prod: { items: [a, b] } };
+  const run = new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'minQty', 'saveCart', 'toast', 'L', ['soldOut', 'maxQty', 'pruneCart'].map(line).join('\n') + '\nreturn pruneCart;')
+    (St, 500, S.packOnly, S.packStep, S.packFit, S.minQty, () => {}, () => {}, (ru) => ru);
+  run(); assert.deepEqual(St.cart, { a: 48, b: 3 });
+  a.av = 30; run(); assert.deepEqual(St.cart, { b: 3 }, 'остатка меньше минимума: из корзины пропадает');
+  // исходный код: кнопки, ввод, карточки, поля продавца
+  assert.ok(/const mq=pp\?minQty\(pp\):0;\s*const run=\(\)=>\{cartSet\(id,a==='pminus'\?\(mq&&cur-st<mq\?0:cur-st\):\(cur\?cur\+st:Math\.max\(st,mq\)\)\)/.test(html), '«В корзину» с нуля кладёт минимум, «−» на минимуме убирает товар');
+  assert.ok(/if\(mq&&v<mq\)return;/.test(html), 'пока печатают, ниже минимума число не трогается');
+  assert.ok(/class="ponly pmin">'\+esc\(minText\(p\)\)/.test(html) && /if\(minQty\(p\)\)h\+='<span class="mtag pko">'\+esc\(minText\(p\)\)/.test(html), 'строка «Минимум» в каталоге и у продавца');
+  assert.ok(/fld\('mn',L\('Минимум для заказа','Buyurtma uchun minimum'\)/.test(html) && /data-pp="mu"/.test(html) && /id="pmh-'\+id\+'"/.test(html), 'в карточке продавца число, единица и подсказка');
+  assert.ok(/else if\(k==='mn'\)\{[^}]*minSync/.test(html) && /else if\(k==='mu'\)\{[^}]*minSync/.test(html) && /p\[k\]=v>=2&&v<=500\?v:0;onlySync\(p,t\.closest\('\.pf'\)\);minSync\(/.test(html), 'правка минимума и размера упаковки пересчитывает единицу и подсказку');
+  assert.ok(/er==='min_qty'\?L\('Для одного из товаров изменился минимум для заказа/.test(html), 'ошибка сервера понятна покупателю');
+  // единицы: штуки всегда, коробки и блоки только если их размер указан; подсказка показывает, что увидит покупатель
+  const opts = new Function('esc', 'L', 'packSize', 'pcsWord', line('minUnitOpts') + '\nreturn minUnitOpts;')(x => x, ru => ru, S.packSize, S.pcsWord);
+  const vals = h => [...h.matchAll(/value="(\w*)"/g)].map(m => m[1]).join(',');
+  assert.equal((opts({}).match(/<option/g) || []).length, 1, 'без упаковок один вариант: штуки');
+  assert.equal(vals(opts({ box: 12 })), ',box');
+  assert.equal(vals(opts({ blk: 6, box: 12 })), ',box,blk');
+  assert.ok(/value="box" selected/.test(opts({ box: 12, mu: 'box' })) && /value="" selected/.test(opts({ box: 12 })), 'выбранная единица отмечена');
+  const hint = new Function('esc', 'L', 'PF_HINT', 'minText', line('minHintInner') + '\nreturn minHintInner;')(x => x, ru => ru, () => ({ min: 'ПОДСКАЗКА' }), S.minText);
+  assert.equal(hint({}), 'ПОДСКАЗКА'); assert.equal(hint({ mn: 2, mu: 'box', box: 24 }), 'ПОДСКАЗКА <b>Покупатель увидит: Минимум: 2 кор. · 48 шт</b>');
+  const hints = html.slice(html.indexOf('  min:L('), html.indexOf('  show:L('));
+  assert.ok(/Меньше этого покупатель заказать не сможет/.test(hints) && /Xaridor bundan kam buyurtma qila olmaydi/.test(hints), 'подсказка на двух языках');
 });
 
 /* ---------- единица количества: «кг» и «л» вместо «шт» у товаров на вес ---------- */
@@ -10856,6 +10970,26 @@ await t('подпись под видео: два языка, цена, акци
   // оба описания по 300: режется первое из равных (узбекское), русское цело; названия, цены и продавец на месте
   const both = await capFor(Object.assign({}, big, { desc: 'я'.repeat(300), descUz: 'u'.repeat(300) }));
   assert.ok(both.length <= 1000 && /u…\n\nН/.test(both) && both.includes('я'.repeat(300)) && both.endsWith('Видео Шесть'), 'длина ' + both.length);
+});
+
+await t('подпись под видео: строка «Минимум» на двух языках', async () => {
+  const { sid } = await shopWorld('Видео Минимум');
+  await startMsg(DIL, 'v_' + sid + '_p1');
+  await send({ update_id: 9991, message: { message_id: 821, from: DIL, chat: { id: DIL.id, type: 'private' }, video: { file_id: VID_ID, duration: 5, file_size: 1e6 } } });
+  const c = (await jsonOf(await callS(sid, 'GET', '/api/config', { init: iD() }))).prod, i = c.items.findIndex(x => x.id === 'p1');
+  c.items[i] = { id: 'p1', cat: 'oil', name: 'Лаваш', uz: 'Lavash', amount: 500, unit: 'g', price: 12500, on: true, box: 24, mn: 2, mu: 'box' };
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c } })).status, 200);
+  tgLog = [];
+  assert.deepEqual(await jsonOf(await call('POST', '/api/hub/admin/video/captions', { init: iS(), body: {} })), { done: 1, failed: 0 });
+  const cap = nb(lastTg('editMessageCaption').payload.caption).split('\n');
+  assert.ok(cap.includes('📌 Minimum: 2 quti · 48 dona') && cap.includes('📌 Минимум: 2 кор. · 48 шт'), cap.join('|'));
+  assert.ok(cap.indexOf('📌 Minimum: 2 quti · 48 dona') > cap.indexOf('📦 Qutida 24 dona'), 'строка идёт после упаковки');
+  // минимум убрали: строки нет
+  c.items[i] = { id: 'p1', cat: 'oil', name: 'Лаваш', uz: 'Lavash', amount: 500, unit: 'g', price: 12500, on: true, box: 24 };
+  assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c } })).status, 200);
+  tgLog = [];
+  await call('POST', '/api/hub/admin/video/captions', { init: iS(), body: {} });
+  assert.ok(!nb(lastTg('editMessageCaption').payload.caption).includes('📌'), 'без минимума строки нет');
 });
 
 await t('подпись под видео следует за товаром: цена, акция, упаковка или описание поменялись — бот правит подпись в канале (с кнопкой); не менялось — не трогает', async () => {
