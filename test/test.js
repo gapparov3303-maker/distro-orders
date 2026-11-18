@@ -6820,14 +6820,41 @@ await t('акт сверки: запись об акте попадает в Exc
 });
 
 /* ---------- каталог продавца: сворачивание товаров ---------- */
-await t('каталог: товары сворачиваются, всё свёрнуто на старте, ▲▼ и удаление только в раскрытой карточке', async () => {
+await t('каталог: товары сворачиваются, всё свёрнуто на старте, удаление только в раскрытой карточке, ▲▼ в строке всегда', async () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
   assert.equal((html.match(/medit:\{\},pxo:\{\}/g) || []).length, 2, 'S.pxo есть в начальном состоянии и при сбросе');
   const row = fn('prodRow'), sum = fn('pxSumInner'), body = fn('prodBody');
   assert.ok(/open=!!S\.pxo\[p\.id\]/.test(row) && /\(open\?'<div class="pfbody"/.test(row), 'форма рисуется только у раскрытого товара, по умолчанию свёрнут');
-  assert.ok(!/pmove|pdel/.test(row + sum), 'в свёрнутой строке нет ▲▼ и удаления');
-  assert.ok(/data-act="pmove"/.test(body) && /data-act="pdel"/.test(body) && /data-act="pfold"/.test(body), 'в раскрытой карточке есть ▲▼, удаление и «Свернуть»');
+  assert.ok(!/pdel/.test(row + sum), 'в свёрнутой строке нет удаления');
+  assert.ok(row.indexOf('pmvHTML(p)') > 0 && row.indexOf('pmvHTML(p)') < row.indexOf("(open?'<div class=\"pfbody\""), '▲▼ стоят в строке, до формы: видны и у свёрнутого товара');
+  assert.ok(/class="phead"/.test(row) && row.indexOf('</button>') > 0 && row.indexOf('</button>') < row.indexOf('pmvHTML(p)'), 'стрелки стоят рядом с кнопкой-заголовком, а не внутри неё (кнопка в кнопке недопустима)');
+  assert.ok(!/pmove/.test(body) && /data-act="pdel"/.test(body) && /data-act="pfold"/.test(body), 'в раскрытой карточке остались удаление и «Свернуть», а ▲▼ внизу убраны');
+  // поведение на заглушках: ▲ у первого и ▼ у последнего серые, «На проверке» и другая категория в счёт не идут
+  const inMod = p => p.ms === 'wait' || p.ms === 'ret';
+  const mk = S0 => new Function('S', 'L', 'esc', 'inModGroup', fn('visProd') + '\n' + fn('pmvHTML') + '\nreturn pmvHTML;')(S0, (ru, uz) => ru, v => String(v), inMod);
+  const items = [{ id: 'a', cat: 'c1' }, { id: 'b', cat: 'c2' }, { id: 'w', cat: 'c1', ms: 'wait' }, { id: 'c', cat: 'c1' }, { id: 'd', cat: 'c2' }];
+  const dis = (h, d) => new RegExp('data-d="' + d + '"[^>]*disabled').test(h);
+  let S1 = { prod: { items }, pfilter: 'all' }, pm = mk(S1);
+  assert.ok(dis(pm(items[0]), -1) && !dis(pm(items[0]), 1), 'первый: ▲ серая, ▼ живая');
+  assert.ok(!dis(pm(items[1]), -1) && !dis(pm(items[1]), 1), 'в середине обе живые');
+  assert.ok(dis(pm(items[4]), 1) && !dis(pm(items[4]), -1), 'последний: ▼ серая, ▲ живая');
+  assert.ok(!dis(pm(items[3]), -1) && !dis(pm(items[3]), 1), 'товар после «На проверке» двигается обычно, «На проверке» в счёт не идёт');
+  S1.pfilter = 'c1'; pm = mk(S1);
+  assert.ok(dis(pm(items[0]), -1) && dis(pm(items[3]), 1) && !dis(pm(items[3]), -1), 'при выбранной категории края считаются внутри неё');
+  assert.ok(/data-act="pmove"/.test(pm(items[0])) && /aria-label="Выше"/.test(pm(items[0])) && /aria-label="Ниже"/.test(pm(items[0])), 'две кнопки с подписями для экранных дикторов');
+  // нажатие: меняет местами с соседом в видимом списке, «На проверке» перешагивает, на краю ничего не делает
+  const html2 = html, st = html2.indexOf("else if(a==='pmove'){") + "else if(a==='pmove'){".length, en = html2.indexOf("\n  else if(a==='phdel')");
+  assert.ok(st > 30 && en > st, 'обработчик найден');
+  const run = (S0, id, d) => { let saved = 0, painted = 0; new Function('t', 'S', 'inModGroup', 'queueSave', 'paintSeller', 'document', html2.slice(st, en).replace(/\}\s*$/, ''))({ dataset: { id, d: String(d) } }, S0, inMod, () => { saved++ }, () => { painted++ }, { getElementById: () => null }); return { saved, painted }; };
+  const S2 = { prod: { items: items.map(x => ({ ...x })) }, pfilter: 'all' };
+  run(S2, 'c', 1);
+  assert.deepEqual(S2.prod.items.map(x => x.id), ['a', 'b', 'w', 'd', 'c'], '▼ у «c»: встаёт после «d»');
+  const r0 = run(S2, 'a', -1);
+  assert.equal(r0.saved + r0.painted, 0, '▲ у первого ничего не делает');
+  const S3 = { prod: { items: items.map(x => ({ ...x })) }, pfilter: 'all' };
+  run(S3, 'c', -1);
+  assert.deepEqual(S3.prod.items.map(x => x.id), ['a', 'c', 'w', 'b', 'd'], '▲ у «c»: «На проверке» не считается, «c» встаёт вместо «b»');
   assert.ok(/aria-expanded="'\+open/.test(row), 'состояние читается и для экранных дикторов');
   assert.ok(/a==='pfold'\)pxSet\(/.test(html) && /a==='pfoldall'\)pxAll\(/.test(html), 'обработчики одной карточки и «все»');
   assert.ok(/data-act="pfoldall" data-v="0"/.test(html) && /data-act="pfoldall" data-v="1"/.test(html), 'кнопки «Свернуть все» и «Развернуть все»');
@@ -7745,8 +7772,8 @@ await t('карточка товара: «Отправить на проверк
   assert.ok(/data-act="msub1"/.test(foot) && /Отправить на проверку/.test(foot) && /Tekshiruvga yuborish/.test(foot) && /Отправить снова/.test(foot) && /Qayta yuborish/.test(foot), 'внизу кнопка «Отправить на проверку» и «Отправить снова»');
   assert.ok(/p\.ms!=='draft'&&p\.ms!=='ret'\)return ''/.test(foot), 'у одобренных и ждущих проверки кнопки нет');
   assert.ok(/S\.msubBusy\?' disabled'/.test(foot), 'при отправке кнопка блокируется');
-  // порядок в карточке: поля → ▲▼ и удаление → кнопка отправки последней
-  assert.ok(body.indexOf('data-act="pmove"') < body.indexOf('id="mf-') && body.indexOf('data-act="pdel"') < body.indexOf('id="mf-') && body.indexOf('data-act="pfold"') < body.indexOf('id="mf-'), 'кнопка отправки под рядом ▲ ▼ Удалить');
+  // порядок в карточке: поля → удаление и «Свернуть» → кнопка отправки последней
+  assert.ok(body.indexOf('data-act="pdel"') < body.indexOf('id="mf-') && body.indexOf('data-act="pfold"') < body.indexOf('id="mf-'), 'кнопка отправки под рядом «Удалить товар» и «Свернуть»');
   assert.ok(/^id="mf-'\+id\+'">'\+modFootInner\(p\)\+'<\/div>'\s*\+'<\/div>';\s*\}/.test(body.slice(body.indexOf('id="mf-'))), 'кнопка отправки последняя в форме');
   assert.ok(/mf-'\+p\.id/.test(bits) && /modFootInner\(p\)/.test(bits), 'нижняя кнопка обновляется вместе с верхней меткой');
   // значок вместо слова
@@ -10175,10 +10202,10 @@ await t('карточка товара: большая кнопка «Сохра
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const src = html.slice(html.indexOf('function psvHTML('), html.indexOf('function modBanInner('));
   assert.ok(src.length > 400, 'функции найдены');
-  // кнопка стоит в карточке товара над рядом «▲ ▼ Удалить», один раз, и нажатие обработано
+  // кнопка стоит в карточке товара над рядом «Удалить товар», один раз, и нажатие обработано
   const body = html.slice(html.indexOf('function prodBody('), html.indexOf('/* ---------- прайс из Excel ---------- */'));
   assert.equal((body.match(/psvHTML\(p\)/g) || []).length, 1, 'одна кнопка в карточке');
-  assert.ok(body.indexOf('psvHTML(p)') < body.indexOf('class="full pact"') && body.indexOf('psvHTML(p)') > body.indexOf('onlyRowHTML('), 'кнопка над рядом «▲ ▼ Удалить товар»');
+  assert.ok(body.indexOf('psvHTML(p)') < body.indexOf('class="full pact"') && body.indexOf('psvHTML(p)') > body.indexOf('onlyRowHTML('), 'кнопка над рядом «Удалить товар»');
   assert.ok(/a==='psave'\)prodSave\(t\.dataset\.id\)/.test(html), 'нажатие');
   assert.ok(/if\(kind==='prod'&&S\.psv&&S\.psv\.st!=='saving'\)\{const i=S\.psv\.id;S\.psv=null;paintPsv\(i\)\}/.test(html), 'новая правка убирает прежнюю отметку «Сохранено»');
   // поведение на заглушках
