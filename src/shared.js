@@ -168,6 +168,23 @@ const packFit=(p,q)=>{const n=packStep(p),x=Math.max(0,Math.floor(Number(q)||0))
 const packOnlyWord=p=>packOnly(p)==='box'?L('коробками','qutida'):L('блоками','blokda');
 /* Метка товара: «Только коробками · 10 шт» (пусто, если товар продаётся и поштучно). */
 const packOnlyText=p=>{const k=packOnly(p);return k?L('Только ','Faqat ')+packOnlyWord(p)+' · '+packSize(p,k)+' '+pcsWord(p):''};
+/* Минимум для заказа: у товара поля mn (сколько) и mu ('box' | 'blk' | '' — штуки). minQty — минимум в штуках, 0 — без минимума.
+   Коробки и блоки считаются по размеру упаковки на сейчас; у товара «только упаковками» округляется вверх до целой упаковки; не больше 500. */
+const minQty=p=>{
+  const n=Math.floor(Number(p&&p.mn));
+  if(!(n>=1))return 0;
+  let q=n;
+  if(p.mu==='box'||p.mu==='blk'){const s=packSize(p,p.mu);if(!s)return 0;q=n*s}
+  if(q<2)return 0;
+  const st=packStep(p);
+  return Math.min(Math.ceil(q/st)*st,Math.floor(MAX_QTY/st)*st);
+};
+/* Строка для покупателя: «Минимум: 2 кор. · 48 шт» (минимум задан упаковками и делится ровно), иначе «Минимум: 10 шт». */
+const minText=p=>{
+  const q=minQty(p);if(!q)return '';
+  const u=p.mu==='box'||p.mu==='blk'?p.mu:'',s=u?packSize(p,u):0;
+  return L('Минимум: ','Minimum: ')+(s&&q%s===0?(q/s)+' '+packShort(u)+' · ':'')+q+' '+pcsWord(p);
+};
 /* Раскладывает штуки по упаковкам, сначала по большим: 100 шт при коробке 48 и блоке 12 → 2 кор. + 0 бл., остаток 4 шт. */
 function packSplit(p,qty){
   const parts=[];let r=Math.max(0,Math.floor(Number(qty)||0));

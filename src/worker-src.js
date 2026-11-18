@@ -221,6 +221,7 @@ function videoCaption(it, seller) {
     else if (it.tag === 'new') lines.push('🆕 ' + tagName('new'));
     const pk = PACK_KEYS.filter(k => packSize(it, k)).map((k, i) => (uz ? (k === 'box' ? 'qutida ' : 'blokda ') : (i ? 'в ' : 'В ') + (k === 'box' ? 'коробке ' : 'блоке ')) + packSize(it, k) + ' ' + pcsWord(it));
     if (pk.length) lines.push('📦 ' + (uz ? pk[0].charAt(0).toUpperCase() + pk[0].slice(1) : pk[0]) + pk.slice(1).map(x => ', ' + x).join('') + (packOnly(it) ? ' · ' + L('только ', 'faqat ') + packOnlyWord(it) : ''));
+    if (minQty(it)) lines.push('📌 ' + minText(it));
     const tr = tiersOf(it).filter(t => Number(t.n) >= 2 && Number(t.price) > 0).map(t => qtyFrom(it, t.n) + ': ' + money(t.price));
     if (tr.length) lines.push('📉 ' + tr.join('; '));
     return { lines, label: L('Описание: ', 'Tavsif: '), desc: String((uz ? it.descUz : it.desc) || '').replace(/\s+/g, ' ').trim() };
@@ -288,6 +289,9 @@ function sanitizeProd(d, old, mod) {
     const prev = oldItems.get(id);
     const price = Math.round(clampN(o.price, 0, 1e8, 0));
     const blk = cleanPack(o.blk), box = cleanPack(o.box);
+    // минимум для заказа: в коробках или блоках, только если такая упаковка у товара есть; иначе в штуках (от 2); не больше 500 штук
+    const mu = o.mu === 'box' && box ? 'box' : o.mu === 'blk' && blk ? 'blk' : '';
+    const mn0 = Math.floor(Number(o.mn)), mn = mn0 >= (mu ? 1 : 2) ? Math.min(mn0, Math.floor(MAX_QTY / (mu === 'box' ? box : mu === 'blk' ? blk : 1))) : 0;
     items.push({
       id,
       cat: cats.some(c => c.id === o.cat) ? o.cat : (cats[0] ? cats[0].id : ''),
@@ -303,6 +307,7 @@ function sanitizeProd(d, old, mod) {
       box,
       only: cleanOnly(o.only, blk, box, prev && prev.only),
       ...(hasDims(o) ? { dl: cleanDim(o.dl), dw: cleanDim(o.dw), dh: cleanDim(o.dh) } : {}),   // габариты одной штуки в упаковке, см (для доставки «за габарит»)
+      ...(mn ? { mn, ...(mu ? { mu } : {}) } : {}),   // минимум для заказа: mn штук, коробок или блоков (mu)
       on: o.on !== false,
       ...(o.hid === true ? { hid: true } : {}),   // продавец скрыл товар: покупатели его не видят, продавцу он виден с пометкой «Скрыт»
       tag: o.tag === 'sale' || o.tag === 'new' ? o.tag : '',
@@ -404,7 +409,7 @@ function validateOrder(b, cfg, prod, stk) {
   if (!b || typeof b !== 'object' || !Array.isArray(b.cart) || !b.form || typeof b.form !== 'object') return { err: 'bad_request' };
   if (b.cart.length < 1 || b.cart.length > MAX_CART_LINES) return { err: 'bad_request' };
   const items = [], seen = new Set();
-  let total = 0, missing = false, packBad = null;
+  let total = 0, missing = false, packBad = null, minBad = null;
   for (const c of b.cart) {
     if (!c || typeof c !== 'object') return { err: 'bad_request' };
     const qty = c.qty;
@@ -419,11 +424,14 @@ function validateOrder(b, cfg, prod, stk) {
     if (packSize(it, 'blk')) line.blk = packSize(it, 'blk');
     const step = packStep(it);
     if (step > 1 && qty % step) { packBad = { id: it.id, step }; break; }   // только упаковками: количество кратно упаковке
+    const mq = minQty(it);
+    if (mq && qty < mq && !minBad) minBad = { id: it.id, minq: mq };   // меньше минимума для заказа
     items.push(line);
     total += price * qty;
   }
   if (packBad) return { err: 'pack', id: packBad.id, step: packBad.step };
   if (missing) return { err: 'unavailable' };
+  if (minBad) return { err: 'min_qty', id: minBad.id, minq: minBad.minq };
   // остатки: заказать можно не больше, чем свободно (на складе минус уже отложенное под другие заказы)
   const short = [];
   if (stk) items.forEach(it => {
@@ -3161,8 +3169,8 @@ export class Shop {
     const stk = await this.getStk();
     const v = validateOrder(body, cfg, prod, stk);
     if (v.err) {
-      const fresh = v.err === 'unavailable' || v.err === 'no_delivery' || v.err === 'no_region' || v.err === 'region_need' || v.err === 'stock' || v.err === 'min_order' || v.err === 'pack';
-      return json({ error: v.err, short: v.short, min: v.min, id: v.id, step: v.step, cfg: fresh ? cfg : undefined, prod: fresh ? publicProd(prod, stk) : undefined }, fresh ? 409 : 400);
+      const fresh = v.err === 'unavailable' || v.err === 'no_delivery' || v.err === 'no_region' || v.err === 'region_need' || v.err === 'stock' || v.err === 'min_order' || v.err === 'pack' || v.err === 'min_qty';
+      return json({ error: v.err, short: v.short, min: v.min, id: v.id, step: v.step, minq: v.minq, cfg: fresh ? cfg : undefined, prod: fresh ? publicProd(prod, stk) : undefined }, fresh ? 409 : 400);
     }
     if (body.expectTotal !== undefined && Number(body.expectTotal) !== v.total) {
       return json({ error: 'price_changed', cfg, prod: publicProd(prod, stk) }, 409);
