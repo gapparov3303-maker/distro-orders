@@ -110,13 +110,13 @@ function nextDiscount(cfg,sub){
 }
 
 /* Чистка ступеней цены и скидок: одни и те же правила в приложении и на сервере.
-   Ступени цены: до трёх, «от n шт» (n от 2 до 500) по возрастанию, цена каждой ниже обычной и ниже предыдущей. */
+   Ступени цены: до трёх, «от n шт» (n от 2 до 10 000) по возрастанию, цена каждой ниже обычной и ниже предыдущей. */
 const cleanTiers=(a,price)=>{
   const t=[];
   (Array.isArray(a)?a:[]).forEach(x=>{
     if(!x||typeof x!=='object')return;
     const n=Math.round(Number(x.n)),pr=Math.round(Number(x.price));
-    if(n>=2&&n<=500&&pr>=1&&pr<=1e8)t.push({n,price:pr});
+    if(n>=2&&n<=MAX_QTY&&pr>=1&&pr<=1e8)t.push({n,price:pr});
   });
   t.sort((x,y)=>x.n-y.n);
   const out=[];let prev=Number(price)||0;
@@ -183,7 +183,7 @@ const minQty=p=>{
 const minText=p=>{
   const q=minQty(p);if(!q)return '';
   const u=p.mu==='box'||p.mu==='blk'?p.mu:'',s=u?packSize(p,u):0;
-  return L('Минимум: ','Minimum: ')+(s&&q%s===0?(q/s)+' '+packShort(u)+' · ':'')+q+' '+pcsWord(p);
+  return L('Минимум: ','Minimum: ')+(s&&q%s===0?num(q/s)+' '+packShort(u)+' · ':'')+num(q)+' '+pcsWord(p);
 };
 /* Раскладывает штуки по упаковкам, сначала по большим: 100 шт при коробке 48 и блоке 12 → 2 кор. + 0 бл., остаток 4 шт. */
 function packSplit(p,qty){
