@@ -206,8 +206,9 @@ function parseRange(h, size) {
   return a <= b && a < size ? [a, b] : null;
 }
 const vdParts = vd => { const m = cleanVd(vd).match(/^(.+)\/(\d+)$/); return m ? { ch: m[1], id: Number(m[2]) } : null; };
-/* Подпись под видео в канале: два блока (узбекский, потом русский) и в конце продавец. В блоке название с весом, цена, акция или новинка,
-   упаковка, ступени цены и описание; строки без данных не пишутся, без узбекского названия остаётся один русский блок.
+/* Подпись под видео в канале: два блока (узбекский, потом русский) и в конце продавец. В блоке три части, между ними пустая строка:
+   название с весом; цена, акция или новинка, упаковка, минимум, ступени цены; описание (переносы строк продавца сохраняются).
+   Части без данных не пишутся, без узбекского названия остаётся один русский блок.
    Не длиннее VIDEO_CAP_MAX знаков: при нехватке места обрезается описание, сначала более длинное. */
 function videoCaption(it, seller) {
   const was = LANG;
@@ -215,7 +216,7 @@ function videoCaption(it, seller) {
     setLang(lang);
     const uz = lang === 'uz', name = cleanStr(uz ? it.uz : it.name, 60);
     if (!name) return null;
-    const w = weightLabel(it), lines = [name + (w ? ', ' + w : '')], price = Number(it.price) || 0;
+    const w = weightLabel(it), head = name + (w ? ', ' + w : ''), lines = [], price = Number(it.price) || 0;
     if (price > 0) lines.push('💰 ' + money(price) + ' / ' + pcsWord(it));
     if (it.tag === 'sale') lines.push('🔥 ' + tagName('sale') + (oldPrice(it) ? ' −' + salePct(it) + '% (' + L('было ', 'avval ') + money(oldPrice(it)) + ')' : ''));
     else if (it.tag === 'new') lines.push('🆕 ' + tagName('new'));
@@ -224,12 +225,13 @@ function videoCaption(it, seller) {
     if (minQty(it)) lines.push('📌 ' + minText(it));
     const tr = tiersOf(it).filter(t => Number(t.n) >= 2 && Number(t.price) > 0).map(t => qtyFrom(it, t.n) + ': ' + money(t.price));
     if (tr.length) lines.push('📉 ' + tr.join('; '));
-    return { lines, label: L('Описание: ', 'Tavsif: '), desc: String((uz ? it.descUz : it.desc) || '').replace(/\s+/g, ' ').trim() };
+    const desc = String((uz ? it.descUz : it.desc) || '').replace(/\r/g, '').replace(/[^\S\n]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    return { head, lines, label: L('Описание: ', 'Tavsif: '), desc };
   };
   const blocks = [block('uz'), block('ru')].filter(Boolean);
   setLang(was);
   const tail = cleanStr(seller, 60);
-  const render = () => blocks.map(b => b.lines.concat(b.desc ? [b.label + b.desc] : []).join('\n')).join('\n\n') + (tail ? '\n\n' + tail : '');
+  const render = () => blocks.map(b => [[b.head], b.lines, b.desc ? [b.label + b.desc] : []].filter(x => x.length).map(x => x.join('\n')).join('\n\n')).join('\n\n') + (tail ? '\n\n' + tail : '');
   let out = render();
   while (out.length > VIDEO_CAP_MAX) {
     const b = blocks.slice().sort((x, y) => y.desc.length - x.desc.length)[0];
