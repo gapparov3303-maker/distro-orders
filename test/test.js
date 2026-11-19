@@ -10531,7 +10531,7 @@ await t('видео товара: продавец жмёт «Добавить �
   await vmsg(DIL, {}, 504);
   const cp = lastTg('copyMessage');
   assert.ok(cp && cp.payload.chat_id === '@sarbon_video' && cp.payload.from_chat_id === DIL.id && cp.payload.message_id === 504);
-  assert.equal(nb(cp.payload.caption), ['Kungaboqar yogʻi, 5 l', '💰 82 000 soʻm / dona', 'Tavsif: Tozalangan', '', 'Масло подсолнечное, 5 л', '💰 82 000 сум / шт', 'Описание: Рафинированное', '', 'Видео Трейд'].join('\n'), 'подпись: два блока и продавец в конце');
+  assert.equal(nb(cp.payload.caption), ['Kungaboqar yogʻi, 5 l', '', '💰 82 000 soʻm / dona', '', 'Tavsif: Tozalangan', '', 'Масло подсолнечное, 5 л', '', '💰 82 000 сум / шт', '', 'Описание: Рафинированное', '', 'Видео Трейд'].join('\n'), 'подпись: два блока, в каждом название, цена и описание через пустую строку, продавец в конце');
   assert.ok(/82\u00a0000/.test(cp.payload.caption), 'число с неразрывным пробелом, не рвётся на строке');
   const cb = cp.payload.reply_markup.inline_keyboard;
   assert.equal(cb.length, 1); assert.equal(cb[0].length, 1, 'под постом одна кнопка');
@@ -10980,7 +10980,7 @@ await t('значок на главном экране: плашка один р
   assert.ok(!/магазин|клиент|дистрибьютор/i.test(src), 'в видимых текстах нет «магазин», «клиент», «дистрибьютор»');
 });
 
-await t('подпись под видео: два языка, цена, акция или новинка, упаковка, ступени цены и описание; пустые строки не пишутся; длинное описание обрезается под лимит', async () => {
+await t('подпись под видео: два языка, цена, акция или новинка, упаковка, ступени цены и описание, части через пустую строку; части без данных не пишутся; длинное описание обрезается под лимит', async () => {
   const { sid } = await shopWorld('Видео Шесть');
   await startMsg(DIL, 'v_' + sid + '_p1');
   await send({ update_id: 9990, message: { message_id: 820, from: DIL, chat: { id: DIL.id, type: 'private' }, video: { file_id: VID_ID, duration: 5, file_size: 1e6 } } });
@@ -10991,16 +10991,28 @@ await t('подпись под видео: два языка, цена, акци
     assert.equal((await callS(sid, 'PUT', '/api/admin/products', { init: iD(), body: { prod: c } })).status, 200);
     tgLog = [];
     assert.deepEqual(await jsonOf(await call('POST', '/api/hub/admin/video/captions', { init: iS(), body: {} })), { done: 1, failed: 0 });
-    return nb(lastTg('editMessageCaption').payload.caption);
+    const cap = nb(lastTg('editMessageCaption').payload.caption);
+    assert.ok(!/\n{3}/.test(cap) && !/^\n|\n$/.test(cap), 'больше одной пустой строки подряд и пустых строк по краям не бывает');
+    return cap;
   };
   // полный товар
   const full = { name: 'Лаваш тесто', uz: 'Lavash xamiri', desc: 'Свежее\nтесто для лаваша', descUz: 'Lavash uchun yangi xamir', amount: 500, unit: 'g', price: 12500, tag: 'sale', old: 14700, box: 48, blk: 12, tiers: [{ n: 100, price: 11800 }, { n: 300, price: 11000 }] };
   assert.equal(await capFor(full), [
-    'Lavash xamiri, 500 g', '💰 12 500 soʻm / dona', '🔥 Aksiya −15% (avval 14 700 soʻm)', '📦 Qutida 48 dona, blokda 12 dona', '📉 100 donadan: 11 800 soʻm; 300 donadan: 11 000 soʻm', 'Tavsif: Lavash uchun yangi xamir', '',
-    'Лаваш тесто, 500 г', '💰 12 500 сум / шт', '🔥 Акция −15% (было 14 700 сум)', '📦 В коробке 48 шт, в блоке 12 шт', '📉 от 100 шт: 11 800 сум; от 300 шт: 11 000 сум', 'Описание: Свежее тесто для лаваша', '', 'Видео Шесть'].join('\n'));
+    'Lavash xamiri, 500 g', '', '💰 12 500 soʻm / dona', '🔥 Aksiya −15% (avval 14 700 soʻm)', '📦 Qutida 48 dona, blokda 12 dona', '📉 100 donadan: 11 800 soʻm; 300 donadan: 11 000 soʻm', '', 'Tavsif: Lavash uchun yangi xamir', '',
+    'Лаваш тесто, 500 г', '', '💰 12 500 сум / шт', '🔥 Акция −15% (было 14 700 сум)', '📦 В коробке 48 шт, в блоке 12 шт', '📉 от 100 шт: 11 800 сум; от 300 шт: 11 000 сум', '', 'Описание: Свежее', 'тесто для лаваша', '', 'Видео Шесть'].join('\n'), 'переносы строк в описании сохраняются');
+  // лишние пробелы и пустые строки в описании подчищаются: не больше одной пустой строки, пробелы по краям строк убираются
+  assert.equal(await capFor({ name: 'Мёд', uz: 'Asal', amount: 1, unit: 'kg', price: 90000, desc: 'Строка 1  \n\n\n\n  Строка 2\r\nСтрока 3\t\tконец ' }),
+    ['Asal, 1 kg', '', '💰 90 000 soʻm / kg', '', 'Мёд, 1 кг', '', '💰 90 000 сум / кг', '', 'Описание: Строка 1', '', 'Строка 2', 'Строка 3 конец', '', 'Видео Шесть'].join('\n'));
+  // образец владельца (снимок поста в канале): название, цена и упаковка, описание — каждое отдельным абзацем
+  const gDesc = 'Натуральная тушёная говядина. Продукт Halal, без ГМО.\nУдобная жестяная упаковка с ключом\nдля открывания. Отлично подходит для горячих блюд.', gUz = 'Dimlangan mol goʻshti. Halal talablariga mos, GMO qoʻshilmagan.';
+  assert.equal(await capFor({ name: 'GURMAN Original — Говядина тушёная', uz: 'GURMAN Original — Dimlangan mol goʻshti', amount: 325, unit: 'g', price: 46500, box: 24, only: 'box', desc: gDesc, descUz: gUz }), [
+    'GURMAN Original — Dimlangan mol goʻshti, 325 g', '', '💰 46 500 soʻm / dona', '📦 Qutida 24 dona · faqat qutida', '', 'Tavsif: ' + gUz, '',
+    'GURMAN Original — Говядина тушёная, 325 г', '', '💰 46 500 сум / шт', '📦 В коробке 24 шт · только коробками', '', 'Описание: Натуральная тушёная говядина. Продукт Halal, без ГМО.', 'Удобная жестяная упаковка с ключом', 'для открывания. Отлично подходит для горячих блюд.', '', 'Видео Шесть'].join('\n'), 'так подпись выглядит на образце владельца');
+  // нет ни цены, ни упаковки: средняя часть не пишется, пустых строк лишних нет
+  assert.equal(await capFor({ name: 'Сок', uz: 'Sharbat', desc: 'Вкусный', descUz: 'Mazali' }), ['Sharbat', '', 'Tavsif: Mazali', '', 'Сок', '', 'Описание: Вкусный', '', 'Видео Шесть'].join('\n'));
   // голый товар: нет узбекского названия — один русский блок; описание без перевода не дублируется
-  assert.equal(await capFor({ name: 'Рис', amount: 25, unit: 'kg', price: 410000, desc: 'Круглый' }), ['Рис, 25 кг', '💰 410 000 сум / шт', 'Описание: Круглый', '', 'Видео Шесть'].join('\n'));
-  assert.equal(await capFor({ name: 'Соль', uz: 'Tuz', amount: 1, unit: 'kg', price: 3000 }), ['Tuz, 1 kg', '💰 3 000 soʻm / kg', '', 'Соль, 1 кг', '💰 3 000 сум / кг', '', 'Видео Шесть'].join('\n'), 'товар на вес: цена за кг, без описания');
+  assert.equal(await capFor({ name: 'Рис', amount: 25, unit: 'kg', price: 410000, desc: 'Круглый' }), ['Рис, 25 кг', '', '💰 410 000 сум / шт', '', 'Описание: Круглый', '', 'Видео Шесть'].join('\n'));
+  assert.equal(await capFor({ name: 'Соль', uz: 'Tuz', amount: 1, unit: 'kg', price: 3000 }), ['Tuz, 1 kg', '', '💰 3 000 soʻm / kg', '', 'Соль, 1 кг', '', '💰 3 000 сум / кг', '', 'Видео Шесть'].join('\n'), 'товар на вес: цена за кг, без описания');
   // новинка, цены нет, только упаковками, ступень из одной штуки не пишется
   let c = (await capFor({ name: 'Чай', uz: 'Choy', tag: 'new', price: 0, box: 20, only: 'box', tiers: [{ n: 1, price: 5 }] })).split('\n');
   assert.ok(c.includes('🆕 Yangilik') && c.includes('🆕 Новинка') && c.includes('📦 Qutida 20 dona · faqat qutida') && c.includes('📦 В коробке 20 шт · только коробками'), c.join('|'));
