@@ -534,6 +534,8 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .crow .cf{display:flex;align-items:center;gap:8px;min-width:0}
 .crow .cf .ltag{margin:0;flex:0 0 auto;width:28px;text-align:center;padding:1px 0}
 .crow .cf input{padding:7px 10px;font-size:15px;background:var(--surface);border-color:var(--line);border-radius:9px}
+.crow .cmv{grid-column:2;grid-row:1/3;display:flex;flex-direction:column;align-items:center;gap:2px}
+.crow .cmv .pmvb{height:30px}
 .crow .x{grid-column:2;grid-row:1/3;appearance:none;border:0;background:transparent;font-size:22px;line-height:1;color:var(--ink-2);cursor:pointer;width:34px;height:34px;border-radius:10px;align-self:center}
 @media (max-width:560px){
   .pfbody{grid-template-columns:minmax(0,1fr)}
@@ -3673,9 +3675,10 @@ function prodHTML(){
     +'<div class="savebar" id="savebar"></div>';
   h+=impCardHTML();
   h+='<div class="card"><h3>'+L('Категории','Kategoriyalar')+'</h3><div class="unit">'+L('Каждая категория называется на двух языках: покупатель видит название на языке своего приложения. Если узбекское пустое, покажется русское. Удалить можно только пустую категорию.','Har bir kategoriya ikki tilda nomlanadi: xaridor oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
-  P.cats.forEach(c=>{
+  P.cats.forEach((c,ci)=>{
     const id=esc(c.id);
-    h+='<div class="crow"><div class="cf"><span class="ltag">RU</span><input type="text" id="cn-'+id+'" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" aria-label="'+esc(L('Название по-русски','Ruscha nomi'))+'" placeholder="'+esc(L('Например: Консервы','Masalan: Консервы'))+'"></div><div class="cf"><span class="ltag uz">UZ</span><input type="text" id="cu-'+id+'" data-cid="'+id+'" data-cp="uz" value="'+esc(c.uz||'')+'" maxlength="40" aria-label="'+esc(L('Название по-узбекски','Oʻzbekcha nomi'))+'" placeholder="'+esc(L('Например: Konservalar','Masalan: Konservalar'))+'"></div><button type="button" class="x" data-act="cdel" data-id="'+id+'" aria-label="'+esc(L('Удалить категорию','Kategoriyani oʻchirish'))+'">×</button></div>';
+    const mv=(d,ch,lab,off)=>'<button type="button" class="btn ghost pmvb" data-act="cmove" data-id="'+id+'" data-d="'+d+'" aria-label="'+esc(lab)+'"'+(off?' disabled':'')+'>'+ch+'</button>';
+    h+='<div class="crow" id="crow-'+id+'"><div class="cf"><span class="ltag">RU</span><input type="text" id="cn-'+id+'" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" aria-label="'+esc(L('Название по-русски','Ruscha nomi'))+'" placeholder="'+esc(L('Например: Консервы','Masalan: Консервы'))+'"></div><div class="cf"><span class="ltag uz">UZ</span><input type="text" id="cu-'+id+'" data-cid="'+id+'" data-cp="uz" value="'+esc(c.uz||'')+'" maxlength="40" aria-label="'+esc(L('Название по-узбекски','Oʻzbekcha nomi'))+'" placeholder="'+esc(L('Например: Konservalar','Masalan: Konservalar'))+'"></div><div class="cmv">'+mv(-1,'▲',L('Категория выше','Kategoriya yuqoriga'),ci===0)+'<button type="button" class="x" data-act="cdel" data-id="'+id+'" aria-label="'+esc(L('Удалить категорию','Kategoriyani oʻchirish'))+'">×</button>'+mv(1,'▼',L('Категория ниже','Kategoriya pastga'),ci===P.cats.length-1)+'</div></div>';
   });
   h+='<div style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="cadd">'+L('+ Добавить категорию','+ Kategoriya qoʻshish')+'</button></div></div>';
   h+='<div class="card"><h3>'+L('Товары','Mahsulotlar')+' · '+P.items.length+'</h3>';
@@ -7292,6 +7295,19 @@ document.addEventListener('click',e=>{
     const id=t.dataset.id;
     if(S.prod.items.some(p=>p.cat===id)){toast(L('В категории есть товары. Сначала перенесите или удалите их.','Kategoriyada mahsulotlar bor. Avval ularni koʻchiring yoki oʻchiring.'));return}
     S.prod.cats=S.prod.cats.filter(c=>c.id!==id);queueSave('prod');paintSeller();
+  }
+  else if(a==='cmove'){
+    /* ▲ ▼ у категории: меняет её местом с соседней; порядок тот же у покупателей, в списке категории у товара и в фильтре */
+    const id=t.dataset.id,d=Number(t.dataset.d)||0,arr=S.prod.cats,pos=arr.findIndex(c=>c.id===id),to=pos+d;
+    if(pos<0||to<0||to>=arr.length)return;
+    const tmp=arr[pos];arr[pos]=arr[to];arr[to]=tmp;
+    queueSave('prod');paintSeller();
+    const row=document.getElementById('crow-'+id);
+    if(row){
+      try{row.scrollIntoView({block:'center'})}catch(x){}
+      const nb=row.querySelector('[data-act="cmove"][data-d="'+d+'"]');   // фокус остаётся на той же стрелке: можно нажимать подряд
+      if(nb&&!nb.disabled)try{nb.focus({preventScroll:true})}catch(x){}
+    }
   }
   else if(a==='pfilter'){S.pfilter=t.dataset.id;paintSeller()}
   else if(a==='pfold')pxSet(t.dataset.id,!S.pxo[t.dataset.id]);
