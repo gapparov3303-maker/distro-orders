@@ -7130,10 +7130,54 @@ await t('форма товара и категорий: поля подписа�
   assert.ok(/name:'Новый товар',uz:'Yangi mahsulot'/.test(html) && /name:'Новая категория',uz:'Yangi kategoriya'/.test(html), 'названия по умолчанию на обоих языках');
   assert.ok(!/name:L\('Новый товар'/.test(html) && !/name:L\('Новая категория'/.test(html), 'русское название не зависит от языка интерфейса');
   // строка категории: отдельная рамка, у каждого поля значок языка вместо длинной подписи, подпись для чтения с экрана остаётся
-  const crow = html.slice(html.indexOf('class="crow"><div class="cf">'), html.indexOf('class="crow"><div class="cf">') + 1100);
+  const crow = html.slice(html.indexOf('id="crow-\'+id+\'"><div class="cf">'), html.indexOf('id="crow-\'+id+\'"><div class="cf">') + 1100);
   assert.ok(/data-cp="name"/.test(crow) && /data-cp="uz"/.test(crow) && (crow.match(/class="ltag/g) || []).length === 2, 'в строке категории два поля с значками RU и UZ');
   assert.ok(!/<label/.test(crow) && /aria-label="'\+esc\(L\('Название по-русски','Ruscha nomi'\)\)/.test(crow) && /aria-label="'\+esc\(L\('Название по-узбекски','Oʻzbekcha nomi'\)\)/.test(crow), 'длинных подписей нет, но у полей есть aria-label на двух языках');
   assert.ok(/\.crow\{[^}]*border:1\.5px solid var\(--edge\);border-radius:14px/.test(html) && /\.crow\{[^}]*margin:0 0 10px/.test(html), 'каждая категория в своей рамке с отступом');
+});
+
+await t('порядок категорий: ▲ ▼ в карточке категории, нажатие меняет места, порядок сохраняется и виден покупателям', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  // разметка: справа столбик ▲ · ✕ · ▼, у первой категории ▲ серая, у последней ▼ серая
+  const st0 = html.indexOf('P.cats.forEach((c,ci)=>{'), en0 = html.indexOf('data-act="cadd"', st0);
+  assert.ok(st0 > 0 && en0 > st0, 'цикл категорий найден');
+  const loop = html.slice(st0, en0);
+  assert.ok(loop.indexOf("mv(-1,'▲'") > 0 && loop.indexOf("mv(-1,'▲'") < loop.indexOf('data-act="cdel"') && loop.indexOf('data-act="cdel"') < loop.indexOf("mv(1,'▼'"), '▲ сверху, ✕ посередине, ▼ снизу');
+  assert.ok(/mv\(-1,'▲',[^)]*\),ci===0\)/.test(loop) && /mv\(1,'▼',[^)]*\),ci===P\.cats\.length-1\)/.test(loop), 'у первой ▲ и у последней ▼ неактивны');
+  assert.ok(/class="btn ghost pmvb" data-act="cmove" data-id="'\+id\+'" data-d="'\+d\+'" aria-label="'\+esc\(lab\)\+'"/.test(loop) && /Категория выше/.test(loop) && /Kategoriya yuqoriga/.test(loop) && /Категория ниже/.test(loop) && /Kategoriya pastga/.test(loop), 'подписи для экранных дикторов на двух языках');
+  assert.ok(/\.crow \.cmv\{[^}]*flex-direction:column/.test(html), 'столбик');
+  assert.ok(/id="crow-'\+id\+'"/.test(loop), 'у карточки есть номер, на нём держится прокрутка к ней');
+  // нажатие: меняет категорию местом с соседней, на краю ничего не делает, сохраняет каталог
+  const st = html.indexOf("else if(a==='cmove'){") + "else if(a==='cmove'){".length, en = html.indexOf("\n  else if(a==='pfilter')", st);
+  assert.ok(st > 30 && en > st, 'обработчик найден');
+  const run = (S0, id, d) => { const log = []; new Function('t', 'S', 'queueSave', 'paintSeller', 'document', html.slice(st, en).replace(/\}\s*$/, ''))({ dataset: { id, d: String(d) } }, S0, k => log.push('save:' + k), () => log.push('paint'), { getElementById: () => null }); return log; };
+  const mkS = () => ({ prod: { cats: ['a', 'b', 'c', 'd'].map(id => ({ id, name: id.toUpperCase() })), items: [] } });
+  const S1 = mkS();
+  assert.deepEqual(run(S1, 'b', 1), ['save:prod', 'paint']); assert.deepEqual(S1.prod.cats.map(c => c.id), ['a', 'c', 'b', 'd'], '▼ у «b»');
+  run(S1, 'b', 1); assert.deepEqual(S1.prod.cats.map(c => c.id), ['a', 'c', 'd', 'b'], 'ещё раз ▼: можно нажимать подряд');
+  assert.deepEqual(run(S1, 'b', 1), [], '▼ у последней ничего не делает');
+  assert.deepEqual(run(S1, 'a', -1), [], '▲ у первой ничего не делает');
+  assert.deepEqual(run(S1, 'zz', -1), [], 'такой категории нет — ничего');
+  run(S1, 'd', -1); run(S1, 'd', -1); assert.deepEqual(S1.prod.cats.map(c => c.id), ['d', 'a', 'c', 'b'], '▲ дважды: «d» поднялась на первое место');
+  assert.deepEqual(S1.prod.cats.map(c => c.name), ['D', 'A', 'C', 'B'], 'названия идут вместе с категориями');
+  // у покупателя кнопки категорий вверху каталога идут в том же порядке (пустые категории не показываются)
+  const m = html.match(/const shopCats=(\(\)=>[^\n]*);\n/); assert.ok(m, 'shopCats найден');
+  const shopCats = new Function('S', 'apr', 'return ' + m[1])({ prod: { cats: S1.prod.cats, items: [{ id: 'x1', cat: 'a' }, { id: 'x2', cat: 'b' }, { id: 'x3', cat: 'd' }] } }, () => true);
+  assert.deepEqual(shopCats().map(c => c.id), ['d', 'a', 'b'], 'порядок как у продавца, «c» без товаров пропущена');
+  // сервер: порядок сохраняется и отдаётся покупателю, продавцу, при повторном сохранении не сбивается; товары и названия не меняются
+  const { sid } = await shopWorld('Порядок категорий');
+  const A = newUser();
+  const cats = [{ id: 'ca', name: 'Аа', uz: 'Aa' }, { id: 'cb', name: 'Бб', uz: 'Bb' }, { id: 'cc', name: 'Вв', uz: 'Vv' }];
+  const items = cats.map((c, i) => ({ id: 'q' + i, cat: c.id, name: 'Товар ' + i, uz: 'Tovar ' + i, desc: '', descUz: '', amount: 1, unit: 'kg', price: 1000 + i, on: true }));
+  assert.equal((await dPut(sid, { cats, items })).status, 200);
+  assert.deepEqual((await dSee(sid, A.init())).cats.map(c => c.id), ['ca', 'cb', 'cc']);
+  assert.equal((await dPut(sid, { cats: [cats[2], cats[0], cats[1]], items: (await dSee(sid, iD())).items })).status, 200);
+  assert.deepEqual((await dSee(sid, A.init())).cats.map(c => c.id), ['cc', 'ca', 'cb'], 'покупатель видит новый порядок');
+  assert.deepEqual((await dSee(sid, iD())).cats.map(c => [c.id, c.name, c.uz]), [['cc', 'Вв', 'Vv'], ['ca', 'Аа', 'Aa'], ['cb', 'Бб', 'Bb']], 'у продавца тот же порядок, названия целы');
+  const after = (await dSee(sid, iD())).items;
+  assert.deepEqual(after.map(i => [i.id, i.cat]), [['q0', 'ca'], ['q1', 'cb'], ['q2', 'cc']], 'товары остались в своих категориях');
+  assert.equal((await dPut(sid, { cats: (await dSee(sid, iD())).cats, items: after.map(i => i.id === 'q0' ? { ...i, price: 1500 } : i) })).status, 200);
+  assert.deepEqual((await dSee(sid, A.init())).cats.map(c => c.id), ['cc', 'ca', 'cb'], 'после другой правки порядок не сбивается');
 });
 
 /* ---------- подсказки под полями во всех формах ---------- */
