@@ -999,7 +999,7 @@ div.lgd{cursor:default}
 
 /* ---------- app ---------- */
 const $=(s,r)=>(r||document).querySelector(s);
-const MAX_QTY=500,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
+const MAX_QTY=10000,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
   view:'shops',as:'',shopsCat:'',shopsBz:'',sellerTab:'orders',filter:'active',msub:null,msub2:null,dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
   cfg:clone(DEFAULT),
@@ -1213,7 +1213,7 @@ const blockedTxt=()=>L('Оформление заказов для вас сей
 const apr=p=>!p.ms&&!p.hid;   // покупатель видит одобренные и не скрытые продавцом (продавцу сервер отдаёт и скрытые)
 const isPend=p=>p.ms==='wait';
 const soldOut=p=>p.on===false||p.av===0||!!p.ms||!!p.hid||(!!packOnly(p)&&typeof p.av==='number'&&p.av<packStep(p))||(minQty(p)>0&&typeof p.av==='number'&&p.av<minQty(p));   // остатка меньше минимума: заказать нечего
-/* Сколько штук можно положить в корзину: до 500, а у товаров с учётом — не больше свободного остатка. */
+/* Сколько штук можно положить в корзину: до 10 000, а у товаров с учётом — не больше свободного остатка. */
 const maxQty=p=>{const m=typeof p.av==='number'?Math.min(MAX_QTY,p.av):MAX_QTY,n=packStep(p);return n>1?Math.floor(m/n)*n:m};
 const capOf=id=>{const p=S.prod.items.find(x=>x.id===id);return p?maxQty(p):MAX_QTY};
 /* Убирает из корзины то, чего больше нет в каталоге или что закончилось, и уменьшает количество до остатка. Возвращает, сколько позиций изменено. */
@@ -1244,7 +1244,7 @@ const cartFee=()=>{if(farShop()){const c=farNow();return farFp()==='in'&&c.fee>0
 const cartPay=()=>cartTotal()-cartDisc().amount+cartFee();
 /* цена доставки, порог бесплатной и минимум: у региона из отмеченных могут быть свои (ratesFor), иначе общие */
 const minOrder=()=>ratesFor(S.cfg.shop,mode(),orderRegion()).min;
-/* Ставит количество в корзине (не больше остатка и 500). Возвращает, сколько в итоге стоит в корзине. */
+/* Ставит количество в корзине (не больше остатка и 10 000). Возвращает, сколько в итоге стоит в корзине. */
 function cartSet(id,q){
   const p=S.prod.items.find(x=>x.id===id),cap=p?maxQty(p):MAX_QTY;
   q=Math.max(0,Math.floor(q)||0);
@@ -3266,7 +3266,7 @@ function tiersEditHTML(p){
   const id=esc(p.id),t=tiersOf(p);
   const rows=[0,1,2].map(i=>{
     const x=t[i]||{};
-    return '<div class="trow"><span>'+L('от','dan')+'</span><input type="number" id="ptn-'+id+'-'+i+'" data-pid="'+id+'" data-pp="tn" data-ti="'+i+'" inputmode="numeric" min="2" max="500" step="1" value="'+(x.n||'')+'" placeholder="'+(i===0?'10':'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': от скольких штук','Pogʻona '+(i+1)+': necha donadan'))+'">'
+    return '<div class="trow"><span>'+L('от','dan')+'</span><input type="number" id="ptn-'+id+'-'+i+'" data-pid="'+id+'" data-pp="tn" data-ti="'+i+'" inputmode="numeric" min="2" max="10000" step="1" value="'+(x.n||'')+'" placeholder="'+(i===0?'10':'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': от скольких штук','Pogʻona '+(i+1)+': necha donadan'))+'">'
       +'<span>'+pcsWord(p)+L(' — цена',' — narx')+'</span><input type="number" id="ptp-'+id+'-'+i+'" data-pid="'+id+'" data-pp="tp" data-ti="'+i+'" inputmode="numeric" min="1" step="100" value="'+(x.price||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': цена за штуку, сум','Pogʻona '+(i+1)+': bir dona narxi, soʻm'))+'"><span>'+L('сум','soʻm')+'</span></div>';
   }).join('');
   return '<div class="full"><span class="lab">'+L('Цена от количества (оптовые ступени)','Miqdorga qarab narx (ulgurji pogʻonalar)')+'</span><div class="tiers">'+rows+'</div><div class="err" id="ptw-'+id+'" role="status"></div>'
@@ -3281,7 +3281,7 @@ function syncTiers(p){
   }
   p.tiers=cleanTiers(rows,p.price);
   const w=document.getElementById('ptw-'+p.id);
-  if(w)w.textContent=p.tiers.length<rows.length?L('Одна из строк не учтена: цена ступени должна быть ниже обычной и ниже предыдущей, а количество — больше предыдущего (от 2 до 500).','Qatorlardan biri hisobga olinmadi: pogʻona narxi odatdagidan va oldingisidan past, miqdor esa oldingisidan katta boʻlishi kerak (2 dan 500 gacha).'):'';
+  if(w)w.textContent=p.tiers.length<rows.length?L('Одна из строк не учтена: цена ступени должна быть ниже обычной и ниже предыдущей, а количество — больше предыдущего (от 2 до 10 000).','Qatorlardan biri hisobga olinmadi: pogʻona narxi odatdagidan va oldingisidan past, miqdor esa oldingisidan katta boʻlishi kerak (2 dan 10 000 gacha).'):'';
 }
 /* ---------- проверка товаров: продавец ---------- */
 const inModGroup=p=>p.ms==='wait'||p.ms==='ret';
@@ -3488,17 +3488,24 @@ function minUnitOpts(p){
   if(packSize(p,'blk'))o.push(['blk',L('блоков','blok')]);
   return o.map(x=>'<option value="'+x[0]+'"'+((p.mu||'')===x[0]?' selected':'')+'>'+esc(x[1])+'</option>').join('');
 }
-function minHintInner(p){
-  const t=minText(p);
-  return esc(PF_HINT().min)+(t?' <b>'+esc(L('Покупатель увидит: ','Xaridor koʻradi: ')+t)+'</b>':'');
+/* Сколько можно указать в выбранной единице: в заказе не больше MAX_QTY штук одного товара */
+function minCap(p){const s=p.mu?packSize(p,p.mu):1;return Math.floor(MAX_QTY/(s||1))}
+function minHintInner(p,cut){
+  const t=minText(p),sel=p.mu==='box'?L('коробок','quti'):p.mu==='blk'?L('блоков','blok'):pcsWord(p);
+  return esc(PF_HINT().min)+' '+esc(L('Максимум: ','Maksimum: ')+num(minCap(p))+' '+sel+'.')
+    +(cut?' <b class="pmcut">'+esc(L('Вы ввели больше, поставили максимум.','Koʻproq kiritdingiz, maksimum qoʻyildi.'))+'</b>':'')
+    +(t?' <b>'+esc(L('Покупатель увидит: ','Xaridor koʻradi: ')+t)+'</b>':'');
 }
 /* после правки минимума или размера упаковки: единица не может быть коробкой или блоком, если такой упаковки нет */
 function minSync(p,root){
   if(p.mu&&!packSize(p,p.mu))p.mu='';
+  const cap=minCap(p),cut=p.mn>cap;
+  if(cut)p.mn=cap;   // выше предела не бывает: в поле сразу виден допустимый максимум
   if(!root)return;
-  const sel=root.querySelector('[data-pp="mu"]'),h=root.querySelector('[id^="pmh-"]');
+  const sel=root.querySelector('[data-pp="mu"]'),h=root.querySelector('[id^="pmh-"]'),inp=root.querySelector('[data-pp="mn"]');
   if(sel){sel.innerHTML=minUnitOpts(p);sel.value=p.mu||''}
-  if(h)h.innerHTML=minHintInner(p);
+  if(inp&&cut)inp.value=String(p.mn);
+  if(h)h.innerHTML=minHintInner(p,cut);
 }
 /* свёрнутая строка товара в редакторе: фото, название, цена и пометки; по нажатию открывается полная форма.
    Какие товары раскрыты, помнит S.pxo (только на время работы, на сервер не уходит) */
@@ -3577,16 +3584,16 @@ function prodBody(p){
     +'<div class="full"><label class="chk"><input type="checkbox" data-pid="'+id+'" data-pp="show"'+(p.hid?'':' checked')+'> '+L('Показывать покупателям','Xaridorlarga koʻrsatish')+'</label></div>'
     +pfHintRow('show')
     +tiersEditHTML(p)
-    +fld('blk',packLab(p,'blk'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
-    +fld('box',packLab(p,'box'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
+    +fld('blk',packLab(p,'blk'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="10000"'))
+    +fld('box',packLab(p,'box'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="10000"'))
     +onlyRowHTML(p,'data-pid="'+id+'" data-pp="only"')
-    +fld('mn',L('Минимум для заказа','Buyurtma uchun minimum'),inp('mn','number',p.mn||'',' inputmode="numeric" step="1" min="0" max="500" placeholder="0"'))
+    +fld('mn',L('Минимум для заказа','Buyurtma uchun minimum'),inp('mn','number',p.mn||'',' inputmode="numeric" step="1" min="0" max="10000" placeholder="0"'))
     +fld('mu',L('Минимум в','Minimum birligi'),'<select id="pmu-'+id+'" data-pid="'+id+'" data-pp="mu">'+minUnitOpts(p)+'</select>')
     +'<div class="full hint" id="pmh-'+id+'">'+minHintInner(p)+'</div>'
     +(farOn(S.cfg.shop)?'<div class="full"><div class="lab">'+L('Габариты одной штуки в упаковке, см','Bitta dona qadoqining oʻlchamlari, sm')+'</div><div class="pyrow dims">'
       +[['dl',L('Длина','Uzunligi'),'Uzunligi'],['dw',L('Ширина','Eni'),'Eni'],['dh',L('Высота','Balandligi'),'Balandligi']].map(d=>inp(d[0],'number',p[d[0]]||'',' inputmode="decimal" step="any" min="0" max="1000" placeholder="'+esc(d[1])+'" aria-label="'+esc(d[1])+'"')).join('')+'</div>'
       +hintD('Для доставки «за габарит»: объём считается в м³. Укажите все три размера, иначе цену назовёте вы. Пример: 50 × 40 × 20.','«Hajm boʻyicha» yetkazish uchun: hajm m³ da hisoblanadi. Uchala oʻlchamni yozing, aks holda narxni oʻzingiz aytasiz. Masalan: 50 × 40 × 20.')+'</div>':'')
-    +'<div class="full unit" style="margin:0">'+L('Блок и коробка — для удобства: цена и остаток всегда считаются в штуках. Если указать, у покупателя появятся кнопки «+ блок» и «+ коробка», а в заказах будет видно, сколько это коробок. Допустимо от 2 до 500 штук. Галочка «Продаётся только…» — покупатель сможет взять товар лишь целыми упаковками (10, 20, 30 '+pcsWord(p)+').','Blok va quti — qulaylik uchun: narx va qoldiq doim donada hisoblanadi. Koʻrsatilsa, xaridorda «+ blok» va «+ quti» tugmalari paydo boʻladi, buyurtmalarda esa necha quti ekani koʻrinadi. 2 dan 500 donagacha. «Faqat … sotiladi» belgisi — xaridor mahsulotni faqat butun qadoqda oladi (10, 20, 30 '+pcsWord(p)+').')+'</div>'
+    +'<div class="full unit" style="margin:0">'+L('Блок и коробка — для удобства: цена и остаток всегда считаются в штуках. Если указать, у покупателя появятся кнопки «+ блок» и «+ коробка», а в заказах будет видно, сколько это коробок. Допустимо от 2 до 10 000 штук. Галочка «Продаётся только…» — покупатель сможет взять товар лишь целыми упаковками (10, 20, 30 '+pcsWord(p)+').','Blok va quti — qulaylik uchun: narx va qoldiq doim donada hisoblanadi. Koʻrsatilsa, xaridorda «+ blok» va «+ quti» tugmalari paydo boʻladi, buyurtmalarda esa necha quti ekani koʻrinadi. 2 dan 10 000 donagacha. «Faqat … sotiladi» belgisi — xaridor mahsulotni faqat butun qadoqda oladi (10, 20, 30 '+pcsWord(p)+').')+'</div>'
     +(S.stk[p.id]?'<div class="full unit" style="margin:0">'+L('Ведётся учёт остатка: свободно '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. Меняется на вкладке «Остатки». Когда свободного нет, товар закрывается сам.','Qoldiq hisobi yuritiladi: boʻsh '+num(stkAvail(S.stk[p.id]))+' '+pcsWord(p)+'. «Qoldiq» boʻlimida oʻzgartiriladi. Boʻsh qoldiq boʻlmasa, mahsulot oʻzi yopiladi.')+'</div>':'')
     +vidHTML(p)
     +psvHTML(p)
@@ -4892,7 +4899,7 @@ function rvEditHTML(e){
   const inp=(k,type,val,extra)=>'<input type="'+type+'" id="rf-'+k+'" data-rf="'+k+'" value="'+esc(val)+'"'+(extra||'')+'>';
   const ta=(k,val)=>'<textarea id="rf-'+k+'" data-rf="'+k+'" maxlength="300" rows="2">'+esc(val)+'</textarea>';
   const t=tiersOf(p);
-  const tiers=[0,1,2].map(i=>{const x=t[i]||{};return '<div class="trow"><span>'+L('от','dan')+'</span><input type="number" id="rtn-'+i+'" data-rf="tn" inputmode="numeric" min="2" max="500" step="1" value="'+(x.n||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': от скольких штук','Pogʻona '+(i+1)+': necha donadan'))+'"><span>'+pcsWord(p)+L(' — цена',' — narx')+'</span><input type="number" id="rtp-'+i+'" data-rf="tp" inputmode="numeric" min="1" step="100" value="'+(x.price||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': цена за штуку, сум','Pogʻona '+(i+1)+': bir dona narxi, soʻm'))+'"><span>'+L('сум','soʻm')+'</span></div>'}).join('');
+  const tiers=[0,1,2].map(i=>{const x=t[i]||{};return '<div class="trow"><span>'+L('от','dan')+'</span><input type="number" id="rtn-'+i+'" data-rf="tn" inputmode="numeric" min="2" max="10000" step="1" value="'+(x.n||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': от скольких штук','Pogʻona '+(i+1)+': necha donadan'))+'"><span>'+pcsWord(p)+L(' — цена',' — narx')+'</span><input type="number" id="rtp-'+i+'" data-rf="tp" inputmode="numeric" min="1" step="100" value="'+(x.price||'')+'" aria-label="'+esc(L('Ступень '+(i+1)+': цена за штуку, сум','Pogʻona '+(i+1)+': bir dona narxi, soʻm'))+'"><span>'+L('сум','soʻm')+'</span></div>'}).join('');
   return '<div class="fs-bg" data-act="rsx"></div><div class="fs" role="dialog" aria-modal="true" aria-label="'+esc(L('Изменить товар','Mahsulotni tuzatish'))+'"><div class="fs-grab"></div>'
     +'<div class="fs-head"><h2>'+L('Изменить товар','Mahsulotni tuzatish')+'</h2><button type="button" class="lnk" data-act="rsx">'+L('Закрыть','Yopish')+'</button></div>'
     +'<div class="fs-body"><div class="rsum"><span class="dpill static">'+esc(e.dname)+'</span>'+modTag(p)+'</div>'
@@ -4912,8 +4919,8 @@ function rvEditHTML(e){
     +fld('old',L('Старая цена для акции, сум','Aksiya uchun eski narx, soʻm'),inp('old','number',p.old||0,' inputmode="numeric" step="500" min="0"'))
     +pfHintRow('oldS')
     +'<div class="full"><span class="lab">'+L('Цена от количества (оптовые ступени)','Miqdorga qarab narx (ulgurji pogʻonalar)')+'</span><div class="tiers">'+tiers+'</div><div class="err" id="rtw" role="status"></div></div>'
-    +fld('blk',packLab(p,'blk'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="500"'))
-    +fld('box',packLab(p,'box'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="500"'))
+    +fld('blk',packLab(p,'blk'),inp('blk','number',p.blk||0,' inputmode="numeric" step="1" min="0" max="10000"'))
+    +fld('box',packLab(p,'box'),inp('box','number',p.box||0,' inputmode="numeric" step="1" min="0" max="10000"'))
     +onlyRowHTML(p,'data-rf="only"')
     +'</div></div>'
     +'<div class="fs-foot"><div class="err" id="rerr" role="alert"></div><button type="button" class="btn" id="rsave" data-act="rsave">'+L('Сохранить','Saqlash')+'</button></div></div>';
@@ -4967,13 +4974,13 @@ function rvSyncTiers(){
   }
   e.p.tiers=cleanTiers(rows,e.p.price);
   const w=$('#rtw');
-  if(w)w.textContent=e.p.tiers.length<rows.length?L('Одна из строк не учтена: цена ступени должна быть ниже обычной и ниже предыдущей, а количество — больше предыдущего (от 2 до 500).','Qatorlardan biri hisobga olinmadi: pogʻona narxi odatdagidan va oldingisidan past, miqdor esa oldingisidan katta boʻlishi kerak (2 dan 500 gacha).'):'';
+  if(w)w.textContent=e.p.tiers.length<rows.length?L('Одна из строк не учтена: цена ступени должна быть ниже обычной и ниже предыдущей, а количество — больше предыдущего (от 2 до 10 000).','Qatorlardan biri hisobga olinmadi: pogʻona narxi odatdagidan va oldingisidan past, miqdor esa oldingisidan katta boʻlishi kerak (2 dan 10 000 gacha).'):'';
 }
 function rvField(t){
   const e=S.rv.edit;if(!e)return;
   const p=e.p,k=t.dataset.rf;
   if(k==='amount'||k==='price'||k==='old'){const v=Number(t.value);p[k]=isFinite(v)&&v>=0?v:0;if(k==='price')rvSyncTiers()}
-  else if(k==='blk'||k==='box'){const v=Math.round(Number(t.value));p[k]=v>=2&&v<=500?v:0;onlySync(p,t.closest('.fs-body'))}
+  else if(k==='blk'||k==='box'){const v=Math.round(Number(t.value));p[k]=v>=2&&v<=MAX_QTY?v:0;onlySync(p,t.closest('.fs-body'))}
   else if(k==='only'){onlySet(p,t.dataset.k,t.checked);onlySync(p,t.closest('.fs-body'))}
   else if(k==='tn'||k==='tp')rvSyncTiers();
   else p[k]=t.value;
@@ -5036,7 +5043,7 @@ const ABOUT_ROLES=[
   ['Метки «Акция» (старая цена зачёркнута, рядом скидка в процентах) и «Новинка». Сердечко кладёт товар в избранное.','«Aksiya» (eski narx chizilgan, yoniga foiz yozilgan) va «Yangilik» belgilari. Yurakcha tovarni sevimlilarga qoʻshadi.'],
   ['«Мало (осталось N)» значит, что товар заканчивается, «Нет в наличии» — серая карточка. Больше остатка в корзину положить нельзя.','«Oz qoldi (N ta)» tovar tugayotganini bildiradi, «Mavjud emas» — kulrang kartochka. Qoldiqdan ortiq tovarni savatga qoʻshib boʻlmaydi.'],
   ['Если у товара есть цена от количества, на карточке видны ступени: чем больше берёте, тем ниже цена.','Agar tovarda miqdorga qarab narx boʻlsa, kartochkada pogʻonalar koʻrinadi: koʻproq olsangiz, narx arzonlashadi.'],
-  ['Нажмите «В корзину», затем «−» и «+» или введите число с клавиатуры (до 500 штук одного товара). Внизу всегда видна сумма и кнопка «Оформить заказ».','«Savatga» tugmasini bosing, soʻng «−» va «+» bilan yoki raqamni klaviaturadan kiriting (bitta tovardan 500 tagacha). Pastda doim summa va «Buyurtma berish» tugmasi koʻrinadi.'],
+  ['Нажмите «В корзину», затем «−» и «+» или введите число с клавиатуры (до 10 000 штук одного товара). Внизу всегда видна сумма и кнопка «Оформить заказ».','«Savatga» tugmasini bosing, soʻng «−» va «+» bilan yoki raqamni klaviaturadan kiriting (bitta tovardan 10 000 tagacha). Pastda doim summa va «Buyurtma berish» tugmasi koʻrinadi.'],
   ['Если товар продаётся только упаковками, под ценой подпись «Только коробками · 10 шт», а «−» и «+» меняют количество сразу на упаковку. У товара «1 кг» или «1 л» количество считается в «кг» или «л».','Agar tovar faqat qadoqlarda sotilsa, narx ostida «Faqat qutida · 10 dona» deb yoziladi, «−» va «+» esa miqdorni darhol bitta qadoqqa oʻzgartiradi. «1 kg» yoki «1 l» tovarda miqdor «kg» yoki «l» bilan hisoblanadi.'],
   ['Если у товара есть видео, на его фото виден значок ▶. Нажмите на фото и листайте влево: видео стоит последним слайдом, нажмите ▶, и оно играет прямо в приложении.','Tovarda video boʻlsa, uning rasmida ▶ belgisi koʻrinadi. Rasmni bosing va chapga suring: video oxirgi slaydda turadi, ▶ ni bosing, u ilovaning oʻzida oʻynaydi.']]},
  {img:'shop-cart',h:['Оформление заказа','Buyurtma berish'],cap:['Корзина и оформление','Savat va buyurtma berish'],li:[
@@ -7616,8 +7623,8 @@ document.addEventListener('input',e=>{
     else if(k==='show'){if(t.checked)delete p.hid;else p.hid=true;const row=t.closest('.prow');if(row)row.classList.toggle('off',p.on===false||!!p.hid)}
     else if(k==='amount'||k==='price'||k==='old'){const v=Number(t.value);p[k]=isFinite(v)&&v>=0?v:0;if(k==='price')syncTiers(p)}
     else if(k==='dl'||k==='dw'||k==='dh')p[k]=cleanDim(t.value);
-    else if(k==='blk'||k==='box'){const v=Math.round(Number(t.value));p[k]=v>=2&&v<=500?v:0;onlySync(p,t.closest('.pf'));minSync(p,t.closest('.pf'))}
-    else if(k==='mn'){const v=Math.floor(Number(t.value));p.mn=v>=1?Math.min(v,500):0;minSync(p,t.closest('.pf'))}
+    else if(k==='blk'||k==='box'){const v=Math.round(Number(t.value));p[k]=v>=2&&v<=MAX_QTY?v:0;onlySync(p,t.closest('.pf'));minSync(p,t.closest('.pf'))}
+    else if(k==='mn'){const v=Math.floor(Number(t.value));p.mn=v>=1?v:0;minSync(p,t.closest('.pf'))}
     else if(k==='mu'){p.mu=t.value==='box'||t.value==='blk'?t.value:'';minSync(p,t.closest('.pf'))}
     else if(k==='only'){onlySet(p,t.dataset.k,t.checked);onlySync(p,t.closest('.pf'))}
     else if(k==='tn'||k==='tp')syncTiers(p);

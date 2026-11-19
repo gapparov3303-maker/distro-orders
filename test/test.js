@@ -10,8 +10,8 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mod = await import(path.join(root, 'dist/worker.js'));
 
 // общий код (время, статусы, тексты) берём из исходника, чтобы сверять сервер с независимым «эталоном»
-const S = new Function('const MAX_QTY = 500;\n' + fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
-  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packSize,packShort,minQty,minText,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa,ratesFor,cleanRates,RATE_KEYS,RATE_MAX,cleanFar,cleanDim,hasDims,farOn,unitKg,farCalc,farWhen,farInPrice,farFeeKnown,farSent,farDays}')();
+const S = new Function('const MAX_QTY = 10000;\n' + fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8')
+  + '\n;return {DEFAULT,pickupInfo,shopNow,ymd,mergeCfg,setLang,STATUS,stOf,leadFor,orderText,fmtWhen,deliveryFee,unitPrice,nextTier,orderDiscount,nextDiscount,packText,packSplit,cleanLoc,mapUrl,distKm,parseGeo,SHOP_CATS,cleanCat,shopCatOf,shopCatName,cleanBz,bzName,packOnly,packStep,packFit,packSize,packShort,minQty,minText,num,cleanTiers,packOnlyText,qtyKind,pcsWord,qtyStr,qtyFrom,qtyTa,ratesFor,cleanRates,RATE_KEYS,RATE_MAX,cleanFar,cleanDim,hasDims,farOn,unitKg,farCalc,farWhen,farInPrice,farFeeKnown,farSent,farDays}')();
 
 /* ---------- окружение ---------- */
 const TOKEN = '123456:TEST-TOKEN-abcdef';
@@ -554,15 +554,15 @@ await t('заказ с доставкой: адрес сохраняется и 
   assert.equal(stored.uid, clientD.u.id);
 });
 
-await t('заказ: оптовое количество — 500 штук проходит, 501 и странные числа отклоняются', async () => {
+await t('заказ: оптовое количество — 10 000 штук проходит, 10 001 и странные числа отклоняются', async () => {
   const c = newUser();
-  let r = await place(c, [{ id: 'p4', qty: 500 }]);
+  let r = await place(c, [{ id: 'p4', qty: 10000 }]);
   const d = await jsonOf(r);
   assert.equal(r.status, 200, JSON.stringify(d));
-  assert.equal(d.order.total, 500 * 7500);
-  assert.equal(d.order.items[0].qty, 500);
+  assert.equal(d.order.total, 10000 * 7500);
+  assert.equal(d.order.items[0].qty, 10000);
   await call('POST', '/api/cancel', { init: c.init(), body: { id: d.order.id } });
-  for (const q of [501, 1000, 0, -1, 1.5, '2', null, true, NaN, 1e9]) {
+  for (const q of [10001, 100000, 0, -1, 1.5, '2', null, true, NaN, 1e9]) {
     r = await call('POST', '/api/order', { init: c.init(), body: ob([{ id: 'p4', qty: q }], { expectTotal: undefined }) });
     assert.equal(r.status, 400, 'ждали отказ для qty=' + String(q) + ', получили ' + r.status);
   }
@@ -943,15 +943,15 @@ await t('покупатель отменяет новый заказ сам: ч�
   assert.equal((await call('POST', '/api/cancel', { init: c.init(), body: { id: o.id } })).status, 409);   // повторно нельзя
 });
 
-await t('большой заказ: 30 длинных позиций по 500 штук умещаются в сообщение Telegram, кнопки остаются', async () => {
+await t('большой заказ: 30 длинных позиций по 10 000 штук умещаются в сообщение Telegram, кнопки остаются', async () => {
   const items = Array.from({ length: 30 }, (_, i) => ({ id: 'big' + i, cat: 'oil', name: ('Очень длинное название номер ' + i + ' ').padEnd(60, 'ы'), uz: 'U', desc: '', amount: 99999.999, unit: 'kg', price: 99999999, on: true }));
   await putProd({ cats: SAMPLE_PROD().cats, items });
   assert.equal((await putCfg(s => { s.name = 'Очень длинное название оптовой компании'.padEnd(60, '!'); })).status, 200);
   const c = newUser();
   tgLog = [];
-  const cart = items.map(i => ({ id: i.id, qty: 500 }));
+  const cart = items.map(i => ({ id: i.id, qty: 10000 }));
   const form = formFor(S.DEFAULT, 'delivery', { comment: 'К'.repeat(500), address: 'А'.repeat(200), name: 'Н'.repeat(60) });
-  const r = await call('POST', '/api/order', { init: c.init(), body: { cart, form, lang: 'ru', expectTotal: 30 * 500 * 99999999 } });
+  const r = await call('POST', '/api/order', { init: c.init(), body: { cart, form, lang: 'ru', expectTotal: 30 * 10000 * 99999999 } });
   const d = await jsonOf(r);
   assert.equal(r.status, 200, JSON.stringify(d));
   assert.equal(d.order.items.length, 30);
@@ -1213,20 +1213,20 @@ await t('остатки: покупатель всегда видит, скол�
   assert.equal(free.lw, undefined);
 });
 
-await t('остатки: большой склад покупателю не раскрывается — av не больше 500, а в заказ всё равно нельзя взять больше остатка', async () => {
+await t('остатки: большой склад покупателю не раскрывается — av не больше 10 000, а в заказ всё равно нельзя взять больше остатка', async () => {
   await stockWorld();
-  await setSt('p2', 12345, 20);
+  await setSt('p2', 54321, 20);
   let it = await pubItem('p2');
-  assert.equal(it.av, 500);
+  assert.equal(it.av, 10000);
   assert.equal(it.lw, undefined);
-  assert.ok(!JSON.stringify(await getProd()).includes('12345'));
-  assert.equal((await place(newUser(), [{ id: 'p2', qty: 500 }])).status, 200);
-  assert.equal((await pubItem('p2')).av, 500);                     // свободно 11845, но выше 500 в заказ всё равно не берут
+  assert.ok(!JSON.stringify(await getProd()).includes('54321'));
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 10000 }])).status, 200);
+  assert.equal((await pubItem('p2')).av, 10000);                   // свободно 44321, но выше 10 000 в заказ всё равно не берут
   // порог выше предела: число в «Мало (осталось N)» точное
-  await stockOp({ id: 'p2', op: 'set', n: 600 });
-  await stockOp({ id: 'p2', op: 'low', n: 550 });
+  await stockOp({ id: 'p2', op: 'set', n: 10600 });
+  await stockOp({ id: 'p2', op: 'low', n: 10550 });
   it = await pubItem('p2');
-  assert.equal(it.av, 100);                                         // 600 на складе − 500 в резерве
+  assert.equal(it.av, 600);                                         // 10 600 на складе − 10 000 в резерве
   assert.equal(it.lw, 1);
 });
 
@@ -1261,7 +1261,7 @@ await t('остатки: заказ откладывает товар — дру
   r = await place(c3, [{ id: 'p2', qty: 1 }]);
   assert.equal(r.status, 409);
   // старый баг-класс: сумма и количество проверяются раньше остатка и не ломаются
-  assert.equal((await place(c4, [{ id: 'p2', qty: 501 }])).status, 400);
+  assert.equal((await place(c4, [{ id: 'p2', qty: 10001 }])).status, 400);
   assert.equal((await place(c4, [{ id: 'p2', qty: 0 }])).status, 400);
   // у продавца и в «моих заказах» служебного поля нет
   assert.ok((await adminOrdersOf()).every(o => o.rs === undefined));
@@ -1365,8 +1365,8 @@ await t('остатки: продавцу приходит предупрежд�
 
 await t('остатки: товар без учёта работает как раньше; учёт можно выключить и включить заново; удалённый товар не оставляет остатка', async () => {
   await stockWorld();
-  // без учёта: 500 штук проходят, остатков нет
-  assert.equal((await place(newUser(), [{ id: 'p1', qty: 500 }])).status, 200);
+  // без учёта: 10 000 штук проходят, остатков нет
+  assert.equal((await place(newUser(), [{ id: 'p1', qty: 10000 }])).status, 200);
   assert.deepEqual(await getStock(), {});
   // включили учёт, заказали, выключили, заказали ещё, включили заново: в резерве только то, что было отложено при включённом учёте
   await setSt('p2', 100);
@@ -2910,12 +2910,12 @@ await t('блоки и коробки: размеры чистятся, попа
   const prod = SAMPLE_PROD();
   Object.assign(prod.items[3], { box: 48, blk: 12 });
   Object.assign(prod.items[0], { box: 1, blk: 'x' });
-  Object.assign(prod.items[1], { box: 501, blk: 500.4 });
+  Object.assign(prod.items[1], { box: 10001, blk: 10000.4 });
   assert.equal((await putProd(prod)).status, 200);
   let pr = await getProd();
   assert.deepEqual([pr.items[3].box, pr.items[3].blk], [48, 12]);
   assert.deepEqual([pr.items[0].box, pr.items[0].blk], [0, 0]);          // 1 и мусор — упаковки нет
-  assert.deepEqual([pr.items[1].box, pr.items[1].blk], [0, 500]);        // больше 500 не бывает, а 500,4 → 500
+  assert.deepEqual([pr.items[1].box, pr.items[1].blk], [0, 10000]);      // больше 10 000 не бывает, а 10 000,4 → 10 000
   const A = newUser();
   const o = (await jsonOf(await placeP(A, [{ id: 'p4', qty: 100 }, { id: 'p1', qty: 2 }]))).order;
   assert.deepEqual([o.items[0].box, o.items[0].blk], [48, 12]);
@@ -4132,8 +4132,12 @@ await t('минимум для заказа: расчёт по упаковке 
   assert.equal(q({ mn: 2, mu: 'box' }), 0, 'коробка не указана — минимум не действует');
   assert.equal(q({ mn: 1, mu: 'box', box: 24 }), 24, 'одна коробка — это уже минимум');
   assert.equal(q({ mn: 30, box: 12, only: 'box' }), 36, 'только коробками: округляется вверх до целой коробки');
-  assert.equal(q({ mn: 100, mu: 'box', box: 12, only: 'box' }), 492, 'не больше 500 и кратно коробке');
-  assert.equal(q({ mn: 900 }), 500, 'не больше 500 штук');
+  assert.equal(q({ mn: 100, mu: 'box', box: 12, only: 'box' }), 1200, '100 коробок по 12 — не обрезается');
+  assert.equal(q({ mn: 900, mu: 'box', box: 12, only: 'box' }), 9996, 'не больше 10 000 и кратно коробке');
+  assert.equal(q({ mn: 900 }), 900, '900 штук — не обрезается');
+  assert.equal(q({ mn: 99999 }), 10000, 'не больше 10 000 штук');
+  assert.equal(S.minText({ mn: 825, amount: 400, unit: 'g' }), 'Минимум: 825 шт');
+  assert.equal(S.minText({ mn: 5500, amount: 400, unit: 'g' }), 'Минимум: ' + S.num(5500) + ' шт', 'тысячи с пробелом');
   assert.equal(S.minText({ mn: 2, mu: 'box', box: 24, amount: 400, unit: 'g' }), 'Минимум: 2 кор. · 48 шт');
   assert.equal(S.minText({ mn: 10, amount: 400, unit: 'g' }), 'Минимум: 10 шт');
   assert.equal(S.minText({ mn: 5, amount: 1, unit: 'kg' }), 'Минимум: 5 кг', 'товар на вес: кг');
@@ -4175,16 +4179,16 @@ await t('минимум для заказа: сервер не принимае�
   const p4 = await get('p4');
   assert.deepEqual([p4.mn, p4.mu], [3, undefined], 'коробки нет: единица «штуки», поле mu не хранится');
   await put({ p4: { mn: 9999, mu: 'box', box: 12 } });
-  assert.equal((await get('p4')).mn, 41, 'не больше 500 штук: 41 коробка по 12 = 492');
-  await put({ p4: { mn: 9999, mu: '', box: 0 } });
-  assert.equal((await get('p4')).mn, 500, 'в штуках не больше 500');
+  assert.equal((await get('p4')).mn, 833, 'не больше 10 000 штук: 833 коробки по 12 = 9996');
+  await put({ p4: { mn: 99999, mu: '', box: 0 } });
+  assert.equal((await get('p4')).mn, 10000, 'в штуках не больше 10 000');
   // продавец убрал коробку: минимум в коробках не остаётся висеть
   await put({ p2: { box: 0 } });
   const p2 = await get('p2');
   assert.deepEqual([p2.mn, p2.mu], [2, undefined], 'без коробки минимум 2 превращается в 2 шт');
   // владелец поправил цену, минимум на месте
   assert.equal((await oAct('edit', { did: sid, id: 'p4', item: { price: 8000 } })).status, 200);
-  assert.equal((await get('p4')).mn, 500);
+  assert.equal((await get('p4')).mn, 10000);
   // «только коробками»: минимум 30 шт при коробке 12 округляется до 36
   await put({ p2: { box: 12, only: 'box', mn: 30, mu: '' } });
   assert.equal((await jsonOf(await order('p2', 24))).error, 'min_qty');
@@ -9272,11 +9276,13 @@ await t('только упаковками: заказ принимается т
   prod.items[3].only = 'box'; prod.items[3].box = 0; prod.items[3].blk = 6;
   await putProd(prod);
   assert.equal((await placeP(A, [{ id: 'p4', qty: 7 }])).status, 200);
-  // сумма и 500 штук: 480 = 40 коробок по 12
+  // сумма и 10 000 штук: 480 = 40 коробок по 12
   prod.items[3].box = 12;
   await putProd(prod);
   assert.equal((await placeP(newUser(), [{ id: 'p4', qty: 480 }])).status, 200);
   assert.equal((await placeP(newUser(), [{ id: 'p4', qty: 500 }])).status, 409, '500 не кратно 12');
+  assert.equal((await placeP(newUser(), [{ id: 'p4', qty: 9996 }])).status, 200, '833 коробки = 9996 штук проходят');
+  assert.equal((await placeP(newUser(), [{ id: 'p4', qty: 10008 }])).status, 400, '834 коробки — выше предела');
 });
 
 await t('только упаковками на экране: шаг, метка в каталоге и у продавца, округление вверх, закончилось, «Повторить», ошибка заказа', () => {
@@ -9287,7 +9293,7 @@ await t('только упаковками на экране: шаг, метка
     const St = { cart, prod: { items } };
     const src = ['soldOut', 'maxQty', 'capOf', 'pruneCart', 'cartSet'].map(line).join('\n');
     return new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'minQty', 'minText', 'packOnlyWord', 'pcsWord', 'qtyStr', 'qtyTa', 'saveCart', 'toast', 'L', src + '\nreturn {soldOut,maxQty,pruneCart,cartSet};')
-      (St, 500, S.packOnly, S.packStep, S.packFit, S.minQty, S.minText, () => 'коробками', S.pcsWord, S.qtyStr, S.qtyTa, () => {}, m => toasts.push(m), (ru) => ru);
+      (St, 10000, S.packOnly, S.packStep, S.packFit, S.minQty, S.minText, () => 'коробками', S.pcsWord, S.qtyStr, S.qtyTa, () => {}, m => toasts.push(m), (ru) => ru);
   };
   const bx = { id: 'a', box: 10, only: 'box', on: true };                // только коробками по 10
   const plain = { id: 'b', box: 10, on: true };
@@ -9307,7 +9313,7 @@ await t('только упаковками на экране: шаг, метка
   delete bx.av; delete plain.av;
   const St = { cart: { a: 13, b: 7 }, prod: { items: [bx, plain] } };
   const run = new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'minQty', 'saveCart', 'toast', 'L', ['soldOut', 'maxQty', 'pruneCart'].map(line).join('\n') + '\nreturn pruneCart;')
-    (St, 500, S.packOnly, S.packStep, S.packFit, S.minQty, () => {}, () => {}, (ru) => ru);
+    (St, 10000, S.packOnly, S.packStep, S.packFit, S.minQty, () => {}, () => {}, (ru) => ru);
   run();
   assert.deepEqual(St.cart, { a: 20, b: 7 });
   bx.av = 25; run();
@@ -9343,7 +9349,7 @@ await t('минимум для заказа на экране: «В корзин
   const mk = (cart, items) => {
     const St = { cart, prod: { items } };
     return new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'minQty', 'minText', 'packOnlyWord', 'pcsWord', 'qtyStr', 'qtyTa', 'saveCart', 'toast', 'L', ['soldOut', 'maxQty', 'capOf', 'pruneCart', 'cartSet'].map(line).join('\n') + '\nreturn {soldOut,maxQty,pruneCart,cartSet};')
-      (St, 500, S.packOnly, S.packStep, S.packFit, S.minQty, S.minText, () => 'коробками', S.pcsWord, S.qtyStr, S.qtyTa, () => {}, m => toasts.push(m), (ru) => ru);
+      (St, 10000, S.packOnly, S.packStep, S.packFit, S.minQty, S.minText, () => 'коробками', S.pcsWord, S.qtyStr, S.qtyTa, () => {}, m => toasts.push(m), (ru) => ru);
   };
   const a = { id: 'a', box: 24, mn: 2, mu: 'box', on: true };   // минимум 48 шт
   const b = { id: 'b', on: true };
@@ -9361,7 +9367,7 @@ await t('минимум для заказа на экране: «В корзин
   // старая корзина: меньше минимума поднимается, остальное не трогаем; закончился — убираем
   const St = { cart: { a: 10, b: 3 }, prod: { items: [a, b] } };
   const run = new Function('S', 'MAX_QTY', 'packOnly', 'packStep', 'packFit', 'minQty', 'saveCart', 'toast', 'L', ['soldOut', 'maxQty', 'pruneCart'].map(line).join('\n') + '\nreturn pruneCart;')
-    (St, 500, S.packOnly, S.packStep, S.packFit, S.minQty, () => {}, () => {}, (ru) => ru);
+    (St, 10000, S.packOnly, S.packStep, S.packFit, S.minQty, () => {}, () => {}, (ru) => ru);
   run(); assert.deepEqual(St.cart, { a: 48, b: 3 });
   a.av = 30; run(); assert.deepEqual(St.cart, { b: 3 }, 'остатка меньше минимума: из корзины пропадает');
   // исходный код: кнопки, ввод, карточки, поля продавца
@@ -9369,7 +9375,7 @@ await t('минимум для заказа на экране: «В корзин
   assert.ok(/if\(mq&&v<mq\)return;/.test(html), 'пока печатают, ниже минимума число не трогается');
   assert.ok(/class="ponly pmin">'\+esc\(minText\(p\)\)/.test(html) && /if\(minQty\(p\)\)h\+='<span class="mtag pko">'\+esc\(minText\(p\)\)/.test(html), 'строка «Минимум» в каталоге и у продавца');
   assert.ok(/fld\('mn',L\('Минимум для заказа','Buyurtma uchun minimum'\)/.test(html) && /data-pp="mu"/.test(html) && /id="pmh-'\+id\+'"/.test(html), 'в карточке продавца число, единица и подсказка');
-  assert.ok(/else if\(k==='mn'\)\{[^}]*minSync/.test(html) && /else if\(k==='mu'\)\{[^}]*minSync/.test(html) && /p\[k\]=v>=2&&v<=500\?v:0;onlySync\(p,t\.closest\('\.pf'\)\);minSync\(/.test(html), 'правка минимума и размера упаковки пересчитывает единицу и подсказку');
+  assert.ok(/else if\(k==='mn'\)\{[^}]*minSync/.test(html) && /else if\(k==='mu'\)\{[^}]*minSync/.test(html) && /p\[k\]=v>=2&&v<=MAX_QTY\?v:0;onlySync\(p,t\.closest\('\.pf'\)\);minSync\(/.test(html), 'правка минимума и размера упаковки пересчитывает единицу и подсказку');
   assert.ok(/er==='min_qty'\?L\('Для одного из товаров изменился минимум для заказа/.test(html), 'ошибка сервера понятна покупателю');
   // единицы: штуки всегда, коробки и блоки только если их размер указан; подсказка показывает, что увидит покупатель
   const opts = new Function('esc', 'L', 'packSize', 'pcsWord', line('minUnitOpts') + '\nreturn minUnitOpts;')(x => x, ru => ru, S.packSize, S.pcsWord);
@@ -9378,10 +9384,56 @@ await t('минимум для заказа на экране: «В корзин
   assert.equal(vals(opts({ box: 12 })), ',box');
   assert.equal(vals(opts({ blk: 6, box: 12 })), ',box,blk');
   assert.ok(/value="box" selected/.test(opts({ box: 12, mu: 'box' })) && /value="" selected/.test(opts({ box: 12 })), 'выбранная единица отмечена');
-  const hint = new Function('esc', 'L', 'PF_HINT', 'minText', line('minHintInner') + '\nreturn minHintInner;')(x => x, ru => ru, () => ({ min: 'ПОДСКАЗКА' }), S.minText);
-  assert.equal(hint({}), 'ПОДСКАЗКА'); assert.equal(hint({ mn: 2, mu: 'box', box: 24 }), 'ПОДСКАЗКА <b>Покупатель увидит: Минимум: 2 кор. · 48 шт</b>');
+  const mkHint = () => new Function('esc', 'L', 'PF_HINT', 'minText', 'num', 'pcsWord', 'packSize', 'MAX_QTY', line('minCap') + '\n' + line('minHintInner') + '\nreturn {minCap,minHintInner};')(x => x, ru => ru, () => ({ min: 'ПОДСКАЗКА' }), S.minText, S.num, S.pcsWord, S.packSize, 10000);
+  const { minCap, minHintInner: hint } = mkHint();
+  assert.equal(hint({}), 'ПОДСКАЗКА Максимум: ' + S.num(10000) + ' шт.');
+  assert.equal(hint({ mn: 2, mu: 'box', box: 24 }), 'ПОДСКАЗКА Максимум: ' + S.num(416) + ' коробок. <b>Покупатель увидит: Минимум: 2 кор. · 48 шт</b>');
+  assert.ok(hint({ mn: 5 }, true).includes('<b class="pmcut">Вы ввели больше, поставили максимум.</b>'), 'после обрезки подсказка так и говорит');
+  assert.ok(!hint({ mn: 5 }).includes('pmcut'), 'без обрезки лишнего не пишет');
+  assert.deepEqual([{}, { mu: 'box', box: 12 }, { mu: 'blk', blk: 15 }, { mu: 'box' }, { mu: 'blk', blk: 3, box: 7 }].map(minCap), [10000, 833, 666, 10000, 3333], 'предел в выбранной единице: 10 000 ÷ размер упаковки');
+  // правка поля: слишком большое число сразу заменяется допустимым, в поле и в подсказке
+  const sync = new Function('esc', 'L', 'PF_HINT', 'minText', 'num', 'pcsWord', 'packSize', 'MAX_QTY', 'minUnitOpts', line('minCap') + '\n' + line('minHintInner') + '\n' + line('minSync') + '\nreturn minSync;')(x => x, ru => ru, () => ({ min: 'ПОДСКАЗКА' }), S.minText, S.num, S.pcsWord, S.packSize, 10000, () => '');
+  const dom = (mn) => { const els = { '[data-pp="mu"]': { innerHTML: '', value: '' }, '[id^="pmh-"]': { innerHTML: '' }, '[data-pp="mn"]': { value: String(mn) } }; return { els, root: { querySelector: s => els[s] } }; };
+  let pp = { mn: 55, mu: 'blk', blk: 15, amount: 400, unit: 'g' }, d = dom(55);
+  sync(pp, d.root);
+  assert.equal(pp.mn, 55, '55 блоков × 15 = 825 штук — в пределе'); assert.equal(d.els['[data-pp="mn"]'].value, '55');
+  assert.ok(d.els['[id^="pmh-"]'].innerHTML.includes('Максимум: 666 блоков.') && !d.els['[id^="pmh-"]'].innerHTML.includes('pmcut'), d.els['[id^="pmh-"]'].innerHTML);
+  pp = { mn: 900, mu: 'blk', blk: 15, amount: 400, unit: 'g' }; d = dom(900);
+  sync(pp, d.root);
+  assert.equal(pp.mn, 666); assert.equal(d.els['[data-pp="mn"]'].value, '666', 'в поле сразу допустимое число');
+  assert.ok(d.els['[id^="pmh-"]'].innerHTML.includes('pmcut') && d.els['[id^="pmh-"]'].innerHTML.includes('Максимум: 666 блоков.') && d.els['[id^="pmh-"]'].innerHTML.includes('Покупатель увидит: Минимум: 666 бл. · ' + S.num(9990) + ' шт'), d.els['[id^="pmh-"]'].innerHTML);
+  // размер упаковки вырос: прежний минимум в коробках уже не помещается — подрезается так же
+  pp = { mn: 500, mu: 'box', box: 48, amount: 400, unit: 'g' }; d = dom(500);
+  sync(pp, d.root);
+  assert.equal(pp.mn, 208); assert.equal(d.els['[data-pp="mn"]'].value, '208');
+  // коробку убрали: единица возвращается в штуки, число не больше 10 000
+  pp = { mn: 500, mu: 'box', box: 0, amount: 400, unit: 'g' }; d = dom(500);
+  sync(pp, d.root);
+  assert.equal(pp.mu, ''); assert.equal(pp.mn, 500); assert.equal(d.els['[data-pp="mn"]'].value, '500', 'без обрезки поле не трогается');
+  sync({ mn: 3, mu: '', amount: 1, unit: 'kg' }, null);   // без поля на экране не падает
   const hints = html.slice(html.indexOf('  min:L('), html.indexOf('  show:L('));
   assert.ok(/Меньше этого покупатель заказать не сможет/.test(hints) && /Xaridor bundan kam buyurtma qila olmaydi/.test(hints), 'подсказка на двух языках');
+});
+
+await t('предел 10 000 штук: одно число на сервере, в приложении, в ступенях цены, в полях и в подсказках', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const wsrc = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
+  assert.ok(/^const MAX_QTY = 10000;/m.test(wsrc) && /const MAX_QTY=10000,MAX_LINES/.test(html), 'число одно и то же в сервере и в приложении');
+  assert.ok(!/max="500"/.test(html) && !/v<=500/.test(html) && !/Math\.min\(v,500\)/.test(html), 'в полях и обработчиках приложения старого предела нет');
+  assert.equal((html.match(/max="10000"/g) || []).length, 7, 'ступень цены (2 формы), блок и коробка (2 формы по 2 поля), минимум');
+  assert.ok(html.includes('до 10 000 штук одного товара') && html.includes('bitta tovardan 10 000 tagacha'), 'в «Как это работает» новое число на двух языках');
+  assert.ok(!/до 500 штук|500 tagacha|от 2 до 500|2 dan 500/.test(html), 'старого числа в текстах нет');
+  // ступени цены «от N шт» теперь тоже до 10 000
+  assert.deepEqual(S.cleanTiers([{ n: 5000, price: 90 }, { n: 10000, price: 80 }, { n: 10001, price: 70 }], 100), [{ n: 5000, price: 90 }, { n: 10000, price: 80 }]);
+  assert.equal(S.cleanTiers([{ n: 501, price: 90 }], 100).length, 1, '501 штук — уже можно');
+  // и сервер сохраняет такие ступени, размер упаковки и минимум в тысячи
+  await stockWorld();
+  const prod = SAMPLE_PROD();
+  Object.assign(prod.items[3], { box: 2400, blk: 600, tiers: [{ n: 1200, price: 7000 }, { n: 6000, price: 6500 }, { n: 20000, price: 6000 }], mn: 5, mu: 'box' });
+  assert.equal((await putProd(prod)).status, 200);
+  const pr = (await getProd()).items[3];
+  assert.deepEqual([pr.box, pr.blk, pr.mn, pr.mu], [2400, 600, 4, 'box'], 'минимум 5 коробок по 2400 = 12 000 > 10 000: остаётся 4 коробки (9600 штук)');
+  assert.deepEqual(pr.tiers, [{ n: 1200, price: 7000 }, { n: 6000, price: 6500 }], 'ступень «от 20 000» не проходит');
 });
 
 /* ---------- единица количества: «кг» и «л» вместо «шт» у товаров на вес ---------- */
