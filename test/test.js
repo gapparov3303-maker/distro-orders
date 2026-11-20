@@ -7180,6 +7180,24 @@ await t('порядок категорий: ▲ ▼ в карточке кате
   assert.deepEqual((await dSee(sid, A.init())).cats.map(c => c.id), ['cc', 'ca', 'cb'], 'после другой правки порядок не сбивается');
 });
 
+await t('недоступный товар: покупатель видит «Скоро будет» / «Tez orada», продавец в строке товара — «Нет в наличии»', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
+  const mk = lang => new Function('soldOut', 'soonTxt', fn('productCtl') + '\nreturn productCtl;')(() => true, new Function('L', 'return ' + html.match(/const soonTxt=(\(\)=>[^\n]*);\n/)[1])((ru, uz) => lang === 'ru' ? ru : uz));
+  assert.equal(mk('ru')({ id: 'a' }), '<button type="button" class="btn ghost sm padd" disabled>Скоро будет</button>', 'серая кнопка по-русски');
+  assert.equal(mk('uz')({ id: 'a' }), '<button type="button" class="btn ghost sm padd" disabled>Tez orada</button>', 'и по-узбекски');
+  // значок на фото карточки
+  assert.ok(/\(off\?'<span class="tag">'\+soonTxt\(\)\+'<\/span>'/.test(fn('productCard')), 'значок на фото карточки покупателя');
+  // повтор заказа
+  assert.ok(/toast\(L\('Эти товары скоро будут','Bu mahsulotlar tez orada boʻladi'\)\)/.test(html) && /\(skipped\.length\?' '\+soonTxt\(\)\+': '\+skipped/.test(html), 'повтор заказа: сообщения про недоступные товары');
+  // подсказка «Как это работает»
+  assert.ok(html.includes('«Скоро будет» — серая карточка.') && html.includes('«Tez orada» — kulrang kartochka.'), 'подсказка на двух языках');
+  // у продавца в строке товара пометка прежняя, а у покупателя прежней надписи нигде нет
+  assert.ok(/mtag off">'\+L\('Нет в наличии','Mavjud emas'\)/.test(fn('pxPills')), 'у продавца «Нет в наличии» остаётся');
+  assert.equal((html.match(/Mavjud emas/g) || []).length, 1, '«Mavjud emas» осталось только в строке товара у продавца');
+  assert.equal((html.match(/Нет в наличии/g) || []).length, 2, '«Нет в наличии»: пометка у продавца и комментарий к soonTxt');
+});
+
 /* ---------- подсказки под полями во всех формах ---------- */
 await t('подсказки под полями: в каждой форме приложения у полей есть мелкая серая подсказка на двух языках', async () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
