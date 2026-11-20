@@ -1215,6 +1215,8 @@ const blockedTxt=()=>L('Оформление заказов для вас сей
 const apr=p=>!p.ms&&!p.hid;   // покупатель видит одобренные и не скрытые продавцом (продавцу сервер отдаёт и скрытые)
 const isPend=p=>p.ms==='wait';
 const soldOut=p=>p.on===false||p.av===0||!!p.ms||!!p.hid||(!!packOnly(p)&&typeof p.av==='number'&&p.av<packStep(p))||(minQty(p)>0&&typeof p.av==='number'&&p.av<minQty(p));   // остатка меньше минимума: заказать нечего
+/* Что видит покупатель у недоступного товара (значок на фото, серая кнопка, повтор заказа). У продавца в строке товара остаётся «Нет в наличии»: это его рабочий статус */
+const soonTxt=()=>L('Скоро будет','Tez orada');
 /* Сколько штук можно положить в корзину: до 10 000, а у товаров с учётом — не больше свободного остатка. */
 const maxQty=p=>{const m=typeof p.av==='number'?Math.min(MAX_QTY,p.av):MAX_QTY,n=packStep(p);return n>1?Math.floor(m/n)*n:m};
 const capOf=id=>{const p=S.prod.items.find(x=>x.id===id);return p?maxQty(p):MAX_QTY};
@@ -1530,7 +1532,7 @@ function packChips(p,pre){
   return out?'<div class="ppack">'+out+'</div>':'';
 }
 function productCtl(p){
-  if(soldOut(p))return '<button type="button" class="btn ghost sm padd" disabled>'+L('Нет в наличии','Mavjud emas')+'</button>';
+  if(soldOut(p))return '<button type="button" class="btn ghost sm padd" disabled>'+soonTxt()+'</button>';
   const q=S.cart[p.id]||0;
   if(!q)return '<button type="button" class="btn sm padd" data-act="padd" data-id="'+esc(p.id)+'">'+L('В корзину','Savatga')+'</button>'+packChips(p,'p');
   return qtyHTML(p.id,q,false)+packChips(p,'p');
@@ -1563,7 +1565,7 @@ function productCard(p){
   const status=off?'':(p.lw&&typeof p.av==='number'?'<div class="pst low">'+esc(lowTxt(p.av,p))+'</div>':'<div class="pst">'+L('В наличии','Mavjud')+'</div>');
   const np=phVers(p).length,hv=vdOk(p.vd),zm=np||hv;
   const cnt=[np>1?'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="14" height="14" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/></svg>'+np+' '+L('фото','rasm'):'',hv?'▶'+(np>1?'':' '+L('Видео','Video')):''].filter(Boolean).join(' · ');
-  return '<article class="pcard'+(off?' off':'')+(!off&&S.cart[p.id]>0?' incart':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg'+(zm?' zm':'')+'"'+(zm?' data-act="pzoom" data-id="'+esc(p.id)+'"':'')+'>'+pimg(p)+(cnt?'<span class="pcnt" aria-hidden="true">'+cnt+'</span>':'')+(off?'<span class="tag">'+L('Нет в наличии','Mavjud emas')+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
+  return '<article class="pcard'+(off?' off':'')+(!off&&S.cart[p.id]>0?' incart':'')+'" id="pc-'+esc(p.id)+'"><div class="pimg'+(zm?' zm':'')+'"'+(zm?' data-act="pzoom" data-id="'+esc(p.id)+'"':'')+'>'+pimg(p)+(cnt?'<span class="pcnt" aria-hidden="true">'+cnt+'</span>':'')+(off?'<span class="tag">'+soonTxt()+'</span>':(p.tag?'<span class="lbl '+esc(p.tag)+'">'+esc(tagName(p.tag))+'</span>':''))+favBtn(p.id)+'</div>'
     +'<div class="pbody"><div class="pname">'+esc(nm(p))+'</div>'+(w?'<div class="pw">'+esc(w)+'</div>':'')+status
     +(d?'<div class="pdesc" data-act="pdesc">'+esc(d)+'</div>':'')
     +'<div class="pprice">'+priceHTML(p)+'</div>'+(packOnly(p)?'<div class="ponly">'+esc(packOnlyText(p))+'</div>':'')+(minQty(p)?'<div class="ponly pmin">'+esc(minText(p))+'</div>':'')+'<div class="pctl">'+productCtl(p)+'</div></div></article>';
@@ -4582,11 +4584,11 @@ function doRepeat(o){
     if(got>cur){S.cart[p.id]=got;added++}
   });
   saveCart();
-  if(!added){toast(L('Этих товаров сейчас нет в наличии','Bu mahsulotlar hozir mavjud emas'));go('shop');return}
+  if(!added){toast(L('Эти товары скоро будут','Bu mahsulotlar tez orada boʻladi'));go('shop');return}
   S.shopPlaced=null;S.shopStep='cart';
   go('shop');
   toast(L('Товары из заказа '+o.id+' добавлены в корзину. Проверьте количество и цены.','Buyurtma '+o.id+' mahsulotlari savatga qoʻshildi. Miqdor va narxlarni tekshiring.')
-    +(skipped.length?L(' Нет в наличии: ',' Mavjud emas: ')+skipped.slice(0,3).join(', ')+(skipped.length>3?'…':'')+'.':'')
+    +(skipped.length?' '+soonTxt()+': '+skipped.slice(0,3).join(', ')+(skipped.length>3?'…':'')+'.':'')
     +(cut?L(' Количество уменьшено по остатку.',' Miqdor qoldiqqa qarab kamaytirildi.'):''));
 }
 async function cancelMine(id,d){
@@ -5044,7 +5046,7 @@ const ABOUT_ROLES=[
  {img:'shop-catalog',h:['Каталог','Katalog'],cap:['Каталог: фото, цена, остаток','Katalog: rasm, narx, qoldiq'],li:[
   ['В карточке товара: фото (нажмите, и оно откроется на весь экран; листайте свайпом), название, вес, цена и описание. Когда товаров больше восьми, вверху появляется поиск.','Tovar kartochkasida: rasm (bossangiz, butun ekranga ochiladi; suring), nomi, ogʻirligi, narxi va tavsifi. Tovarlar sakkiztadan koʻp boʻlsa, tepada qidiruv paydo boʻladi.'],
   ['Метки «Акция» (старая цена зачёркнута, рядом скидка в процентах) и «Новинка». Сердечко кладёт товар в избранное.','«Aksiya» (eski narx chizilgan, yoniga foiz yozilgan) va «Yangilik» belgilari. Yurakcha tovarni sevimlilarga qoʻshadi.'],
-  ['«Мало (осталось N)» значит, что товар заканчивается, «Нет в наличии» — серая карточка. Больше остатка в корзину положить нельзя.','«Oz qoldi (N ta)» tovar tugayotganini bildiradi, «Mavjud emas» — kulrang kartochka. Qoldiqdan ortiq tovarni savatga qoʻshib boʻlmaydi.'],
+  ['«Мало (осталось N)» значит, что товар заканчивается, «Скоро будет» — серая карточка. Больше остатка в корзину положить нельзя.','«Oz qoldi (N ta)» tovar tugayotganini bildiradi, «Tez orada» — kulrang kartochka. Qoldiqdan ortiq tovarni savatga qoʻshib boʻlmaydi.'],
   ['Если у товара есть цена от количества, на карточке видны ступени: чем больше берёте, тем ниже цена.','Agar tovarda miqdorga qarab narx boʻlsa, kartochkada pogʻonalar koʻrinadi: koʻproq olsangiz, narx arzonlashadi.'],
   ['Нажмите «В корзину», затем «−» и «+» или введите число с клавиатуры (до 10 000 штук одного товара). Внизу всегда видна сумма и кнопка «Оформить заказ».','«Savatga» tugmasini bosing, soʻng «−» va «+» bilan yoki raqamni klaviaturadan kiriting (bitta tovardan 10 000 tagacha). Pastda doim summa va «Buyurtma berish» tugmasi koʻrinadi.'],
   ['Если товар продаётся только упаковками, под ценой подпись «Только коробками · 10 шт», а «−» и «+» меняют количество сразу на упаковку. У товара «1 кг» или «1 л» количество считается в «кг» или «л».','Agar tovar faqat qadoqlarda sotilsa, narx ostida «Faqat qutida · 10 dona» deb yoziladi, «−» va «+» esa miqdorni darhol bitta qadoqqa oʻzgartiradi. «1 kg» yoki «1 l» tovarda miqdor «kg» yoki «l» bilan hisoblanadi.'],
