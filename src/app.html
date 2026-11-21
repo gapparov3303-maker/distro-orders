@@ -4409,7 +4409,7 @@ function farEditHTML(){
   const f=cleanFar(s.far);
   const num=(k,lab,hint)=>'<div><label class="lab" for="s-far-'+k+'">'+lab+'</label><input type="number" id="s-far-'+k+'" inputmode="numeric" min="0" max="'+RATE_MAX+'" data-far="'+k+'" value="'+esc(f[k])+'">'+(hint?hintD(hint[0],hint[1]):'')+'</div>';
   let h='<div class="lab">'+L('Дальняя доставка: после оплаты','Uzoq yetkazib berish: toʻlovdan keyin')+'</div>'
-    +'<label class="chk"><input type="checkbox" id="s-far-on" data-far="on"'+(f.on?' checked':'')+'> '+L('Привожу в Навои после оплаты','Toʻlovdan keyin Navoiyga yetkazaman')+'</label>'
+    +'<label class="chk"><input type="checkbox" id="s-far-on" data-far="on"'+(f.on?' checked':'')+'> '+L('Привожу покупателю после оплаты','Toʻlovdan keyin xaridorga yetkazaman')+'</label>'
     +hintD('Заказ без даты и времени: вы подтверждаете, покупатель платит по реквизитам, вы отправляете груз. Самовывоза нет.','Buyurtma sanasiz: siz tasdiqlaysiz, xaridor rekvizit boʻyicha toʻlaydi, siz yukni joʻnatasiz. Olib ketish yoʻq.');
   if(!f.on)return h;
   h+='<div><label class="lab" for="s-far-m">'+L('Как считается цена перевозки','Yuk tashish narxi qanday hisoblanadi')+'</label><select id="s-far-m" data-far="m">'
