@@ -323,6 +323,13 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 @media (max-width:540px){.settings{grid-template-columns:minmax(0,1fr)}}
 .settings .full{grid-column:1/-1}
+.sblk{padding:0;overflow:hidden}
+.sbh{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:48px;padding:12px 14px;background:none;border:0;color:var(--ink);font:700 15px var(--f-display);text-align:left;cursor:pointer}
+.sbc{flex:none;width:9px;height:9px;margin:0 4px 3px 0;border-right:2px solid var(--ink-2);border-bottom:2px solid var(--ink-2);transform:rotate(45deg);transition:transform .15s}
+.sbh[aria-expanded="true"] .sbc{transform:rotate(-135deg);margin-bottom:-3px}
+.sbb{padding:2px 14px 14px}
+.sbb[hidden]{display:none}
+.sbb>.card{background:none;border:0;border-top:1.5px solid var(--edge);border-radius:0;padding:14px 0 0;margin:14px 0 0}
 
 /* catalog (client) */
 .shop{padding-block:14px 130px}
@@ -1034,7 +1041,8 @@ const S={
   ab:{open:null},
   wh:{ok:false,err:false,rate:500,info:null,orders:[],tab:'wait',q:'',kg:{},ed:{},open:{},busy:''},
   fb:{kind:'',text:'',busy:false,sent:'',err:''},   // «Написать нам»: форма обращения
-  own:{sec:'dist',dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false},vid:{ok:false,err:false,ch:'',fch:null,items:[],bot:'',busy:'',ask:''}},
+  sblk:{about:true},   // настройки компании: какие блоки раскрыты (по умолчанию «О компании»)
+  own:{sec:'dist',addOpen:false,agOpen:false,dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false},vid:{ok:false,err:false,ch:'',fch:null,items:[],bot:'',busy:'',ask:''}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -1432,7 +1440,7 @@ function hsAdd(){hsHide();try{S.tg.addToHomeScreen()}catch(e){}}
 /* разделы компании продавца: полоска вверху экрана; «Комиссия» только когда у компании есть комиссия и это не обзор владельца */
 const sellerSubs=()=>{
   const w=stockWarn(),rn=modRetN();
-  return [['orders',L('Заказы','Buyurtmalar'),newCount()],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar'),dvAlerts(),'warn'],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')]]
+  return [['orders',L('Заказы','Buyurtmalar'),newCount()],['prod',L('Товары','Mahsulotlar'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar'),dvAlerts(),'warn'],['reports',L('Отчёты','Hisobotlar')]]
     .concat(commOn()&&!commOwn()?[['comm',L('Комиссия','Komissiya'),commBadge(),'bad']]:[])
     .concat([['settings',L('Настройки','Sozlamalar')]]);
 };
@@ -1520,7 +1528,7 @@ const inboxHere=cur=>cur==='review'||(cur==='comm'&&commOwn())||(cur==='owner'&&
 function menuGroups(){
   const g=[],as=viewAs(),cur=S.view==='shops'?'shop':S.view;
   const mk=(k,n,i,o)=>Object.assign({k,n,i,a:'nav',d:{v:k},b:0,c:'',on:cur===k},o||{});
-  const top=[mk('shop',L('Каталог','Katalog'),'grid',{b:cartCount()}),mk('mine',L('Заказы','Buyurtmalar'),'box',{b:activeMine()})];
+  const top=[mk('shop',L('Каталог','Katalog'),'grid',{b:cartCount()}),mk('mine',L('Мои заказы','Mening buyurtmalarim'),'box',{b:activeMine()})];
   if(S.mdebt.ok&&(S.mdebt.total>0||S.mdebt.ask>0))top.push(mk('debt',L('Мой долг','Mening qarzim'),'coin',{b:S.mdebt.ask,c:'warn'}));
   if(S.auth&&S.did)top.push(mk('profile',L('Профиль','Profil'),'user'));
   if(!as||as==='shop')g.push(['',top]);
@@ -3853,10 +3861,10 @@ function prodHTML(){
   if(S.pfilter!=='all'&&!P.cats.some(c=>c.id===S.pfilter))S.pfilter='all';
   const pend=P.items.filter(inModGroup);
   const list=P.items.filter(p=>!inModGroup(p)&&(S.pfilter==='all'||p.cat===S.pfilter));
-  let h='<div class="note" style="margin-bottom:14px">'+L('Каталог товаров. Сначала создайте категории, затем добавляйте товары: название, описание, вес, цену и фото. Покупатели видят изменения сразу. Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым. Выключите «Показывать покупателям», чтобы убрать товар из каталога совсем; включите, и он вернётся.','Mahsulotlar katalogi. Avval kategoriyalar yarating, keyin mahsulotlar qoʻshing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Xaridorlar oʻzgarishlarni darhol koʻradi. Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi. Mahsulotni katalogdan butunlay olib qoʻyish uchun «Xaridorlarga koʻrsatish» ni oʻchiring; yoqsangiz, u qaytadi.')+'</div>'
+  let h='<div class="note" style="margin-bottom:14px">'+L('Товары компании. Сначала создайте категории, затем добавляйте товары: название, описание, вес, цену и фото. Покупатели видят изменения сразу. Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым. Выключите «Показывать покупателям», чтобы убрать товар из каталога совсем; включите, и он вернётся.','Kompaniya mahsulotlari. Avval kategoriyalar yarating, keyin mahsulotlar qoʻshing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Xaridorlar oʻzgarishlarni darhol koʻradi. Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi. Mahsulotni katalogdan butunlay olib qoʻyish uchun «Xaridorlarga koʻrsatish» ni oʻchiring; yoqsangiz, u qaytadi.')+'</div>'
     +'<div class="savebar" id="savebar"></div>';
   h+=impCardHTML();
-  h+='<div class="card"><h3>'+L('Категории','Kategoriyalar')+'</h3><div class="unit">'+L('Каждая категория называется на двух языках: покупатель видит название на языке своего приложения. Если узбекское пустое, покажется русское. Удалить можно только пустую категорию.','Har bir kategoriya ikki tilda nomlanadi: xaridor oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
+  h+='<div class="card"><h3>'+L('Категории товаров','Mahsulot kategoriyalari')+'</h3><div class="unit">'+L('Каждая категория называется на двух языках: покупатель видит название на языке своего приложения. Если узбекское пустое, покажется русское. Удалить можно только пустую категорию.','Har bir kategoriya ikki tilda nomlanadi: xaridor oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
   P.cats.forEach((c,ci)=>{
     const id=esc(c.id);
     const mv=(d,ch,lab,off)=>'<button type="button" class="btn ghost pmvb" data-act="cmove" data-id="'+id+'" data-d="'+d+'" aria-label="'+esc(lab)+'"'+(off?' disabled':'')+'>'+ch+'</button>';
@@ -3943,7 +3951,7 @@ function jrHTML(){
 }
 function stockHTML(){
   if(!S.stkLoaded)return '<div class="empty"><b>'+L('Загружаем остатки','Qoldiqlar yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
-  if(!S.prod.items.length)return '<div class="empty"><b>'+L('Товаров пока нет','Mahsulotlar hozircha yoʻq')+'</b>'+L('Сначала добавьте товары на вкладке «Каталог».','Avval «Katalog» boʻlimida mahsulot qoʻshing.')+'</div>';
+  if(!S.prod.items.length)return '<div class="empty"><b>'+L('Товаров пока нет','Mahsulotlar hozircha yoʻq')+'</b>'+L('Сначала добавьте товары на вкладке «Товары».','Avval «Mahsulotlar» boʻlimida mahsulot qoʻshing.')+'</div>';
   const fl=[['all',L('Все','Hammasi')],['low',L('Заканчивается','Tugayapti')],['out',L('Нет свободного','Boʻshi yoʻq')],['none',L('Без учёта','Hisobsiz')]];
   const list=S.prod.items.filter(p=>{const s=stState(p);return S.sfilter==='all'||(S.sfilter==='low'?(s==='low'||s==='out'):s===S.sfilter)});
   const hasPk=S.prod.items.some(p=>packSize(p,'box')||packSize(p,'blk'));
@@ -4589,10 +4597,16 @@ async function removeLogo(){
   else toast(L('Не удалось убрать фото','Rasmni olib tashlab boʻlmadi'));
   S.logoBusy=false;paintLogo();
 }
+/* Настройки компании: четыре сворачиваемых блока. Свёрнутый блок только скрыт, а поля остаются на странице: сохранение, проверки и подсказки работают как раньше */
+function sblkHTML(k,title,inner){
+  const open=!!S.sblk[k];
+  return '<div class="card sblk"><button type="button" class="sbh" data-act="sblk" data-k="'+k+'" aria-expanded="'+open+'" aria-controls="sb-'+k+'"><span>'+esc(title)+'</span><span class="sbc" aria-hidden="true"></span></button>'
+    +'<div class="sbb" id="sb-'+k+'"'+(open?'':' hidden')+'>'+inner+'</div></div>';
+}
 function settingsHTML(){
   const s=S.cfg.shop;
   const num=(id,lab,k,min,max,hint)=>'<div><label class="lab" for="s-'+id+'">'+lab+'</label><input type="number" id="s-'+id+'" inputmode="numeric" min="'+min+'" max="'+max+'" data-s="'+k+'" value="'+esc(s[k])+'">'+(hint?hintD(hint[0],hint[1]):'')+'</div>';
-  return '<div class="savebar" id="savebar"></div><div class="card"><div class="settings">'
+  const about='<div class="settings">'
     +'<div class="full" id="lgbox">'+logoEditHTML()+'</div>'
     +'<div><label class="lab" for="s-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="s-name" data-s="name" value="'+esc(s.name)+'" maxlength="60">'+hintD('Так вас видят покупатели в списке продавцов и в сообщениях бота. Пример: Навои Фуд.','Xaridorlar sizni sotuvchilar roʻyxatida va bot xabarlarida shunday koʻradi. Masalan: Navoiy Fud.')+'</div>'
     +'<div><label class="lab" for="s-legal">'+L('Юридическое название','Yuridik nomi')+'</label><input type="text" id="s-legal" data-s="legal" value="'+esc(s.legal||'')+'" maxlength="80" placeholder="'+esc(L('ООО «Навои Фуд»','«Navoiy Fud» MChJ'))+'">'+hintD('Полное название компании, как в документах. Покупатели видят его под названием в каталоге. Можно не заполнять.','Kompaniyaning hujjatlardagi toʻliq nomi. Xaridorlar uni katalogda nom ostida koʻradi. Toʻldirmasangiz ham boʻladi.')+'</div>'
@@ -4602,24 +4616,33 @@ function settingsHTML(){
     +'<div><label class="lab" for="s-tg">'+L('Telegram для вопросов по заказу, без @','Buyurtma savollari uchun Telegram, @ belgisisiz')+'</label><input type="text" id="s-tg" data-s="telegram" value="'+esc(s.telegram)+'">'+hintD('Логин без @: покупатель сможет написать вам из карточки заказа. Пример: navoi_food.','Login @ belgisisiz: xaridor buyurtma kartochkasidan sizga yoza oladi. Masalan: navoi_food.')+'</div>'
     +'<div><label class="lab" for="s-cat">'+L('Категория','Kategoriya')+'</label><select id="s-cat" data-catsel="1"><option value="">'+L('Не выбрана','Tanlanmagan')+'</option>'+SHOP_CATS.map(k=>'<option value="'+k+'"'+(cleanCat(s.category)===k?' selected':'')+'>'+esc(shopCatName(k))+'</option>').join('')+'</select>'+hintD('Покупатели увидят вас в этой категории. Если не выбрать, вас покажут в «Дистрибьюторах». Владелец тоже может её изменить.','Xaridorlar sizni shu kategoriyada koʻradi. Tanlamasangiz, «Distribyutorlar» ichida koʻrsatiladi. Egasi ham oʻzgartira oladi.')+'</div>'
     +'<div id="s-bzbox"'+(cleanCat(s.category)==='bazaar'?'':' style="display:none"')+'><label class="lab" for="s-bz">'+L('Базар','Bozor')+'</label><select id="s-bz" data-bzsel="1">'+bzOptsHTML(s.bazaar)+'</select><div id="s-bzhint">'+bzHintHTML()+'</div></div>'
-    +'<div><label class="lab" for="s-addr">'+L('Адрес самовывоза (по-русски)','Olib ketish manzili (ruscha)')+'</label><input type="text" id="s-addr" data-s="address" value="'+esc(s.address)+'">'+hintD('Куда покупателю приехать за заказом. Это видят покупатели в русском режиме. Пример: Навои, ул. Галаба 12.','Xaridor buyurtmani olgani qayerga kelishi. Buni ruscha rejimdagi xaridorlar koʻradi. Masalan: Navoiy, Gʻalaba koʻchasi 12.')+'</div>'
-    +'<div><label class="lab" for="s-addruz">'+L('Адрес самовывоза (по-узбекски)','Olib ketish manzili (oʻzbekcha)')+'</label><input type="text" id="s-addruz" data-s="addressUz" value="'+esc(s.addressUz)+'">'+hintD('То же для покупателей в узбекском режиме. Если оставить пустым, они увидят русский адрес.','Xuddi shu, oʻzbekcha rejimdagi xaridorlar uchun. Boʻsh qoldirsangiz, ruscha manzil koʻrinadi.')+'</div>'
-    +'<div class="full"><label class="chk"><input type="checkbox" id="s-delivery" data-s="delivery"'+(s.delivery!==false?' checked':'')+'> '+L('Доставка по адресу включена','Manzilga yetkazib berish yoqilgan')+'</label>'+hintD('Если выключить, покупатели смогут заказать только самовывоз.','Oʻchirsangiz, xaridorlar faqat olib ketishni tanlay oladi.')+'</div>'
-    +num('lead',L('Самовывоз: заказ за, часов минимум','Olib ketish: buyurtma, kamida soat'),'leadHours',0,240,['Раньше, чем через столько часов после заказа, время самовывоза выбрать нельзя. Пример: 2. Ноль — можно сразу.','Buyurtmadan shuncha soat oʻtmasdan olib ketish vaqtini tanlab boʻlmaydi. Masalan: 2. Nol — darhol mumkin.'])
-    +num('dlead',L('Доставка: заказ за, часов минимум','Yetkazib berish: buyurtma, kamida soat'),'deliveryLeadHours',0,240,['Раньше, чем через столько часов после заказа, время доставки выбрать нельзя. Пример: 24.','Buyurtmadan shuncha soat oʻtmasdan yetkazib berish vaqtini tanlab boʻlmaydi. Masalan: 24.'])
-    +num('minorder',L('Минимальная сумма заказа, сум (0 — без минимума)','Buyurtmaning minimal summasi, soʻm (0 — cheklovsiz)'),'minOrder',0,1000000000,['Заказ на меньшую сумму оформить нельзя. Пример: 500000.','Bundan kam summadagi buyurtmani rasmiylashtirib boʻlmaydi. Masalan: 500000.'])
-    +num('dfee',L('Стоимость доставки, сум (0 — бесплатно)','Yetkazib berish narxi, soʻm (0 — bepul)'),'deliveryFee',0,1000000000,['Добавляется к заказу, если покупатель выбрал доставку. Пример: 20000.','Xaridor yetkazib berishni tanlasa, buyurtmaga qoʻshiladi. Masalan: 20000.'])
-    +num('dfree',L('Доставка бесплатна от суммы, сум (0 — нет порога)','Yetkazib berish bepul boʻladigan summa, soʻm (0 — chegarasiz)'),'freeDeliveryFrom',0,1000000000,['Если товаров на эту сумму или больше, доставка бесплатна. Пример: 1000000.','Mahsulotlar shu summaga yoki undan koʻp boʻlsa, yetkazib berish bepul. Masalan: 1000000.'])
-    +'<div class="full"><div class="note">'+L('Минимальная сумма считается по товарам и действует и на самовывоз, и на доставку. Стоимость доставки добавляется к заказу только при доставке; если указан порог, при сумме товаров от него доставка бесплатна.','Minimal summa mahsulotlar boʻyicha hisoblanadi va olib ketishga ham, yetkazib berishga ham taalluqli. Yetkazib berish narxi faqat yetkazishda qoʻshiladi; chegara koʻrsatilsa, mahsulotlar shu summadan oshganda yetkazish bepul.')+'</div></div>'
-    +(regionsOn()?regionsEditHTML():'')
-    +'<div class="full" id="farbox">'+farEditHTML()+'</div>'
-    +discEditHTML()
+    +'</div>'+sellLinkHTML();
+  const order='<div class="settings">'
     +num('from',L('Время работы с, часов','Ish vaqti: dan, soat'),'openFrom',0,22,['С этого часа покупатели могут выбирать время получения. Пример: 9.','Xaridorlar olish vaqtini shu soatdan boshlab tanlay oladi. Masalan: 9.'])
     +num('to',L('Время работы до, часов','Ish vaqti: gacha, soat'),'openTo',1,23,['До этого часа включительно. Пример: 20.','Shu soatgacha, shu soat ham kiradi. Masalan: 20.'])
-    +'</div></div>'
-    +sellLinkHTML()
-    +'<div class="card"><h3>'+L('Резервная копия','Zaxira nusxasi')+'</h3><div class="unit">'+L('Один файл со всем: настройки, каталог с фото, остатки, заказы и покупатели. Он придёт вам в чат с ботом. Храните его в надёжном месте: в нём телефоны и адреса покупателей. Токен бота и код продавца в файл не попадают.','Hammasi bitta faylda: sozlamalar, rasmli katalog, qoldiqlar, buyurtmalar va xaridorlar. U botdagi chatingizga keladi. Uni ishonchli joyda saqlang: unda xaridorlarning telefon va manzillari bor. Bot tokeni va sotuvchi kodi faylga kirmaydi.')+'</div>'+xbtn('backup')+'</div>'
+    +num('minorder',L('Минимальная сумма заказа, сум (0 — без минимума)','Buyurtmaning minimal summasi, soʻm (0 — cheklovsiz)'),'minOrder',0,1000000000,['Заказ на меньшую сумму оформить нельзя. Пример: 500000.','Bundan kam summadagi buyurtmani rasmiylashtirib boʻlmaydi. Masalan: 500000.'])
+    +'<div class="full"><div class="note">'+L('Минимальная сумма считается по товарам и действует и на самовывоз, и на доставку.','Minimal summa mahsulotlar boʻyicha hisoblanadi va olib ketishga ham, yetkazib berishga ham taalluqli.')+'</div></div>'
+    +discEditHTML()
+    +'</div>';
+  const ship='<div class="settings">'
+    +'<div><label class="lab" for="s-addr">'+L('Адрес самовывоза (по-русски)','Olib ketish manzili (ruscha)')+'</label><input type="text" id="s-addr" data-s="address" value="'+esc(s.address)+'">'+hintD('Куда покупателю приехать за заказом. Это видят покупатели в русском режиме. Пример: Навои, ул. Галаба 12.','Xaridor buyurtmani olgani qayerga kelishi. Buni ruscha rejimdagi xaridorlar koʻradi. Masalan: Navoiy, Gʻalaba koʻchasi 12.')+'</div>'
+    +'<div><label class="lab" for="s-addruz">'+L('Адрес самовывоза (по-узбекски)','Olib ketish manzili (oʻzbekcha)')+'</label><input type="text" id="s-addruz" data-s="addressUz" value="'+esc(s.addressUz)+'">'+hintD('То же для покупателей в узбекском режиме. Если оставить пустым, они увидят русский адрес.','Xuddi shu, oʻzbekcha rejimdagi xaridorlar uchun. Boʻsh qoldirsangiz, ruscha manzil koʻrinadi.')+'</div>'
+    +num('lead',L('Самовывоз: заказ за, часов минимум','Olib ketish: buyurtma, kamida soat'),'leadHours',0,240,['Раньше, чем через столько часов после заказа, время самовывоза выбрать нельзя. Пример: 2. Ноль — можно сразу.','Buyurtmadan shuncha soat oʻtmasdan olib ketish vaqtini tanlab boʻlmaydi. Masalan: 2. Nol — darhol mumkin.'])
+    +'<div class="full"><label class="chk"><input type="checkbox" id="s-delivery" data-s="delivery"'+(s.delivery!==false?' checked':'')+'> '+L('Доставка по адресу включена','Manzilga yetkazib berish yoqilgan')+'</label>'+hintD('Если выключить, покупатели смогут заказать только самовывоз.','Oʻchirsangiz, xaridorlar faqat olib ketishni tanlay oladi.')+'</div>'
+    +num('dlead',L('Доставка: заказ за, часов минимум','Yetkazib berish: buyurtma, kamida soat'),'deliveryLeadHours',0,240,['Раньше, чем через столько часов после заказа, время доставки выбрать нельзя. Пример: 24.','Buyurtmadan shuncha soat oʻtmasdan yetkazib berish vaqtini tanlab boʻlmaydi. Masalan: 24.'])
+    +num('dfee',L('Стоимость доставки, сум (0 — бесплатно)','Yetkazib berish narxi, soʻm (0 — bepul)'),'deliveryFee',0,1000000000,['Добавляется к заказу, если покупатель выбрал доставку. Пример: 20000.','Xaridor yetkazib berishni tanlasa, buyurtmaga qoʻshiladi. Masalan: 20000.'])
+    +num('dfree',L('Доставка бесплатна от суммы, сум (0 — нет порога)','Yetkazib berish bepul boʻladigan summa, soʻm (0 — chegarasiz)'),'freeDeliveryFrom',0,1000000000,['Если товаров на эту сумму или больше, доставка бесплатна. Пример: 1000000.','Mahsulotlar shu summaga yoki undan koʻp boʻlsa, yetkazib berish bepul. Masalan: 1000000.'])
+    +'<div class="full"><div class="note">'+L('Стоимость доставки добавляется к заказу только при доставке; если указан порог, при сумме товаров от него доставка бесплатна.','Yetkazib berish narxi faqat yetkazishda qoʻshiladi; chegara koʻrsatilsa, mahsulotlar shu summadan oshganda yetkazish bepul.')+'</div></div>'
+    +(regionsOn()?regionsEditHTML():'')
+    +'<div class="full" id="farbox">'+farEditHTML()+'</div>'
+    +'</div>';
+  const svc='<div class="card"><h3>'+L('Резервная копия','Zaxira nusxasi')+'</h3><div class="unit">'+L('Один файл со всем: настройки, каталог с фото, остатки, заказы и покупатели. Он придёт вам в чат с ботом. Храните его в надёжном месте: в нём телефоны и адреса покупателей. Токен бота и код продавца в файл не попадают.','Hammasi bitta faylda: sozlamalar, rasmli katalog, qoldiqlar, buyurtmalar va xaridorlar. U botdagi chatingizga keladi. Uni ishonchli joyda saqlang: unda xaridorlarning telefon va manzillari bor. Bot tokeni va sotuvchi kodi faylga kirmaydi.')+'</div>'+xbtn('backup')+'</div>'
     +leaveRoleHTML();
+  return '<div class="savebar" id="savebar"></div>'
+    +sblkHTML('about',L('О компании','Kompaniya haqida'),about)
+    +sblkHTML('order',L('Условия заказа','Buyurtma shartlari'),order)
+    +sblkHTML('ship',L('Самовывоз и доставка','Olib ketish va yetkazib berish'),ship)
+    +sblkHTML('svc',L('Служебное','Xizmat'),svc);
 }
 /* Выход из роли продавца этой компании: внизу настроек, отдельной карточкой, чтобы не нажать случайно */
 const leaveRoleHTML=()=>'<div class="card"><h3>'+L('Выйти из роли продавца','Sotuvchi rolidan chiqish')+'</h3><div class="unit">'+L('Вы перестанете быть продавцом этой компании на всех своих устройствах. Компания, каталог, заказы и другие продавцы останутся как есть. Вернуться можно по коду продавца.','Siz bu kompaniyada barcha qurilmalaringizda sotuvchi boʻlmay qolasiz. Kompaniya, katalog, buyurtmalar va boshqa sotuvchilar oʻz holicha qoladi. Qaytish uchun sotuvchi kodi kerak.')+'</div><button type="button" class="btn ghost sm dangerbtn" id="leaverole" data-act="leaverole"'+(S.leaving?' disabled':'')+'>'+leaveLab()+'</button></div>';
@@ -5241,7 +5264,7 @@ const ABOUT_ROLES=[
   ['Вместо «Самовывоз» и «Доставка» две кнопки: «Заберу сам в Навои» и «Доставка до двери». Даты и времени нет: цену и срок доставки до двери продавец обсудит с вами сам.','«Olib ketish» va «Yetkazib berish» oʻrniga ikkita tugma: «Navoiyda oʻzim olaman» va «Eshikkacha yetkazish». Sana va vaqt soʻralmaydi: eshikkacha yetkazish narxi va muddatini sotuvchi sizning bilan oʻzi kelishadi.'],
   ['Продавец собирает заказ и отвозит на склад Sarbon в Навои. Там заказ взвешивают, и вам приходит сообщение: вес, перевозка в Навои (её платят водителю) и сумма заказа.','Sotuvchi buyurtmani yigʻib, Navoiydagi Sarbon omboriga olib boradi. U yerda buyurtma tortiladi va sizga xabar keladi: ogʻirlik, Navoiygacha tashish (uni haydovchiga toʻlaysiz) va buyurtma summasi.'],
   ['Способ оплаты вы согласуете с продавцом (в сообщении есть его контакт): наличные, карта, перечисление или в долг. Когда продавец разрешит отправку, вам придёт сообщение; долг, если он есть, появится в «Мой долг».','Toʻlov usulini sotuvchi bilan kelishasiz (xabarda uning kontakti bor): naqd, karta, oʻtkazma yoki qarzga. Sotuvchi joʻnatishga ruxsat bergach, sizga xabar keladi; qarz boʻlsa, u «Mening qarzim»da paydo boʻladi.'],
-  ['Склад отправляет заказ в Навои, вам приходит сообщение. Заберите заказ и в разделе «Заказы» нажмите «Получил». Только после этого заказ закрывается: сам он не закрывается никогда.','Ombor buyurtmani Navoiyga joʻnatadi, sizga xabar keladi. Buyurtmani oling va «Buyurtmalar» boʻlimida «Oldim» tugmasini bosing. Buyurtma faqat shundan keyin yopiladi: oʻzi hech qachon yopilmaydi.']]},
+  ['Склад отправляет заказ в Навои, вам приходит сообщение. Заберите заказ и в разделе «Мои заказы» нажмите «Получил». Только после этого заказ закрывается: сам он не закрывается никогда.','Ombor buyurtmani Navoiyga joʻnatadi, sizga xabar keladi. Buyurtmani oling va «Mening buyurtmalarim» boʻlimida «Oldim» tugmasini bosing. Buyurtma faqat shundan keyin yopiladi: oʻzi hech qachon yopilmaydi.']]},
  {h:['Доставка из другого региона','Boshqa hududdan yetkazib berish'],li:[
   ['У Производителей из других регионов заказ идёт без даты и времени. Продавец подтверждает заказ и присылает реквизиты, а груз отправляет только после оплаты. Срок доставки считается от дня оплаты.','Boshqa hududdagi ishlab chiqaruvchilarda buyurtma sana va vaqtsiz beriladi. Sotuvchi tasdiqlaydi va rekvizitlarni yuboradi, yukni esa faqat toʻlovdan keyin joʻnatadi. Yetkazish muddati toʻlov kunidan hisoblanadi.'],
   ['Перевозку считают по весу, по габариту, фиксированной ценой или по договорённости (тогда цену называет продавец после заказа). Её платят вместе с заказом или водителю при получении; если продавец разрешил оба варианта, выбираете вы.','Yuk tashish ogʻirlik, hajm boʻyicha, qatʼiy narxda yoki kelishuv boʻyicha hisoblanadi (bunda narxni buyurtmadan keyin sotuvchi aytadi). Uni buyurtma bilan birga yoki olganda haydovchiga toʻlaysiz; sotuvchi ikkala variantga ruxsat bergan boʻlsa, oʻzingiz tanlaysiz.'],
@@ -5287,8 +5310,8 @@ const ABOUT_ROLES=[
   ['Кладовщик принимает заказ и взвешивает его: вам и покупателю приходят вес и перевозка в Навои. Перевозку покупатель платит водителю, в сумму вашего заказа она не входит.','Omborchi buyurtmani qabul qilib tortadi: sizga va xaridorga ogʻirlik va Navoiygacha tashish keladi. Tashishni xaridor haydovchiga toʻlaydi, u buyurtma summasiga kirmaydi.'],
   ['Согласуйте оплату с покупателем и нажмите «Разрешить отправку»: «Наличные», «Карта», «Перечисление» или «В долг» (срок и часть, оплаченная сразу). Оплата записывается один раз: в заказ, в «Долги» и в Excel. Пока склад не отправил заказ, разрешение можно снять кнопкой «Снять разрешение» (кроме долга).','Toʻlovni xaridor bilan kelishib, «Joʻnatishga ruxsat»ni bosing: «Naqd», «Karta», «Oʻtkazma» yoki «Qarzga» (muddat va darhol toʻlangan qism). Toʻlov bir marta yoziladi: buyurtmaga, «Qarzlar»ga va Excelga. Ombor buyurtmani joʻnatmaguncha ruxsatni «Ruxsatni qaytarish» tugmasi bilan olib tashlash mumkin (qarzdan tashqari).'],
   ['Склад отправляет заказ в Навои. Покупатель нажимает «Получил»: только тогда заказ закрывается, вам приходит сообщение, а в карточке записывается «Выдан покупателю · время» («Доставлен покупателю» при доставке). Закрыть заказ за покупателя нельзя.','Ombor buyurtmani Navoiyga joʻnatadi. Xaridor «Oldim»ni bosadi: buyurtma faqat shundan keyin yopiladi, sizga xabar keladi, kartochkada esa «Xaridorga topshirildi · vaqt» yoziladi (yetkazishda «Xaridorga yetkazildi»). Buyurtmani xaridor oʻrniga yopib boʻlmaydi.']]},
- {img:'sel-catalog',h:['Каталог','Katalog'],cap:['Редактор товара','Tovar muharriri'],li:[
-  ['Создайте категории и товары: название по-русски и по-узбекски, вес или объём, цена и до трёх фото. Приложение само уменьшает фото, обычных снимков с телефона достаточно. Правки сохраняются сами; большая кнопка «Сохранить» внизу карточки товара отправляет их сразу и пишет «Сохранено».','Kategoriya va tovarlarni yarating: rus va oʻzbek tilida nomi, ogʻirligi yoki hajmi, narxi va 3 tagacha rasm. Ilova rasmni oʻzi kichraytiradi, telefondagi oddiy suratlar yetarli. Oʻzgarishlar oʻzi saqlanadi; mahsulot kartochkasi pastidagi katta «Saqlash» tugmasi ularni darhol yuboradi va «Saqlandi» deb yozadi.'],
+ {img:'sel-catalog',h:['Товары','Mahsulotlar'],cap:['Редактор товара','Tovar muharriri'],li:[
+  ['На вкладке «Товары» создайте категории товаров и товары: название по-русски и по-узбекски, вес или объём, цена и до трёх фото. Приложение само уменьшает фото, обычных снимков с телефона достаточно. Правки сохраняются сами; большая кнопка «Сохранить» внизу карточки товара отправляет их сразу и пишет «Сохранено».','«Mahsulotlar» boʻlimida mahsulot kategoriyalari va mahsulotlarni yarating: rus va oʻzbek tilida nomi, ogʻirligi yoki hajmi, narxi va 3 tagacha rasm. Ilova rasmni oʻzi kichraytiradi, telefondagi oddiy suratlar yetarli. Oʻzgarishlar oʻzi saqlanadi; mahsulot kartochkasi pastidagi katta «Saqlash» tugmasi ularni darhol yuboradi va «Saqlandi» deb yozadi.'],
   ['Метки «Акция» (со старой ценой) и «Новинка», цены от количества, блоки и коробки, скидка на заказ от суммы. Прайс можно выгрузить в Excel, поправить цены и загрузить обратно: перед применением вы увидите, что изменится.','«Aksiya» (eski narx bilan) va «Yangilik» belgilari, miqdorga qarab narx, blok va qutilar, summaga qarab chegirma. Prays-listni Excelga yuklab, narxlarni tuzatib, qaytarib yuklash mumkin: qoʻllashdan oldin nima oʻzgarishini koʻrasiz.'],
   ['Новый товар сначала «Черновик». Нажмите «Отправить на проверку»: владелец площадки одобрит товар или вернёт с причиной, что исправить. Правки уже одобренных товаров проверки не требуют.','Yangi tovar avval «Qoralama» boʻladi. «Tekshiruvga yuborish»ni bosing: platforma egasi tovarni tasdiqlaydi yoki nimani tuzatish kerakligini sabab bilan qaytaradi. Tasdiqlangan tovarlarni oʻzgartirish tekshiruvsiz amalga oshadi.'],
   ['Пока товар не одобрен, покупатели видят его серым с надписью «На модерации».','Tovar tasdiqlanmaguncha xaridorlar uni «Tekshiruvda» yozuvli kulrang koʻrinishda koʻradi.'],
@@ -5311,12 +5334,12 @@ const ABOUT_ROLES=[
  {h:['Отчёты, база и настройки','Hisobotlar, baza va sozlamalar'],li:[
   ['«Отчёты»: выручка по дням, неделям и месяцам, ходовые товары, лучшие покупатели, подсказка «что пора закупать» и выгрузка в Excel.','«Hisobotlar»: kunlar, haftalar va oylar boʻyicha tushum, ommabop tovarlar, eng yaxshi xaridorlar, «nimani sotib olish kerak» maslahati va Excelga yuklash.'],
   ['«Покупатели»: общая база покупателей площадки с адресами, телефонами и точкой на карте. «Мои покупатели» оставляет тех, кто заказывал у вас. Заметка, группа и блокировка у каждого продавца свои, другие их не видят.','«Xaridorlar»: platformaning umumiy xaridorlar bazasi — manzil, telefon va xaritadagi nuqta bilan. «Mening xaridorlarim» sizdan buyurtma bergan xaridorlarni qoldiradi. Izoh, guruh va bloklash har bir sotuvchida alohida, boshqalar koʻrmaydi.'],
-  ['«Настройки»: минимальная сумма заказа, стоимость доставки и бесплатная доставка от суммы, часы работы, адрес самовывоза, районы доставки, ссылка на ваш каталог для покупателей, резервная копия.','«Sozlamalar»: buyurtmaning minimal summasi, yetkazib berish narxi va summadan bepul yetkazish, ish vaqti, olib ketish manzili, yetkazib berish tumanlari, xaridorlar uchun katalogingiz havolasi, zaxira nusxa.'],
+  ['«Настройки» разделены на четыре блока: «О компании» (фото, название, адрес, телефон, Telegram, категория, ссылка на ваш каталог для покупателей), «Условия заказа» (часы работы, минимальная сумма, скидки), «Самовывоз и доставка» (адрес самовывоза, сроки, стоимость доставки и бесплатная доставка от суммы, районы доставки) и «Служебное» (резервная копия, выход из роли). Нажмите на название блока, чтобы раскрыть его.','«Sozlamalar» toʻrt blokka boʻlingan: «Kompaniya haqida» (rasm, nomi, manzil, telefon, Telegram, kategoriya, xaridorlar uchun katalogingiz havolasi), «Buyurtma shartlari» (ish vaqti, minimal summa, chegirmalar), «Olib ketish va yetkazib berish» (olib ketish manzili, muddatlar, yetkazib berish narxi va summadan bepul yetkazish, yetkazib berish tumanlari) va «Xizmat» (zaxira nusxa, roldan chiqish). Blok nomini bosing: u ochiladi.'],
   ['«Юридическое название» в настройках: полное название компании, как в документах. Покупатели видят его мелким шрифтом под названием в каталоге. Можно не заполнять; владелец площадки тоже может его изменить.','«Yuridik nomi» sozlamalarda: kompaniyaning hujjatlardagi toʻliq nomi. Xaridorlar uni katalogda nom ostida mayda shriftda koʻradi. Toʻldirmasangiz ham boʻladi; platforma egasi ham uni oʻzgartira oladi.'],
   ['«Фото компании» в настройках: нажмите на квадрат и выберите фото или логотип. Покупатели видят его справа в карточке в списке продавцов и рядом с названием в каталоге; пока фото нет, там первая буква названия. Две строки «Адрес или коротко о компании» (по-русски и по-узбекски) стоят под названием в списке и в каталоге: покупатель видит ту, что на его языке. Фото и строку вы ставите сами, их можно не заполнять.','«Kompaniya rasmi» sozlamalarda: kvadratni bosing va rasm yoki logotip tanlang. Xaridorlar uni sotuvchilar roʻyxatidagi kartochkaning oʻng tomonida va katalogda nom yonida koʻradi; rasm boʻlmaguncha nomning birinchi harfi turadi. Ikkita «Manzil yoki kompaniya haqida qisqacha» qatori (ruscha va oʻzbekcha) roʻyxatda va katalogda nom ostida turadi: xaridor oʻz tilidagisini koʻradi. Rasm va qatorni oʻzingiz qoʻyasiz, toʻldirmasangiz ham boʻladi.'],
   ['«Категория» в настройках: выберите, где вас увидят покупатели: Производители, Импортеры, Оптовики, Дистрибьюторы или Базары. Выбор сохраняется сразу. Пока не выбрана, вас показывают в «Дистрибьюторах». Если выбрали «Базары», ниже появится поле «Базар»: выберите свой из списка. Нет своего базара? Выберите другую категорию. Владелец площадки тоже может её поменять.','Sozlamalardagi «Kategoriya»: xaridorlar sizni qayerda koʻrishini tanlang: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar yoki Bozorlar. Tanlov darhol saqlanadi. Tanlanmaguncha sizni «Distribyutorlar» ichida koʻrsatadi. «Bozorlar»ni tanlasangiz, pastda «Bozor» maydoni chiqadi: roʻyxatdan oʻzingiznikini tanlang. Bozoringiz yoʻqmi? Boshqa kategoriyani tanlang. Platforma egasi ham uni oʻzgartirishi mumkin.'],
   ['«Комиссия»: площадка ведёт учёт комиссии с выданных заказов. Накопленная сумма уменьшается, когда вы вписываете оплаченное, нажимаете «Оплатил», а владелец подтверждает.','«Komissiya»: platforma topshirilgan buyurtmalardan komissiya hisobini yuritadi. Toʻplangan summa siz toʻlanganini yozib «Toʻladim»ni bosganingizda va ega tasdiqlaganida kamayadi.'],
-  ['Внизу раздела «Настройки» кнопка «Выйти из роли продавца»: например, когда вы только помогали настроить чужой каталог. Перед выходом приложение сохраняет настройки и спрашивает подтверждение.','«Sozlamalar» boʻlimining pastida «Sotuvchi rolidan chiqish» tugmasi bor: masalan, siz faqat birovning katalogini sozlashga yordam bergan boʻlsangiz. Chiqishdan oldin ilova sozlamalarni saqlaydi va tasdiq soʻraydi.'],
+  ['В «Настройках», в блоке «Служебное», кнопка «Выйти из роли продавца»: например, когда вы только помогали настроить чужой каталог. Перед выходом приложение сохраняет настройки и спрашивает подтверждение.','«Sozlamalar»dagi «Xizmat» blokida «Sotuvchi rolidan chiqish» tugmasi bor: masalan, siz faqat birovning katalogini sozlashga yordam bergan boʻlsangiz. Chiqishdan oldin ilova sozlamalarni saqlaydi va tasdiq soʻraydi.'],
   ['Если вы продавец в нескольких компаниях, в меню ☰ одна строка «Мои компании» с числом компаний. Нажмите на неё: вверху экрана переключатель компаний, ниже вкладки разделов. Нажмите на другую компанию, и откроются её разделы.','Agar siz bir nechta kompaniyada sotuvchi boʻlsangiz, ☰ menyuda kompaniyalar soni bilan bitta «Kompaniyalarim» qatori bor. Uni bossangiz: ekran tepasida kompaniyalar almashtirgichi, uning ostida boʻlimlar sahifalari. Boshqa kompaniyani bossangiz, uning boʻlimlari ochiladi.'],
   ['Всё, что бот пишет вам, приходит сразу на двух языках: сверху узбекский, ниже русский. Кнопки подписаны в одну строку на обоих языках.','Bot sizga yozadigan hamma narsa bir vaqtda ikki tilda keladi: tepada oʻzbekcha, pastda ruscha. Tugmalar ikkala tilda bir qatorga yoziladi.'],
   ['В меню ☰ внизу есть «Написать нам»: сообщите об ошибке, предложите новую функцию или напишите о другом. Ваше сообщение получит владелец площадки.','☰ menyuning pastida «Bizga yozish» bor: xato haqida xabar bering, yangi funksiya taklif qiling yoki boshqa narsa haqida yozing. Xabaringizni platforma egasi oladi.']]}
@@ -5397,26 +5420,26 @@ const ABOUT_ROLES=[
   ['Обращения пользователей приходят вам в Telegram, а «Смотреть как» показывает приложение глазами любой роли.','Foydalanuvchilarning murojaatlari sizga Telegramda keladi, «Rol sifatida koʻrish» esa ilovani istalgan rol koʻzi bilan koʻrsatadi.']],
  secs:[
  {img:'ow-dist',h:['Продавцы','Sotuvchilar'],cap:['Продавцы площадки','Platforma sotuvchilari'],li:[
-  ['☰ → «Площадка» → «Продавцы» → «Добавить»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его продавцу, он напишет боту /admin и код.','☰ → «Platforma» → «Sotuvchilar» → «Qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni sotuvchiga yuboring, u botga /admin va kodni yozadi.'],
-  ['Подраздел «Категории»: выберите категорию каждому продавцу (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары), её видят покупатели на первом экране. Продавец может выбрать её и сам; побеждает последнее изменение. Пока категории нет, продавец в «Дистрибьюторах».','«Kategoriyalar» boʻlimi: har bir sotuvchiga kategoriya tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar), xaridorlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha sotuvchi «Distribyutorlar» ichida.'],
-  ['Подраздел «Базары»: добавьте базары (название по-русски и по-узбекски, хватит одного), переименуйте или удалите. Продавец категории «Базары» сам выбирает свой базар, а вы можете перевести его в «Категориях». Покупатели видят все ваши базары, и пустые тоже. Если удалить базар, его продавцы остаются в «Базарах» без базара.','«Bozorlar» boʻlimi: bozorlarni qoʻshing (nomi ruscha va oʻzbekcha, bittasi yetarli), nomini oʻzgartiring yoki oʻchiring. «Bozorlar» kategoriyasidagi sotuvchi oʻz bozorini oʻzi tanlaydi, siz esa uni «Kategoriyalar»da boshqasiga oʻtkaza olasiz. Xaridorlar barcha bozorlaringizni, boʻshlarini ham koʻradi. Bozor oʻchirilsa, uning sotuvchilari «Bozorlar»da bozorsiz qoladi.'],
+  ['☰ → «Площадка» → «Продавцы» → «＋ Добавить продавца»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его продавцу, он напишет боту /admin и код.','☰ → «Platforma» → «Sotuvchilar» → «＋ Sotuvchi qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni sotuvchiga yuboring, u botga /admin va kodni yozadi.'],
+  ['В карточке продавца («Список») выберите «Категория» (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары): её видят покупатели на первом экране. Продавец может выбрать её и сам; побеждает последнее изменение. Пока категории нет, продавец в «Дистрибьюторах». Там же «Процент комиссии» этого продавца.','Sotuvchi kartochkasida («Roʻyxat») «Kategoriya»ni tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar): xaridorlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha sotuvchi «Distribyutorlar» ichida. U yerda shu sotuvchining «Komissiya foizi» ham bor.'],
+  ['Подраздел «Базары»: добавьте базары (название по-русски и по-узбекски, хватит одного), переименуйте или удалите. Продавец категории «Базары» сам выбирает свой базар, а вы можете перевести его в карточке продавца. Покупатели видят все ваши базары, и пустые тоже. Если удалить базар, его продавцы остаются в «Базарах» без базара.','«Bozorlar» boʻlimi: bozorlarni qoʻshing (nomi ruscha va oʻzbekcha, bittasi yetarli), nomini oʻzgartiring yoki oʻchiring. «Bozorlar» kategoriyasidagi sotuvchi oʻz bozorini oʻzi tanlaydi, siz esa uni sotuvchi kartochkasida boshqasiga oʻtkaza olasiz. Xaridorlar barcha bozorlaringizni, boʻshlarini ham koʻradi. Bozor oʻchirilsa, uning sotuvchilari «Bozorlar»da bozorsiz qoladi.'],
   ['Есть «Новый код» (вошедшие по прежнему коду теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого продавца, вашу компанию, удалить нельзя.','«Yangi kod» (eski kod bilan kirganlar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi sotuvchini, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
  {img:'ow-review',h:['Проверка товаров','Tovarlarni tekshirish'],cap:['Проверка товаров','Tovarlarni tekshirish'],li:[
   ['Вкладка «Проверка товаров» в разделе «Входящие» собирает все новые товары продавцов в одном списке с названием продавца. Число на значке — сколько товаров ждёт решения.','«Kelganlar» boʻlimidagi «Mahsulotlarni tekshirish» sahifasi sotuvchilarning barcha yangi tovarlarini bitta roʻyxatga sotuvchi nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
   ['Исправьте ошибки в карточке сами или нажмите «Вернуть» и напишите причину: продавец её увидит. «Одобрить» открывает товар покупателям. Ваши товары одобряются сразу.','Kartochkadagi xatolarni oʻzingiz tuzating yoki «Qaytarish»ni bosib sababini yozing: sotuvchi uni koʻradi. «Tasdiqlash» tovarni xaridorlarga ochadi. Oʻzingizning tovarlaringiz darhol tasdiqlanadi.'],
   ['Видео товаров бот выкладывает в канал сразу, заранее они не проверяются. В меню «Площадка» → «Настройки» → «Видео» меняется канал (бот должен быть его администратором) и виден список всех видео: «Смотреть» открывает ролик, «Убрать видео» удаляет его. Под каждым новым видео в канале стоит кнопка «Открыть в приложении»: она открывает приложение на этом товаре. Подпись под видео (цена, акция, упаковка, описание) обновляется сама; кнопка «Обновить подписи в канале» в «Площадка → Настройки → Видео» исправляет все сразу.','Tovar videolarini bot kanalga darhol joylaydi, oldindan tekshirilmaydi. «Platforma» → «Sozlamalar» → «Video» menyusida kanal oʻzgartiriladi (bot uning administratori boʻlishi kerak) va barcha videolar roʻyxati koʻrinadi: «Koʻrish» videoni ochadi, «Videoni olib tashlash» oʻchiradi. Har bir yangi video ostida «Ilovada ochish» tugmasi turadi: u ilovani shu tovarda ochadi. Video izohi (narx, aksiya, qadoq, tavsif) oʻzi yangilanadi; «Platforma → Sozlamalar → Video» boʻlimidagi «Kanaldagi izohlarni yangilash» tugmasi hammasini birdan tuzatadi.']]},
- {img:'ow-people',h:['Люди, агенты и территории','Odamlar, agentlar va hududlar'],cap:['Люди и территории','Odamlar va hududlar'],li:[
-  ['Раздел «Команда», вкладка «Территории»: создайте районы и города, по которым работают агенты. «Агенты»: список агентов; у каждого видно территории, их меняет кнопка «Изменить», есть «Новый код» и своя ссылка. «Добавить агента»: имя, территории и личный код (он показывается один раз).','«Jamoa» boʻlimi, «Hududlar» sahifasi: agentlar ishlaydigan tuman va shaharlarni yarating. «Agentlar»: agentlar roʻyxati; har birining hududlari koʻrinadi, ularni «Oʻzgartirish» tugmasi almashtiradi, «Yangi kod» va oʻz havolasi bor. «Agent qoʻshish»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi).'],
-  ['«Люди»: все, кто открывал приложение или писал боту, и их роли: владелец, продавец, агент, доставщик или покупатель.','«Odamlar»: ilovani ochgan yoki botga yozgan hamma va ularning rollari: ega, sotuvchi, agent, yetkazuvchi yoki xaridor.']]},
+ {img:'ow-people',h:['Люди и агенты','Odamlar va agentlar'],cap:['Люди и территории','Odamlar va hududlar'],li:[
+  ['☰ → «Площадка» → «Люди» → «Агенты»: список агентов; у каждого видно территории, их меняет кнопка «Изменить», есть «Новый код» и своя ссылка. «＋ Добавить агента»: имя, территории и личный код (он показывается один раз). Районы и города, по которым работают агенты, создаются в «Настройки» → «Районы и города».','☰ → «Platforma» → «Odamlar» → «Agentlar»: agentlar roʻyxati; har birining hududlari koʻrinadi, ularni «Oʻzgartirish» tugmasi almashtiradi, «Yangi kod» va oʻz havolasi bor. «＋ Agent qoʻshish»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi). Agentlar ishlaydigan tuman va shaharlar «Sozlamalar» → «Tuman va shaharlar» boʻlimida yaratiladi.'],
+  ['«Все»: все, кто открывал приложение или писал боту, и их роли: владелец, продавец, агент, доставщик или покупатель.','«Hammasi»: ilovani ochgan yoki botga yozgan hamma va ularning rollari: ega, sotuvchi, agent, yetkazuvchi yoki xaridor.']]},
  {h:['Склад и Базары','Ombor va bozorlar'],li:[
-  ['☰ → «Площадка» → «Команда» → «Склад»: впишите имя кладовщика (можно привязать к одному базару), нажмите «Добавить кладовщика» и сохраните личный код: он показывается один раз. Кладовщика можно отключить, сменить ему базар или выдать новый код.','☰ → «Platforma» → «Jamoa» → «Ombor»: omborchi ismini yozing (bitta bozorga biriktirish mumkin), «Omborchi qoʻshish»ni bosing va shaxsiy kodni saqlang: u bir marta koʻrsatiladi. Omborchini oʻchirib qoʻyish, bozorini almashtirish yoki yangi kod berish mumkin.'],
+  ['☰ → «Площадка» → «Люди» → «Склад»: впишите имя кладовщика (можно привязать к одному базару), нажмите «Добавить кладовщика» и сохраните личный код: он показывается один раз. Кладовщика можно отключить, сменить ему базар или выдать новый код.','☰ → «Platforma» → «Odamlar» → «Ombor»: omborchi ismini yozing (bitta bozorga biriktirish mumkin), «Omborchi qoʻshish»ni bosing va shaxsiy kodni saqlang: u bir marta koʻrsatiladi. Omborchini oʻchirib qoʻyish, bozorini almashtirish yoki yangi kod berish mumkin.'],
   ['Там же ставка перевозки: по умолчанию 500 сум за 1 кг (0 — перевозка бесплатна). Берётся та, что действует в момент приёма заказа.','U yerda tashish stavkasi ham bor: odatda 1 kg uchun 500 soʻm (0 — tashish bepul). Buyurtma qabul qilingan paytdagi stavka olinadi.'],
   ['☰ → «Площадка» → «Продавцы» → «Базары»: у каждого базара два поля «Как это работает» (русский и узбекский). Первая строка заголовок, остальные шаги. Текст видят покупатели над списком продавцов базара.','☰ → «Platforma» → «Sotuvchilar» → «Bozorlar»: har bir bozorda ikkita «Bu qanday ishlaydi» maydoni bor (ruscha va oʻzbekcha). Birinchi qator sarlavha, qolganlari qadamlar. Matnni xaridorlar bozor sotuvchilari roʻyxati ustida koʻradi.']]},
  {h:['Деньги, аналитика и площадка','Pul, tahlil va platforma'],li:[
   ['«Входящие → Спорные записи»: спорные записи по всем продавцам, закрываются с комментарием.','«Kelganlar → Bahsli yozuvlar»: barcha sotuvchilar boʻyicha bahsli yozuvlar, izoh bilan yopiladi.'],
-  ['«Входящие → Платежи комиссии»: сводка по продавцам, накопленное и оплаченное; оплаты продавцов вы подтверждаете. Процент можно задать каждому отдельно.','«Kelganlar → Komissiya toʻlovlari»: sotuvchilar boʻyicha xulosa, toʻplangan va toʻlangan; sotuvchilar toʻlovlarini siz tasdiqlaysiz. Foizni har biriga alohida belgilash mumkin.'],
+  ['«Входящие → Платежи комиссии»: сводка по продавцам, накопленное и оплаченное; оплаты продавцов вы подтверждаете. Процент комиссии у каждого продавца свой: его задают в карточке продавца («Продавцы» → «Список»), здесь он только показан.','«Kelganlar → Komissiya toʻlovlari»: sotuvchilar boʻyicha xulosa, toʻplangan va toʻlangan; sotuvchilar toʻlovlarini siz tasdiqlaysiz. Komissiya foizi har bir sotuvchida alohida: uni sotuvchi kartochkasida («Sotuvchilar» → «Roʻyxat») belgilanadi, bu yerda faqat koʻrsatiladi.'],
   ['«Аналитика»: продажи по категориям, товарам и покупателям за выбранный период, по всем продавцам или по одному.','«Tahlil»: tanlangan davr uchun kategoriyalar, tovarlar va xaridorlar boʻyicha sotuvlar — barcha sotuvchilar yoki bittasi boʻyicha.'],
-  ['«Настройки»: название, этот экран «О нас» с контактами и «Видео». «Команда → Перенос покупателей»: перенос покупателей продавцов в общую базу.','«Sozlamalar»: nomi, kontaktlar bilan shu «Biz haqimizda» ekrani va «Video». «Jamoa → Xaridorlarni oʻtkazish»: sotuvchilar xaridorlarini umumiy bazaga koʻchirish.']]},
+  ['«Настройки»: название, этот экран «О нас» с контактами, «Видео», «Районы и города» и «Служебное»: там разовый перенос покупателей продавцов в общую базу.','«Sozlamalar»: nomi, kontaktlar bilan shu «Biz haqimizda» ekrani, «Video», «Tuman va shaharlar» va «Xizmat»: u yerda sotuvchilar xaridorlarini umumiy bazaga bir martalik koʻchirish bor.']]},
  {img:'ow-fb',h:['Обращения и «Смотреть как»','Murojaatlar va «Rol sifatida koʻrish»'],cap:['Раздел «Обращения»','«Murojaatlar» boʻlimi'],li:[
   ['Что пишут люди через «Написать нам»: ☰ → «Площадка» → «Входящие» → «Обращения». Бот присылает сообщение: тема, текст, имя, телефон, @логин и роль человека. Отвечаете вы сами, в Telegram.','Odamlar «Bizga yozish» orqali nima yozayotgani: ☰ → «Platforma» → «Kelganlar» → «Murojaatlar». Bot xabar yuboradi: mavzu, matn, ism, telefon, @login va odamning roli. Javobni oʻzingiz, Telegramda berasiz.'],
   ['Вкладки «Новые», «Решено» и «Все». Ответили: нажмите «Решено». На пункте «Входящие» красный значок с числом новых.','«Yangilar», «Hal qilingan» va «Hammasi» sahifalari. Javob berdingiz: «Hal qilindi»ni bosing. «Kelganlar» bandida yangilari soni bilan qizil belgi turadi.'],
@@ -6475,7 +6498,7 @@ function ownStatsHTML(){
     +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(t.base))+'</span></div>'
     +(t.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(t.active)+'</span></div>':'')
     +'<div class="r t"><span>'+L('Комиссия к получению','Olinadigan komissiya')+'</span><span>'+esc(money(t.cm))+'</span></div></div>'
-    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого продавца свой, его можно менять в его карточке выше. Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: покупатели платят продавцу при получении, продавец платит вам комиссию сам любым способом, а вы подтверждаете получение выше.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir sotuvchining foizi alohida, uni yuqoridagi uning kartochkasida oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: xaridorlar sotuvchiga olganda toʻlaydi, sotuvchi komissiyani sizga oʻzi istalgan usulda toʻlaydi, siz esa olinganini yuqorida tasdiqlaysiz.')+'</div></div>';
+    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого продавца свой, его можно менять в его карточке: «Продавцы» → «Список». Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: покупатели платят продавцу при получении, продавец платит вам комиссию сам любым способом, а вы подтверждаете получение выше.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir sotuvchining foizi alohida, uni uning kartochkasida («Sotuvchilar» → «Roʻyxat») oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: xaridorlar sotuvchiga olganda toʻlaydi, sotuvchi komissiyani sizga oʻzi istalgan usulda toʻlaydi, siz esa olinganini yuqorida tasdiqlaysiz.')+'</div></div>';
   return h;
 }
 async function ownPct(id){
@@ -6489,6 +6512,7 @@ async function ownPct(id){
   o.busy='';
   if(r.ok&&r.data&&typeof r.data.pct==='number'){
     delete o.pcts[id];
+    if(row)row.pct=r.data.pct;
     toast(L('Процент сохранён: '+fmtPct(r.data.pct)+'%. Он действует на заказы, которые выдаются с этого момента.','Foiz saqlandi: '+fmtPct(r.data.pct)+'%. U shu paytdan topshiriladigan buyurtmalarga amal qiladi.'));
   }else toast(ownErr(r.data&&r.data.error));
   ownRender();
@@ -6538,7 +6562,7 @@ async function loadCommOwner(){
   c.err=false;c.o=r.data;
   if(same)return;
   renderNav();
-  if(S.view==='comm')ownRefresh();
+  if(S.view==='comm'||(S.view==='owner'&&S.own.sec==='dist'))ownRefresh();   // процент комиссии лежит в карточке продавца
 }
 function loadComm(){
   if(commOwn()){loadCommOwner();loadOwnerStats()}
@@ -6592,17 +6616,15 @@ function commSellerHTML(){
 /* Карточка одного дистрибьютора для владельца: цифры, процент, запись полученной оплаты, история */
 function cmShopHTML(r){
   const c=S.cm,o=S.own,f=c.ow[r.id]||{a:'',note:'',open:false},hist=r.pays.filter(p=>p.st!=='wait'),shown=c.all[r.id]?hist:hist.slice(0,5);
-  const pv=o.pcts[r.id]!==undefined?o.pcts[r.id]:fmtPct(r.pct);
   let h='<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+esc(L('комиссия ','komissiya ')+fmtPct(r.pct)+'%')+'</span></div>';
   if(r.err)return h+'<div class="note" style="margin-top:10px">'+L('Нет данных по этому продавцу.','Bu sotuvchi boʻyicha maʼlumot yoʻq.')+'</div></div>';
   h+='<div class="sum" style="margin:10px 0 6px">'
     +'<div class="r"><span>'+L('Начислено всего','Jami hisoblangan')+'</span><span>'+esc(money(r.acc))+'</span></div>'
     +'<div class="r"><span>'+L('Оплачено (подтверждено)','Toʻlangan (tasdiqlangan)')+'</span><span>'+esc(money(r.paid))+'</span></div>'
     +'<div class="r t"><span>'+cmDueLab(r.due)+'</span><span>'+esc(money(Math.abs(r.due)))+'</span></div></div>'
-    +'<div class="pctrow"><div><label class="lab" for="pc-'+esc(r.id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(r.id)+'" data-opct="'+esc(r.id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off"></div>'
-    +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>'
-    +hintD('Сколько процентов от суммы выданных заказов вы берёте. Новый процент действует на заказы, выданные после изменения. Пример: 2,5.','Topshirilgan buyurtmalar summasidan necha foiz olasiz. Yangi foiz oʻzgargandan keyin topshirilgan buyurtmalarga amal qiladi. Masalan: 2,5.');
-  h+='<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="commopen" data-did="'+esc(r.id)+'" aria-expanded="'+!!f.open+'">'+(f.open?L('Скрыть','Yashirish'):L('Записать полученную оплату','Olingan toʻlovni yozish'))+'</button></div>';
+    +'<div class="unit" style="margin-top:8px">'+L('Процент комиссии: ','Komissiya foizi: ')+'<b>'+esc(fmtPct(r.pct))+'%</b> · '+L('он меняется в карточке продавца','u sotuvchi kartochkasida oʻzgaradi')+'</div>';
+  h+='<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="commopen" data-did="'+esc(r.id)+'" aria-expanded="'+!!f.open+'">'+(f.open?L('Скрыть','Yashirish'):L('Записать полученную оплату','Olingan toʻlovni yozish'))+'</button>'
+    +'<button type="button" class="btn ghost sm" data-act="otab" data-t="dist">'+L('Изменить процент','Foizni oʻzgartirish')+'</button></div>';
   if(f.open)h+='<div class="form" style="margin-top:10px">'
     +'<div><label class="lab" for="cmo-a-'+esc(r.id)+'">'+L('Сколько получили, сум','Qancha oldingiz, soʻm')+'</label><input type="text" inputmode="numeric" id="cmo-a-'+esc(r.id)+'" data-cmo="a" data-did="'+esc(r.id)+'" maxlength="16" value="'+esc(f.a)+'" autocomplete="off" placeholder="400000">'
     +hintD('Для денег, которые продавец отдал вам мимо приложения, например наличными. Запись сразу считается подтверждённой.','Sotuvchi ilovadan tashqari bergan pul uchun, masalan naqd. Yozuv darhol tasdiqlangan hisoblanadi.')+'</div>'
@@ -6681,16 +6703,20 @@ async function commAddOwn(did){
 }
 /* разделы владельца: каждая группа — строка меню ☰, её подразделы — вкладки вверху экрана. «Входящие» дополняют ещё два экрана: проверка товаров и платежи комиссии (inboxTabs) */
 const ownSecs=()=>[
-  ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['cats',L('Категории','Kategoriyalar'),L('Категории продавцов','Sotuvchi kategoriyalari')],['bz',L('Базары','Bozorlar'),L('Базары','Bozorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить продавца','Sotuvchi qoʻshish')]]],
-  ['team',L('Команда','Jamoa'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['agadd',L('Добавить агента','Agent qoʻshish'),L('Добавить агента','Agent qoʻshish')],['wh',L('Склад','Ombor'),L('Склад','Ombor')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')],['clients',L('Перенос покупателей','Xaridorlarni oʻtkazish'),L('База покупателей','Xaridorlar bazasi')]]],
+  ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['bz',L('Базары','Bozorlar'),L('Базары','Bozorlar')]]],
+  ['team',L('Люди','Odamlar'),[['people',L('Все','Hammasi'),L('Все люди','Barcha odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['wh',L('Склад','Ombor'),L('Склад','Ombor')]]],
   ['inbox',L('Входящие','Kelganlar'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]],
-  ['site',L('Настройки','Sozlamalar'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['video',L('Видео','Video'),L('Видео товаров','Mahsulot videolari')]]]
+  ['site',L('Настройки','Sozlamalar'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['video',L('Видео','Video'),L('Видео товаров','Mahsulot videolari')],['terr',L('Районы и города','Tuman va shaharlar'),L('Районы и города','Tuman va shaharlar')],['clients',L('Служебное','Xizmat'),L('Служебное','Xizmat')]]]
 ];
 function ownSecInfo(sec){
   for(const g of ownSecs()){const x=g[2].find(y=>y[0]===sec);if(x)return {group:g[1],title:x[2]}}
   return {group:'',title:''};
 }
+/* старые названия вкладок (их могли помнить путь «назад» и ссылки): «Добавить», «Категории» и «Добавить агента» теперь лежат внутри «Списка» и «Агентов» */
+const OWN_OLD={add:['dist','addOpen'],cats:['dist'],agadd:['agents','agOpen']};
 function ownOpen(sec){
+  const old=OWN_OLD[sec];
+  if(old){sec=old[0];if(old[1])S.own[old[1]]=true}
   S.own.sec=sec;S.own.perr='';
   if(S.view!=='owner')go('owner');
   else{renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb();if(sec==='video')loadOwnerVid()}
@@ -6731,13 +6757,6 @@ function ownBzSel(id,cur){
   return '<div><div class="unit" style="margin-bottom:4px">'+L('Базар','Bozor')+'</div><select data-obz="'+esc(id)+'" aria-label="'+esc(L('Базар','Bozor'))+'"><option value="">'+esc(L('Базар не выбран (в группе «Без базара»)','Bozor tanlanmagan («Bozor koʻrsatilmagan» guruhida)'))+'</option>'
     +bzList().map(b=>'<option value="'+esc(b.id)+'"'+(bzOf({bz:cur})===b.id?' selected':'')+'>'+esc(bzName(b))+'</option>').join('')+'</select></div>';
 }
-/* Категории: у каждого дистрибьютора одна. Продавец выбирает её сам в настройках, владелец может поменять; побеждает последнее изменение. */
-function ownCatsHTML(){
-  const o=S.own;
-  let h='<p class="lead">'+L('Выберите категорию каждому: покупатели увидят её на первом экране. Пока не выбрана, продавец в «Дистрибьюторах». Он тоже может выбрать её сам; побеждает последнее изменение.','Har bir sotuvchiga kategoriya tanlang: xaridorlar uni birinchi ekranda koʻradi. Kategoriya tanlanmaguncha sotuvchi «Distribyutorlar» ichida koʻrsatiladi. U ham kategoriyani oʻz sozlamalarida tanlay oladi; oxirgi oʻzgarish kuchga kiradi.')+'</p>';
-  if(!o.shops.length)return h+'<div class="empty"><b>'+L('Продавцов пока нет','Sotuvchilar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'</div>';
-  return h+'<div class="card" style="padding-top:4px;padding-bottom:4px">'+o.shops.map(r=>'<div class="srow"><b>'+esc(r.name)+'</b>'+ownCatSel(r.id,r.cat)+(cleanCat(r.cat)==='bazaar'?ownBzSel(r.id,r.bz):'')+'</div>').join('')+'</div>';
-}
 async function ownLegal(id){
   const o=S.own,rec=o.shops.find(x=>x.id===id);if(!rec||o.busy)return;
   const v=String(o.legals[id]!==undefined?o.legals[id]:(rec.legal||'')).trim();
@@ -6763,7 +6782,7 @@ const bzErr=e=>e==='too_many'?L('Больше 30 базаров добавить
 function ownBzHTML(){
   const o=S.own,z=o.bz,list=bzList(),max=30;
   const cnt=id=>o.shops.filter(r=>cleanCat(r.cat)==='bazaar'&&r.bz===id).length;
-  let h='<p class="lead">'+L('Список базаров для категории «Базары». Продавец сам выбирает свой базар в настройках, а вы можете перевести его в другой в разделе «Категории».','«Bozorlar» kategoriyasi uchun bozorlar roʻyxati. Sotuvchi oʻz bozorini sozlamalarda oʻzi tanlaydi, siz esa uni «Kategoriyalar» boʻlimida boshqasiga oʻtkaza olasiz.')+'</p>';
+  let h='<p class="lead">'+L('Список базаров для категории «Базары». Продавец сам выбирает свой базар в настройках, а вы можете перевести его в другой в карточке продавца: «Список».','«Bozorlar» kategoriyasi uchun bozorlar roʻyxati. Sotuvchi oʻz bozorini sozlamalarda oʻzi tanlaydi, siz esa uni sotuvchi kartochkasida («Roʻyxat») boshqasiga oʻtkaza olasiz.')+'</p>';
   const full=list.length>=max;
   h+='<div class="card"><h3>'+L('Добавить базар','Bozor qoʻshish')+'</h3><div class="form">'
     +'<div><label class="lab" for="bz-name">'+L('Название по-русски','Nomi ruscha')+'</label><input type="text" id="bz-name" data-bz="name" maxlength="40" value="'+esc(z.name)+'" autocomplete="off"></div>'
@@ -6828,16 +6847,30 @@ async function ownCat(id,v){
   renderOwner();
   loadHub();
 }
+/* процент комиссии продавца: условие сотрудничества, поэтому он в карточке продавца; на экране «Платежи комиссии» только показывается */
+function ownPctHTML(r){
+  const o=S.own,row=S.cm.o&&S.cm.o.rows.find(x=>x.id===r.id);
+  if(!row||row.err)return '<div class="unit" style="margin-top:12px">'+L('Процент комиссии: ','Komissiya foizi: ')+(S.cm.o?L('нет данных','maʼlumot yoʻq'):L('загружаем…','yuklanmoqda…'))+'</div>';
+  const pv=o.pcts[r.id]!==undefined?o.pcts[r.id]:fmtPct(row.pct);
+  return '<div class="pctrow"><div><label class="lab" for="pc-'+esc(r.id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(r.id)+'" data-opct="'+esc(r.id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off"></div>'
+    +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>'
+    +hintD('Сколько процентов от суммы выданных заказов вы берёте. Новый процент действует на заказы, выданные после изменения. Пример: 2,5.','Topshirilgan buyurtmalar summasidan necha foiz olasiz. Yangi foiz oʻzgargandan keyin topshirilgan buyurtmalarga amal qiladi. Masalan: 2,5.');
+}
 function ownListHTML(){
-  const o=S.own;let h='';
-    h+=o.shops.map(r=>{
+  const o=S.own;
+  let h='<div class="row-btns" style="margin:0 0 12px"><button type="button" class="btn'+(o.addOpen?' ghost':'')+'" id="ownaddopen" data-act="ownaddopen" aria-expanded="'+!!o.addOpen+'">'+(o.addOpen?L('Скрыть форму','Formani yashirish'):L('＋ Добавить продавца','＋ Sotuvchi qoʻshish'))+'</button></div>';
+  if(o.addOpen)h+=ownAddHTML();
+  h+=o.shops.map(r=>{
       const sure=o.rc===r.id;
-      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('доступ: '+r.sellers+' чел.','kirish: '+r.sellers+' kishi'),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq'),cleanCat(r.cat)?shopCatName(cleanCat(r.cat)):L('категория не выбрана','kategoriya tanlanmagan')];
+      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('доступ: '+r.sellers+' чел.','kirish: '+r.sellers+' kishi'),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
       return '<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></div>'
         +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div>'
         +'<div class="legrow"><div><label class="lab" for="lg-'+esc(r.id)+'">'+L('Юридическое название','Yuridik nomi')+'</label><input type="text" id="lg-'+esc(r.id)+'" data-olegal="'+esc(r.id)+'" maxlength="80" value="'+esc(o.legals[r.id]!==undefined?o.legals[r.id]:(r.legal||''))+'" autocomplete="off" placeholder="'+esc(L('ООО «Навои Фуд»','«Navoiy Fud» MChJ'))+'"></div>'
         +'<button type="button" class="btn ghost sm" data-act="ownlegal" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button></div>'
         +hintD('Покупатели видят его под названием в каталоге. Продавец тоже может его менять; побеждает последнее изменение.','Xaridorlar uni katalogda nom ostida koʻradi. Sotuvchi ham oʻzgartira oladi; oxirgi oʻzgarish ustun.')
+        +'<div class="form" style="margin-top:12px"><div><div class="unit" style="margin-bottom:4px">'+L('Категория','Kategoriya')+'</div>'+ownCatSel(r.id,r.cat)+'</div>'
+        +(cleanCat(r.cat)==='bazaar'?ownBzSel(r.id,r.bz):'')+'</div>'
+        +ownPctHTML(r)
         +'<div class="row-btns" style="margin-top:12px">'
         +'<button type="button" class="btn ghost sm" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button>'
         +'<button type="button" class="btn ghost sm" data-act="owntoggle" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(r.on?L('Скрыть и закрыть заказы','Yashirish va buyurtmani yopish'):L('Вернуть в список','Roʻyxatga qaytarish'))+'</button>'
@@ -6846,7 +6879,7 @@ function ownListHTML(){
         +(r.id!=='main'?'<button type="button" class="btn ghost sm" data-act="owndel" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Удалить','Oʻchirish')+'</button>':'')
         +'</div></div>';
     }).join('');
-  if(!o.shops.length)h+='<div class="empty"><b>'+L('Продавцов пока нет','Sotuvchilar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="otab" data-t="add">'+L('Добавить продавца','Sotuvchi qoʻshish')+'</button></div></div>';
+  if(!o.shops.length)h+='<div class="empty"><b>'+L('Продавцов пока нет','Sotuvchilar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'</div>';
   return h;
 }
 function ownTitleHTML(){
@@ -6863,9 +6896,7 @@ function renderOwner(){
   else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
     if(sec==='dist')h+=ownMadeHTML()+ownListHTML();
-    else if(sec==='cats')h+=ownCatsHTML();
     else if(sec==='bz')h+=ownBzHTML();
-    else if(sec==='add')h+=ownMadeHTML()+ownAddHTML();
     else if(sec==='title')h+=ownTitleHTML();
     else if(sec==='about')h+=ownAboutHTML();
     else if(sec==='disp')h+=ownDispHTML();
@@ -6888,7 +6919,7 @@ async function ownAdd(){
   if(!r.ok||!r.data){o.err2=ownErr(r.data&&r.data.error);renderOwner();return}
   o.shops=o.shops.concat([r.data.shop]);
   o.made={name:r.data.shop.name,code:r.data.code,reset:false};
-  o.fname='';o.fcode='';o.fcat='';o.fbz='';
+  o.fname='';o.fcode='';o.fcat='';o.fbz='';o.addOpen=false;
   renderOwner();window.scrollTo(0,0);
   loadHub();
 }
@@ -7117,17 +7148,14 @@ function ownPeopleHTML(part){
   if(!p)return '<div class="card"><h3>'+esc(ownSecInfo(part).title)+'</h3><div class="unit">'+L('Загружаем…','Yuklanmoqda…')+'</div></div>';
   let h='';
   if(part==='clients'){
-  h+='<div class="card"><h3>'+L('База покупателей','Xaridorlar bazasi')+'</h3><div class="unit">'+L('Покупатель попадает в базу сам при первом заказе. Агент проверяет данные после визита и добавляет тех, кого ещё нет. Продавцы видят всю базу (название, адрес, телефон, территорию), но не заметки агентов.','Xaridor birinchi buyurtmada bazaga oʻzi tushadi. Agent tashrifdan keyin maʼlumotlarni tekshiradi va hali yoʻqlarini qoʻshadi. Sotuvchilar butun bazani koʻradi (nomi, manzil, telefon, hudud), lekin agent eslatmalarini emas.')+'</div>'
-    +'<div class="sum"><div class="r"><span>'+L('Покупателей в базе','Bazadagi xaridorlar')+'</span><span>'+num(p.total)+'</span></div><div class="r"><span>'+L('Без территории','Hududsiz')+'</span><span>'+num(p.free)+'</span></div></div>'
+  h+='<div class="card"><h3>'+L('Перенос покупателей','Xaridorlarni oʻtkazish')+'</h3><div class="unit">'+L('Нужен один раз: покупатели, которые уже заказывали у продавцов, попадут в общую базу покупателей (раздел «Покупатели»). Кто уже есть в базе, не добавится повторно.','Bir marta kerak: sotuvchilarga allaqachon buyurtma bergan xaridorlar umumiy xaridorlar bazasiga («Xaridorlar» boʻlimi) tushadi. Bazada borlari qayta qoʻshilmaydi.')+'</div>'
     +(o.perr?'<div class="err" role="alert" style="margin-top:8px">'+esc(o.perr)+'</div>':'')
-    +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="nav" data-v="base">'+L('Открыть базу','Bazani ochish')+'</button>'
-    +'<button type="button" class="btn ghost" data-act="baseimport"'+dis+'>'+L('Перенести покупателей продавцов','Sotuvchilar xaridorlarini oʻtkazish')+'</button></div>'
-    +'<div class="unit" style="margin-top:8px">'+L('Перенос нужен один раз: покупатели, которые уже заказывали у продавцов, попадут в общую базу. Кто уже есть, не добавится повторно.','Oʻtkazish bir marta kerak: sotuvchilarga allaqachon buyurtma bergan xaridorlar umumiy bazaga tushadi. Bor boʻlganlar qayta qoʻshilmaydi.')+'</div>'
+    +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="baseimport"'+dis+'>'+L('Перенести покупателей продавцов','Sotuvchilar xaridorlarini oʻtkazish')+'</button></div>'
     +(o.imp?'<div class="note" style="margin-top:8px">'+esc(L('Перенос выполнен: добавлено '+o.imp.added+', уже были в базе '+o.imp.linked+', пропущено '+o.imp.skipped+'.','Oʻtkazildi: qoʻshildi '+o.imp.added+', bazada bor edi '+o.imp.linked+', oʻtkazib yuborildi '+o.imp.skipped+'.'))+'</div>':'')+'</div>';
   }
   else if(part==='terr'){
   h+=o.perr?'<div class="err" role="alert" style="margin-bottom:10px">'+esc(o.perr)+'</div>':'';
-  h+='<div class="card"><h3>'+L('Территории','Hududlar')+'</h3><div class="unit">'+L('Районы и города, по которым агенты закрепляют покупателей. Например: Навои, Зарафшан, Кармана.','Agentlar xaridorlarni biriktiradigan tuman va shaharlar. Masalan: Navoiy, Zarafshon, Karmana.')+'</div>';
+  h+='<div class="card"><h3>'+L('Районы и города','Tuman va shaharlar')+'</h3><div class="unit">'+L('Районы и города, по которым агенты закрепляют покупателей. Например: Навои, Зарафшан, Кармана.','Agentlar xaridorlarni biriktiradigan tuman va shaharlar. Masalan: Navoiy, Zarafshon, Karmana.')+'</div>';
   h+=p.terr.map(t=>'<div class="trow"><input type="text" id="tn-'+esc(t.id)+'" value="'+esc(t.name)+'" maxlength="40" aria-label="'+esc(L('Название территории','Hudud nomi'))+'"><span class="dtag" title="'+esc(L('Покупателей','Xaridorlar'))+'">'+num(t.n)+'</span>'
     +'<button type="button" class="btn ghost sm" data-act="terrsave" data-id="'+esc(t.id)+'"'+dis+' aria-label="'+esc(L('Сохранить название','Nomini saqlash'))+'" title="'+esc(L('Сохранить название','Nomini saqlash'))+'">✓</button><button type="button" class="btn ghost sm" data-act="terrdel" data-id="'+esc(t.id)+'"'+dis+' aria-label="'+esc(L('Удалить территорию','Hududni oʻchirish'))+'" title="'+esc(L('Удалить территорию','Hududni oʻchirish'))+'">✕</button></div>').join('');
   h+='<div class="trow"><input type="text" id="o-tname" data-own="tname" maxlength="40" value="'+esc(o.tname)+'" placeholder="'+esc(L('Новая территория','Yangi hudud'))+'" autocomplete="off" aria-label="'+esc(L('Новая территория','Yangi hudud'))+'"><button type="button" class="btn sm" data-act="terradd"'+dis+'>'+L('Добавить','Qoʻshish')+'</button></div>'+hintD('Название района или города. Пример: Кармана.','Tuman yoki shahar nomi. Masalan: Karmana.')+''
@@ -7159,7 +7187,7 @@ function ownPeopleHTML(part){
     +(bzList().length?'<div class="full"><label class="lab" for="o-wbz">'+L('Какой базар принимает','Qaysi bozorni qabul qiladi')+'</label><select id="o-wbz" data-own="wbz">'+bzOpts(o.wbz)+'</select></div>':'')+'</div>'
     +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="whadd"'+dis+'>'+L('Добавить кладовщика','Omborchi qoʻshish')+'</button></div>';
   }
-  else if(part==='agents'||part==='agadd'){
+  else if(part==='agents'){
   h+=o.perr?'<div class="err" role="alert" style="margin-bottom:10px">'+esc(o.perr)+'</div>':'';
   const tn=p.terr.length,tids=new Set(p.terr.map(t=>t.id));
   const cnt=k=>L('выбрано '+k+' из '+tn,'tanlandi: '+k+' / '+tn);
@@ -7168,9 +7196,17 @@ function ownPeopleHTML(part){
     +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="">'+L('Копировать код','Kodni nusxalash')+'</button>'
     +'<button type="button" class="btn ghost" data-act="copy" data-v="/agent '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/agent КОД»','«/agent KOD» nusxalash')+'</button></div>'
     +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="amadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
-  if(part==='agents'){
   h+='<p class="lead">'+L('Каждому агенту вы даёте личный код. Он пишет боту «/agent КОД», в приложении открывается вкладка «База». Агент видит покупателей своих территорий и покупателей без территории.','Har bir agentga shaxsiy kod berasiz. U botga «/agent KOD» deb yozadi, ilovada «Baza» boʻlimi ochiladi. Agent oʻz hududlaridagi va hududsiz xaridorlarni koʻradi.')+'</p>';
+  h+='<div class="row-btns" style="margin:0 0 12px"><button type="button" class="btn'+(o.agOpen?' ghost':'')+'" id="agaddopen" data-act="agaddopen" aria-expanded="'+!!o.agOpen+'">'+(o.agOpen?L('Скрыть форму','Formani yashirish'):L('＋ Добавить агента','＋ Agent qoʻshish'))+'</button></div>';
   if(o.amade)h+=made(o.amade);
+  if(o.agOpen){
+  const all=tn&&o.aterr.length===tn;
+  h+='<div class="card"><h3>'+L('Добавить агента','Agent qoʻshish')+'</h3><div class="form"><div><label class="lab" for="o-aname">'+L('Имя агента','Agent ismi')+'</label><input type="text" id="o-aname" data-own="aname" maxlength="60" value="'+esc(o.aname)+'" autocomplete="off">'+hintD('Как вы зовёте агента. Пример: Бобур.','Agentni qanday chaqirasiz. Masalan: Bobur.')+'</div>'
+    +'<div><label class="lab" for="o-acode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-acode" data-own="acode" maxlength="64" value="'+esc(o.acode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Агент отправит этот код боту командой «/agent КОД». Если оставить пустым, бот придумает код сам.','Agent bu kodni botga «/agent KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div></div>'
+    +(tn?'<div class="tline" style="margin-top:12px"><div class="t"><small>'+esc(L('Территории нового агента','Yangi agent hududlari'))+'</small><b id="ag-cnt">'+esc(cnt(o.aterr.length))+'</b></div><button type="button" class="btn ghost sm" data-act="agtall">'+(all?L('Снять все','Hammasini olib tashlash'):L('Выбрать все','Hammasini tanlash'))+'</button></div>'
+      +'<div class="pgrid" role="group" aria-label="'+esc(L('Территории нового агента','Yangi agent hududlari'))+'">'+p.terr.map(t=>chip(t,o.aterr.includes(t.id),'data-aterr="'+esc(t.id)+'"')).join('')+'</div>':'')
+    +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn" data-act="agentadd"'+dis+'>'+L('Добавить агента','Agent qoʻshish')+'</button></div></div>';
+  }
   if(!p.agents.length)h+='<div class="empty"><b>'+L('Агентов пока нет','Hozircha agentlar yoʻq')+'</b>'+L('Добавьте первого агента.','Birinchi agentni qoʻshing.')+'</div>';
   h+=p.agents.map(a=>{
     const mine=a.terr.filter(id=>tids.has(id)),open=!!o.agopen[a.id];
@@ -7187,20 +7223,6 @@ function ownPeopleHTML(part){
     +'<button type="button" class="btn ghost sm" data-act="agentdel" data-id="'+esc(a.id)+'"'+dis+'>'+L('Удалить','Oʻchirish')+'</button>'
     +(a.link?'<button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(a.link)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Ссылка агента','Agent havolasi')+'</button>':'')+'</div></div>';
   }).join('');
-  h+='<div class="row-btns" style="margin-top:4px"><button type="button" class="btn" data-act="otab" data-t="agadd">'+L('Добавить агента','Agent qoʻshish')+'</button></div>';
-  }
-  else{
-  if(o.amade&&!o.amade.reset)h+=made(o.amade);
-  else{
-  const all=tn&&o.aterr.length===tn;
-  h+='<p class="lead">'+L('Агент получает личный код и пишет боту «/agent КОД»: в приложении открывается вкладка «База». Агент видит покупателей своих территорий и покупателей без территории.','Agent shaxsiy kod oladi va botga «/agent KOD» deb yozadi: ilovada «Baza» boʻlimi ochiladi. Agent oʻz hududlaridagi va hududsiz xaridorlarni koʻradi.')+'</p>'
-    +'<div class="form"><div><label class="lab" for="o-aname">'+L('Имя агента','Agent ismi')+'</label><input type="text" id="o-aname" data-own="aname" maxlength="60" value="'+esc(o.aname)+'" autocomplete="off">'+hintD('Как вы зовёте агента. Пример: Бобур.','Agentni qanday chaqirasiz. Masalan: Bobur.')+'</div>'
-    +'<div><label class="lab" for="o-acode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-acode" data-own="acode" maxlength="64" value="'+esc(o.acode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Агент отправит этот код боту командой «/agent КОД». Если оставить пустым, бот придумает код сам.','Agent bu kodni botga «/agent KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div></div>'
-    +(tn?'<div class="tline" style="margin-top:12px"><div class="t"><small>'+esc(L('Территории нового агента','Yangi agent hududlari'))+'</small><b id="ag-cnt">'+esc(cnt(o.aterr.length))+'</b></div><button type="button" class="btn ghost sm" data-act="agtall">'+(all?L('Снять все','Hammasini olib tashlash'):L('Выбрать все','Hammasini tanlash'))+'</button></div>'
-      +'<div class="pgrid" role="group" aria-label="'+esc(L('Территории нового агента','Yangi agent hududlari'))+'">'+p.terr.map(t=>chip(t,o.aterr.includes(t.id),'data-aterr="'+esc(t.id)+'"')).join('')+'</div>':'')
-    +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn" data-act="agentadd"'+dis+'>'+L('Добавить агента','Agent qoʻshish')+'</button></div>';
-  }
-  }
   }
   return h;
 }
@@ -7229,7 +7251,7 @@ async function ownAgentAdd(){
   if(name.length<2){o.perr=peopleErr('bad_name');renderOwner();return}
   if(code&&code.length<12){o.perr=peopleErr('weak_code');renderOwner();return}
   const d=await peopleCall('POST','/agents',code?{name,terr:o.aterr,code}:{name,terr:o.aterr});
-  if(d){o.amade={name,code:d.code,reset:false};o.aname='';o.acode='';o.aterr=[];renderOwner();window.scrollTo(0,0);loadHub()}
+  if(d){o.amade={name,code:d.code,reset:false};o.aname='';o.acode='';o.aterr=[];o.agOpen=false;renderOwner();window.scrollTo(0,0);loadHub()}
 }
 /* удаление дистрибьютора совсем: товары, заказы, клиенты и продавцы; сервер сам не даёт удалить первого */
 async function ownDelete(id){
@@ -7435,7 +7457,10 @@ document.addEventListener('click',e=>{
       if(d){S.own.amade={name:ag.name,code:d.code,reset:true};renderOwner();window.scrollTo(0,0)}
     });
   }
-  else if(a==='amadeclose'){S.own.amade=null;if(S.own.sec==='agadd')ownOpen('agents');else renderOwner()}
+  else if(a==='sblk'){const k=t.dataset.k;S.sblk[k]=!S.sblk[k];const b=document.getElementById('sb-'+k);if(b)b.hidden=!S.sblk[k];t.setAttribute('aria-expanded',String(!!S.sblk[k]))}
+  else if(a==='amadeclose'){S.own.amade=null;renderOwner()}
+  else if(a==='ownaddopen'){S.own.addOpen=!S.own.addOpen;renderOwner()}
+  else if(a==='agaddopen'){S.own.agOpen=!S.own.agOpen;renderOwner()}
   else if(a==='agtopen'){const o=S.own;o.agopen[t.dataset.id]=!o.agopen[t.dataset.id];renderOwner()}
   else if(a==='agtall'){const o=S.own,ids=(o.ppl?o.ppl.terr:[]).map(x=>x.id);o.aterr=o.aterr.length===ids.length?[]:ids;renderOwner()}
   else if(a==='agentdel'){
