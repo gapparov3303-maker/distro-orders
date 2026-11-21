@@ -8697,6 +8697,7 @@ const menuLab = (html, st = {}, o = {}) => {
     isOwner: () => !!(S.hub.me && S.hub.me.owner), modN: () => o.mod || 0, commBadge: () => o.cb || 0, commOwn: () => !!(S.hub.me && S.hub.me.owner) && S.as !== 'seller',
     go: v => calls.push(['go', v]), ownOpen: s => calls.push(['own', s]), enterSeller: (d, t) => calls.push(['seller', d, t]),
   };
+  env.logoBox = new Function('esc', html.match(/^const logoUrl=.*$/m)[0] + '\n' + html.match(/^const logoBox=.*$/m)[0] + '\nreturn logoBox;')(env.esc);
   const own = html.slice(html.indexOf('const ownSecs=()=>['), html.indexOf('function ownSecInfo('));
   const ui = html.slice(html.indexOf('const subSum='), html.indexOf('/* полоска перерисовывается'));
   const api = new Function(...Object.keys(env), own + '\n' + ui + '\nreturn {menuGroups,menuTotal,barSpec,barHTML,inboxOpen,inboxGo,coOpen,inboxTabs,micon,MIC,ownSecs};')(...Object.values(env));
@@ -11298,6 +11299,32 @@ await t('владелец: «Обновить подписи в канале» �
   tgEditFail = 'Bad Request: message is not modified';
   assert.deepEqual(await jsonOf(await call('POST', '/api/hub/admin/video/captions', { init: iS(), body: {} })), { done: 2, failed: 0 });
   tgEditFail = '';
+});
+
+await t('переключатель компаний: квадратные плитки с фото компании и названием под ним; выбранная в рамке; без фото — буква; прокрутка сохраняется', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const me = ownerMe({ sells: [{ id: 'a', name: 'Альфа Опт' }, { id: 'b', name: 'Бета' }, { id: 'c', name: 'Гамма «Длинное название компании»' }] });
+  const shops = [{ id: 'a', name: 'Альфа Опт', logo: 'v7' }, { id: 'b', name: 'Бета' }, { id: 'c', name: 'Гамма', logo: 'v2' }];
+  const sl = menuLab(html, { view: 'seller', did: 'b', admin: true, sellerTab: 'orders', hub: { me, shops } });
+  const h = sl.barHTML(), co = h.slice(0, h.indexOf('<div class="tbar" role="group"'));
+  assert.equal((co.match(/class="cotile"/g) || []).length, 3, 'по плитке на компанию');
+  assert.ok(!/class="chip" data-act="sof"/.test(h), 'прежних плашек нет');
+  assert.ok(/<span class="lgb" aria-hidden="true"><img src="\/img\/a\/_logo\?v=v7"/.test(co) && /<span class="lgb" aria-hidden="true"><img src="\/img\/c\/_logo\?v=v2"/.test(co), 'фото компании берётся из списка площадки');
+  assert.ok(/data-id="b"[^>]*>\s*<span class="lgb" aria-hidden="true">Б<\/span><span class="cotx">Бета<\/span>/.test(co), 'нет фото: первая буква названия');
+  assert.ok(/data-id="b" data-t="orders" aria-pressed="true"/.test(co) && /data-id="a" data-t="orders" aria-pressed="false"/.test(co), 'выбрана открытая компания, раздел сохраняется');
+  assert.ok(/<span class="cotx">Альфа Опт<\/span>/.test(co) && /<span class="cotx">Гамма «Длинное название компании»<\/span>/.test(co), 'название целиком в разметке, обрезается стилем');
+  assert.equal((h.match(/class="tbar"/g) || []).length, 1, 'полоска разделов по-прежнему одна');
+  // у названия нет в списке площадки: берётся из «моих компаний»; а без фото и без названия — точка
+  const sl2 = menuLab(html, { view: 'seller', did: 'a', admin: true, hub: { me: ownerMe({ sells: [{ id: 'a', name: 'Альфа' }, { id: 'z', name: '' }] }), shops: [] } });
+  assert.ok(/data-id="z"[^>]*>\s*<span class="lgb" aria-hidden="true">•<\/span>/.test(sl2.barHTML()), 'без названия и фото: точка, экран не ломается');
+  // стили: фото 72×72, рамка у выбранной, название в две строки, жирное и зелёное у выбранной
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.ok(/\.cotile \.lgb\{width:72px;height:72px;/.test(css) && /\.cotile\[aria-pressed="true"\] \.lgb\{border:3px solid var\(--accent\)\}/.test(css) && /\*\{[^}]*box-sizing:border-box/.test(css), 'плитка 72×72, у выбранной зелёная рамка 3px внутри тех же 72 (размер не прыгает)');
+  assert.ok(/-webkit-line-clamp:2/.test(css.slice(css.indexOf('.cotx{'))) && /\.cotile\[aria-pressed="true"\] \.cotx\{color:var\(--tx\);font-weight:700\}/.test(css), 'название в две строки; у выбранной жирное зелёное');
+  assert.ok(!/\.tbar\.co \.chip/.test(css), 'старых стилей плашек нет');
+  // прокрутка плиток не сбрасывается перерисовкой, открытая компания встаёт по центру только при первом показе и смене
+  const pb = html.slice(html.indexOf('function paintBar('), html.indexOf('function renderNav('));
+  assert.ok(/csl=oc\?oc\.scrollLeft:0/.test(pb) && /bar\.dataset\.did!==S\.did\)nc\.scrollLeft=Math\.max\(0,cu\.offsetLeft-\(nc\.clientWidth-cu\.offsetWidth\)\/2\);\s*else nc\.scrollLeft=csl/.test(pb) && /bar\.dataset\.did=S\.did/.test(pb), 'прокрутка плиток');
 });
 
 /* ---------- кнопка «Назад» ---------- */

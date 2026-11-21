@@ -923,9 +923,13 @@ div.lgd{cursor:default}
 .tbar .chip{flex:none;gap:6px;white-space:nowrap}
 .tbar .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:none}
 .tbar .badge{height:16px;min-width:16px;padding:0 4px;font-size:10px}
-.tbar.co{margin-bottom:2px}
-.tbar.co .chip{height:32px;font-size:12.5px;background:var(--bg)}
-.tbar.co .chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--tx);box-shadow:none}
+.tbar.co{gap:10px;margin-bottom:6px;padding-top:4px}
+/* переключатель компаний: квадратное фото, под ним название; выбранная в зелёной рамке */
+.cotile{flex:none;width:76px;display:flex;flex-direction:column;align-items:center;gap:6px;padding:0;border:0;background:none;font:inherit;font-size:12px;line-height:1.2;color:var(--ink-2);text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cotile .lgb{width:72px;height:72px;border-radius:18px;font-size:28px}
+.cotx{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:100%;overflow-wrap:anywhere}
+.cotile[aria-pressed="true"] .lgb{border:3px solid var(--accent)}
+.cotile[aria-pressed="true"] .cotx{color:var(--tx);font-weight:700}
 /* категории дистрибьюторов на первом экране */
 .catgrid{display:grid;gap:10px}
 .cat{appearance:none;display:flex;align-items:center;gap:14px;width:100%;min-height:72px;padding:12px 14px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface);text-align:left;cursor:pointer;color:var(--ink)}
@@ -1581,15 +1585,23 @@ function barHTML(){
   const b=barSpec();
   if(!b)return '';
   let h='';
-  if(b.cos.length)h+='<div class="tbar co" role="group" aria-label="'+esc(L('Компания','Kompaniya'))+'">'+b.cos.map(c=>'<button type="button" class="chip" data-act="sof" data-id="'+esc(c.id)+'" data-t="'+esc(S.sellerTab||'orders')+'" aria-pressed="'+(c.id===S.did)+'">'+esc(c.name)+'</button>').join('')+'</div>';
+  if(b.cos.length)h+='<div class="tbar co" role="group" aria-label="'+esc(L('Компания','Kompaniya'))+'">'+b.cos.map(c=>{const sh=(S.hub.shops||[]).find(x=>x.id===c.id),nm=c.name||(sh&&sh.name)||'';return '<button type="button" class="cotile" data-act="sof" data-id="'+esc(c.id)+'" data-t="'+esc(S.sellerTab||'orders')+'" aria-pressed="'+(c.id===S.did)+'">'+logoBox(nm,c.id,sh&&sh.logo)+'<span class="cotx">'+esc(nm)+'</span></button>'}).join('')+'</div>';
   return h+'<div class="tbar" role="group" aria-label="'+esc(L('Разделы','Boʻlimlar'))+'">'+b.tabs.map(x=>'<button type="button" class="chip" data-act="'+x.a+'"'+dataAttrs(x.d)+' aria-pressed="'+(b.cur===x.id)+'">'+esc(x.n)+badgeHTML(x.b,x.c)+'</button>').join('')+'</div>';
 }
 /* полоска перерисовывается вместе с меню, чтобы числа на вкладках не отставали; прокрутка в сторону не сбрасывается, а сменившийся раздел ставится по центру */
 function paintBar(){
   const bar=document.getElementById('tbar');
   if(!bar)return;
-  const old=bar.querySelector('.tbar:not(.co)'),sl=old?old.scrollLeft:0,b=barSpec();
+  const old=bar.querySelector('.tbar:not(.co)'),sl=old?old.scrollLeft:0,oc=bar.querySelector('.tbar.co'),csl=oc?oc.scrollLeft:0,b=barSpec();
   bar.innerHTML=barHTML();
+  // плитки компаний: открытая компания встаёт по центру при первом показе и при смене, дальше прокрутка не сбрасывается
+  const nc=bar.querySelector('.tbar.co');
+  if(nc){
+    const cu=nc.querySelector('[aria-pressed="true"]');
+    if(cu&&bar.dataset.did!==S.did)nc.scrollLeft=Math.max(0,cu.offsetLeft-(nc.clientWidth-cu.offsetWidth)/2);
+    else nc.scrollLeft=csl;
+  }
+  bar.dataset.did=S.did;
   const tb=bar.querySelector('.tbar:not(.co)');
   if(!tb||!b)return;
   const on=tb.querySelector('[aria-pressed="true"]');
