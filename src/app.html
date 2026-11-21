@@ -330,6 +330,8 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .sbb{padding:2px 14px 14px}
 .sbb[hidden]{display:none}
 .shd{align-items:flex-start}
+.ostat{margin:0 0 12px;padding:8px 12px;border-radius:12px;background:var(--bg);border:1.5px solid var(--edge);font-size:13px;font-weight:600;color:var(--tx)}
+.ostat.off{color:var(--ink-2)}
 .shd .sbc{margin-top:7px}
 .shl{flex:1;min-width:0;display:block}
 .shn{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
@@ -1054,6 +1056,28 @@ const S={
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
 };
 const view=$('#view');
+/* Плавное появление при смене экрана или вкладки: 0,3 с, прозрачность и подъём на 12 px. Включается только когда изменился «ключ экрана»; обновление данных, сохранение и смена языка ключ не меняют, поэтому ничего не мигает. Двигаются только блоки .wrap: закреплённые панели (корзина) остаются на месте. */
+const FADE_MS=300;
+let fadeKey=null;
+function screenKey(){
+  const v=S.view;let sub='';
+  if(v==='seller')sub=S.sellerTab;
+  else if(v==='owner')sub=S.own.sec;
+  else if(v==='shop')sub=S.shopStep;
+  else if(v==='shops')sub=S.shopsCat+'|'+S.shopsBz;
+  else if(v==='analytics')sub=S.an.tab;
+  return v+'|'+(S.did||'')+'|'+sub;
+}
+function fadeIn(){
+  try{
+    if(!view.animate||(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches))return;
+    const kids=[...view.children].filter(x=>x.classList&&x.classList.contains('wrap'));
+    if(kids.length)kids.forEach(el=>el.animate([{opacity:0,transform:'translateY(12px)'},{opacity:1,transform:'none'}],{duration:FADE_MS,easing:'ease-out'}));
+    else view.animate([{opacity:0},{opacity:1}],{duration:FADE_MS,easing:'ease-out'});
+  }catch(e){}
+}
+function onViewChange(){const k=screenKey(),was=fadeKey;fadeKey=k;if(was!==null&&k!==was)fadeIn()}
+if(typeof MutationObserver==='function')new MutationObserver(onViewChange).observe(view,{childList:true});
 let toastT=null,saveT=null,psvT=null;
 
 function toast(msg){
@@ -5430,7 +5454,7 @@ const ABOUT_ROLES=[
   ['Карточки в «Списке» свёрнуты: нажмите на строку продавца (стрелка ▼), и откроются поля и кнопки; ещё раз (стрелка ▲) закроется. Сверху есть «Развернуть все» и «Свернуть все».','Roʻyxatdagi kartochkalar yigʻilgan: sotuvchi qatorini bosing (▼ belgisi), maydonlar va tugmalar ochiladi; yana bossangiz (▲) yopiladi. Tepada «Hammasini ochish» va «Hammasini yopish» bor.'],
   ['В карточке продавца («Список») выберите «Категория» (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары): её видят покупатели на первом экране. Продавец может выбрать её и сам; побеждает последнее изменение. Пока категории нет, продавец в «Дистрибьюторах». Там же «Процент комиссии» этого продавца.','Sotuvchi kartochkasida («Roʻyxat») «Kategoriya»ni tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar): xaridorlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha sotuvchi «Distribyutorlar» ichida. U yerda shu sotuvchining «Komissiya foizi» ham bor.'],
   ['Подраздел «Базары»: добавьте базары (название по-русски и по-узбекски, хватит одного), переименуйте или удалите. Продавец категории «Базары» сам выбирает свой базар, а вы можете перевести его в карточке продавца. Покупатели видят все ваши базары, и пустые тоже. Если удалить базар, его продавцы остаются в «Базарах» без базара.','«Bozorlar» boʻlimi: bozorlarni qoʻshing (nomi ruscha va oʻzbekcha, bittasi yetarli), nomini oʻzgartiring yoki oʻchiring. «Bozorlar» kategoriyasidagi sotuvchi oʻz bozorini oʻzi tanlaydi, siz esa uni sotuvchi kartochkasida boshqasiga oʻtkaza olasiz. Xaridorlar barcha bozorlaringizni, boʻshlarini ham koʻradi. Bozor oʻchirilsa, uning sotuvchilari «Bozorlar»da bozorsiz qoladi.'],
-  ['Есть «Новый код» (вошедшие по прежнему коду теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого продавца, вашу компанию, удалить нельзя.','«Yangi kod» (eski kod bilan kirganlar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi sotuvchini, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
+  ['Есть «Новый код» (вошедшие по прежнему коду теряют доступ), «Скрыть и закрыть заказы» и удаление. «Скрыть и закрыть заказы» временно убирает продавца из каталога и закрывает ему заказы, а товары и история остаются; «Вернуть в список» возвращает всё обратно. Статус написан внутри карточки. Первого продавца, вашу компанию, удалить нельзя.','«Yangi kod» (eski kod bilan kirganlar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. «Yashirish va buyurtmani yopish» sotuvchini vaqtincha katalogdan olib tashlaydi va buyurtmalarini yopadi, mahsulotlar va tarix saqlanadi; «Roʻyxatga qaytarish» hammasini qaytaradi. Holat kartochka ichida yozilgan. Birinchi sotuvchini, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
  {img:'ow-review',h:['Проверка товаров','Tovarlarni tekshirish'],cap:['Проверка товаров','Tovarlarni tekshirish'],li:[
   ['Вкладка «Проверка товаров» в разделе «Входящие» собирает все новые товары продавцов в одном списке с названием продавца. Число на значке — сколько товаров ждёт решения.','«Kelganlar» boʻlimidagi «Mahsulotlarni tekshirish» sahifasi sotuvchilarning barcha yangi tovarlarini bitta roʻyxatga sotuvchi nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
   ['Исправьте ошибки в карточке сами или нажмите «Вернуть» и напишите причину: продавец её увидит. «Одобрить» открывает товар покупателям. Ваши товары одобряются сразу.','Kartochkadagi xatolarni oʻzingiz tuzating yoki «Qaytarish»ni bosib sababini yozing: sotuvchi uni koʻradi. «Tasdiqlash» tovarni xaridorlarga ochadi. Oʻzingizning tovarlaringiz darhol tasdiqlanadi.'],
@@ -6873,10 +6897,11 @@ function ownListHTML(){
       const open=!!o.cardOpen[r.id],pr=S.cm.o&&S.cm.o.rows.find(x=>x.id===r.id);
       const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
       if(pr&&!pr.err)meta.push(L('комиссия '+fmtPct(pr.pct)+'%','komissiya '+fmtPct(pr.pct)+'%'));
-      return '<div class="card sblk"><button type="button" class="sbh shd" data-act="oshop" data-id="'+esc(r.id)+'" aria-expanded="'+open+'" aria-controls="sc-'+esc(r.id)+'"><span class="shl"><span class="shn"><span class="shnm">'+esc(r.name)+'</span><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></span>'
+      return '<div class="card sblk"><button type="button" class="sbh shd" data-act="oshop" data-id="'+esc(r.id)+'" aria-expanded="'+open+'" aria-controls="sc-'+esc(r.id)+'"><span class="shl"><span class="shn"><span class="shnm">'+esc(r.name)+'</span>'+(r.on?'':'<span class="dtag" style="white-space:nowrap">'+L('скрыт','yashirin')+'</span>')+'</span>'
         +'<span class="dmeta">'+esc(meta.join(' · '))+'</span></span><span class="sbc" aria-hidden="true"></span></button>'
         +'<div class="sbb" id="sc-'+esc(r.id)+'"'+(open?'':' hidden')+'>'
         +'<div class="dmeta" style="margin-bottom:12px">'+L('доступ: '+r.sellers+' чел.','kirish: '+r.sellers+' kishi')+'</div>'
+        +'<div class="ostat'+(r.on?'':' off')+'">'+(r.on?L('Виден покупателям, заказы открыты','Xaridorlarga koʻrinadi, buyurtmalar ochiq'):L('Скрыт: в каталоге его нет, заказы закрыты','Yashirin: katalogda yoʻq, buyurtmalar yopiq'))+'</div>'
         +'<div class="legrow"><div><label class="lab" for="lg-'+esc(r.id)+'">'+L('Юридическое название','Yuridik nomi')+'</label><input type="text" id="lg-'+esc(r.id)+'" data-olegal="'+esc(r.id)+'" maxlength="80" value="'+esc(o.legals[r.id]!==undefined?o.legals[r.id]:(r.legal||''))+'" autocomplete="off" placeholder="'+esc(L('ООО «Навои Фуд»','«Navoiy Fud» MChJ'))+'"></div>'
         +'<button type="button" class="btn ghost sm" data-act="ownlegal" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button></div>'
         +hintD('Покупатели видят его под названием в каталоге. Продавец тоже может его менять; побеждает последнее изменение.','Xaridorlar uni katalogda nom ostida koʻradi. Sotuvchi ham oʻzgartira oladi; oxirgi oʻzgarish ustun.')

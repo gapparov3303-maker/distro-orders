@@ -11642,13 +11642,17 @@ await t('владелец, список продавцов: карточки с�
   assert.equal(count(h, /class="sbh shd"[^>]*aria-expanded="true"/g), 0);
   // шапка: название, статус, сводка, стрелка; «доступ» и поля внутри тела
   const ha = head(h, 'a');
-  assert.ok(/<span class="shnm">Компания a<\/span><span class="dtag">в списке<\/span>/.test(ha), 'название и статус');
+  assert.ok(/<span class="shnm">Компания a<\/span><\/span>/.test(ha) && !/dtag|в списке/.test(ha), 'в шапке обычного продавца только название, надписи «в списке» нет');
   assert.ok(/<span class="dmeta">14 товаров · код выдан · комиссия 2,5%<\/span>/.test(ha), 'сводка: товары · код · комиссия');
   assert.ok(/<span class="sbc" aria-hidden="true"><\/span>/.test(ha), 'стрелка есть');
   assert.ok(!/доступ|data-ocat|data-opct|data-olegal|<input/.test(ha), 'в шапке только сводка, полей нет');
-  assert.ok(/<span class="dtag">скрыт<\/span>/.test(head(h, 'b')) && /3 товаров · кода нет · комиссия 0%/.test(head(h, 'b')), 'скрытый продавец: статус «скрыт», комиссия 0% тоже показана');
+  assert.ok(/<span class="dtag" style="white-space:nowrap">скрыт<\/span>/.test(head(h, 'b')) && /3 товаров · кода нет · комиссия 0%/.test(head(h, 'b')), 'скрытый продавец: статус «скрыт», комиссия 0% тоже показана');
   assert.ok(/3 товаров · код выдан<\/span>/.test(head(h, 'c')) && !/комиссия/.test(head(h, 'c')), 'нет данных по комиссии: в сводке её нет');
   assert.ok(/id="sc-a" hidden><div class="dmeta" style="margin-bottom:12px">доступ: 1 чел\.<\/div>/.test(h), 'доступ внутри тела');
+  // статус внутри карточки: у видимого «Виден покупателям…», у скрытого «Скрыт: …»; строка в теле, а не в шапке
+  assert.ok(/id="sc-a" hidden>[\s\S]*?<div class="ostat">Виден покупателям, заказы открыты<\/div>/.test(h), 'в теле видимого продавца строка статуса');
+  assert.ok(/id="sc-b" hidden>[\s\S]*?<div class="ostat off">Скрыт: в каталоге его нет, заказы закрыты<\/div>/.test(h), 'в теле скрытого продавца строка статуса');
+  assert.ok(!/ostat/.test(ha) && !/ostat/.test(head(h, 'b')), 'в шапке строки статуса нет');
   // свёрнутое не вырезается из разметки: набранное и поля на месте
   assert.equal(count(h, /data-olegal=/g), 3);
   assert.equal(count(h, /data-ocat=/g), 3);
@@ -11671,7 +11675,7 @@ await t('владелец, список продавцов: карточки с�
   // узбекский
   m = mk({ cardOpen: { a: true } }, shops, true);
   h = m.ownListHTML();
-  assert.ok(/Hammasini yopish/.test(h) && /14 ta mahsulot · kod berilgan · komissiya 2,5%/.test(h) && /kirish: 1 kishi/.test(h) && /roʻyxatda/.test(h), 'узбекский');
+  assert.ok(/Hammasini yopish/.test(h) && /14 ta mahsulot · kod berilgan · komissiya 2,5%/.test(h) && /kirish: 1 kishi/.test(h) && /Xaridorlarga koʻrinadi, buyurtmalar ochiq/.test(h) && !/roʻyxatda/.test(h), 'узбекский');
   assert.ok(/Hammasini ochish/.test(mk({}, shops, true).ownListHTML()));
   // шапка — настоящая кнопка с большой областью нажатия; сводка не «растягивает» шапку и не обрезается
   const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
@@ -11834,6 +11838,61 @@ await t('вкладки компании: Заказы · Товары · Ост
   const ids = [...subs.matchAll(/\['(\w+)',L\('/g)].map(m => m[1]);
   assert.deepStrictEqual(ids, ['orders', 'prod', 'stock', 'debts', 'dlv', 'reports', 'comm', 'settings'], 'порядок вкладок');
   assert.ok(/\['prod',L\('Товары','Mahsulotlar'\)/.test(subs) && !/Каталог/.test(subs), 'вкладка называется «Товары»');
+});
+
+await t('смена экрана: плавное появление 0,3 с только при смене экрана или вкладки; обновление данных ничего не мигает; закреплённая панель не двигается', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const i0 = html.indexOf('const FADE_MS=300;'), i1 = html.indexOf('if(typeof MutationObserver===');
+  assert.ok(i0 > 0 && i1 > i0, 'код эффекта на месте');
+  const src = html.slice(i0, i1);
+  const mk = (o = {}) => {
+    const calls = [];
+    const el = (...cls) => ({ classList: { contains: c => cls.includes(c) }, animate: o.noanim ? undefined : (kf, opt) => { calls.push({ kf, opt, cls }); } });
+    const view = Object.assign(el('view'), { children: o.nowrap ? [el('bar')] : [el('wrap', 'page'), el('bar')] });
+    if (o.noanim) view.children.forEach(c => { c.animate = undefined; });
+    const S = { view: 'shops', did: '', sellerTab: 'orders', own: { sec: 'dist' }, shopStep: 'list', shopsCat: '', shopsBz: '', an: { tab: 'cats' } };
+    const win = { matchMedia: () => ({ matches: !!o.reduce }) };
+    const api = new Function('S', 'view', 'window', src + '\nreturn {screenKey,fadeIn,onViewChange,FADE_MS};')(S, view, win);
+    return { S, calls, api };
+  };
+  let m = mk();
+  assert.equal(m.api.FADE_MS, 300, '0,3 секунды');
+  m.api.onViewChange();
+  assert.equal(m.calls.length, 0, 'первый показ без эффекта');
+  m.api.onViewChange(); m.api.onViewChange();
+  assert.equal(m.calls.length, 0, 'тот же экран перерисован (данные, сохранение, язык): эффекта нет');
+  // смена экрана: один раз, только блок .wrap, а не закреплённая панель
+  m.S.view = 'owner'; m.api.onViewChange();
+  assert.equal(m.calls.length, 1, 'экран сменился: эффект один раз');
+  assert.deepEqual(m.calls[0].cls, ['wrap', 'page'], 'двигается только .wrap (корзина .bar стоит на месте)');
+  assert.deepEqual(m.calls[0].kf, [{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], 'проявление и подъём на 12 px');
+  assert.deepEqual(m.calls[0].opt, { duration: 300, easing: 'ease-out' });
+  m.api.onViewChange();
+  assert.equal(m.calls.length, 1, 'повторная перерисовка того же экрана не запускает эффект снова');
+  // вкладки и внутренние шаги считаются сменой
+  const steps = [['owner', S => { S.own.sec = 'people'; }, 'раздел владельца'], ['seller', S => { S.view = 'seller'; }, 'экран продавца'], ['seller', S => { S.sellerTab = 'prod'; }, 'вкладка компании'],
+    ['seller', S => { S.did = 'beta'; }, 'другая компания'], ['shop', S => { S.view = 'shop'; }, 'каталог'], ['shop', S => { S.shopStep = 'cart'; }, 'корзина'],
+    ['shops', S => { S.view = 'shops'; }, 'первый экран'], ['shops', S => { S.shopsCat = 'bazaar'; }, 'категория продавцов'], ['shops', S => { S.shopsBz = 'b1'; }, 'базар'],
+    ['analytics', S => { S.view = 'analytics'; }, 'аналитика'], ['analytics', S => { S.an.tab = 'items'; }, 'вкладка аналитики']];
+  let n = m.calls.length;
+  for (const [, fn, what] of steps) { fn(m.S); m.api.onViewChange(); assert.equal(m.calls.length, ++n, 'эффект: ' + what); }
+  // то, что не меняет экран, эффект не включает
+  m = mk(); m.api.onViewChange();
+  m.S.own.sec = 'bz'; m.S.sellerTab = 'debts'; m.S.an.tab = 'x'; m.S.shopStep = 'cart'; m.api.onViewChange();
+  assert.equal(m.calls.length, 0, 'чужие вкладки на другом экране ключ не меняют');
+  // «уменьшить анимацию» и старый WebView: тихо без эффекта и без ошибок
+  m = mk({ reduce: true }); m.api.onViewChange(); m.S.view = 'owner'; m.api.onViewChange();
+  assert.equal(m.calls.length, 0, 'prefers-reduced-motion: эффекта нет');
+  m = mk({ noanim: true }); m.api.onViewChange(); m.S.view = 'owner';
+  assert.doesNotThrow(() => m.api.onViewChange(), 'нет element.animate: без ошибок');
+  // экран без блока .wrap: только прозрачность, без сдвига
+  m = mk({ nowrap: true }); m.api.onViewChange(); m.S.view = 'owner'; m.api.onViewChange();
+  assert.equal(m.calls.length, 1);
+  assert.deepEqual(m.calls[0].kf, [{ opacity: 0 }, { opacity: 1 }], 'без .wrap: только прозрачность');
+  // подключение: следит за содержимым #view, на CSS-анимацию не опирается
+  assert.ok(/new MutationObserver\(onViewChange\)\.observe\(view,\{childList:true\}\)/.test(html), 'наблюдатель за #view');
+  assert.ok(!/#view\s*\{[^}]*(animation|transition)/.test(html), 'на #view нет CSS-анимации');
+  assert.ok(/prefers-reduced-motion: reduce/.test(src), 'учитывает «уменьшить анимацию»');
 });
 
 await t('настройки компании: четыре сворачиваемых блока, все поля на месте, раскрыт первый; сворачивание только прячет', () => {
