@@ -10458,6 +10458,7 @@ await t('дальняя доставка на экране: настройки �
   // настройки: только у категории «Производители», четыре способа расчёта, три способа оплаты перевозки, срок и реквизиты
   const fe = fn('farEditHTML');
   assert.ok(/cleanCat\(s\.category\)!=='maker'\)return ''/.test(fe), 'блок только у Производителей');
+  assert.ok(fe.includes("L('Привожу покупателю после оплаты','Toʻlovdan keyin xaridorga yetkazaman')") && !/Навои|Navoiy/.test(fe), 'подпись галочки не привязана к городу: слова «Навои» в ней нет');
   for (const k of ['kg', 'vol', 'fix', 'deal', 'both', 'in', 'drv']) assert.ok(fe.includes("['" + k + "',"), 'вариант ' + k);
   for (const k of ['on', 'm', 'pay', 'req']) assert.ok(fe.includes('data-far="' + k + '"'), 'поле ' + k);
   assert.ok(fe.includes("num('days'"), 'поле «срок»');
