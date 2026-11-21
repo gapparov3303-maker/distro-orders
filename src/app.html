@@ -5829,9 +5829,13 @@ async function enterShop(did,v,cart){
 }
 /* раздел продавца из меню, когда его компания не открыта: открываем компанию и сразу нужный раздел */
 async function enterSeller(did,tab){
+  const was=S.did;
   if(!(await openShop(did))){if(!S.did)S.view='shops';render();return false}
   S.shopPlaced=null;S.shopStep='list';
   if(!S.admin){go('shop');return false}
+  // openShop стёр экран надписью «Загружаем каталог». Если мы уже были в панели продавца (переключатель компаний), sellerOpen только подкрасил бы вкладки
+  // в несуществующем экране и оставил надпись навсегда, поэтому панель открываем заново: sellerOpen пойдёт через go('seller')
+  if(S.view==='seller'&&S.did!==was)S.view='shop';
   sellerOpen(tab);
   return true;
 }
