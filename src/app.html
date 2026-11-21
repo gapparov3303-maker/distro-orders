@@ -80,21 +80,21 @@ html.mn-open,html.mn-open body{overflow:hidden}
 .mrole b{color:var(--ink);font-weight:600}
 .mclose{flex:none;appearance:none;width:40px;height:40px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .mnav{flex:1;min-height:0;overflow-y:auto;padding:4px 10px 14px;overscroll-behavior:contain}
-.mgh{padding:18px 10px 5px;font:600 10.5px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--grp)}
+.mgh{padding:16px 10px 5px;font:600 10.5px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--grp)}
 .mnav>.mgh:first-child{padding-top:12px}
-.mi{appearance:none;width:100%;min-height:44px;padding:10px;border:0;border-radius:10px;background:transparent;color:var(--ink);font-size:15px;font-weight:600;text-align:left;cursor:pointer;display:flex;align-items:center;gap:8px}
-.mi .ml{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi{appearance:none;width:100%;min-height:44px;padding:10px;border:0;border-radius:10px;background:transparent;color:var(--ink);font-size:15px;font-weight:600;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px}
+.mi .mic{flex:none;width:22px;height:22px;color:var(--ink-2)}
+.mi .ml{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi .mcnt{flex:none;margin-left:-6px;color:var(--ink-2);font-size:14px;font-weight:600}
+.mi .badge{margin-left:auto}
 .mi[aria-current="page"]{background:var(--accent-soft)}
-.mi[data-here="1"] .ml{color:var(--tx)}
-.mgrp[data-here="1"][aria-expanded="false"]{background:var(--accent-soft)}
-.mi .chev{flex:none;color:var(--ink-2)}
-.mgrp[aria-expanded="true"] .chev{transform:rotate(180deg)}
-.msub{margin:2px 0 6px 18px;padding-left:8px;border-left:2px solid var(--line)}
-.msub .mi{min-height:40px;padding:8px 10px;font-size:14px;font-weight:500}
-.msub .mi[aria-current="page"]{font-weight:600}
-.msub>.mgrp{font-weight:600}
-.msub>.mgrp .ml{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
-.msub .msub{margin:0 0 4px 10px}
+.mi[aria-current="page"] .mic,.mi[aria-current="page"] .ml{color:var(--tx)}
+/* низ меню: «О нас», «Написать нам», «На главный экран», «Смотреть как» рядом, значок и подпись */
+.mfoot{flex:none;position:relative;border-top:1px solid var(--line);padding:6px 6px 8px}
+.fbrow{display:flex;gap:2px}
+.fb{appearance:none;flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 2px 6px;border:0;border-radius:10px;background:transparent;color:var(--ink-2);font:500 10.5px/1.15 var(--f-body);text-align:center;cursor:pointer;overflow-wrap:anywhere}
+.fb .mic{flex:none;width:22px;height:22px}
+.fb[aria-current],.fb[aria-expanded="true"]{background:var(--accent-soft);color:var(--tx)}
 }
 
 /* sections, chips */
@@ -871,7 +871,6 @@ div.lgd{cursor:default}
 .mapco{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0 10px;color:var(--ink-2)}
 @media (prefers-reduced-motion:no-preference){.chip,.seg button{transition:border-color .12s,background-color .12s}}
 /* «О нас» */
-.mgsep{height:1px;margin:10px 10px 4px;background:var(--line)}
 .abt .abhead{display:flex;align-items:center;gap:14px;margin-bottom:16px}
 .abt .abhead .eyebrow{margin-bottom:2px}
 .logo.big{width:64px;height:64px}
@@ -912,14 +911,21 @@ div.lgd{cursor:default}
 .hsbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;padding-top:9px;padding-bottom:9px}
 .hsbar p{flex:1 1 210px;margin:0;font-size:13px;line-height:1.35;color:var(--ink)}
 .hsbar .hsb{display:flex;gap:8px;flex:none}
-/* «Смотреть как»: одна строка в самом низу меню, роли раскрываются списком по нажатию */
-.mas{margin:14px 12px 18px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.masb{appearance:none;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:48px;padding:8px 10px;background:transparent;border:0;font:inherit;font-size:13px;color:var(--ink-2);text-align:left;cursor:pointer}
-.masb .chip{display:inline-flex;align-items:center;flex:none;height:32px;padding:0 8px 0 11px;font-size:13px;white-space:nowrap;pointer-events:none}
-.masb .chev{flex:none;margin-left:6px;transition:transform .15s}
-.masb[aria-expanded="true"] .chev{transform:rotate(180deg)}
+/* «Смотреть как»: роли выезжают списком над нижним рядом меню по нажатию на значок глаза */
+.mas{position:absolute;left:10px;right:10px;bottom:calc(100% + 6px);z-index:2;background:var(--bg);border:1px solid var(--edge);border-radius:12px;box-shadow:0 6px 22px var(--pcsh);overflow:hidden}
+.mas[hidden]{display:none}
+.mash{padding:10px 14px 4px;font:600 10.5px/1 var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:var(--grp)}
 .masi{appearance:none;display:block;width:100%;min-height:44px;padding:10px 14px;background:transparent;border:0;border-top:1px solid var(--line);font:inherit;font-size:14px;color:var(--ink);text-align:left;cursor:pointer}
 .masi[aria-pressed="true"]{font-weight:700;color:var(--tx)}
+/* полоска разделов вверху экрана: вместо раскрывающихся списков в меню */
+.tbar{position:relative;display:flex;gap:6px;overflow-x:auto;margin:0 -16px 14px;padding:2px 16px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.tbar::-webkit-scrollbar{display:none}
+.tbar .chip{flex:none;gap:6px;white-space:nowrap}
+.tbar .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:none}
+.tbar .badge{height:16px;min-width:16px;padding:0 4px;font-size:10px}
+.tbar.co{margin-bottom:2px}
+.tbar.co .chip{height:32px;font-size:12.5px;background:var(--bg)}
+.tbar.co .chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--tx);box-shadow:none}
 /* категории дистрибьюторов на первом экране */
 .catgrid{display:grid;gap:10px}
 .cat{appearance:none;display:flex;align-items:center;gap:14px;width:100%;min-height:72px;padding:12px 14px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface);text-align:left;cursor:pointer;color:var(--ink)}
@@ -991,6 +997,7 @@ div.lgd{cursor:default}
   </div>
   <div class="mrole" id="mrole" hidden></div>
   <nav class="mnav" id="nav"></nav>
+  <div class="mfoot" id="mfoot"></div>
 </aside>
 <div class="hsbar" id="hsbar" hidden></div>
 <main id="view"></main>
@@ -1003,7 +1010,7 @@ div.lgd{cursor:default}
 const $=(s,r)=>(r||document).querySelector(s);
 const MAX_QTY=10000,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
-  view:'shops',as:'',shopsCat:'',shopsBz:'',sellerTab:'orders',filter:'active',msub:null,msub2:null,dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
+  view:'shops',as:'',shopsCat:'',shopsBz:'',sellerTab:'orders',filter:'active',dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
   cfg:clone(DEFAULT),
   form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:'',loc:null,fp:'in'},
   region:'',showFar:false,regSent:false,regOnly:null,
@@ -1298,10 +1305,7 @@ function hsPaint(){
   b.innerHTML='<div class="wrap"><p>'+esc(L('Добавьте '+hubTitle()+' на главный экран: заказывать будет быстрее','Buyurtma berish tezroq boʻlishi uchun '+hubTitle()+'ni bosh ekranga qoʻshing'))+'</p>'
     +'<div class="hsb"><button type="button" class="btn sm" data-act="hsadd">'+L('Добавить','Qoʻshish')+'</button><button type="button" class="btn ghost sm" data-act="hsno">'+L('Не сейчас','Hozir emas')+'</button></div></div>';
 }
-/* Пункт «Добавить на главный экран» в меню ☰: есть всегда, пока Telegram это умеет, потому что человек мог убрать значок, а Telegram этого не видит и скрывает свой пункт «⋮» */
-function hsRowHTML(){
-  return S.hsMenu?'<div class="mgsep" role="presentation"></div><button type="button" class="mi" data-act="hsadd"><span class="ml">'+L('Добавить на главный экран','Bosh ekranga qoʻshish')+'</span></button>':'';
-}
+/* Кнопка «На главный экран» в нижнем ряду меню ☰ (menuFootHTML): есть всегда, пока Telegram это умеет, потому что человек мог убрать значок, а Telegram этого не видит и скрывает свой пункт «⋮» */
 function hsInit(){
   const tg=S.tg;
   if(!tg||typeof tg.addToHomeScreen!=='function'||typeof tg.checkHomeScreenStatus!=='function')return;
@@ -1321,13 +1325,13 @@ function hsInit(){
 }
 function hsAdd(){hsHide();try{S.tg.addToHomeScreen()}catch(e){}}
 
-/* меню: разделы по группам; у «Продавца» внутри раскрываются его пять разделов */
+/* разделы компании продавца: полоска вверху экрана; «Комиссия» только когда у компании есть комиссия и это не обзор владельца */
 const sellerSubs=()=>{
   const w=stockWarn(),rn=modRetN();
-  return [['orders',L('Заказы','Buyurtmalar'),newCount()],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar'),dvAlerts(),'warn'],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
+  return [['orders',L('Заказы','Buyurtmalar'),newCount()],['debts',L('Долги','Qarzlar'),(S.dbt.late||0)+(S.dbt.fl||0),'warn'],['dlv',L('Доставщики','Yetkazuvchilar'),dvAlerts(),'warn'],['prod',L('Каталог','Katalog'),rn,'warn'],['stock',L('Остатки','Qoldiq'),w,'warn'],['reports',L('Отчёты','Hisobotlar')]]
+    .concat(commOn()&&!commOwn()?[['comm',L('Комиссия','Komissiya'),commBadge(),'bad']]:[])
+    .concat([['settings',L('Настройки','Sozlamalar')]]);
 };
-/* те же разделы без цифр: меню показывает их и тогда, когда компания продавца не открыта (главный экран площадки, чужой каталог): цифры берутся из открытой компании */
-const sellerTabs=()=>[['orders',L('Заказы','Buyurtmalar')],['debts',L('Долги','Qarzlar')],['dlv',L('Доставщики','Yetkazuvchilar')],['prod',L('Каталог','Katalog')],['stock',L('Остатки','Qoldiq')],['reports',L('Отчёты','Hisobotlar')],['settings',L('Настройки','Sozlamalar')]];
 /* Роли человека берутся с площадки (S.hub.me): владелец, агент, продавец и доставщик у каких-то дистрибьюторов. Кроме этого он всегда магазин-клиент. */
 function myRoles(){
   const me=S.auth&&S.hub&&S.hub.me;
@@ -1367,89 +1371,152 @@ function asRoles(){
 }
 const viewAs=()=>S.as&&asRoles().some(x=>x[0]===S.as)?S.as:'';
 const asName=k=>(asRoles().find(x=>x[0]===k)||['',''])[1];
-/* Строка «Смотреть как» в самом низу меню (только владелец): сверху выбранная роль, по нажатию список «Все мои роли» и своих ролей */
-function viewAsRowHTML(){
+/* «Смотреть как» (только владелец): кнопка-глаз в нижнем ряду меню; по нажатию над рядом выезжает список «Все мои роли» и своих ролей */
+function viewAsBtnHTML(){
+  if(!asRoles().length)return '';
+  return '<button type="button" class="fb" data-act="vasw" aria-expanded="'+(!!S.vam)+'" aria-controls="masl"'+(viewAs()?' aria-current="true"':'')+'>'+micon('eye')+'<span>'+L('Смотреть как','Rol sifatida koʻrish')+'</span></button>';
+}
+function viewAsListHTML(){
   const ar=asRoles();
   if(!ar.length)return '';
   const as=viewAs(),open=!!S.vam,all=[['',L('Все мои роли','Barcha rollarim')]].concat(ar),lab=L('Смотреть как','Rol sifatida koʻrish');
-  return '<div class="mas"><button type="button" class="masb" data-act="vasw" aria-expanded="'+open+'" aria-controls="masl"><span>'+lab+'</span>'
-    +'<span class="chip">'+esc(as?asName(as):all[0][1])+'<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>'
-    +'<div id="masl" role="group" aria-label="'+esc(lab)+'"'+(open?'':' hidden')+'>'
-    +all.map(x=>'<button type="button" class="masi" data-act="viewas" data-v="'+x[0]+'" aria-pressed="'+(as===x[0])+'">'+esc(x[1])+'</button>').join('')+'</div></div>';
+  return '<div class="mas" id="masl" role="group" aria-label="'+esc(lab)+'"'+(open?'':' hidden')+'><div class="mash">'+esc(lab)+'</div>'
+    +all.map(x=>'<button type="button" class="masi" data-act="viewas" data-v="'+x[0]+'" aria-pressed="'+(as===x[0])+'">'+esc(x[1])+'</button>').join('')+'</div>';
 }
-/* Правило значков в меню: у каждого пункта своё число (оно держится, пока оповещение не обработано), у группы сумма чисел внутри,
-   на кнопке ☰ сумма по всем группам (без каталога и числа заказов магазина: это не оповещения). Так три уровня всегда сходятся. */
+/* Правило значков в меню: у каждой строки своё число (оно держится, пока оповещение не обработано), у строки-раздела сумма чисел его вкладок,
+   на кнопке ☰ сумма по всем строкам (без каталога и числа заказов покупателя: это не оповещения). Так вкладки на экране, строки меню и ☰ всегда сходятся. */
 const subSum=subs=>subs.reduce((a,x)=>a+(Number(x[2])||0),0);
+/* значки меню: линейные, один набор; рисуются по ключу */
+const MIC={
+  grid:'<rect x="3" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.8"/>',
+  box:'<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+  coin:'<circle cx="12" cy="12" r="9"/><path d="M14.8 9.2c-.6-.8-1.6-1.2-2.8-1.2-1.7 0-2.8.9-2.8 2.1 0 3 5.8 1.5 5.8 4.4 0 1.2-1.2 2.1-3 2.1-1.3 0-2.4-.5-3-1.4M12 6v2M12 16v2"/>',
+  user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.7 3.9-6 7.5-6s6.7 2.3 7.5 6"/>',
+  store:'<path d="M4 9.5L5.6 4h12.8L20 9.5"/><path d="M4 9.5c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3"/><path d="M5 13v7h14v-7"/><path d="M10 20v-4h4v4"/>',
+  truck:'<path d="M3 6h11v10H3z"/><path d="M14 9h4l3 3v4h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17.2" cy="9" r="2.4"/><path d="M16.4 14.2c2.9.2 4.8 2.3 4.8 5.3"/>',
+  ware:'<path d="M3 10l9-6 9 6"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/>',
+  inbox:'<path d="M3 13l3-8h12l3 8"/><path d="M3 13v6h18v-6"/><path d="M3 13h5l1 2h6l1-2h5"/>',
+  brief:'<rect x="3" y="7" width="18" height="13" rx="2.2"/><path d="M9 7V5.4A1.4 1.4 0 0110.4 4h3.2A1.4 1.4 0 0115 5.4V7"/><path d="M3 13h18"/>',
+  team:'<rect x="3" y="5" width="18" height="14" rx="2.4"/><circle cx="9" cy="11" r="2.3"/><path d="M5.6 16.4c.6-1.6 1.9-2.4 3.4-2.4s2.8.8 3.4 2.4"/><path d="M14.5 10h4M14.5 14h3"/>',
+  chart:'<path d="M5 20v-7M12 20V5M19 20V10M3 20h18"/>',
+  sliders:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.01"/>',
+  msg:'<path d="M4 5.5h16v11H9.5L4 20.5v-15z"/>',
+  home:'<rect x="7" y="3" width="10" height="18" rx="2.2"/><path d="M12 9v6M9 12h6"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'
+};
+const micon=k=>'<svg class="mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(MIC[k]||'')+'</svg>';
+const dataAttrs=d=>Object.keys(d||{}).map(k=>' data-'+k+'="'+esc(d[k])+'"').join('');
+/* «Входящие» владельца: всё, что ждёт его решения. Часть вкладок — отдельные экраны (проверка товаров, платежи комиссии), часть — разделы владельца */
+const inboxTabs=()=>[['review',L('Проверка товаров','Mahsulotlarni tekshirish'),modN(),'bad'],['comm',L('Платежи комиссии','Komissiya toʻlovlari'),commBadge(),'bad'],['disp',L('Спорные записи','Bahsli yozuvlar'),S.own.dn,'bad'],['fb',L('Обращения','Murojaatlar'),S.own.fbn,'bad']];
+const ownGroupOf=sec=>(ownSecs().find(g=>g[2].some(x=>x[0]===sec))||[''])[0];
+const inboxHere=cur=>cur==='review'||(cur==='comm'&&commOwn())||(cur==='owner'&&ownGroupOf(S.own.sec)==='inbox');
+/* Меню плоское: одна строка — один раздел, подразделы лежат вкладками на самом экране (barSpec). Строка: {k ключ, n название, i значок, a действие, d данные, b число, c цвет числа, cnt число компаний, on открыт сейчас} */
 function menuGroups(){
-  const g=[],as=viewAs();
-  const shop=[['shop',L('Каталог','Katalog'),cartCount()],['mine',L('Заказы','Buyurtmalar'),activeMine()]];
-  if(S.mdebt.ok&&(S.mdebt.total>0||S.mdebt.ask>0))shop.push(['debt',L('Мой долг','Mening qarzim'),S.mdebt.ask,'warn']);
-  if(S.auth&&S.did)shop.push(['profile',L('Профиль','Profil')]);
-  if(!as||as==='shop')g.push([L('Покупатель','Xaridor'),shop]);
+  const g=[],as=viewAs(),cur=S.view==='shops'?'shop':S.view;
+  const mk=(k,n,i,o)=>Object.assign({k,n,i,a:'nav',d:{v:k},b:0,c:'',on:cur===k},o||{});
+  const top=[mk('shop',L('Каталог','Katalog'),'grid',{b:cartCount()}),mk('mine',L('Заказы','Buyurtmalar'),'box',{b:activeMine()})];
+  if(S.mdebt.ok&&(S.mdebt.total>0||S.mdebt.ask>0))top.push(mk('debt',L('Мой долг','Mening qarzim'),'coin',{b:S.mdebt.ask,c:'warn'}));
+  if(S.auth&&S.did)top.push(mk('profile',L('Профиль','Profil'),'user'));
+  if(!as||as==='shop')g.push(['',top]);
   const work=[];
-  const mine=S.auth&&S.hub.me&&S.hub.me.sells||[];
-  if((!as||as==='seller')&&mine.length>1&&!(S.admin&&S.did&&!mine.some(x=>x.id===S.did))){   // компаний несколько: одна свёрнутая строка «Продавец (N)», внутри компании, у каждой свои разделы; цифры только у открытой компании
-    const cos=mine.map(x=>{const on=!!(S.admin&&S.did===x.id),sb=on?sellerSubs():sellerTabs().map(y=>[y[0],y[1],0]);return [x.id,x.name,on?subSum(sb):0,'',sb]});
-    work.push(['seller',L('Продавец','Sotuvchi')+' ('+mine.length+')',subSum(cos),'',cos,'sco']);
+  const mine=S.auth&&S.hub.me&&S.hub.me.sells||[],open=!!(S.admin&&S.did);
+  if((!as||as==='seller')&&(open||mine.length)){   // одна строка «Моя компания»; компаний несколько — «Мои компании (N)», переключатель компаний на самом экране
+    const own=mine.some(x=>x.id===S.did),many=mine.length>1&&!(open&&!own);
+    work.push({k:'seller',n:many?L('Мои компании','Kompaniyalarim'):open&&!own?L('Эта компания','Bu kompaniya'):L('Моя компания','Kompaniyam'),i:'store',a:'coopen',d:{},b:open?subSum(sellerSubs()):0,c:'',cnt:many?mine.length:0,on:cur==='seller'||(cur==='comm'&&!commOwn())});
   }
-  else if(S.admin&&S.did&&(!as||as==='seller')){const sb=sellerSubs();work.push(['seller',L('Продавец','Sotuvchi'),subSum(sb),'',sb,'stab'])}
-  else if(!as||as==='seller'){   // своя компания не открыта: «Продавец» всё равно виден, нажатие на раздел открывает компанию
-    mine.forEach(x=>work.push(['seller',L('Продавец','Sotuvchi'),0,'',sellerTabs().map(y=>[y[0],y[1],0]),'sof',x.id]));
+  if(S.courier&&S.did&&(!as||as==='courier'))work.push({k:'courier',n:L('Доставка','Yetkazib berish'),i:'truck',a:'ctab',d:{t:S.cr.tab||'today'},b:subSum(crTabs()),c:'',on:cur==='courier'});
+  if(canBase()&&(!as||as==='seller'||as==='agent'))work.push(mk('base',L('Покупатели','Xaridorlar'),'users'));
+  if(S.auth&&S.hub.me&&S.hub.me.wh&&!as)work.push(mk('wh',L('Склад','Ombor'),'ware',{b:whWaiting(),c:'bad'}));
+  if(work.length)g.push([L('Моя работа','Mening ishim'),work]);
+  if(isOwner()&&!as){
+    const og=(k,i)=>{const x=ownSecs().find(y=>y[0]===k),on=cur==='owner'&&ownGroupOf(S.own.sec)===k;return {k:'o_'+k,n:x[1],i,a:'otab',d:{t:on?S.own.sec:x[2][0][0]},b:0,c:'',on}};
+    g.push([L('Площадка','Platforma'),[{k:'inbox',n:L('Входящие','Kelganlar'),i:'inbox',a:'inbox',d:{},b:subSum(inboxTabs()),c:'bad',on:inboxHere(cur)},og('dists','brief'),og('team','team'),mk('analytics',L('Аналитика','Tahlil'),'chart'),og('site','sliders')]]);
   }
-  if(S.courier&&S.did&&(!as||as==='courier')){const cb=crTabs();work.push(['courier',L('Доставка','Yetkazib berish'),subSum(cb),'',cb,'ctab'])}
-  if(canBase()&&(!as||as==='seller'||as==='agent'))work.push(['base',L('База','Baza')]);
-  if(S.auth&&S.hub.me&&S.hub.me.wh&&!as)work.push(['wh',L('Склад','Ombor'),whWaiting(),'bad']);
-  if((!as||as==='seller')&&commOn())work.push(['comm',L('Комиссия','Komissiya'),commBadge(),'bad']);
-  if(work.length)g.push([L('Работа','Ish'),work]);
-  if(isOwner()&&!as)g.push([L('Владелец','Egasi'),ownSecs().map(o=>{const sb=o[2].map(x=>[x[0],x[1],x[0]==='disp'?S.own.dn:x[0]==='fb'?S.own.fbn:0,'bad']);return ['o_'+o[0],o[1],subSum(sb),'bad',sb,'otab']}).concat([['analytics',L('Аналитика','Tahlil')],['review',L('Проверка','Tekshiruv'),modN(),'bad']])]);
-  g.push(['',[['about',L('О нас','Biz haqimizda')],['feedback',L('Написать нам','Bizga yozish')]]]);   // отдельные пункты внизу меню, видны всем
   return g;
 }
-/* сумма оповещений на кнопке ☰: все группы и пункты, кроме каталога и заказов магазина */
-const menuTotal=()=>menuGroups().reduce((a,gr)=>a+gr[1].reduce((b,i)=>b+(i[0]==='shop'||i[0]==='mine'?0:Number(i[2])||0),0),0);
+/* сумма оповещений на кнопке ☰: все строки, кроме каталога и заказов покупателя */
+const menuTotal=()=>menuGroups().reduce((a,gr)=>a+gr[1].reduce((b,i)=>b+(i.k==='shop'||i.k==='mine'?0:Number(i.b)||0),0),0);
 const badgeHTML=(n,c)=>n?' <span class="badge'+(c?' '+c:'')+'">'+n+'</span>':'';
 const menuWide=()=>!!(window.matchMedia&&matchMedia('(min-width:1000px)').matches);
 const menuIsOpen=()=>document.documentElement.classList.contains('mn-open');
-/* раздел, где мы сейчас: у «Продавца» это вкладка продавца, у владельца — подраздел площадки */
-const subHere=(i,x,cur)=>i[5]==='otab'?cur==='owner'&&S.own.sec===x[0]:i[5]==='ctab'?cur==='courier'&&S.cr.tab===x[0]:cur==='seller'&&S.sellerTab===x[0];
-const parentHere=(i,cur)=>i[5]==='otab'?cur==='owner'&&i[4].some(x=>x[0]===S.own.sec):cur===i[0];
-/* Меню-шторка (узкий экран): при каждом открытии все группы свёрнуты, раскрывает человек сам (S.msub — номер раскрытой группы, null и '' — все свёрнуты). На широком экране меню лежит сбоку всегда: там, пока человек ничего не нажимал, раскрыта группа, где он сейчас, а у продавца «Продавец», если он не внутри другой группы (доставки, владельца). */
-const menuSubOpen=(i,cur,gs)=>S.msub!==null?S.msub===i[0]:menuWide()&&(parentHere(i,cur)||(i[0]==='seller'&&!(gs||menuGroups()).some(g=>g[1].some(x=>x[4]&&x[0]!=='seller'&&parentHere(x,cur)))));
-/* Вторая ступень: раскрыта ли компания внутри «Продавец (N)»: при открытии шторки свёрнуты все, на широком экране раскрыта компания, где мы сейчас */
-const menuCoOpen=(did,cur)=>S.msub2!==null?S.msub2===did:menuWide()&&cur==='seller'&&S.did===did;
+const mrowHTML=i=>'<button type="button" class="mi" data-act="'+i.a+'"'+dataAttrs(i.d)+(i.on?' aria-current="page"':'')+'>'+micon(i.i)+'<span class="ml">'+esc(i.n)+'</span>'+(i.cnt?'<span class="mcnt">('+i.cnt+')</span>':'')+badgeHTML(i.b,i.c)+'</button>';
+/* нижний ряд меню: «О нас», «Написать нам» (видны всем), «На главный экран» (пока Telegram это умеет), «Смотреть как» (только владельцу) */
+function menuFootHTML(cur){
+  const cell=(ic,lab,a,d,on)=>'<button type="button" class="fb" data-act="'+a+'"'+dataAttrs(d)+(on?' aria-current="page"':'')+'>'+micon(ic)+'<span>'+lab+'</span></button>';
+  return viewAsListHTML()+'<div class="fbrow">'
+    +cell('info',L('О нас','Biz haqimizda'),'nav',{v:'about'},cur==='about')
+    +cell('msg',L('Написать нам','Bizga yozish'),'nav',{v:'feedback'},cur==='feedback')
+    +(S.hsMenu?cell('home',L('На главный экран','Bosh ekranga'),'hsadd'):'')
+    +viewAsBtnHTML()+'</div>';
+}
+/* «Моя компания» из меню: открытая компания, а если ни одна не открыта, то первая своя; сразу на том разделе, где человек был */
+function coOpen(){
+  const mine=S.auth&&S.hub.me&&S.hub.me.sells||[],id=S.admin&&S.did?S.did:(mine[0]||{}).id;
+  if(id)enterSeller(id,S.sellerTab||'orders');
+}
+function inboxGo(id){if(id==='review'||id==='comm')go(id);else ownOpen(id)}
+/* «Входящие» из меню: первая вкладка, где что-то ждёт решения, а если нигде, то первая */
+function inboxOpen(){const t=inboxTabs(),f=t.find(x=>Number(x[2])>0)||t[0];inboxGo(f[0])}
+/* Полоска разделов вверху экрана: что показывать и какой открыт. У компании продавца сверху ещё переключатель компаний, если их несколько */
+const inboxTab=x=>{const ext=x[0]==='review'||x[0]==='comm';return {id:x[0],n:x[1],b:x[2],c:x[3],a:ext?'nav':'otab',d:ext?{v:x[0]}:{t:x[0]}}};
+function barSpec(){
+  const v=S.view;
+  if(v==='seller'||(v==='comm'&&!commOwn())){
+    const mine=S.auth&&S.hub.me&&S.hub.me.sells||[];
+    return {cos:mine.length>1&&mine.some(x=>x.id===S.did)?mine:[],cur:v==='comm'?'comm':S.sellerTab,
+      tabs:sellerSubs().map(x=>x[0]==='comm'?{id:'comm',n:x[1],b:x[2],c:x[3],a:'nav',d:{v:'comm'}}:{id:x[0],n:x[1],b:x[2],c:x[3],a:'stab',d:{t:x[0]}})};
+  }
+  if(v==='review'||(v==='comm'&&commOwn()))return {cos:[],cur:v==='review'?'review':'comm',tabs:inboxTabs().map(inboxTab)};
+  if(v==='owner'){
+    const gk=ownGroupOf(S.own.sec);
+    if(gk==='inbox')return {cos:[],cur:S.own.sec,tabs:inboxTabs().map(inboxTab)};
+    const gr=ownSecs().find(x=>x[0]===gk);
+    return gr?{cos:[],cur:S.own.sec,tabs:gr[2].map(x=>({id:x[0],n:x[1],b:0,c:'',a:'otab',d:{t:x[0]}}))}:null;
+  }
+  return null;
+}
+function barHTML(){
+  const b=barSpec();
+  if(!b)return '';
+  let h='';
+  if(b.cos.length)h+='<div class="tbar co" role="group" aria-label="'+esc(L('Компания','Kompaniya'))+'">'+b.cos.map(c=>'<button type="button" class="chip" data-act="sof" data-id="'+esc(c.id)+'" data-t="'+esc(S.sellerTab||'orders')+'" aria-pressed="'+(c.id===S.did)+'">'+esc(c.name)+'</button>').join('')+'</div>';
+  return h+'<div class="tbar" role="group" aria-label="'+esc(L('Разделы','Boʻlimlar'))+'">'+b.tabs.map(x=>'<button type="button" class="chip" data-act="'+x.a+'"'+dataAttrs(x.d)+' aria-pressed="'+(b.cur===x.id)+'">'+esc(x.n)+badgeHTML(x.b,x.c)+'</button>').join('')+'</div>';
+}
+/* полоска перерисовывается вместе с меню, чтобы числа на вкладках не отставали; прокрутка в сторону не сбрасывается, а сменившийся раздел ставится по центру */
+function paintBar(){
+  const bar=document.getElementById('tbar');
+  if(!bar)return;
+  const old=bar.querySelector('.tbar:not(.co)'),sl=old?old.scrollLeft:0,b=barSpec();
+  bar.innerHTML=barHTML();
+  const tb=bar.querySelector('.tbar:not(.co)');
+  if(!tb||!b)return;
+  const on=tb.querySelector('[aria-pressed="true"]');
+  if(on&&bar.dataset.cur!==b.cur)tb.scrollLeft=Math.max(0,on.offsetLeft-(tb.clientWidth-on.offsetWidth)/2);
+  else tb.scrollLeft=sl;
+  bar.dataset.cur=b.cur;
+}
 function renderNav(){
-  const cur=S.view==='shops'?'shop':S.view,groups=menuGroups(),multi=groups.filter(gr=>gr[0]).length>1,nav=$('#nav');
+  const cur=S.view==='shops'?'shop':S.view,groups=menuGroups(),nav=$('#nav'),foot=$('#mfoot'),menu=$('#menu');
   let h='';
   groups.forEach(gr=>{
-    if(multi&&gr[0])h+='<div class="mgh" role="presentation">'+gr[0]+'</div>';
-    else if(!gr[0])h+='<div class="mgsep" role="presentation"></div>';
-    gr[1].forEach(i=>{
-      if(i[4]){
-        const open=menuSubOpen(i,cur,groups),chev='<svg class="chev" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-        h+='<button type="button" class="mi mgrp" data-act="msub" data-v="'+i[0]+'" aria-expanded="'+open+'" aria-controls="msub-'+i[0]+'"'+(parentHere(i,cur)?' data-here="1"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])
-          +chev+'</button>'
-          +'<div class="msub" id="msub-'+i[0]+'" role="group" aria-label="'+esc(i[1])+'"'+(open?'':' hidden')+'>'
-          +(i[5]==='sco'?i[4].map(c=>{
-            const here=cur==='seller'&&S.did===c[0],co=menuCoOpen(c[0],cur);   // «Продавец (N)»: компания — вторая ступень со своими разделами
-            return '<button type="button" class="mi mgrp" data-act="msub2" data-v="'+esc(c[0])+'" aria-expanded="'+co+'" aria-controls="msub2-'+esc(c[0])+'"'+(here?' data-here="1"':'')+'><span class="ml">'+esc(c[1])+'</span>'+badgeHTML(c[2],c[3])+chev+'</button>'
-              +'<div class="msub" id="msub2-'+esc(c[0])+'" role="group" aria-label="'+esc(c[1])+'"'+(co?'':' hidden')+'>'
-              +c[4].map(x=>'<button type="button" class="mi" data-act="sof" data-id="'+esc(c[0])+'" data-t="'+x[0]+'"'+(here&&S.sellerTab===x[0]?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join('')+'</div>'}).join(''):i[4].map(x=>'<button type="button" class="mi" data-act="'+(i[5]||'stab')+'" data-t="'+x[0]+'"'+(i[6]?' data-id="'+esc(i[6])+'"':'')+(subHere(i,x,cur)?' aria-current="page"':'')+'><span class="ml">'+x[1]+'</span>'+badgeHTML(x[2],x[3])+'</button>').join(''))+'</div>';
-      }else h+='<button type="button" class="mi" data-act="nav" data-v="'+i[0]+'"'+(cur===i[0]?' aria-current="page"':'')+'><span class="ml">'+i[1]+'</span>'+badgeHTML(i[2],i[3])+'</button>';
-    });
+    if(gr[0])h+='<div class="mgh" role="presentation">'+gr[0]+'</div>';
+    gr[1].forEach(i=>{h+=mrowHTML(i)});
   });
-  h+=hsRowHTML()+viewAsRowHTML();
   // перерисовка не должна сбивать прокрутку и фокус открытого меню
-  const ae=document.activeElement,fk=ae&&nav.contains(ae)?[ae.dataset.act,ae.dataset.v||ae.dataset.t||'']:null,st=nav.scrollTop;
+  const ae=document.activeElement,fk=ae&&menu.contains(ae)?[ae.dataset.act,ae.dataset.v||ae.dataset.t||'']:null,st=nav.scrollTop;
   nav.setAttribute('aria-label',L('Разделы','Boʻlimlar'));
   nav.innerHTML=h;
   nav.scrollTop=st;
-  if(fk){const f=[...nav.querySelectorAll('[data-act]')].find(x=>x.dataset.act===fk[0]&&(x.dataset.v||x.dataset.t||'')===fk[1]&&!x.closest('[hidden]'));if(f)f.focus({preventScroll:true})}
+  if(foot)foot.innerHTML=menuFootHTML(cur);
+  if(fk){const f=[...menu.querySelectorAll('[data-act]')].find(x=>x.dataset.act===fk[0]&&(x.dataset.v||x.dataset.t||'')===fk[1]&&!x.closest('[hidden]'));if(f)f.focus({preventScroll:true})}
   // значок на кнопке ☰: что ждёт решения (новые заказы, товары на проверке или возвращённые)
   const al=menuTotal(),mb=$('#menubadge');
   mb.hidden=!al;mb.textContent=al>99?'99+':String(al);
   const mr=$('#mrole'),rl=roleLine();
   if(mr){mr.hidden=!rl;mr.innerHTML=rl?esc(L('Вы: ','Siz: '))+'<b>'+esc(rl)+'</b>':''}
-  // «Смотреть как» (только владелец): строка внизу меню (viewAsRowHTML) и полоска «Вернуться» над экраном
+  // «Смотреть как» (только владелец): кнопка и список в нижнем ряду меню (menuFootHTML) и полоска «Вернуться» над экраном
   const as=viewAs(),ab=$('#asbar');
   if(ab){
     ab.hidden=!as;
@@ -1469,6 +1536,7 @@ function renderNav(){
     sw.setAttribute('aria-label',L('Язык','Til'));
     sw.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.lg===LANG)));
   });
+  paintBar();
   menuSync();
 }
 /* на широком экране меню стоит слева всегда и окном не бывает */
@@ -1488,10 +1556,8 @@ function menuSet(on){
   $('#menubtn').setAttribute('aria-expanded',String(on));
   if(on){
     menuBack=document.activeElement;
-    // шторка всегда открывается со свёрнутыми группами, даже если их раскрывали в прошлый раз
-    if(S.msub!==null||S.msub2!==null){S.msub=null;S.msub2=null;renderNav()}
-    // фокус на текущем пункте; если он спрятан в свёрнутой группе, то на самой группе
-    const f=[...$('#nav').querySelectorAll('[aria-current="page"],.mgrp[data-here="1"]')].find(x=>!x.closest('[hidden]'))||$('#nav .mi');
+    // фокус на текущем пункте, а если такого нет, то на первом
+    const f=$('#nav [aria-current="page"]')||$('#nav .mi');
     if(f){f.focus({preventScroll:true});try{f.scrollIntoView({block:'nearest'})}catch(e){}}
   }else{
     if(S.vam){S.vam=false;renderNav()}
@@ -2205,7 +2271,7 @@ async function saveProfile(){
 /* ---------- seller ---------- */
 function renderSeller(){
   if(!S.admin){view.innerHTML='<div class="wrap page"><div class="empty"><b>'+L('Раздел для продавца','Sotuvchi boʻlimi')+'</b>'+L('Откройте приложение с правами редактора.','Ilovani muharrir huquqi bilan oching.')+'</div></div>';return}
-  view.innerHTML='<div class="wrap page">'+backHTML()+'<div class="hrow" style="margin-bottom:14px"><div><div class="eyebrow">'+L('Продавец','Sotuvchi')+' · '+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</div><h1 id="stitle"></h1></div></div>'
+  view.innerHTML='<div class="wrap page">'+backHTML()+'<div class="hrow" style="margin-bottom:10px"><div><div class="eyebrow">'+L('Продавец','Sotuvchi')+' · '+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</div><h1 id="stitle"></h1></div></div><div id="tbar"></div>'
     +(S.off?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(L('Владелец площадки скрыл ваш каталог: покупатели его не видят и не могут заказать.','Platforma egasi katalogingizni yashirgan: xaridorlar uni koʻrmaydi va buyurtma bera olmaydi.'))+'</div>':'')
     +'<div id="sbody"></div></div>';
   paintTabs();
@@ -4766,10 +4832,11 @@ function rvList(){
 }
 function renderReview(){
   const v=S.rv;
-  view.innerHTML='<div class="wrap page rvpage"><div class="hrow"><div><div class="eyebrow">'+esc(hubTitle())+'</div><h1>'+L('Проверка товаров','Mahsulotlarni tekshirish')+'</h1></div></div>'
+  view.innerHTML='<div class="wrap page rvpage"><div class="hrow"><div><div class="eyebrow">'+L('Входящие','Kelganlar')+'</div><h1>'+L('Проверка товаров','Mahsulotlarni tekshirish')+'</h1></div></div><div id="tbar"></div>'
     +'<div class="seg s3" id="rvsegs" role="group" aria-label="'+esc(L('Статус','Holat'))+'"></div>'
     +'<div class="search"><input type="search" id="rq" data-rq="1" value="'+esc(v.q)+'" placeholder="'+esc(L('Название, продавец, категория','Nomi, sotuvchi, kategoriya'))+'" autocomplete="off" aria-label="'+esc(L('Поиск','Qidiruv'))+'"></div>'
     +'<div id="rvbody"></div><div id="rvsheet"></div></div>';
+  paintBar();
   paintReview();
 }
 function rvSegsHTML(){
@@ -5042,7 +5109,7 @@ const ABOUT_ROLES=[
   ['Нажмите на категорию: откроется список её продавцов (название, сколько товаров, есть ли доставка и минимальная сумма заказа). Кнопка «← Категории» вернёт назад.','Kategoriyani bosing: uning sotuvchilari roʻyxati ochiladi (nomi, tovarlar soni, yetkazib berish bor-yoʻqligi va minimal buyurtma summasi). «← Kategoriyalar» tugmasi orqaga qaytaradi.'],
   ['В категории «Базары» сначала выберите базар, потом продавца. Продавцы, которые не указали базар, собраны в группе «Без базара».','«Bozorlar» kategoriyasida avval bozorni, keyin sotuvchini tanlang. Bozorini koʻrsatmaganlar «Bozor koʻrsatilmagan» guruhida.'],
   ['Нажмите «Открыть каталог» у нужного. В одной корзине бывают товары только одного продавца.','Kerakli sotuvchida «Katalogni ochish» tugmasini bosing. Bitta savatda faqat bitta sotuvchining tovarlari boʻladi.'],
-  ['Все разделы лежат в меню ☰ слева вверху: нажмите на группу, и она раскроется. Язык переключается кнопками RU | UZ справа вверху.','Barcha boʻlimlar yuqori chapdagi ☰ menyuda: guruhni bossangiz, u ochiladi. Til yuqori oʻngdagi RU | UZ tugmalari bilan almashadi.']]},
+  ['Все разделы лежат в меню ☰ слева вверху: нажмите на нужный пункт. Язык переключается кнопками RU | UZ справа вверху.','Barcha boʻlimlar yuqori chapdagi ☰ menyuda: kerakli bandni bosing. Til yuqori oʻngdagi RU | UZ tugmalari bilan almashadi.']]},
  {img:'shop-catalog',h:['Каталог','Katalog'],cap:['Каталог: фото, цена, остаток','Katalog: rasm, narx, qoldiq'],li:[
   ['В карточке товара: фото (нажмите, и оно откроется на весь экран; листайте свайпом), название, вес, цена и описание. Когда товаров больше восьми, вверху появляется поиск.','Tovar kartochkasida: rasm (bossangiz, butun ekranga ochiladi; suring), nomi, ogʻirligi, narxi va tavsifi. Tovarlar sakkiztadan koʻp boʻlsa, tepada qidiruv paydo boʻladi.'],
   ['Метки «Акция» (старая цена зачёркнута, рядом скидка в процентах) и «Новинка». Сердечко кладёт товар в избранное.','«Aksiya» (eski narx chizilgan, yoniga foiz yozilgan) va «Yangilik» belgilari. Yurakcha tovarni sevimlilarga qoʻshadi.'],
@@ -5079,7 +5146,7 @@ const ABOUT_ROLES=[
   ['Ответит вам владелец площадки прямо в Telegram.','Platforma egasi sizga bevosita Telegramda javob beradi.']]}
  ]},
 {k:'seller',n:['Продавец','Sotuvchi'],
- lead:['Вы продаёте напрямую покупателям и точкам общепита. Вход по личному коду от владельца площадки: откройте бота и отправьте /admin и ваш код. Бот удалит сообщение с кодом, а в меню ☰ появится группа «Продавец». Производители работают здесь же.','Siz xaridorlar va umumiy ovqatlanish nuqtalariga bevosita sotasiz. Kirish platforma egasi bergan shaxsiy kod bilan: botni oching va /admin va kodingizni yuboring. Bot kodli xabarni oʻchiradi, ☰ menyuda esa «Sotuvchi» guruhi paydo boʻladi. Ishlab chiqaruvchilar ham shu yerda ishlaydi.'],
+ lead:['Вы продаёте напрямую покупателям и точкам общепита. Вход по личному коду от владельца площадки: откройте бота и отправьте /admin и ваш код. Бот удалит сообщение с кодом, а в меню ☰ появится пункт «Моя компания». Производители работают здесь же.','Siz xaridorlar va umumiy ovqatlanish nuqtalariga bevosita sotasiz. Kirish platforma egasi bergan shaxsiy kod bilan: botni oching va /admin va kodingizni yuboring. Bot kodli xabarni oʻchiradi, ☰ menyuda esa «Kompaniyam» bandi paydo boʻladi. Ishlab chiqaruvchilar ham shu yerda ishlaydi.'],
  adv:[
   ['Заказы приходят сразу в Telegram и в приложение, ничего не теряется в переписках.','Buyurtmalar darhol Telegramga va ilovaga keladi, yozishmalarda hech narsa yoʻqolmaydi.'],
   ['Каталог с фото, акциями и ценами от количества; остатки сами предупредят, когда товар заканчивается.','Rasmli katalog, aksiyalar va miqdorga qarab narxlar; tovar tugayotganda qoldiq oʻzi ogohlantiradi.'],
@@ -5130,19 +5197,19 @@ const ABOUT_ROLES=[
   ['Наличные копятся у каждого доставщика «на руках». Сдачу денег вы записываете в карточке доставщика, а он подтверждает её кнопкой «Верно». Для каждого можно задать «Срок сдачи».','Naqd pul har bir yetkazuvchining «qoʻlida» yigʻiladi. Pul topshirilishini yetkazuvchi kartochkasida yozasiz, u esa «Toʻgʻri» tugmasi bilan tasdiqlaydi. Har biriga «Topshirish muddati»ni belgilash mumkin.']]},
  {h:['Отчёты, база и настройки','Hisobotlar, baza va sozlamalar'],li:[
   ['«Отчёты»: выручка по дням, неделям и месяцам, ходовые товары, лучшие покупатели, подсказка «что пора закупать» и выгрузка в Excel.','«Hisobotlar»: kunlar, haftalar va oylar boʻyicha tushum, ommabop tovarlar, eng yaxshi xaridorlar, «nimani sotib olish kerak» maslahati va Excelga yuklash.'],
-  ['«База»: общая база покупателей площадки с адресами, телефонами и точкой на карте. «Мои покупатели» оставляет тех, кто заказывал у вас. Заметка, группа и блокировка у каждого продавца свои, другие их не видят.','«Baza»: platformaning umumiy xaridorlar bazasi — manzil, telefon va xaritadagi nuqta bilan. «Mening xaridorlarim» sizdan buyurtma bergan xaridorlarni qoldiradi. Izoh, guruh va bloklash har bir sotuvchida alohida, boshqalar koʻrmaydi.'],
+  ['«Покупатели»: общая база покупателей площадки с адресами, телефонами и точкой на карте. «Мои покупатели» оставляет тех, кто заказывал у вас. Заметка, группа и блокировка у каждого продавца свои, другие их не видят.','«Xaridorlar»: platformaning umumiy xaridorlar bazasi — manzil, telefon va xaritadagi nuqta bilan. «Mening xaridorlarim» sizdan buyurtma bergan xaridorlarni qoldiradi. Izoh, guruh va bloklash har bir sotuvchida alohida, boshqalar koʻrmaydi.'],
   ['«Настройки»: минимальная сумма заказа, стоимость доставки и бесплатная доставка от суммы, часы работы, адрес самовывоза, районы доставки, ссылка на ваш каталог для покупателей, резервная копия.','«Sozlamalar»: buyurtmaning minimal summasi, yetkazib berish narxi va summadan bepul yetkazish, ish vaqti, olib ketish manzili, yetkazib berish tumanlari, xaridorlar uchun katalogingiz havolasi, zaxira nusxa.'],
   ['«Юридическое название» в настройках: полное название компании, как в документах. Покупатели видят его мелким шрифтом под названием в каталоге. Можно не заполнять; владелец площадки тоже может его изменить.','«Yuridik nomi» sozlamalarda: kompaniyaning hujjatlardagi toʻliq nomi. Xaridorlar uni katalogda nom ostida mayda shriftda koʻradi. Toʻldirmasangiz ham boʻladi; platforma egasi ham uni oʻzgartira oladi.'],
   ['«Фото компании» в настройках: нажмите на квадрат и выберите фото или логотип. Покупатели видят его справа в карточке в списке продавцов и рядом с названием в каталоге; пока фото нет, там первая буква названия. Две строки «Адрес или коротко о компании» (по-русски и по-узбекски) стоят под названием в списке и в каталоге: покупатель видит ту, что на его языке. Фото и строку вы ставите сами, их можно не заполнять.','«Kompaniya rasmi» sozlamalarda: kvadratni bosing va rasm yoki logotip tanlang. Xaridorlar uni sotuvchilar roʻyxatidagi kartochkaning oʻng tomonida va katalogda nom yonida koʻradi; rasm boʻlmaguncha nomning birinchi harfi turadi. Ikkita «Manzil yoki kompaniya haqida qisqacha» qatori (ruscha va oʻzbekcha) roʻyxatda va katalogda nom ostida turadi: xaridor oʻz tilidagisini koʻradi. Rasm va qatorni oʻzingiz qoʻyasiz, toʻldirmasangiz ham boʻladi.'],
   ['«Категория» в настройках: выберите, где вас увидят покупатели: Производители, Импортеры, Оптовики, Дистрибьюторы или Базары. Выбор сохраняется сразу. Пока не выбрана, вас показывают в «Дистрибьюторах». Если выбрали «Базары», ниже появится поле «Базар»: выберите свой из списка. Нет своего базара? Выберите другую категорию. Владелец площадки тоже может её поменять.','Sozlamalardagi «Kategoriya»: xaridorlar sizni qayerda koʻrishini tanlang: Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar yoki Bozorlar. Tanlov darhol saqlanadi. Tanlanmaguncha sizni «Distribyutorlar» ichida koʻrsatadi. «Bozorlar»ni tanlasangiz, pastda «Bozor» maydoni chiqadi: roʻyxatdan oʻzingiznikini tanlang. Bozoringiz yoʻqmi? Boshqa kategoriyani tanlang. Platforma egasi ham uni oʻzgartirishi mumkin.'],
   ['«Комиссия»: площадка ведёт учёт комиссии с выданных заказов. Накопленная сумма уменьшается, когда вы вписываете оплаченное, нажимаете «Оплатил», а владелец подтверждает.','«Komissiya»: platforma topshirilgan buyurtmalardan komissiya hisobini yuritadi. Toʻplangan summa siz toʻlanganini yozib «Toʻladim»ni bosganingizda va ega tasdiqlaganida kamayadi.'],
   ['Внизу раздела «Настройки» кнопка «Выйти из роли продавца»: например, когда вы только помогали настроить чужой каталог. Перед выходом приложение сохраняет настройки и спрашивает подтверждение.','«Sozlamalar» boʻlimining pastida «Sotuvchi rolidan chiqish» tugmasi bor: masalan, siz faqat birovning katalogini sozlashga yordam bergan boʻlsangiz. Chiqishdan oldin ilova sozlamalarni saqlaydi va tasdiq soʻraydi.'],
-  ['Если вы продавец в нескольких компаниях, в меню ☰ одна строка «Продавец (число компаний)». Нажмите на неё, и раскроются ваши компании; нажмите на компанию, и раскроются её разделы. Раскрыта одна компания за раз.','Agar siz bir nechta kompaniyada sotuvchi boʻlsangiz, ☰ menyuda bitta «Sotuvchi (kompaniyalar soni)» qatori bor. Uni bossangiz, kompaniyalaringiz ochiladi; kompaniyani bossangiz, uning boʻlimlari ochiladi. Bir vaqtda bitta kompaniya ochiq boʻladi.'],
+  ['Если вы продавец в нескольких компаниях, в меню ☰ одна строка «Мои компании» с числом компаний. Нажмите на неё: вверху экрана переключатель компаний, ниже вкладки разделов. Нажмите на другую компанию, и откроются её разделы.','Agar siz bir nechta kompaniyada sotuvchi boʻlsangiz, ☰ menyuda kompaniyalar soni bilan bitta «Kompaniyalarim» qatori bor. Uni bossangiz: ekran tepasida kompaniyalar almashtirgichi, uning ostida boʻlimlar sahifalari. Boshqa kompaniyani bossangiz, uning boʻlimlari ochiladi.'],
   ['Всё, что бот пишет вам, приходит сразу на двух языках: сверху узбекский, ниже русский. Кнопки подписаны в одну строку на обоих языках.','Bot sizga yozadigan hamma narsa bir vaqtda ikki tilda keladi: tepada oʻzbekcha, pastda ruscha. Tugmalar ikkala tilda bir qatorga yoziladi.'],
   ['В меню ☰ внизу есть «Написать нам»: сообщите об ошибке, предложите новую функцию или напишите о другом. Ваше сообщение получит владелец площадки.','☰ menyuning pastida «Bizga yozish» bor: xato haqida xabar bering, yangi funksiya taklif qiling yoki boshqa narsa haqida yozing. Xabaringizni platforma egasi oladi.']]}
  ]},
 {k:'courier',n:['Доставщик','Yetkazuvchi'],
- lead:['Вы возите заказы продавца. Вход по ссылке-приглашению от него: нажмите её, и бот подтвердит, что вы доставщик. В меню ☰ появится группа «Доставка».','Siz sotuvchi buyurtmalarini yetkazasiz. Kirish u bergan taklif havolasi orqali: uni bosing, bot sizni yetkazuvchi deb tasdiqlaydi. ☰ menyuda «Yetkazib berish» guruhi paydo boʻladi.'],
+ lead:['Вы возите заказы продавца. Вход по ссылке-приглашению от него: нажмите её, и бот подтвердит, что вы доставщик. В меню ☰ появится пункт «Доставка».','Siz sotuvchi buyurtmalarini yetkazasiz. Kirish u bergan taklif havolasi orqali: uni bosing, bot sizni yetkazuvchi deb tasdiqlaydi. ☰ menyuda «Yetkazib berish» bandi paydo boʻladi.'],
  adv:[
   ['Все заказы со всеми данными в одном списке: адрес, телефон, время, точка на карте.','Barcha buyurtmalar barcha maʼlumotlari bilan bitta roʻyxatda: manzil, telefon, vaqt, xaritadagi nuqta.'],
   ['Свободный заказ берёте кнопкой «Взял», и он остаётся за вами.','Boʻsh buyurtmani «Oldim» tugmasi bilan olasiz va u sizda qoladi.'],
@@ -5209,7 +5276,7 @@ const ABOUT_ROLES=[
   ['В меню ☰ внизу есть «Написать нам»: сообщите об ошибке, предложите новую функцию или напишите о другом. Ваше сообщение получит владелец площадки.','☰ menyuning pastida «Bizga yozish» bor: xato haqida xabar bering, yangi funksiya taklif qiling yoki boshqa narsa haqida yozing. Xabaringizni platforma egasi oladi.']]}
  ]},
 {k:'owner',n:['Владелец','Ega'],only:'owner',
- lead:['Вы управляете площадкой: продавцами, агентами, проверкой товаров и деньгами. Группа «Владелец» в меню ☰ видна только вам.','Siz platformani boshqarasiz: sotuvchilar, agentlar, tovarlarni tekshirish va pul. ☰ menyudagi «Egasi» guruhi faqat sizga koʻrinadi.'],
+ lead:['Вы управляете площадкой: продавцами, агентами, проверкой товаров и деньгами. Группа «Площадка» в меню ☰ видна только вам.','Siz platformani boshqarasiz: sotuvchilar, agentlar, tovarlarni tekshirish va pul. ☰ menyudagi «Platforma» guruhi faqat sizga koʻrinadi.'],
  adv:[
   ['Вся площадка в одном месте: продавцы, агенты, склад, проверка товаров, деньги и аналитика.','Butun platforma bir joyda: sotuvchilar, agentlar, ombor, tovarlarni tekshirish, pul va tahlil.'],
   ['Новые товары попадают к покупателям только после вашей проверки.','Yangi tovarlar xaridorlarga faqat sizning tekshiruvingizdan keyin chiqadi.'],
@@ -5217,30 +5284,30 @@ const ABOUT_ROLES=[
   ['Обращения пользователей приходят вам в Telegram, а «Смотреть как» показывает приложение глазами любой роли.','Foydalanuvchilarning murojaatlari sizga Telegramda keladi, «Rol sifatida koʻrish» esa ilovani istalgan rol koʻzi bilan koʻrsatadi.']],
  secs:[
  {img:'ow-dist',h:['Продавцы','Sotuvchilar'],cap:['Продавцы площадки','Platforma sotuvchilari'],li:[
-  ['☰ → «Владелец» → «Продавцы» → «Добавить»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его продавцу, он напишет боту /admin и код.','☰ → «Egasi» → «Sotuvchilar» → «Qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni sotuvchiga yuboring, u botga /admin va kodni yozadi.'],
+  ['☰ → «Площадка» → «Продавцы» → «Добавить»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его продавцу, он напишет боту /admin и код.','☰ → «Platforma» → «Sotuvchilar» → «Qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni sotuvchiga yuboring, u botga /admin va kodni yozadi.'],
   ['Подраздел «Категории»: выберите категорию каждому продавцу (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары), её видят покупатели на первом экране. Продавец может выбрать её и сам; побеждает последнее изменение. Пока категории нет, продавец в «Дистрибьюторах».','«Kategoriyalar» boʻlimi: har bir sotuvchiga kategoriya tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar), xaridorlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha sotuvchi «Distribyutorlar» ichida.'],
   ['Подраздел «Базары»: добавьте базары (название по-русски и по-узбекски, хватит одного), переименуйте или удалите. Продавец категории «Базары» сам выбирает свой базар, а вы можете перевести его в «Категориях». Покупатели видят все ваши базары, и пустые тоже. Если удалить базар, его продавцы остаются в «Базарах» без базара.','«Bozorlar» boʻlimi: bozorlarni qoʻshing (nomi ruscha va oʻzbekcha, bittasi yetarli), nomini oʻzgartiring yoki oʻchiring. «Bozorlar» kategoriyasidagi sotuvchi oʻz bozorini oʻzi tanlaydi, siz esa uni «Kategoriyalar»da boshqasiga oʻtkaza olasiz. Xaridorlar barcha bozorlaringizni, boʻshlarini ham koʻradi. Bozor oʻchirilsa, uning sotuvchilari «Bozorlar»da bozorsiz qoladi.'],
   ['Есть «Новый код» (вошедшие по прежнему коду теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого продавца, вашу компанию, удалить нельзя.','«Yangi kod» (eski kod bilan kirganlar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi sotuvchini, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
  {img:'ow-review',h:['Проверка товаров','Tovarlarni tekshirish'],cap:['Проверка товаров','Tovarlarni tekshirish'],li:[
-  ['Пункт «Проверка» собирает все новые товары продавцов в одном списке с названием продавца. Число на значке — сколько товаров ждёт решения.','«Tekshiruv» boʻlimi sotuvchilarning barcha yangi tovarlarini bitta roʻyxatga sotuvchi nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
+  ['Вкладка «Проверка товаров» в разделе «Входящие» собирает все новые товары продавцов в одном списке с названием продавца. Число на значке — сколько товаров ждёт решения.','«Kelganlar» boʻlimidagi «Mahsulotlarni tekshirish» sahifasi sotuvchilarning barcha yangi tovarlarini bitta roʻyxatga sotuvchi nomi bilan yigʻadi. Belgidagi raqam nechta tovar qaror kutayotganini koʻrsatadi.'],
   ['Исправьте ошибки в карточке сами или нажмите «Вернуть» и напишите причину: продавец её увидит. «Одобрить» открывает товар покупателям. Ваши товары одобряются сразу.','Kartochkadagi xatolarni oʻzingiz tuzating yoki «Qaytarish»ni bosib sababini yozing: sotuvchi uni koʻradi. «Tasdiqlash» tovarni xaridorlarga ochadi. Oʻzingizning tovarlaringiz darhol tasdiqlanadi.'],
-  ['Видео товаров бот выкладывает в канал сразу, заранее они не проверяются. В меню «Площадка» → «Видео» меняется канал (бот должен быть его администратором) и виден список всех видео: «Смотреть» открывает ролик, «Убрать видео» удаляет его. Под каждым новым видео в канале стоит кнопка «Открыть в приложении»: она открывает приложение на этом товаре. Подпись под видео (цена, акция, упаковка, описание) обновляется сама; кнопка «Обновить подписи в канале» в «Площадка → Видео» исправляет все сразу.','Tovar videolarini bot kanalga darhol joylaydi, oldindan tekshirilmaydi. «Platforma» → «Video» menyusida kanal oʻzgartiriladi (bot uning administratori boʻlishi kerak) va barcha videolar roʻyxati koʻrinadi: «Koʻrish» videoni ochadi, «Videoni olib tashlash» oʻchiradi. Har bir yangi video ostida «Ilovada ochish» tugmasi turadi: u ilovani shu tovarda ochadi. Video izohi (narx, aksiya, qadoq, tavsif) oʻzi yangilanadi; «Platforma → Video» boʻlimidagi «Kanaldagi izohlarni yangilash» tugmasi hammasini birdan tuzatadi.']]},
+  ['Видео товаров бот выкладывает в канал сразу, заранее они не проверяются. В меню «Площадка» → «Настройки» → «Видео» меняется канал (бот должен быть его администратором) и виден список всех видео: «Смотреть» открывает ролик, «Убрать видео» удаляет его. Под каждым новым видео в канале стоит кнопка «Открыть в приложении»: она открывает приложение на этом товаре. Подпись под видео (цена, акция, упаковка, описание) обновляется сама; кнопка «Обновить подписи в канале» в «Площадка → Настройки → Видео» исправляет все сразу.','Tovar videolarini bot kanalga darhol joylaydi, oldindan tekshirilmaydi. «Platforma» → «Sozlamalar» → «Video» menyusida kanal oʻzgartiriladi (bot uning administratori boʻlishi kerak) va barcha videolar roʻyxati koʻrinadi: «Koʻrish» videoni ochadi, «Videoni olib tashlash» oʻchiradi. Har bir yangi video ostida «Ilovada ochish» tugmasi turadi: u ilovani shu tovarda ochadi. Video izohi (narx, aksiya, qadoq, tavsif) oʻzi yangilanadi; «Platforma → Sozlamalar → Video» boʻlimidagi «Kanaldagi izohlarni yangilash» tugmasi hammasini birdan tuzatadi.']]},
  {img:'ow-people',h:['Люди, агенты и территории','Odamlar, agentlar va hududlar'],cap:['Люди и территории','Odamlar va hududlar'],li:[
-  ['«Территории»: создайте районы и города, по которым работают агенты. «Агенты»: список агентов; у каждого видно территории, их меняет кнопка «Изменить», есть «Новый код» и своя ссылка. «Добавить агента»: имя, территории и личный код (он показывается один раз).','«Hududlar»: agentlar ishlaydigan tuman va shaharlarni yarating. «Agentlar»: agentlar roʻyxati; har birining hududlari koʻrinadi, ularni «Oʻzgartirish» tugmasi almashtiradi, «Yangi kod» va oʻz havolasi bor. «Agent qoʻshish»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi).'],
+  ['Раздел «Команда», вкладка «Территории»: создайте районы и города, по которым работают агенты. «Агенты»: список агентов; у каждого видно территории, их меняет кнопка «Изменить», есть «Новый код» и своя ссылка. «Добавить агента»: имя, территории и личный код (он показывается один раз).','«Jamoa» boʻlimi, «Hududlar» sahifasi: agentlar ishlaydigan tuman va shaharlarni yarating. «Agentlar»: agentlar roʻyxati; har birining hududlari koʻrinadi, ularni «Oʻzgartirish» tugmasi almashtiradi, «Yangi kod» va oʻz havolasi bor. «Agent qoʻshish»: ism, hududlar va shaxsiy kod (bir marta koʻrsatiladi).'],
   ['«Люди»: все, кто открывал приложение или писал боту, и их роли: владелец, продавец, агент, доставщик или покупатель.','«Odamlar»: ilovani ochgan yoki botga yozgan hamma va ularning rollari: ega, sotuvchi, agent, yetkazuvchi yoki xaridor.']]},
  {h:['Склад и Базары','Ombor va bozorlar'],li:[
-  ['☰ → «Владелец» → «Люди и территории» → «Склад»: впишите имя кладовщика (можно привязать к одному базару), нажмите «Добавить кладовщика» и сохраните личный код: он показывается один раз. Кладовщика можно отключить, сменить ему базар или выдать новый код.','☰ → «Ega» → «Odamlar va hududlar» → «Ombor»: omborchi ismini yozing (bitta bozorga biriktirish mumkin), «Omborchi qoʻshish»ni bosing va shaxsiy kodni saqlang: u bir marta koʻrsatiladi. Omborchini oʻchirib qoʻyish, bozorini almashtirish yoki yangi kod berish mumkin.'],
+  ['☰ → «Площадка» → «Команда» → «Склад»: впишите имя кладовщика (можно привязать к одному базару), нажмите «Добавить кладовщика» и сохраните личный код: он показывается один раз. Кладовщика можно отключить, сменить ему базар или выдать новый код.','☰ → «Platforma» → «Jamoa» → «Ombor»: omborchi ismini yozing (bitta bozorga biriktirish mumkin), «Omborchi qoʻshish»ni bosing va shaxsiy kodni saqlang: u bir marta koʻrsatiladi. Omborchini oʻchirib qoʻyish, bozorini almashtirish yoki yangi kod berish mumkin.'],
   ['Там же ставка перевозки: по умолчанию 500 сум за 1 кг (0 — перевозка бесплатна). Берётся та, что действует в момент приёма заказа.','U yerda tashish stavkasi ham bor: odatda 1 kg uchun 500 soʻm (0 — tashish bepul). Buyurtma qabul qilingan paytdagi stavka olinadi.'],
-  ['☰ → «Владелец» → «Продавцы» → «Базары»: у каждого базара два поля «Как это работает» (русский и узбекский). Первая строка заголовок, остальные шаги. Текст видят покупатели над списком продавцов базара.','☰ → «Ega» → «Sotuvchilar» → «Bozorlar»: har bir bozorda ikkita «Bu qanday ishlaydi» maydoni bor (ruscha va oʻzbekcha). Birinchi qator sarlavha, qolganlari qadamlar. Matnni xaridorlar bozor sotuvchilari roʻyxati ustida koʻradi.']]},
+  ['☰ → «Площадка» → «Продавцы» → «Базары»: у каждого базара два поля «Как это работает» (русский и узбекский). Первая строка заголовок, остальные шаги. Текст видят покупатели над списком продавцов базара.','☰ → «Platforma» → «Sotuvchilar» → «Bozorlar»: har bir bozorda ikkita «Bu qanday ishlaydi» maydoni bor (ruscha va oʻzbekcha). Birinchi qator sarlavha, qolganlari qadamlar. Matnni xaridorlar bozor sotuvchilari roʻyxati ustida koʻradi.']]},
  {h:['Деньги, аналитика и площадка','Pul, tahlil va platforma'],li:[
-  ['«Деньги → Спорные записи»: спорные записи по всем продавцам, закрываются с комментарием.','«Pul → Bahsli yozuvlar»: barcha sotuvchilar boʻyicha bahsli yozuvlar, izoh bilan yopiladi.'],
-  ['«Комиссия»: сводка по продавцам, накопленное и оплаченное; оплаты продавцов вы подтверждаете. Процент можно задать каждому отдельно.','«Komissiya»: sotuvchilar boʻyicha xulosa, toʻplangan va toʻlangan; sotuvchilar toʻlovlarini siz tasdiqlaysiz. Foizni har biriga alohida belgilash mumkin.'],
+  ['«Входящие → Спорные записи»: спорные записи по всем продавцам, закрываются с комментарием.','«Kelganlar → Bahsli yozuvlar»: barcha sotuvchilar boʻyicha bahsli yozuvlar, izoh bilan yopiladi.'],
+  ['«Входящие → Платежи комиссии»: сводка по продавцам, накопленное и оплаченное; оплаты продавцов вы подтверждаете. Процент можно задать каждому отдельно.','«Kelganlar → Komissiya toʻlovlari»: sotuvchilar boʻyicha xulosa, toʻplangan va toʻlangan; sotuvchilar toʻlovlarini siz tasdiqlaysiz. Foizni har biriga alohida belgilash mumkin.'],
   ['«Аналитика»: продажи по категориям, товарам и покупателям за выбранный период, по всем продавцам или по одному.','«Tahlil»: tanlangan davr uchun kategoriyalar, tovarlar va xaridorlar boʻyicha sotuvlar — barcha sotuvchilar yoki bittasi boʻyicha.'],
-  ['«Площадка»: название, этот экран «О нас» с контактами и «База покупателей» (перенос покупателей продавцов в общую базу).','«Platforma»: nomi, kontaktlar bilan shu «Biz haqimizda» ekrani va «Xaridorlar bazasi» (sotuvchilar xaridorlarini umumiy bazaga koʻchirish).']]},
+  ['«Настройки»: название, этот экран «О нас» с контактами и «Видео». «Команда → Перенос покупателей»: перенос покупателей продавцов в общую базу.','«Sozlamalar»: nomi, kontaktlar bilan shu «Biz haqimizda» ekrani va «Video». «Jamoa → Xaridorlarni oʻtkazish»: sotuvchilar xaridorlarini umumiy bazaga koʻchirish.']]},
  {img:'ow-fb',h:['Обращения и «Смотреть как»','Murojaatlar va «Rol sifatida koʻrish»'],cap:['Раздел «Обращения»','«Murojaatlar» boʻlimi'],li:[
-  ['Что пишут люди через «Написать нам»: ☰ → «Владелец» → «Площадка» → «Обращения». Бот присылает сообщение: тема, текст, имя, телефон, @логин и роль человека. Отвечаете вы сами, в Telegram.','Odamlar «Bizga yozish» orqali nima yozayotgani: ☰ → «Ega» → «Platforma» → «Murojaatlar». Bot xabar yuboradi: mavzu, matn, ism, telefon, @login va odamning roli. Javobni oʻzingiz, Telegramda berasiz.'],
-  ['Вкладки «Новые», «Решено» и «Все». Ответили: нажмите «Решено». На пункте меню красный значок с числом новых.','«Yangilar», «Hal qilingan» va «Hammasi» sahifalari. Javob berdingiz: «Hal qilindi»ni bosing. Menyu bandida yangilari soni bilan qizil belgi turadi.'],
-  ['«Смотреть как»: строка внизу меню. Выберите роль, и приложение покажет себя глазами Покупателя, Продавца, Доставщика или Агента. Меняется только вид, права остаются вашими.','«Rol sifatida koʻrish»: menyu pastidagi qator. Rolni tanlang va ilova oʻzini Xaridor, Sotuvchi, Yetkazuvchi yoki Agent koʻzi bilan koʻrsatadi. Faqat koʻrinish oʻzgaradi, huquqlar sizniki boʻlib qoladi.'],
+  ['Что пишут люди через «Написать нам»: ☰ → «Площадка» → «Входящие» → «Обращения». Бот присылает сообщение: тема, текст, имя, телефон, @логин и роль человека. Отвечаете вы сами, в Telegram.','Odamlar «Bizga yozish» orqali nima yozayotgani: ☰ → «Platforma» → «Kelganlar» → «Murojaatlar». Bot xabar yuboradi: mavzu, matn, ism, telefon, @login va odamning roli. Javobni oʻzingiz, Telegramda berasiz.'],
+  ['Вкладки «Новые», «Решено» и «Все». Ответили: нажмите «Решено». На пункте «Входящие» красный значок с числом новых.','«Yangilar», «Hal qilingan» va «Hammasi» sahifalari. Javob berdingiz: «Hal qilindi»ni bosing. «Kelganlar» bandida yangilari soni bilan qizil belgi turadi.'],
+  ['«Смотреть как»: значок-глаз внизу меню. Нажмите его, выберите роль, и приложение покажет себя глазами Покупателя, Продавца, Доставщика или Агента. Меняется только вид, права остаются вашими.','«Rol sifatida koʻrish»: menyu pastidagi koʻz belgisi. Uni bosing, rolni tanlang va ilova oʻzini Xaridor, Sotuvchi, Yetkazuvchi yoki Agent koʻzi bilan koʻrsatadi. Faqat koʻrinish oʻzgaradi, huquqlar sizniki boʻlib qoladi.'],
   ['Всё, что бот пишет вам, приходит сразу на двух языках: сверху узбекский, ниже русский. Кнопки подписаны в одну строку на обоих языках.','Bot sizga yozadigan hamma narsa bir vaqtda ikki tilda keladi: tepada oʻzbekcha, pastda ruscha. Tugmalar ikkala tilda bir qatorga yoziladi.']]}
  ]}
 ];
@@ -5352,7 +5419,7 @@ function go(v){
   if(v==='base'&&was!=='base')baseResetUI();
   if(v==='feedback'&&was!=='feedback'){S.fb.sent='';S.fb.err=''}
   if(v==='shops'){S.shopsCat='';S.shopsBz=''}
-  S.view=v;S.cc=null;S.cp=null;S.msub=null;S.msub2=null;setScrollLock();
+  S.view=v;S.cc=null;S.cp=null;setScrollLock();
   render();window.scrollTo(0,0);
   if(v==='mine')loadMine();
   if(v==='debt')loadMyDebt(true);
@@ -5762,7 +5829,6 @@ async function enterShop(did,v,cart){
 }
 /* раздел продавца из меню, когда его компания не открыта: открываем компанию и сразу нужный раздел */
 async function enterSeller(did,tab){
-  S.msub2=null;
   if(!(await openShop(did))){if(!S.did)S.view='shops';render();return false}
   S.shopPlaced=null;S.shopStep='list';
   if(!S.admin){go('shop');return false}
@@ -6445,7 +6511,8 @@ function commOwnerHTML(){
 }
 function renderComm(){
   const own=commOwn();
-  view.innerHTML='<div class="wrap page"><div class="eyebrow">'+L('Работа','Ish')+'</div><h1>'+L('Комиссия','Komissiya')+'</h1>'+(own?commOwnerHTML():commSellerHTML())+'</div>';
+  view.innerHTML='<div class="wrap page"><div class="eyebrow">'+(own?L('Входящие','Kelganlar'):L('Продавец','Sotuvchi')+' · '+esc(S.cfg.shop.name||DEFAULT.shop.name))+'</div><h1>'+L('Комиссия','Komissiya')+'</h1><div id="tbar"></div>'+(own?commOwnerHTML():commSellerHTML())+'</div>';
+  paintBar();
 }
 async function commSend(){
   const c=S.cm;if(c.busy)return;
@@ -6491,12 +6558,12 @@ async function commAddOwn(did){
   await loadCommOwner();
   renderComm();renderNav();
 }
-/* раздел владельца: каждый блок на своём экране, заходят в него из меню ☰ (категория → подраздел) */
+/* разделы владельца: каждая группа — строка меню ☰, её подразделы — вкладки вверху экрана. «Входящие» дополняют ещё два экрана: проверка товаров и платежи комиссии (inboxTabs) */
 const ownSecs=()=>[
   ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['cats',L('Категории','Kategoriyalar'),L('Категории продавцов','Sotuvchi kategoriyalari')],['bz',L('Базары','Bozorlar'),L('Базары','Bozorlar')],['add',L('Добавить','Qoʻshish'),L('Добавить продавца','Sotuvchi qoʻshish')]]],
-  ['team',L('Люди и территории','Odamlar va hududlar'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['agadd',L('Добавить агента','Agent qoʻshish'),L('Добавить агента','Agent qoʻshish')],['wh',L('Склад','Ombor'),L('Склад','Ombor')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')]]],
-  ['money',L('Деньги','Pul'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')]]],
-  ['site',L('Площадка','Platforma'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['clients',L('База покупателей','Xaridorlar bazasi'),L('База покупателей','Xaridorlar bazasi')],['video',L('Видео','Video'),L('Видео товаров','Mahsulot videolari')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]]
+  ['team',L('Команда','Jamoa'),[['people',L('Люди','Odamlar'),L('Люди','Odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['agadd',L('Добавить агента','Agent qoʻshish'),L('Добавить агента','Agent qoʻshish')],['wh',L('Склад','Ombor'),L('Склад','Ombor')],['terr',L('Территории','Hududlar'),L('Территории','Hududlar')],['clients',L('Перенос покупателей','Xaridorlarni oʻtkazish'),L('База покупателей','Xaridorlar bazasi')]]],
+  ['inbox',L('Входящие','Kelganlar'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]],
+  ['site',L('Настройки','Sozlamalar'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['video',L('Видео','Video'),L('Видео товаров','Mahsulot videolari')]]]
 ];
 function ownSecInfo(sec){
   for(const g of ownSecs()){const x=g[2].find(y=>y[0]===sec);if(x)return {group:g[1],title:x[2]}}
@@ -6505,7 +6572,7 @@ function ownSecInfo(sec){
 function ownOpen(sec){
   S.own.sec=sec;S.own.perr='';
   if(S.view!=='owner')go('owner');
-  else{S.msub=null;S.msub2=null;renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb();if(sec==='video')loadOwnerVid()}
+  else{renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb();if(sec==='video')loadOwnerVid()}
 }
 function ownMadeHTML(){
   const o=S.own;let h='';
@@ -6670,7 +6737,7 @@ function ownTitleHTML(){
 }
 function renderOwner(){
   const o=S.own,sec=o.sec||'dist',info=ownSecInfo(sec);
-  let h='<div class="wrap page"><button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все продавцы','Barcha sotuvchilar')+'</button><div class="eyebrow" style="margin-top:12px">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1>';
+  let h='<div class="wrap page"><button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все продавцы','Barcha sotuvchilar')+'</button><div class="eyebrow" style="margin-top:12px">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1><div id="tbar"></div>';
   if(!o.loaded)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
@@ -6687,6 +6754,7 @@ function renderOwner(){
     else h+=ownPeopleHTML(sec);
   }
   view.innerHTML=h+'</div>';
+  paintBar();
 }
 async function ownAdd(){
   const o=S.own;if(o.busy)return;
@@ -7112,8 +7180,8 @@ document.addEventListener('click',e=>{
   else if(a==='hsno')hsHide();
   else if(a==='viewas')setViewAs(t.dataset.v||'');
   else if(a==='vasw'){S.vam=!S.vam;renderNav();if(S.vam){const l=$('#masl');if(l)try{l.scrollIntoView({block:'nearest'})}catch(e){}}}
-  else if(a==='msub'){const it=menuGroups().reduce((r,g)=>r.concat(g[1]),[]).find(x=>x[0]===t.dataset.v),cur=S.view==='shops'?'shop':S.view;S.msub=it&&menuSubOpen(it,cur)?'':t.dataset.v;S.msub2=null;renderNav()}
-  else if(a==='msub2'){const cur=S.view==='shops'?'shop':S.view;S.msub2=menuCoOpen(t.dataset.v,cur)?'':t.dataset.v;renderNav()}
+  else if(a==='coopen'){menuSet(false);coOpen()}
+  else if(a==='inbox'){menuSet(false);inboxOpen()}
   else if(a==='shops')go('shops');
   else if(a==='opencat'){if(SHOP_CATS.includes(t.dataset.k)){S.shopsCat=t.dataset.k;S.shopsBz='';renderShops();window.scrollTo(0,0)}}
   else if(a==='catback'){S.shopsCat='';S.shopsBz='';renderShops();window.scrollTo(0,0)}

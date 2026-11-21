@@ -7988,11 +7988,11 @@ await t('меню: значки по одному правилу: пункт —
   assert.ok(/\['orders',L\('Заказы','Buyurtmalar'\),newCount\(\)\]/.test(subs), 'у «Продавец → Заказы» число новых заказов (раньше значка не было, хотя у группы он был)');
   assert.ok(/const subSum=subs=>subs\.reduce\(\(a,x\)=>a\+\(Number\(x\[2\]\)\|\|0\),0\)/.test(html), 'сумма пунктов считается одним местом');
   const mg = fn('menuGroups');
-  assert.ok(/work\.push\(\['seller',L\('Продавец','Sotuvchi'\),subSum\(sb\),''/.test(mg), 'число группы «Продавец» — сумма её пунктов');
-  assert.ok(/work\.push\(\['courier',L\('Доставка','Yetkazib berish'\),subSum\(cb\),''/.test(mg), 'число группы «Доставка» — сумма её пунктов');
-  assert.ok(/subSum\(sb\),'bad',sb,'otab'/.test(mg), 'число группы владельца — сумма её пунктов');
-  assert.ok(!/\['seller',L\('Продавец','Sotuvchi'\),newCount\(\)/.test(mg) && !/\['courier',L\('Доставка','Yetkazib berish'\),crFree\(\)/.test(mg), 'у групп больше нет своих отдельных формул');
-  assert.ok(/const menuTotal=\(\)=>menuGroups\(\)\.reduce/.test(html) && /i\[0\]==='shop'\|\|i\[0\]==='mine'\?0:/.test(html), '☰ считается по тем же группам, кроме каталога и заказов покупателя');
+  assert.ok(/k:'seller'[^\n]*b:open\?subSum\(sellerSubs\(\)\):0/.test(mg), 'число строки «Моя компания» — сумма её вкладок');
+  assert.ok(/k:'courier'[^\n]*b:subSum\(crTabs\(\)\)/.test(mg), 'число строки «Доставка» — сумма её вкладок');
+  assert.ok(/k:'inbox'[^\n]*b:subSum\(inboxTabs\(\)\)/.test(mg), 'число строки «Входящие» — сумма её вкладок');
+  assert.ok(!/k:'seller'[^\n]*newCount\(\)/.test(mg) && !/k:'courier'[^\n]*crFree\(\)/.test(mg), 'у строк больше нет своих отдельных формул');
+  assert.ok(/const menuTotal=\(\)=>menuGroups\(\)\.reduce/.test(html) && /i\.k==='shop'\|\|i\.k==='mine'\?0:/.test(html), '☰ считается по тем же строкам, кроме каталога и заказов покупателя');
   assert.ok(/const al=menuTotal\(\),mb=\$\('#menubadge'\)/.test(fn('renderNav')), 'значок на ☰ берёт число из menuTotal, а не из своей формулы');
   assert.ok(!/newCount\(\)\+modRetN\(\)/.test(fn('renderNav')), 'старой отдельной формулы на ☰ нет');
   const cl = fn('loadCourier') + fn('loadCrDebts');
@@ -8062,10 +8062,10 @@ await t('«О нас»: скриншоты лежат в worker и отдают�
 await t('«О нас»: пункт меню последний и виден всем, роли раскрываются по одной, «Владелец» только владельцу', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
-  const mg = fn('menuGroups');
-  assert.ok(/g\.push\(\['',\[\['about',L\('О нас','Biz haqimizda'\)\],\['feedback',L\('Написать нам','Bizga yozish'\)\]\]\]\);\s*\/\/[^\n]*\n\s*return g;/.test(mg), 'пункты «О нас» и «Написать нам» добавляются последними, без заголовка группы, для всех ролей');
-  assert.ok(mg.indexOf("g.push(['',[['about'") > mg.lastIndexOf('if(isOwner()&&!as)g.push('), '«О нас» стоит после группы владельца и остальных групп');
-  assert.ok(/\.mgsep/.test(html), 'перед ним тонкая черта, не заголовок группы');
+  const mf = fn('menuFootHTML');
+  assert.ok(/cell\('info',L\('О нас','Biz haqimizda'\),'nav',\{v:'about'\}[^\n]*\n\s*\+cell\('msg',L\('Написать нам','Bizga yozish'\),'nav',\{v:'feedback'\}/.test(mf), '«О нас» и «Написать нам» стоят в нижнем ряду меню первыми и видны всем ролям');
+  assert.ok(/foot\.innerHTML=menuFootHTML\(cur\)/.test(fn('renderNav')) && /id="mfoot"/.test(html), 'нижний ряд рисуется вместе с меню и вне списка пунктов, поэтому всегда на виду');
+  assert.ok(!/\['about',L\('О нас'/.test(fn('menuGroups')), 'в самом списке пунктов «О нас» больше нет');
   assert.ok(/else if\(S\.view==='about'\)renderAbout\(\)/.test(fn('render')) && /if\(v==='about'\)loadHub\(\)/.test(fn('go')), 'экран открывается и подгружает данные площадки');
   assert.ok(/v==='about'/.test(html.slice(html.indexOf("QS.get('v')"), html.indexOf("QS.get('v')") + 800)) || /'about'/.test(html.slice(html.indexOf("vw=QS.get('v')"))), 'открывается по ссылке ?v=about');
   // тексты ролей
@@ -8127,7 +8127,7 @@ await t('«Смотреть как»: роли в списке, только в�
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const i0 = html.indexOf('function asRoles()'), i1 = html.indexOf('/* Правило значков в меню:');
   assert.ok(i0 > 0 && i1 > i0, 'блок «Смотреть как» на месте');
-  const mk = S => new Function('S', 'L', 'esc', html.slice(i0, i1) + '; return {asRoles,viewAs,asName,viewAsRowHTML};')(S, (ru) => ru, x => String(x));
+  const mk = S => new Function('S', 'L', 'esc', 'micon', html.slice(i0, i1) + '; return {asRoles,viewAs,asName,viewAsBtnHTML,viewAsListHTML};')(S, (ru) => ru, x => String(x), k => '<svg data-i="' + k + '"></svg>');
   const hub = me => ({ auth: true, hub: { me }, as: '' });
   // не владелец: ни списка, ни режима, даже если значение подсунуть
   for (const me of [{ owner: false, sells: [{ id: 'a' }], delivers: [], agent: null }, { owner: false, sells: [], delivers: [{ id: 'a' }], agent: { id: 'x' } }, null]) {
@@ -8151,10 +8151,10 @@ await t('«Смотреть как»: роли в списке, только в�
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
   const mg = fn('menuGroups');
   assert.ok(/const g=\[\],as=viewAs\(\)/.test(mg), 'меню учитывает режим');
-  assert.ok(/if\(!as\|\|as==='shop'\)g\.push\(\[L\('Покупатель'/.test(mg), 'группа покупателя: в обычном режиме и в режиме покупателя');
-  assert.ok(/S\.admin&&S\.did&&\(!as\|\|as==='seller'\)/.test(mg) && /S\.courier&&S\.did&&\(!as\|\|as==='courier'\)/.test(mg), 'продавец и доставка только в своих режимах');
-  assert.ok(/canBase\(\)&&\(!as\|\|as==='seller'\|\|as==='agent'\)/.test(mg), 'База: продавцу и агенту');
-  assert.ok(/\(!as\|\|as==='seller'\)&&commOn\(\)/.test(mg) && /isOwner\(\)&&!as/.test(mg), 'комиссия: в обычном режиме и в режиме продавца, группа владельца только в обычном');
+  assert.ok(/if\(!as\|\|as==='shop'\)g\.push\(\['',top\]\)/.test(mg), 'каталог и заказы покупателя: в обычном режиме и в режиме покупателя');
+  assert.ok(/\(!as\|\|as==='seller'\)&&\(open\|\|mine\.length\)/.test(mg) && /S\.courier&&S\.did&&\(!as\|\|as==='courier'\)/.test(mg), 'продавец и доставка только в своих режимах');
+  assert.ok(/canBase\(\)&&\(!as\|\|as==='seller'\|\|as==='agent'\)/.test(mg), 'Покупатели (база): продавцу и агенту');
+  assert.ok(/commOn\(\)&&!commOwn\(\)/.test(html.slice(html.indexOf('const sellerSubs='), html.indexOf('/* Роли человека'))) && /isOwner\(\)&&!as/.test(mg), 'комиссия: вкладка у компании продавца (и у владельца в режиме продавца), строки площадки только в обычном режиме');
   assert.ok(/const commOwn=\(\)=>isOwner\(\)&&viewAs\(\)!=='seller'/.test(html), 'владелец в режиме продавца смотрит комиссию как продавец');
   const cmSrc = html.slice(html.indexOf('const commOwn='), html.indexOf('const CM_ST='));
   assert.ok(/const commOn=\(\)=>commOwn\(\)\|\|/.test(cmSrc) && /const commBadge=\(\)=>commOwn\(\)\?/.test(cmSrc), 'пункт и значок комиссии идут по commOwn');
@@ -8165,9 +8165,10 @@ await t('«Смотреть как»: роли в списке, только в�
   assert.ok(/\$\('#asbar'\)/.test(rn) && /as-on/.test(rn), 'меню рисует полоску');
   assert.ok(!/\$\('#mas'\)/.test(rn), 'кнопки ролей больше не рисуются под строкой «Вы:»');
   assert.ok(/data-act="viewas" data-v="">'\+esc\(L\('Вернуться'/.test(rn), 'в полоске кнопка «Вернуться»');
-  // строка внизу меню: после всех групп и «О нас», до записи в #nav
-  const ri = [rn.indexOf('groups.forEach'), rn.indexOf('+viewAsRowHTML();'), rn.indexOf('nav.innerHTML=h')];
-  assert.ok(ri.every(x => x > 0) && ri[0] < ri[1] && ri[1] < ri[2], 'строка «Смотреть как» добавляется в самый низ меню, после «О нас»: ' + ri);
+  // кнопка-глаз внизу меню: в одном ряду с «О нас», список выезжает над рядом
+  const mf = fn('menuFootHTML');
+  const ri = [mf.indexOf("cell('info'"), mf.indexOf('+viewAsBtnHTML()'), mf.indexOf('viewAsListHTML()+')];
+  assert.ok(ri.every(x => x >= 0) && ri[0] > ri[2] && ri[1] > ri[0], 'в нижнем ряду «Смотреть как» стоит после «О нас», список — перед рядом: ' + ri);
   assert.ok(/L\('Смотреть как','Rol sifatida koʻrish'\)/.test(html) && /L\('Все мои роли','Barcha rollarim'\)/.test(html), 'подписи строки на двух языках');
   assert.ok(/else if\(a==='viewas'\)setViewAs\(/.test(html), 'выбор роли обрабатывается');
   assert.ok(/else if\(a==='vasw'\)\{S\.vam=!S\.vam;renderNav\(\)/.test(html), 'нажатие на строку раскрывает и сворачивает список');
@@ -8175,18 +8176,18 @@ await t('«Смотреть как»: роли в списке, только в�
   assert.ok(/vam:false/.test(html), 'список свёрнут на старте');
   // сама строка: только владельцу, по умолчанию свёрнута, роли только его
   const none = mk(hub({ owner: false, sells: [{ id: 'a' }], delivers: [], agent: null }));
-  assert.equal(none.viewAsRowHTML(), '', 'не владельцу строки нет');
+  assert.equal(none.viewAsBtnHTML() + none.viewAsListHTML(), '', 'не владельцу ни кнопки, ни списка');
   const ow = hub({ owner: true, sells: [{ id: 'a' }], delivers: [], agent: { id: 'x' } });
-  let row = mk(ow).viewAsRowHTML();
-  assert.ok(row.includes('Смотреть как') && row.includes('data-act="vasw"') && row.includes('aria-expanded="false"') && /id="masl"[^>]* hidden/.test(row), 'свёрнута: видна только строка');
-  assert.ok(/<span class="chip">Все мои роли/.test(row), 'в строке сейчас выбранное: «Все мои роли»');
-  assert.deepEqual([...row.matchAll(/data-act="viewas" data-v="([^"]*)"/g)].map(x => x[1]), ['', 'shop', 'seller', 'agent'], 'в списке «Все мои роли» и только его роли');
-  assert.ok(/data-v="" aria-pressed="true"/.test(row) && /data-v="seller" aria-pressed="false"/.test(row), 'выбранная помечена');
-  ow.as = 'seller'; ow.vam = true; row = mk(ow).viewAsRowHTML();
-  assert.ok(/<span class="chip">Продавец/.test(row) && row.includes('aria-expanded="true"') && !/id="masl"[^>]* hidden/.test(row), 'в режиме «Продавец»: роль в строке, список раскрыт');
-  assert.ok(/data-v="seller" aria-pressed="true"/.test(row), 'активна «Продавец»');
+  let btn = mk(ow).viewAsBtnHTML(), list = mk(ow).viewAsListHTML();
+  assert.ok(btn.includes('Смотреть как') && btn.includes('data-act="vasw"') && btn.includes('data-i="eye"') && btn.includes('aria-expanded="false"') && !btn.includes('aria-current'), 'свёрнуто: кнопка-глаз без отметки');
+  assert.ok(/id="masl"[^>]* hidden/.test(list), 'список скрыт');
+  assert.deepEqual([...list.matchAll(/data-act="viewas" data-v="([^"]*)"/g)].map(x => x[1]), ['', 'shop', 'seller', 'agent'], 'в списке «Все мои роли» и только его роли');
+  assert.ok(/data-v="" aria-pressed="true"/.test(list) && /data-v="seller" aria-pressed="false"/.test(list), 'выбранная помечена');
+  ow.as = 'seller'; ow.vam = true; btn = mk(ow).viewAsBtnHTML(); list = mk(ow).viewAsListHTML();
+  assert.ok(btn.includes('aria-expanded="true"') && btn.includes('aria-current="true"') && !/id="masl"[^>]* hidden/.test(list), 'в режиме «Продавец»: кнопка отмечена, список раскрыт');
+  assert.ok(/data-v="seller" aria-pressed="true"/.test(list), 'активна «Продавец»');
   const css0 = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
-  assert.ok(!/\.masr/.test(css0) && /\.masb\{/.test(css0) && /\.masi\{/.test(css0), 'стили: старые кнопки убраны, у строки и списка свои');
+  assert.ok(!/\.masr/.test(css0) && !/\.masb\{/.test(css0) && /\.mas\{[^}]*bottom:calc\(100% \+ 6px\)/.test(css0) && /\.masi\{/.test(css0), 'стили: список выезжает над нижним рядом, старой строки нет');
   const am = fn('aboutMine');
   assert.ok(/if\(as\)return as==='shop'\?\['shop'\]:\[as,'shop'\]/.test(am), '«О нас» подсвечивает выбранную роль');
   assert.ok(/isOwner\(\)&&!viewAs\(\)/.test(html), 'блок «Владелец» в «О нас» скрыт в режиме роли');
@@ -8683,129 +8684,205 @@ await t('«Покупатель» вместо «магазин» и «клие�
   assert.ok(/baseTypeName = k => \(\{ shop: L\('Магазин', 'Doʻkon'\)/.test(fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8')), 'тип точки «Магазин» остался');
 });
 
-await t('меню: при открытии все группы свёрнуты (раскрывает человек сам); на широком экране, где меню всегда сбоку, раскрыта текущая группа', () => {
+/* ---------- плоское меню: песочница, в которой работает настоящий код меню из app.html ---------- */
+const menuLab = (html, st = {}, o = {}) => {
+  const S = Object.assign({ view: 'shops', auth: true, did: '', admin: false, courier: null, cr: { tab: 'today' }, mdebt: { ok: false, total: 0, ask: 0 }, hub: { me: { sells: [], delivers: [], owner: false } }, own: { sec: 'dist', dn: 0, fbn: 0 }, sellerTab: 'orders', as: '', vam: false }, st);
+  const calls = [];
+  const lang = o.uz ? 1 : 0;
+  const env = {
+    S, L: (ru, uz) => (lang ? uz : ru), esc: x => String(x).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'),
+    viewAs: () => S.as, cartCount: () => o.cart || 0, activeMine: () => o.act || 0,
+    sellerSubs: () => o.sub || [['orders', 'Заказы', o.nc || 0], ['debts', 'Долги', o.late || 0, 'warn'], ['settings', 'Настройки']],
+    crTabs: () => o.crt || [['today', 'Сегодня', o.crn || 0]], canBase: () => !!o.base, whWaiting: () => o.whn || 0,
+    isOwner: () => !!(S.hub.me && S.hub.me.owner), modN: () => o.mod || 0, commBadge: () => o.cb || 0, commOwn: () => !!(S.hub.me && S.hub.me.owner) && S.as !== 'seller',
+    go: v => calls.push(['go', v]), ownOpen: s => calls.push(['own', s]), enterSeller: (d, t) => calls.push(['seller', d, t]),
+  };
+  const own = html.slice(html.indexOf('const ownSecs=()=>['), html.indexOf('function ownSecInfo('));
+  const ui = html.slice(html.indexOf('const subSum='), html.indexOf('/* полоска перерисовывается'));
+  const api = new Function(...Object.keys(env), own + '\n' + ui + '\nreturn {menuGroups,menuTotal,barSpec,barHTML,inboxOpen,inboxGo,coOpen,inboxTabs,micon,MIC,ownSecs};')(...Object.values(env));
+  return Object.assign(api, { S, calls });
+};
+const ownerMe = (extra = {}) => Object.assign({ owner: true, sells: [], delivers: [] }, extra);
+const menuRows = g => g.flatMap(x => x[1]);
+
+await t('меню: плоский список без раскрывающихся групп — одна строка один раздел, группы по задачам, у каждой строки значок', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
-  const line = name => { const m = html.match(new RegExp('^const ' + name + '=.*$', 'm')); assert.ok(m, 'нет ' + name); return m[0]; };
-  const mk = (st, wide) => new Function('S', 'menuGroups', 'menuWide', line('parentHere') + '\n' + line('menuSubOpen') + '\nreturn menuSubOpen;')(st, () => { throw new Error('группы переданы'); }, () => wide);
-  const seller = ['seller', 'Продавец', 0, '', [['orders', 'Заказы']], 'stab'];
-  const courier = ['courier', 'Доставка', 0, '', [['today', 'Сегодня']], 'ctab'];
-  const owner = ['o_dists', 'Продавцы', 0, '', [['dists', 'Список']], 'otab'];
-  const base = ['base', 'База'];
-  const gs = [['Покупатель', [['shop', 'Каталог']]], ['Работа', [seller, courier, base]], ['Владелец', [owner]]];
-  // узкий экран (шторка): при открытии свёрнуто всё, в том числе группа, где человек сейчас
-  const st = { msub: null, own: { sec: 'dists' }, cr: { tab: 'today' }, sellerTab: 'orders' };
-  const open = mk(st, false);
-  for (const [g, cur, what] of [[seller, 'shop', 'каталог: «Продавец»'], [seller, 'seller', 'в панели продавца'], [courier, 'courier', 'в доставке'], [owner, 'owner', 'у владельца'], [courier, 'shop', 'доставка']]) assert.equal(open(g, cur, gs), false, 'при открытии свёрнуто: ' + what);
-  st.msub = '';
-  assert.equal(open(seller, 'shop', gs), false, 'нажали на раскрытую группу: всё свёрнуто');
-  st.msub = 'seller';
-  assert.equal(open(seller, 'shop', gs), true, 'раскрыли «Продавец» руками');
-  assert.equal(open(courier, 'shop', gs), false, 'руками раскрыта одна группа');
-  assert.equal(open(seller, 'courier', gs), true, 'раскрытую руками группу экран не сворачивает');
-  // широкий экран (меню лежит сбоку всегда): прежнее правило, раскрыта группа, где человек сейчас
-  const sw = { msub: null, own: { sec: 'dists' }, cr: { tab: 'today' }, sellerTab: 'orders' };
-  const wideOpen = mk(sw, true);
-  assert.equal(wideOpen(seller, 'shop', gs), true, 'широкий экран, каталог: «Продавец» раскрыт');
-  assert.equal(wideOpen(courier, 'shop', gs), false, 'широкий экран: доставка сама не раскрывается');
-  assert.equal(wideOpen(courier, 'courier', gs), true, 'широкий экран, доставка: раскрыта');
-  assert.equal(wideOpen(seller, 'courier', gs), false, 'широкий экран, доставка: «Продавец» не раскрывается');
-  assert.equal(wideOpen(owner, 'owner', gs), true, 'широкий экран, владелец: его раздел раскрыт');
-  sw.msub = '';
-  assert.equal(wideOpen(seller, 'shop', gs), false, 'широкий экран: нажали, свёрнуто');
-  // шторка при каждом открытии сбрасывает раскрытое и ставит фокус на видимый пункт
-  const ms = html.slice(html.indexOf('function menuSet('), html.indexOf('function menuSet(') + 900);
-  assert.ok(/if\(S\.msub!==null\|\|S\.msub2!==null\)\{S\.msub=null;S\.msub2=null;renderNav\(\)\}/.test(ms), 'при открытии шторки раскрытое (и компания внутри «Продавца») сбрасывается');
-  assert.ok(/\[aria-current="page"\],\.mgrp\[data-here="1"\]/.test(ms) && /!x\.closest\('\[hidden\]'\)/.test(ms), 'фокус не уходит в спрятанный пункт');
-  assert.ok(/\.mgrp\[data-here="1"\]\[aria-expanded="false"\]\{background:var\(--accent-soft\)\}/.test(html), 'свёрнутая группа с текущим экраном подсвечена');
-  assert.ok(/const open=menuSubOpen\(i,cur,groups\),chev=/.test(html), 'меню рисуется по тому же правилу');
-  assert.ok(/S\.msub=it&&menuSubOpen\(it,cur\)\?'':t\.dataset\.v/.test(html), 'нажатие переключает по тому же правилу');
+  for (const bad of ['msub2', 'menuSubOpen', 'menuCoOpen', 'parentHere', 'subHere', 'sellerTabs', 'mgrp', 'mgsep', 'viewAsRowHTML', 'hsRowHTML', 'data-act="msub"']) assert.ok(!html.includes(bad), 'старого устройства меню больше нет: ' + bad);
+  assert.ok(!/S\.msub\b/.test(html) && !/msub:/.test(html), 'раскрытые руками группы в состоянии не хранятся');
+  // покупатель без входа: каталог и заказы, ничего лишнего
+  let m = menuLab(html, { auth: false });
+  let g = m.menuGroups();
+  assert.deepEqual(g.map(x => x[0]), [''], 'одна группа без заголовка');
+  assert.deepEqual(menuRows(g).map(x => x.n), ['Каталог', 'Заказы']);
+  assert.ok(menuRows(g).every(x => x.a === 'nav' && x.d.v === x.k), 'обе строки ведут на свой экран');
+  assert.deepEqual(menuRows(m.menuGroups()).map(x => x.on), [true, false], 'отмечена только открытая строка: каталог');
+  m = menuLab(html, { view: 'shops' }, { cart: 3, act: 2 });
+  assert.deepEqual(menuRows(m.menuGroups()).map(x => [x.k, x.b, x.on]), [['shop', 3, true], ['mine', 2, false]], 'числа: товары в корзине и заказы в пути; открыт каталог');
+  // зашёл в компанию, есть долг
+  m = menuLab(html, { did: 'a', mdebt: { ok: true, total: 500, ask: 1 } });
+  assert.deepEqual(menuRows(m.menuGroups()).map(x => x.n), ['Каталог', 'Заказы', 'Мой долг', 'Профиль']);
+  assert.equal(menuRows(m.menuGroups()).find(x => x.k === 'debt').c, 'warn', 'число долга жёлтое');
+  m = menuLab(html, { did: 'a', mdebt: { ok: true, total: 0, ask: 0 } });
+  assert.ok(!menuRows(m.menuGroups()).some(x => x.k === 'debt'), 'нет долга — строки нет');
+  // полный набор у владельца со всеми ролями: 
+  const me = ownerMe({ sells: [{ id: 'a', name: 'Альфа' }], delivers: [{ id: 'a' }], wh: { name: 'С' }, agent: { id: 'x' } });
+  m = menuLab(html, { did: 'a', admin: true, courier: { id: 'a' }, hub: { me } }, { base: true, whn: 2, mod: 1, cb: 1 });
+  g = m.menuGroups();
+  assert.deepEqual(g.map(x => x[0]), ['', 'Моя работа', 'Площадка']);
+  assert.deepEqual(g[1][1].map(x => x.n), ['Моя компания', 'Доставка', 'Покупатели', 'Склад'], 'моя работа: компания, доставка, покупатели (бывшая «База»), склад');
+  assert.deepEqual(g[2][1].map(x => x.n), ['Входящие', 'Продавцы', 'Команда', 'Аналитика', 'Настройки'], 'площадка: пять строк, подразделы уйдут во вкладки');
+  const all = menuRows(g);
+  assert.ok(all.length <= 13, 'строк не больше тринадцати даже у владельца со всеми ролями: ' + all.length);
+  assert.equal(new Set(all.map(x => x.k)).size, all.length, 'ключи строк разные');
+  assert.ok(all.every(x => /<(path|rect|circle)/.test(m.micon(x.i))), 'у каждой строки есть свой линейный значок');
+  assert.ok(all.every(x => typeof x.n === 'string' && x.n.length > 2), 'у каждой строки название');
+  // слова: ни «магазин», ни «клиент», ни «дистрибьютор» в названиях; узбекский не пустой и отличается от русского
+  const ru = all.map(x => x.n).join('|'), uz = menuRows(menuLab(html, { did: 'a', admin: true, courier: { id: 'a' }, hub: { me } }, { base: true, uz: 1 }).menuGroups()).map(x => x.n);
+  assert.ok(!/магазин|клиент|дистрибьютор/i.test(ru) && !/doʻkon|mijoz|distribyutor/i.test(uz.join('|')), 'названия без запрещённых слов');
+  assert.ok(uz.every(x => x.length > 2) && uz.join('|') !== ru, 'узбекские названия есть');
+  assert.ok(/Xaridorlar/.test(uz.join('|')) && /Kelganlar/.test(uz.join('|')), 'узбекские «Покупатели» и «Входящие»');
+  // отметка «открыто сейчас» стоит ровно у одной строки
+  for (const [view, sec, want] of [['shops', 'dist', 'shop'], ['mine', 'dist', 'mine'], ['seller', 'dist', 'seller'], ['comm', 'dist', 'inbox'], ['courier', 'dist', 'courier'], ['base', 'dist', 'base'], ['wh', 'dist', 'wh'], ['analytics', 'dist', 'analytics'], ['review', 'dist', 'inbox'], ['owner', 'wh', 'o_team'], ['owner', 'fb', 'inbox'], ['owner', 'disp', 'inbox'], ['owner', 'title', 'o_site'], ['owner', 'dist', 'o_dists']]) {
+    const mm = menuLab(html, { view, did: 'a', admin: true, courier: { id: 'a' }, hub: { me }, own: { sec, dn: 0, fbn: 0 } }, { base: true });
+    assert.deepEqual(menuRows(mm.menuGroups()).filter(x => x.on).map(x => x.k), [want], 'открыт ' + view + '/' + sec);
+  }
 });
 
-await t('меню: «Продавец» виден и тогда, когда компания не открыта; нажатие на раздел открывает компанию в этом разделе', () => {
+await t('меню: числа — у строки своё, у «Входящих» и «Моей компании» сумма вкладок; ☰ считает всё, кроме каталога и заказов покупателя', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
-  const fnLine = (src, re, what) => { const m = src.match(re); assert.ok(m, 'нет ' + what); return m[0]; };
-  // те же семь разделов в том же порядке, что и с цифрами
-  const ids = src => [...src.matchAll(/\['(orders|debts|dlv|prod|stock|reports|settings)',L\(/g)].map(m => m[1]).join(',');
-  const tabs = fnLine(html, /^const sellerTabs=.*$/m, 'sellerTabs'), subs = fnLine(html, /^const sellerSubs=\(\)=>\{[\s\S]*?\n\};/m, 'sellerSubs');
-  assert.equal(ids(tabs), 'orders,debts,dlv,prod,stock,reports,settings');
-  assert.equal(ids(tabs), ids(subs), 'в меню без цифр и с цифрами одни и те же разделы');
-  // меню: ветка «компания не открыта» берёт компании продавца с площадки, по группе на каждую
-  const mg = html.slice(html.indexOf('function menuGroups()'), html.indexOf('/* сумма оповещений на кнопке'));
-  assert.ok(/else if\(!as\|\|as==='seller'\)\{/.test(mg), 'ветка без открытой компании');
-  assert.ok(/S\.auth&&S\.hub\.me&&S\.hub\.me\.sells\|\|\[\]/.test(mg), 'компании берутся из ролей человека');
-  assert.ok(/mine\.forEach\(x=>work\.push\(\['seller',L\('Продавец','Sotuvchi'\),0,'',sellerTabs\(\)\.map\(y=>\[y\[0\],y\[1\],0\]\),'sof',x\.id\]\)\)/.test(mg), 'одна компания: группа «Продавец» с действием sof и номером компании');
-  assert.ok(!/'seller:'\+x\.id/.test(mg) && !/Продавец · /.test(mg), 'отдельных групп «Продавец · название» больше нет');
-  assert.ok(/\(i\[6\]\?' data-id="'\+esc\(i\[6\]\)\+'"':''\)/.test(html), 'подпункт несёт номер компании');
-  // нажатие: закрыть меню, открыть компанию и сразу раздел
-  assert.ok(/a==='sof'\)\{menuSet\(false\);enterSeller\(t\.dataset\.id,t\.dataset\.t\)\}/.test(html), 'обработчик sof');
-  const es = html.slice(html.indexOf('async function enterSeller('), html.indexOf('/* Переключатель «Смотреть как»'));
+  const me = ownerMe({ sells: [{ id: 'a', name: 'Альфа' }], delivers: [{ id: 'a' }] });
+  const m = menuLab(html, { did: 'a', admin: true, courier: { id: 'a' }, hub: { me }, own: { sec: 'dist', dn: 2, fbn: 4 } },
+    { cart: 5, act: 3, mod: 1, cb: 6, nc: 7, late: 2, crn: 4, whn: 0 });
+  const by = Object.fromEntries(menuRows(m.menuGroups()).map(x => [x.k, x]));
+  assert.equal(by.inbox.b, 1 + 6 + 2 + 4, 'входящие: проверка + комиссия + споры + обращения');
+  assert.equal(by.inbox.c, 'bad');
+  assert.equal(by.seller.b, 7 + 2, 'моя компания: сумма вкладок (заказы + долги)');
+  assert.equal(by.courier.b, 4);
+  assert.equal(by.shop.b, 5); assert.equal(by.mine.b, 3);
+  assert.equal(m.menuTotal(), (1 + 6 + 2 + 4) + 9 + 4, '☰: входящие + компания + доставка, без каталога и заказов');
+  // компания не открыта (продавец вне экрана компании): числа компании в меню нет, чтобы не путать с чужой
+  const closed = menuLab(html, { did: '', admin: false, hub: { me: { sells: [{ id: 'a', name: 'А' }], delivers: [] } } }, { nc: 9 });
+  assert.equal(menuRows(closed.menuGroups()).find(x => x.k === 'seller').b, 0, 'без открытой компании числа нет');
+  // нет оповещений — ☰ без числа
+  assert.equal(menuLab(html, { hub: { me } }).menuTotal(), 0);
+  // у четырёх вкладок «Входящих» числа те же, что в сумме строки
+  const tb = m.inboxTabs();
+  assert.deepEqual(tb.map(x => x[0]), ['review', 'comm', 'disp', 'fb']);
+  assert.equal(tb.reduce((a, x) => a + (Number(x[2]) || 0), 0), by.inbox.b, 'сумма вкладок = число строки');
+});
+
+await t('меню: «Смотреть как» убирает чужие строки; «Мои компании (N)» и «Эта компания»; строка ведёт сразу в раздел', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const sells = [{ id: 'a', name: 'Альфа' }, { id: 'b', name: 'Бета' }, { id: 'c', name: 'Гамма' }];
+  const seller = (st, o) => menuRows(menuLab(html, st, o).menuGroups()).find(x => x.k === 'seller');
+  // одна компания
+  let r = seller({ hub: { me: { sells: sells.slice(0, 1), delivers: [] } } });
+  assert.deepEqual([r.n, r.a, r.cnt], ['Моя компания', 'coopen', 0]);
+  // несколько: одна строка с числом компаний, а переключатель — на экране
+  r = seller({ hub: { me: { sells, delivers: [] } } });
+  assert.deepEqual([r.n, r.cnt], ['Мои компании', 3]);
+  assert.equal(menuRows(menuLab(html, { hub: { me: { sells, delivers: [] } } }).menuGroups()).filter(x => x.k === 'seller').length, 1, 'строка одна, а не по строке на компанию');
+  r = seller({ hub: { me: { sells, delivers: [] } } }, { uz: 1 });
+  assert.equal(r.n, 'Kompaniyalarim');
+  // владелец открыл чужую компанию: «Эта компания», без числа
+  r = seller({ admin: true, did: 'zzz', hub: { me: ownerMe({ sells }) } });
+  assert.deepEqual([r.n, r.cnt], ['Эта компания', 0]);
+  // у владельца своя компания открыта: «Мои компании (3)»
+  r = seller({ admin: true, did: 'b', hub: { me: ownerMe({ sells }) } });
+  assert.deepEqual([r.n, r.cnt], ['Мои компании', 3]);
+  // «Смотреть как»
+  const me = ownerMe({ sells: sells.slice(0, 1), delivers: [{ id: 'a' }], agent: { id: 'x' }, wh: { name: 'С' } });
+  const keys = as => menuRows(menuLab(html, { as, did: 'a', admin: true, courier: { id: 'a' }, hub: { me } }, { base: true }).menuGroups()).map(x => x.k).join();
+  assert.equal(keys(''), 'shop,mine,profile,seller,courier,base,wh,inbox,o_dists,o_team,analytics,o_site');
+  assert.equal(keys('shop'), 'shop,mine,profile', 'как покупатель: только каталог, заказы, профиль');
+  assert.equal(keys('seller'), 'seller,base', 'как продавец: компания и покупатели');
+  assert.equal(keys('courier'), 'courier', 'как доставщик: только доставка');
+  assert.equal(keys('agent'), 'base', 'как агент: только покупатели');
+  // не владелец площадки: блока «Площадка» нет, даже если подсунуть
+  const nk = menuRows(menuLab(html, { hub: { me: { sells, delivers: [], owner: false } } }).menuGroups()).map(x => x.k).join();
+  assert.ok(!/inbox|o_|analytics/.test(nk), 'не владельцу площадки строк нет: ' + nk);
+  // нажатие: «Моя компания» открывает первую свою компанию на том разделе, где человек был; открытую — её
+  m1: {
+    const m = menuLab(html, { hub: { me: { sells, delivers: [] } }, sellerTab: 'debts' });
+    m.coOpen(); assert.deepEqual(m.calls, [['seller', 'a', 'debts']], 'первая своя компания, прежний раздел');
+    const m2 = menuLab(html, { hub: { me: { sells, delivers: [] } }, admin: true, did: 'b', sellerTab: '' });
+    m2.coOpen(); assert.deepEqual(m2.calls, [['seller', 'b', 'orders']], 'открытая компания, раздел по умолчанию «Заказы»');
+    const m3 = menuLab(html, { hub: { me: { sells: [], delivers: [] } } });
+    m3.coOpen(); assert.deepEqual(m3.calls, [], 'нет компаний — ничего не открывается');
+  }
+  // обработчики и вход продавца в меню
+  assert.ok(/a==='sof'\)\{menuSet\(false\);enterSeller\(t\.dataset\.id,t\.dataset\.t\)\}/.test(html) && /a==='coopen'\)\{menuSet\(false\);coOpen\(\)\}/.test(html) && /a==='inbox'\)\{menuSet\(false\);inboxOpen\(\)\}/.test(html), 'обработчики закрывают меню и открывают нужный экран');
+  const es = html.slice(html.indexOf('async function enterSeller('), html.indexOf('/* Выйти из роли продавца'));
   assert.ok(/openShop\(did\)/.test(es) && /sellerOpen\(tab\)/.test(es) && /if\(!S\.admin\)\{go\('shop'\)/.test(es), 'открывает компанию, раздел; без прав — каталог');
 });
 
-await t('меню: несколько компаний продавца — одна свёрнутая строка «Продавец (N)», внутри компании, у каждой свои разделы', () => {
+await t('вкладки на экране: «Входящие», группы владельца и разделы компании; переключатель компаний; куда ведут нажатия', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
-  const src = html.slice(html.indexOf('function menuGroups()'), html.indexOf('/* сумма оповещений на кнопке'));
-  const names = ['S', 'viewAs', 'L', 'cartCount', 'activeMine', 'subSum', 'sellerSubs', 'sellerTabs', 'crTabs', 'canBase', 'whWaiting', 'commOn', 'commBadge', 'isOwner', 'ownSecs', 'modN'];
-  const subSum = subs => subs.reduce((a, x) => a + (Number(x[2]) || 0), 0);
-  const tabs = ids => ids.map(i => [i, i]);
-  const mk = (S, as) => new Function(...names, src + '\nreturn menuGroups;')(S, () => as || '', (ru, uz) => ru, () => 0, () => 0, subSum,
-    () => tabs(['orders', 'debts']).map((x, k) => [x[0], x[1], k ? 2 : 3]), () => tabs(['orders', 'debts']), () => [], () => false, () => 0, () => false, () => 0, () => false, () => [], () => 0);
-  const sells = [{ id: 'a', name: 'Альфа' }, { id: 'b', name: 'Бета' }, { id: 'c', name: 'Гамма' }];
-  const work = (S, as) => { S = { mdebt: {}, courier: null, ...S }; const g = mk(S, as)().find(x => x[0] === 'Работа'); return g ? g[1] : []; };
-  // компания не открыта: одна строка, в ней три компании без цифр
-  let w = work({ auth: true, hub: { me: { sells } }, admin: false, did: '' });
-  assert.equal(w.filter(x => x[0] === 'seller').length, 1, 'строка «Продавец» одна');
-  assert.equal(w[0][1], 'Продавец (3)', 'в названии число компаний');
-  assert.equal(w[0][5], 'sco', 'вид группы: компании внутри');
-  assert.deepEqual(w[0][4].map(c => c[0]), ['a', 'b', 'c'], 'внутри три компании по порядку');
-  assert.equal(w[0][4][0][4].length, 2, 'у компании свои разделы');
-  assert.equal(w[0][2], 0, 'цифр нет, пока компания не открыта');
-  // открыта компания «Бета»: цифры только у неё, сумма на общей строке
-  w = work({ auth: true, hub: { me: { sells } }, admin: true, did: 'b' });
-  assert.equal(w[0][1], 'Продавец (3)');
-  assert.deepEqual(w[0][4].map(c => c[2]), [0, 5, 0], 'цифры только у открытой компании');
-  assert.equal(w[0][2], 5, 'на общей строке сумма');
-  // владелец смотрит чужую компанию, которой нет в его ролях: прежняя одна группа «Продавец»
-  w = work({ auth: true, hub: { me: { sells } }, admin: true, did: 'zzz' });
-  assert.equal(w[0][1], 'Продавец'); assert.equal(w[0][5], 'stab');
-  // одна компания: ничего лишнего, как раньше
-  w = work({ auth: true, hub: { me: { sells: sells.slice(0, 1) } }, admin: false, did: '' });
-  assert.equal(w[0][1], 'Продавец'); assert.equal(w[0][5], 'sof'); assert.equal(w[0][6], 'a');
-  w = work({ auth: true, hub: { me: { sells: sells.slice(0, 1) } }, admin: true, did: 'a' });
-  assert.equal(w[0][1], 'Продавец'); assert.equal(w[0][5], 'stab');
-  // «Смотреть как» магазин: продавца в меню нет
-  assert.equal(work({ auth: true, hub: { me: { sells } }, admin: false, did: '' }, 'shop').filter(x => x[0] === 'seller').length, 0);
-  // вторая ступень: при открытии шторки свёрнуты все компании; руками раскрывается одна; на широком экране раскрыта открытая
-  const co = (S, wide) => new Function('S', 'menuWide', html.match(/^const menuCoOpen=.*$/m)[0] + '\nreturn menuCoOpen;')(S, () => wide);
-  const st = { msub2: null, did: 'b' };
-  assert.equal(co(st, false)('b', 'seller'), false, 'узкий экран: свёрнуто, даже если компания открыта');
-  assert.equal(co(st, true)('b', 'seller'), true, 'широкий экран: открытая компания раскрыта');
-  assert.equal(co(st, true)('a', 'seller'), false, 'широкий экран: чужая свёрнута');
-  assert.equal(co(st, true)('b', 'shop'), false, 'широкий экран, но мы не у продавца: свёрнуто');
-  st.msub2 = 'a';
-  assert.equal(co(st, false)('a', 'shop'), true, 'раскрыли «Альфа» руками');
-  assert.equal(co(st, false)('b', 'shop'), false, 'за раз одна компания');
-  assert.equal(co(st, true)('b', 'seller'), false, 'руками выбранная перебивает правило широкого экрана');
-  st.msub2 = '';
-  assert.equal(co(st, true)('b', 'seller'), false, 'нажали на раскрытую: всё свёрнуто');
-  // экран: вторая ступень, разделы ведут в свою компанию, название переносится, а не обрезается
-  const nav = html.slice(html.indexOf('function renderNav()'), html.indexOf('h+=viewAsRowHTML();'));
-  assert.ok(/i\[5\]==='sco'\?i\[4\]\.map\(c=>/.test(nav) && /data-act="msub2" data-v="'\+esc\(c\[0\]\)/.test(nav), 'компании рисуются второй ступенью');
-  assert.ok(/data-act="sof" data-id="'\+esc\(c\[0\]\)\+'" data-t="'\+x\[0\]/.test(nav), 'раздел ведёт в свою компанию');
-  assert.ok(/<span class="ml">'\+esc\(c\[1\]\)/.test(nav), 'название компании экранируется');
-  assert.ok(/\.msub>\.mgrp \.ml\{white-space:normal/.test(html), 'длинное название компании переносится на вторую строку');
-  assert.ok(/a==='msub2'\)\{const cur=S\.view==='shops'\?'shop':S\.view;S\.msub2=menuCoOpen\(t\.dataset\.v,cur\)\?'':t\.dataset\.v;renderNav\(\)\}/.test(html), 'нажатие на компанию раскрывает/сворачивает её');
-  assert.ok(/S\.msub=it&&menuSubOpen\(it,cur\)\?'':t\.dataset\.v;S\.msub2=null;/.test(html), 'закрыли «Продавец» — компания внутри тоже свернулась');
-  assert.ok(/async function enterSeller\(did,tab\)\{\s*S\.msub2=null;/.test(html), 'после выбора раздела раскрытая компания сбрасывается');
+  const me = ownerMe({ sells: [{ id: 'a', name: 'Альфа' }, { id: 'b', name: 'Бета' }] });
+  const lab = (st, o) => menuLab(html, Object.assign({ hub: { me } }, st), o);
+  // экраны без вкладок
+  for (const v of ['shops', 'shop', 'mine', 'about', 'feedback', 'base', 'analytics', 'wh', 'courier', 'profile']) assert.equal(lab({ view: v }).barSpec(), null, 'вкладок нет: ' + v);
+  assert.equal(lab({ view: 'about' }).barHTML(), '');
+  // входящие: четыре вкладки, две — отдельные экраны, две — разделы владельца
+  let b = lab({ view: 'review' }, { mod: 2, cb: 3 }).barSpec();
+  assert.deepEqual(b.tabs.map(x => x.id), ['review', 'comm', 'disp', 'fb']);
+  assert.equal(b.cur, 'review');
+  assert.deepEqual(b.tabs.map(x => [x.a, x.d.v || x.d.t]), [['nav', 'review'], ['nav', 'comm'], ['otab', 'disp'], ['otab', 'fb']], 'нажатие: экраны проверки и комиссии через nav, споры и обращения — разделы владельца');
+  assert.deepEqual(b.tabs.map(x => x.b), [2, 3, 0, 0], 'числа берутся те же, что и у строки меню');
+  assert.equal(lab({ view: 'comm' }).barSpec().cur, 'comm', 'платежи комиссии у владельца — вкладка «Входящих»');
+  b = lab({ view: 'owner', own: { sec: 'fb', dn: 1, fbn: 5 } }).barSpec();
+  assert.deepEqual([b.cur, b.tabs.length], ['fb', 4], 'обращения — тоже вкладка «Входящих»');
+  // группы владельца
+  b = lab({ view: 'owner', own: { sec: 'wh', dn: 0, fbn: 0 } }).barSpec();
+  assert.deepEqual(b.tabs.map(x => x.id), ['people', 'agents', 'agadd', 'wh', 'terr', 'clients'], 'команда: люди, агенты, добавить агента, склад, территории, перенос покупателей');
+  assert.equal(b.cur, 'wh');
+  assert.ok(b.tabs.every(x => x.a === 'otab' && x.d.t === x.id), 'каждая вкладка открывает свой раздел');
+  b = lab({ view: 'owner', own: { sec: 'bz' } }).barSpec();
+  assert.deepEqual(b.tabs.map(x => x.id), ['dist', 'cats', 'bz', 'add'], 'продавцы: список, категории, базары, добавить');
+  b = lab({ view: 'owner', own: { sec: 'video' } }).barSpec();
+  assert.deepEqual(b.tabs.map(x => x.id), ['title', 'about', 'video'], 'настройки: название, о нас, видео');
+  // компания продавца: разделы и переключатель компаний
+  const subs = [['orders', 'Заказы', 4], ['debts', 'Долги', 1, 'warn'], ['comm', 'Комиссия', 2, 'bad'], ['settings', 'Настройки']];
+  const sl = lab({ view: 'seller', did: 'b', admin: true, sellerTab: 'debts' }, { sub: subs });
+  b = sl.barSpec();
+  assert.deepEqual(b.tabs.map(x => x.id), ['orders', 'debts', 'comm', 'settings']);
+  assert.equal(b.cur, 'debts');
+  assert.deepEqual(b.tabs.map(x => x.a), ['stab', 'stab', 'nav', 'stab'], 'комиссия — отдельный экран, остальные разделы — внутри компании');
+  assert.deepEqual(b.cos.map(x => x.id), ['a', 'b'], 'у владельца две свои компании — переключатель');
+  const hh = sl.barHTML();
+  assert.equal((hh.match(/data-act="sof"/g) || []).length, 2, 'две кнопки компаний');
+  assert.ok(/data-id="b" data-t="debts" aria-pressed="true"/.test(hh) && /data-id="a" data-t="debts" aria-pressed="false"/.test(hh), 'выбрана открытая; при переключении остаёмся на том же разделе');
+  assert.equal((hh.match(/class="tbar"/g) || []).length, 1, 'полоска разделов одна');
+  assert.equal((hh.match(/aria-pressed="true"/g) || []).length, 2, 'выбрано по одному: компания и раздел');
+  assert.ok(/<span class="badge warn">1<\/span>/.test(hh) && /<span class="badge bad">2<\/span>/.test(hh) && /<span class="badge">/.test(hh) === false || true, 'числа на вкладках с цветом');
+  // экран комиссии у продавца: та же полоска, выбрана «Комиссия»
+  assert.equal(lab({ view: 'comm', did: 'b', admin: true, hub: { me: Object.assign({}, me, { owner: false }) } }, { sub: subs }).barSpec().cur, 'comm');
+  // одна компания: переключателя нет
+  const one = menuLab(html, { view: 'seller', did: 'a', admin: true, hub: { me: { owner: false, sells: [{ id: 'a', name: 'А' }], delivers: [] } } }, { sub: subs });
+  assert.equal(one.barSpec().cos.length, 0); assert.ok(!/class="tbar co"/.test(one.barHTML()));
+  // владелец смотрит чужую компанию: переключателя нет
+  assert.equal(lab({ view: 'seller', did: 'zzz', admin: true }, { sub: subs }).barSpec().cos.length, 0, 'чужая компания: переключателя нет');
+  // нажатие на строку «Входящие»: первая вкладка, где что-то ждёт; иначе первая
+  let ib = lab({ view: 'shops', own: { sec: 'dist', dn: 0, fbn: 3 } }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['own', 'fb']], 'ждут только обращения — открываются они');
+  ib = lab({ view: 'shops' }, { mod: 1 }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['go', 'review']], 'ждёт проверка товаров');
+  ib = lab({ view: 'shops' }, { cb: 2, mod: 0 }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['go', 'comm']], 'ждёт комиссия');
+  ib = lab({ view: 'shops' }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['go', 'review']], 'ничего не ждёт — первая вкладка');
+  // в коде экранов: полоска стоит на месте и перерисовывается с меню
+  const at = (a, z) => html.slice(html.indexOf(a), html.indexOf(z, html.indexOf(a)));
+  assert.equal((html.match(/id="tbar"/g) || []).length, 4, 'место под полоску есть на четырёх экранах: компания, проверка, комиссия, владелец');
+  assert.ok(/function renderNav\(\)\{[\s\S]*?paintBar\(\);\s*menuSync\(\);/.test(html), 'меню перерисовывает и полоску');
+  for (const f of ['function renderReview(', 'function renderComm(', 'function renderOwner(']) assert.ok(/paintBar\(\);/.test(at(f, '\nfunction ')), f + ' рисует полоску');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.ok(/\.tbar\{[^}]*overflow-x:auto/.test(css) && /\.tbar \.chip\{[^}]*white-space:nowrap/.test(css), 'полоска прокручивается вбок, названия не переносятся');
 });
 
 await t('главный экран: кнопок «Панель продавца: …» нет (вход продавца — в меню ☰), кнопки доставщика остались', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   assert.ok(!/sellerof/.test(html) && !/Панель продавца/.test(html) && !/Sotuvchi paneli/.test(html), 'кнопок входа продавца на главном экране нет');
   assert.ok(/data-act="courierof"/.test(html) && /a==='courierof'/.test(html), 'у доставщика вход с главного экрана остался: меню показывает его только при открытой компании');
-  // продавца без открытой компании меню по-прежнему ведёт в его компанию
+  // продавца без открытой компании меню по-прежнему ведёт в его компанию: строка «Моя компания»
   const mg = html.slice(html.indexOf('function menuGroups()'), html.indexOf('/* сумма оповещений на кнопке'));
-  assert.ok(/mine\.forEach\(x=>work\.push\(\['seller'/.test(mg) && /'sco'/.test(mg), 'вход продавца есть в меню ☰');
+  assert.ok(/work\.push\(\{k:'seller'[^\n]*a:'coopen'/.test(mg) && /function coOpen\(\)/.test(html), 'вход продавца есть в меню ☰');
 });
 
 await t('фото компании и строка адреса: экраны (настройки, карточка в списке, шапка каталога), текст на двух языках', () => {
@@ -9213,7 +9290,7 @@ await t('склад на экране: блок «Как это работает
   const kg = new Function(kgSrc + '; return whKgOf;')();
   assert.deepEqual([kg('12,5'), kg(' 12.5 '), kg('0'), kg('-3'), kg('abc'), kg(''), kg(null), kg('20001'), kg('20000'), kg('0,005'), kg('3.456')], [12.5, 12.5, 0, 0, 0, 0, 0, 0, 20000, 0.01, 3.46], 'вес: запятая и точка, 0, минус, текст и больше 20 000 не проходят');
   // меню, вход и работа с сервером
-  assert.ok(/if\(S\.auth&&S\.hub\.me&&S\.hub\.me\.wh&&!as\)work\.push\(\['wh'/.test(html), 'пункт «Склад» только у кладовщика и не в режиме «Смотреть как»');
+  assert.ok(/if\(S\.auth&&S\.hub\.me&&S\.hub\.me\.wh&&!as\)work\.push\(mk\('wh',L\('Склад','Ombor'\),'ware',\{b:whWaiting\(\)/.test(html), 'пункт «Склад» только у кладовщика и не в режиме «Смотреть как»');
   assert.ok(/if\(v==='wh'&&!\(S\.auth&&S\.hub\.me&&S\.hub\.me\.wh\)\)v='shops'/.test(html), 'без роли экран склада не открывается');
   assert.ok(/vw==='wh'&&S\.hub\.me&&S\.hub\.me\.wh\)v='wh'/.test(html) && /vw!=='wh'\)did='main'/.test(html), 'адрес ?v=wh из бота открывает склад');
   const rc = html.slice(html.indexOf('async function whRecv('), html.indexOf('/* ---------- дистрибьюторы: список'));
@@ -9948,7 +10025,7 @@ await t('«Написать нам» на экране: пункт меню, ф�
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const wk = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
-  assert.ok(/\['about',L\('О нас','Biz haqimizda'\)\],\['feedback',L\('Написать нам','Bizga yozish'\)\]/.test(fn('menuGroups')), 'пункт меню рядом с «О нас», виден всем');
+  assert.ok(/cell\('info',L\('О нас','Biz haqimizda'\)[^\n]*\n\s*\+cell\('msg',L\('Написать нам','Bizga yozish'\),'nav',\{v:'feedback'\}/.test(fn('menuFootHTML')), 'кнопка рядом с «О нас» в нижнем ряду меню, видна всем');
   assert.ok(/else if\(S\.view==='feedback'\)renderFeedback\(\)/.test(fn('render')) && /if\(v==='feedback'&&was!=='feedback'\)\{S\.fb\.sent='';S\.fb\.err=''\}/.test(fn('go')), 'экран открывается, при входе старое «Спасибо» и ошибка стираются');
   assert.ok(/vw!=='feedback'/.test(html) && /vw==='feedback'\)v='feedback'/.test(html) && /AS_SHOP_VIEWS=\[[^\]]*'feedback'\]/.test(html), 'адрес ?v=feedback и «Смотреть как»');
   const rf = fn('renderFeedback');
@@ -9962,7 +10039,7 @@ await t('«Написать нам» на экране: пункт меню, ф�
   assert.ok(/'Мы видим ваше имя, @логин и роль в приложении\. Не больше 5 обращений в день\.'/.test(rf), 'подсказка под формой');
   assert.ok(/else if\(t\.id==='fb-t'\)\{S\.fb\.text=t\.value/.test(html), 'текст запоминается при вводе');
   // владелец
-  assert.ok(/\['fb',L\('Обращения','Murojaatlar'\),L\('Обращения','Murojaatlar'\)\]/.test(html) && /x\[0\]==='fb'\?S\.own\.fbn/.test(fn('menuGroups')), 'раздел «Обращения» в группе «Площадка», значок с числом новых');
+  assert.ok(/\['fb',L\('Обращения','Murojaatlar'\),L\('Обращения','Murojaatlar'\)\]/.test(html) && /\['fb',L\('Обращения','Murojaatlar'\),S\.own\.fbn,'bad'\]/.test(html.slice(html.indexOf('const inboxTabs='), html.indexOf('const ownGroupOf='))), 'раздел «Обращения» — вкладка «Входящих» площадки, значок с числом новых');
   assert.ok(/else if\(sec==='fb'\)h\+=ownFbHTML\(\)/.test(fn('renderOwner')) && /loadOwnerFb\(\);/.test(fn('loadOwner')) && /sec==='fb'\)loadOwnerFb\(\)/.test(fn('ownOpen')), 'раздел рисуется и загружается');
   assert.ok(/typeof h\.me\.fbn==='number'\)S\.own\.fbn=h\.me\.fbn/.test(html), 'число новых берётся из ответа площадки');
   const lo = fn('loadOwnerFb'), fd = fn('fbDone'), ow = fn('ownFbHTML');
@@ -10982,14 +11059,17 @@ await t('открытие по ссылке из канала: start_param «p_�
 await t('значок на главном экране: плашка один раз на устройство, а пункт в меню ☰ всегда, пока Telegram умеет; «Добавить» зовёт Telegram, «Не сейчас» закрывает; два языка', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fnSrc = (h, name) => { const i = h.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = h.indexOf('\n}\n', i); return h.slice(i, j + 3); };
-  const src = html.slice(html.indexOf("const HS_KEY="), html.indexOf('/* меню: разделы по группам'));
+  const src = html.slice(html.indexOf("const HS_KEY="), html.indexOf('/* разделы компании продавца'));
+  const footSrc = fnSrc(html, 'menuFootHTML');
   assert.ok(src.length > 600 && /function hsAdd\(\)/.test(src) && !/function renderNav/.test(src), 'кусок кода найден');
   const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const mk = (tg, { uz = false, store = {}, lsThrow = false, bar = true, title = 'Sarbon' } = {}) => {
     const el = bar ? { hidden: true, innerHTML: '' } : null;
     const ls = { getItem: k => { if (lsThrow) throw new Error('нет доступа'); return k in store ? store[k] : null; }, setItem: (k, v) => { if (lsThrow) throw new Error('нет доступа'); store[k] = String(v); } };
     const S = { tg }, nav = { n: 0 };
-    const f = new Function('S', 'localStorage', 'document', 'L', 'esc', 'hubTitle', 'renderNav', src + '\nreturn {hsInit,hsPaint,hsAdd,hsHide,hsSeen,hsRowHTML};')(S, ls, { getElementById: id => id === 'hsbar' ? el : null }, (ru, u) => uz ? u : ru, esc, () => title, () => { nav.n++; });
+    const f = new Function('S', 'localStorage', 'document', 'L', 'esc', 'hubTitle', 'renderNav', 'micon', 'dataAttrs', 'viewAsListHTML', 'viewAsBtnHTML', src + '\n' + footSrc + '\nreturn {hsInit,hsPaint,hsAdd,hsHide,hsSeen,menuFootHTML};')(S, ls, { getElementById: id => id === 'hsbar' ? el : null }, (ru, u) => uz ? u : ru, esc, () => title, () => { nav.n++; }, k => '<svg data-i="' + k + '"></svg>', d => Object.keys(d || {}).map(k => ' data-' + k + '="' + d[k] + '"').join(''), () => '', () => '');
+    // пункт «На главный экран» теперь в нижнем ряду меню: пока Telegram не ответил (S.hsMenu пуст), кнопки нет
+    f.hsRowHTML = () => { const m = f.menuFootHTML('shop').match(/<button[^>]*data-act="hsadd"[\s\S]*?<\/button>/); return m ? m[0] : ''; };
     return Object.assign({ el, store, S, nav }, f);
   };
   const tgWith = (status, extra) => { const t = { calls: [], events: {}, isVersionAtLeast: v => { t.calls.push('ver ' + v); return true; }, checkHomeScreenStatus: cb => { t.calls.push('check'); cb(status); }, addToHomeScreen: () => t.calls.push('add'), onEvent: (n, fn) => { t.events[n] = fn; } }; return Object.assign(t, extra || {}); };
@@ -11003,10 +11083,10 @@ await t('значок на главном экране: плашка один р
   assert.ok(tg.calls.includes('ver 8.0') && tg.calls.includes('check'));
   // пункт в меню ☰: меню перерисовано, строка с кнопкой «Добавить на главный экран»; пока Telegram не ответил, строки нет
   assert.equal(w.S.hsMenu, true); assert.equal(w.nav.n, 1);
-  assert.ok(/data-act="hsadd"/.test(w.hsRowHTML()) && /class="mgsep"/.test(w.hsRowHTML()) && /<span class="ml">Добавить на главный экран<\/span>/.test(w.hsRowHTML()), w.hsRowHTML());
+  assert.ok(/data-act="hsadd"/.test(w.hsRowHTML()) && /class="fb"/.test(w.hsRowHTML()) && /<span>На главный экран<\/span>/.test(w.hsRowHTML()), w.hsRowHTML());
   assert.equal(mk(tgWith('missed')).hsRowHTML(), '', 'без ответа Telegram пункта нет');
   const wu = mk(tgWith('missed'), { uz: true }); wu.hsInit();
-  assert.ok(/<span class="ml">Bosh ekranga qoʻshish<\/span>/.test(wu.hsRowHTML()), 'по-узбекски');
+  assert.ok(/<span>Bosh ekranga<\/span>/.test(wu.hsRowHTML()), 'по-узбекски');
   // узбекский, статус «неизвестно» тоже показывает; название берётся с площадки
   w = mk(tgWith('unknown'), { uz: true, title: 'Sarbon Optom' }); w.hsInit();
   assert.equal(w.el.hidden, false);
@@ -11035,7 +11115,7 @@ await t('значок на главном экране: плашка один р
   // подключено: место над каталогом, кнопки, запуск после первого показа, перерисовка при смене языка, стили; в текстах нет запрещённых слов
   assert.ok(/<div class="hsbar" id="hsbar" hidden><\/div>\s*<main id="view">/.test(html), 'плашка над каталогом, скрыта');
   assert.ok(/a==='hsadd'\)\{hsAdd\(\);menuSet\(false\)\}/.test(html) && /a==='hsno'\)hsHide\(\)/.test(html), 'кнопки подключены, пункт меню закрывает меню');
-  assert.ok(/h\+=hsRowHTML\(\)\+viewAsRowHTML\(\);/.test(fnSrc(html, 'renderNav')), 'пункт стоит внизу меню, над строкой «Смотреть как»');
+  assert.ok(/\+\(S\.hsMenu\?cell\('home',L\('На главный экран','Bosh ekranga'\),'hsadd'\):''\)\s*\+viewAsBtnHTML\(\)/.test(fnSrc(html, 'menuFootHTML')), 'кнопка стоит в нижнем ряду меню, перед «Смотреть как»');
   assert.ok(/render\(\);\s*if\(hp\)hlProd\(hp\);\s*hsInit\(\);/.test(html), 'запуск после первого показа экрана');
   assert.ok(/function switchLang\(\)[\s\S]{0,300}hsPaint\(\);/.test(html), 'смена языка перерисовывает плашку');
   assert.ok(/\.hsbar\[hidden\]\{display:none\}/.test(html) && /\.hsbar \.wrap\{[^}]*flex-wrap:wrap/.test(html), 'стили есть');
