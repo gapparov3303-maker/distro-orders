@@ -329,6 +329,12 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .sbh[aria-expanded="true"] .sbc{transform:rotate(-135deg);margin-bottom:-3px}
 .sbb{padding:2px 14px 14px}
 .sbb[hidden]{display:none}
+.shd{align-items:flex-start}
+.shd .sbc{margin-top:7px}
+.shl{flex:1;min-width:0;display:block}
+.shn{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.shnm{min-width:0;overflow-wrap:anywhere}
+.shd .dmeta{display:block;margin-top:4px;font-weight:400}
 .sbb>.card{background:none;border:0;border-top:1.5px solid var(--edge);border-radius:0;padding:14px 0 0;margin:14px 0 0}
 
 /* catalog (client) */
@@ -1042,7 +1048,7 @@ const S={
   wh:{ok:false,err:false,rate:500,info:null,orders:[],tab:'wait',q:'',kg:{},ed:{},open:{},busy:''},
   fb:{kind:'',text:'',busy:false,sent:'',err:''},   // «Написать нам»: форма обращения
   sblk:{about:true},   // настройки компании: какие блоки раскрыты (по умолчанию «О компании»)
-  own:{sec:'dist',addOpen:false,agOpen:false,dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false},vid:{ok:false,err:false,ch:'',fch:null,items:[],bot:'',busy:'',ask:''}},
+  own:{sec:'dist',addOpen:false,agOpen:false,dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',cardOpen:{},legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false},vid:{ok:false,err:false,ch:'',fch:null,items:[],bot:'',busy:'',ask:''}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -5421,6 +5427,7 @@ const ABOUT_ROLES=[
  secs:[
  {img:'ow-dist',h:['Продавцы','Sotuvchilar'],cap:['Продавцы площадки','Platforma sotuvchilari'],li:[
   ['☰ → «Площадка» → «Продавцы» → «＋ Добавить продавца»: впишите название компании. Приложение придумает личный код, он показывается один раз. Отправьте его продавцу, он напишет боту /admin и код.','☰ → «Platforma» → «Sotuvchilar» → «＋ Sotuvchi qoʻshish»: kompaniya nomini yozing. Ilova shaxsiy kod oʻylab topadi, u bir marta koʻrsatiladi. Uni sotuvchiga yuboring, u botga /admin va kodni yozadi.'],
+  ['Карточки в «Списке» свёрнуты: нажмите на строку продавца (стрелка ▼), и откроются поля и кнопки; ещё раз (стрелка ▲) закроется. Сверху есть «Развернуть все» и «Свернуть все».','Roʻyxatdagi kartochkalar yigʻilgan: sotuvchi qatorini bosing (▼ belgisi), maydonlar va tugmalar ochiladi; yana bossangiz (▲) yopiladi. Tepada «Hammasini ochish» va «Hammasini yopish» bor.'],
   ['В карточке продавца («Список») выберите «Категория» (Производители, Импортеры, Оптовики, Дистрибьюторы, Базары): её видят покупатели на первом экране. Продавец может выбрать её и сам; побеждает последнее изменение. Пока категории нет, продавец в «Дистрибьюторах». Там же «Процент комиссии» этого продавца.','Sotuvchi kartochkasida («Roʻyxat») «Kategoriya»ni tanlang (Ishlab chiqaruvchilar, Importyorlar, Ulgurji sotuvchilar, Distribyutorlar, Bozorlar): xaridorlar uni birinchi ekranda koʻradi. Sotuvchi ham oʻzi tanlaydi; oxirgi oʻzgarish kuchga kiradi. Tanlanmaguncha sotuvchi «Distribyutorlar» ichida. U yerda shu sotuvchining «Komissiya foizi» ham bor.'],
   ['Подраздел «Базары»: добавьте базары (название по-русски и по-узбекски, хватит одного), переименуйте или удалите. Продавец категории «Базары» сам выбирает свой базар, а вы можете перевести его в карточке продавца. Покупатели видят все ваши базары, и пустые тоже. Если удалить базар, его продавцы остаются в «Базарах» без базара.','«Bozorlar» boʻlimi: bozorlarni qoʻshing (nomi ruscha va oʻzbekcha, bittasi yetarli), nomini oʻzgartiring yoki oʻchiring. «Bozorlar» kategoriyasidagi sotuvchi oʻz bozorini oʻzi tanlaydi, siz esa uni sotuvchi kartochkasida boshqasiga oʻtkaza olasiz. Xaridorlar barcha bozorlaringizni, boʻshlarini ham koʻradi. Bozor oʻchirilsa, uning sotuvchilari «Bozorlar»da bozorsiz qoladi.'],
   ['Есть «Новый код» (вошедшие по прежнему коду теряют доступ), «Скрыть и закрыть заказы» и удаление. Первого продавца, вашу компанию, удалить нельзя.','«Yangi kod» (eski kod bilan kirganlar kirish huquqini yoʻqotadi), «Yashirish va buyurtmani yopish» va oʻchirish bor. Birinchi sotuvchini, sizning kompaniyangizni, oʻchirib boʻlmaydi.']]},
@@ -6856,15 +6863,20 @@ function ownPctHTML(r){
     +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>'
     +hintD('Сколько процентов от суммы выданных заказов вы берёте. Новый процент действует на заказы, выданные после изменения. Пример: 2,5.','Topshirilgan buyurtmalar summasidan necha foiz olasiz. Yangi foiz oʻzgargandan keyin topshirilgan buyurtmalarga amal qiladi. Masalan: 2,5.');
 }
+function ownAllLab(){return S.own.shops.some(r=>S.own.cardOpen[r.id])?L('Свернуть все','Hammasini yopish'):L('Развернуть все','Hammasini ochish')}
 function ownListHTML(){
   const o=S.own;
-  let h='<div class="row-btns" style="margin:0 0 12px"><button type="button" class="btn'+(o.addOpen?' ghost':'')+'" id="ownaddopen" data-act="ownaddopen" aria-expanded="'+!!o.addOpen+'">'+(o.addOpen?L('Скрыть форму','Formani yashirish'):L('＋ Добавить продавца','＋ Sotuvchi qoʻshish'))+'</button></div>';
+  let h='<div class="row-btns" style="margin:0 0 12px"><button type="button" class="btn'+(o.addOpen?' ghost':'')+'" id="ownaddopen" data-act="ownaddopen" aria-expanded="'+!!o.addOpen+'">'+(o.addOpen?L('Скрыть форму','Formani yashirish'):L('＋ Добавить продавца','＋ Sotuvchi qoʻshish'))+'</button>'+(o.shops.length>1?'<button type="button" class="btn ghost sm" id="ownall" data-act="ownall">'+ownAllLab()+'</button>':'')+'</div>';
   if(o.addOpen)h+=ownAddHTML();
   h+=o.shops.map(r=>{
       const sure=o.rc===r.id;
-      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),L('доступ: '+r.sellers+' чел.','kirish: '+r.sellers+' kishi'),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
-      return '<div class="card"><div class="hrow"><h3 style="margin:0">'+esc(r.name)+'</h3><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></div>'
-        +'<div class="dmeta" style="margin-bottom:12px">'+esc(meta.join(' · '))+'</div>'
+      const open=!!o.cardOpen[r.id],pr=S.cm.o&&S.cm.o.rows.find(x=>x.id===r.id);
+      const meta=[L(r.items+' '+plTovar(r.items),r.items+' ta mahsulot'),r.own?L('код выдан','kod berilgan'):L('кода нет','kod yoʻq')];
+      if(pr&&!pr.err)meta.push(L('комиссия '+fmtPct(pr.pct)+'%','komissiya '+fmtPct(pr.pct)+'%'));
+      return '<div class="card sblk"><button type="button" class="sbh shd" data-act="oshop" data-id="'+esc(r.id)+'" aria-expanded="'+open+'" aria-controls="sc-'+esc(r.id)+'"><span class="shl"><span class="shn"><span class="shnm">'+esc(r.name)+'</span><span class="dtag">'+(r.on?L('в списке','roʻyxatda'):L('скрыт','yashirin'))+'</span></span>'
+        +'<span class="dmeta">'+esc(meta.join(' · '))+'</span></span><span class="sbc" aria-hidden="true"></span></button>'
+        +'<div class="sbb" id="sc-'+esc(r.id)+'"'+(open?'':' hidden')+'>'
+        +'<div class="dmeta" style="margin-bottom:12px">'+L('доступ: '+r.sellers+' чел.','kirish: '+r.sellers+' kishi')+'</div>'
         +'<div class="legrow"><div><label class="lab" for="lg-'+esc(r.id)+'">'+L('Юридическое название','Yuridik nomi')+'</label><input type="text" id="lg-'+esc(r.id)+'" data-olegal="'+esc(r.id)+'" maxlength="80" value="'+esc(o.legals[r.id]!==undefined?o.legals[r.id]:(r.legal||''))+'" autocomplete="off" placeholder="'+esc(L('ООО «Навои Фуд»','«Navoiy Fud» MChJ'))+'"></div>'
         +'<button type="button" class="btn ghost sm" data-act="ownlegal" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button></div>'
         +hintD('Покупатели видят его под названием в каталоге. Продавец тоже может его менять; побеждает последнее изменение.','Xaridorlar uni katalogda nom ostida koʻradi. Sotuvchi ham oʻzgartira oladi; oxirgi oʻzgarish ustun.')
@@ -6877,7 +6889,7 @@ function ownListHTML(){
         +'<button type="button" class="btn ghost sm" data-act="ownreset" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(sure?L('Точно? Вошедшие по прежнему коду потеряют доступ','Aniqmi? Eski kod bilan kirganlar kirolmaydi'):L('Новый код','Yangi kod'))+'</button>'
         +(r.link?'<button type="button" class="btn ghost sm" data-act="copy" data-v="'+esc(r.link)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Ссылка для покупателей','Xaridorlar uchun havola')+'</button>':'')
         +(r.id!=='main'?'<button type="button" class="btn ghost sm" data-act="owndel" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Удалить','Oʻchirish')+'</button>':'')
-        +'</div></div>';
+        +'</div></div></div>';
     }).join('');
   if(!o.shops.length)h+='<div class="empty"><b>'+L('Продавцов пока нет','Sotuvchilar hozircha yoʻq')+'</b>'+L('Добавьте первого: он получит личный код.','Birinchisini qoʻshing: u shaxsiy kod oladi.')+'</div>';
   return h;
@@ -6919,6 +6931,7 @@ async function ownAdd(){
   if(!r.ok||!r.data){o.err2=ownErr(r.data&&r.data.error);renderOwner();return}
   o.shops=o.shops.concat([r.data.shop]);
   o.made={name:r.data.shop.name,code:r.data.code,reset:false};
+  o.cardOpen[r.data.shop.id]=true;
   o.fname='';o.fcode='';o.fcat='';o.fbz='';o.addOpen=false;
   renderOwner();window.scrollTo(0,0);
   loadHub();
@@ -7460,6 +7473,8 @@ document.addEventListener('click',e=>{
   else if(a==='sblk'){const k=t.dataset.k;S.sblk[k]=!S.sblk[k];const b=document.getElementById('sb-'+k);if(b)b.hidden=!S.sblk[k];t.setAttribute('aria-expanded',String(!!S.sblk[k]))}
   else if(a==='amadeclose'){S.own.amade=null;renderOwner()}
   else if(a==='ownaddopen'){S.own.addOpen=!S.own.addOpen;renderOwner()}
+  else if(a==='oshop'){const id=t.dataset.id,c=S.own.cardOpen;c[id]=!c[id];const b=document.getElementById('sc-'+id);if(b)b.hidden=!c[id];t.setAttribute('aria-expanded',String(!!c[id]));const al=document.getElementById('ownall');if(al)al.textContent=ownAllLab()}
+  else if(a==='ownall'){const o=S.own,any=o.shops.some(r=>o.cardOpen[r.id]);o.shops.forEach(r=>{o.cardOpen[r.id]=!any});renderOwner()}
   else if(a==='agaddopen'){S.own.agOpen=!S.own.agOpen;renderOwner()}
   else if(a==='agtopen'){const o=S.own;o.agopen[t.dataset.id]=!o.agopen[t.dataset.id];renderOwner()}
   else if(a==='agtall'){const o=S.own,ids=(o.ppl?o.ppl.terr:[]).map(x=>x.id);o.aterr=o.aterr.length===ids.length?[]:ids;renderOwner()}
