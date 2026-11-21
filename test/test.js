@@ -8289,13 +8289,13 @@ await t('категории дистрибьюторов: пять катего�
   // первый экран: карточки категорий, а не список; внутри категории список и кнопка назад
   const rs = fn('renderShops');
   assert.ok(/out\+=ck\?catListHTML\(ck\):catsHTML\(\)/.test(rs), 'без выбранной категории показываются категории, с выбранной — её список');
-  assert.ok(/data-act="catback"/.test(rs) && /L\('Категории','Kategoriyalar'\)/.test(rs), 'в категории есть «← Категории»');
+  assert.ok(/bkLink\('catback',L\('Категории','Kategoriyalar'\)\)/.test(rs), 'в категории есть «← Категории» (где нет стрелки Telegram)');
   assert.ok(!/sells\.length/.test(rs) && /!ck&&dels\.length/.test(rs), 'кнопки доставщика только на первом экране; кнопок продавца нет, вход продавца в меню ☰');
   const cs = fn('catsHTML');
   assert.ok(/SHOP_CATS\.map/.test(cs) && /data-act="opencat"/.test(cs) && /Пока пусто/.test(cs) && /' em'/.test(cs), 'пять карточек, пустые помечены');
   assert.ok(/shopCatOf\(r\)===k/.test(html), 'счёт и список по shopCatOf: без категории — «Дистрибьюторы»');
   assert.ok(/Пока здесь никого нет/.test(fn('catListHTML')), 'пустая категория: сообщение');
-  assert.ok(/if\(v==='shops'\)\{S\.shopsCat='';S\.shopsBz=''\}/.test(fn('go')), 'любой переход на список начинается с категорий, а не с открытого базара');
+  assert.ok(/if\(v==='shops'&&!back\)\{S\.shopsCat='';S\.shopsBz=''\}/.test(fn('go')), 'любой переход на список начинается с категорий, а не с открытого базара (кроме возврата кнопкой «Назад»)');
   assert.ok(/a==='opencat'/.test(html) && /a==='catback'/.test(html));
   assert.ok(/shopsListHTML\(list\)/.test(html) && /const all=list\|\|S\.hub\.shops/.test(html), 'список с фильтром по региону работает и внутри категории');
   // настройки продавца: поле сохраняется сразу и отдельно от формы
@@ -8590,8 +8590,8 @@ await t('базары: экраны покупателя (группы и «Бе
   assert.ok(/bzOf\(r\)===\(b==='none'\?'':b\)/.test(cl), 'внутри базара только его продавцы, внутри «Без базара» — те, у кого базара нет');
   assert.ok(/const bzOf=r=>\{const b=cleanBz\(r&&r\.bz\);return b&&bzList\(\)\.some\(x=>x\.id===b\)\?b:''\}/.test(html), 'удалённый базар равен «без базара»');
   const rs = fn('renderShops');
-  assert.ok(/data-act="bzback"/.test(rs) && /data-act="catback"/.test(rs) && /ck&&!pickBz/.test(rs), 'назад из базара — к базарам, из категории — к категориям');
-  assert.ok(/a==='openbz'\)\{S\.shopsBz=t\.dataset\.b/.test(html) && /a==='bzback'\)\{S\.shopsBz=''/.test(html) && /a==='catback'\)\{S\.shopsCat='';S\.shopsBz=''/.test(html));
+  assert.ok(/bkLink\('bzback'/.test(rs) && /bkLink\('catback'/.test(rs) && /ck&&!pickBz/.test(rs), 'назад из базара — к базарам, из категории — к категориям');
+  assert.ok(/a==='openbz'\)\{navHere\(\);S\.shopsBz=t\.dataset\.b/.test(html) && /a==='bzback'\)\{S\.shopsBz=''/.test(html) && /a==='catback'\)\{S\.shopsCat='';S\.shopsBz=''/.test(html));
   assert.ok(/bazaars:Array\.isArray\(d\.bazaars\)\?d\.bazaars:\[\]/.test(fn('loadHub')), 'список базаров приходит вместе со списком продавцов');
   // продавец: поле «Базар» только в категории «Базары», сохраняется сразу
   const st = fn('settingsHTML');
@@ -8824,7 +8824,7 @@ await t('переключатель компаний: после смены ко
     const S = { view, did, admin, shopPlaced: 1, shopStep: 'x' }, calls = [];
     // openShop стирает экран, как настоящий: ставит новую компанию (или не открывает её)
     const openShop = async d => { if (d === 'bad') return false; S.did = d; return true; };
-    const enter = new Function('S', 'openShop', 'go', 'render', 'sellerOpen', src + '\nreturn enterSeller;')(S, openShop, v => calls.push(['go', v]), () => calls.push(['render']), t => calls.push(['open', t, S.view]));
+    const enter = new Function('S', 'openShop', 'go', 'render', 'sellerOpen', 'navQuiet', src + '\nreturn enterSeller;')(S, openShop, v => calls.push(['go', v]), () => calls.push(['render']), t => calls.push(['open', t, S.view]), f => f());
     return { S, calls, enter };
   };
   // были в панели продавца, выбрали другую компанию: sellerOpen должен пойти через go('seller'), для этого экран уже не «seller»
@@ -11325,6 +11325,177 @@ await t('переключатель компаний: квадратные пл�
   // прокрутка плиток не сбрасывается перерисовкой, открытая компания встаёт по центру только при первом показе и смене
   const pb = html.slice(html.indexOf('function paintBar('), html.indexOf('function renderNav('));
   assert.ok(/csl=oc\?oc\.scrollLeft:0/.test(pb) && /bar\.dataset\.did!==S\.did\)nc\.scrollLeft=Math\.max\(0,cu\.offsetLeft-\(nc\.clientWidth-cu\.offsetWidth\)\/2\);\s*else nc\.scrollLeft=csl/.test(pb) && /bar\.dataset\.did=S\.did/.test(pb), 'прокрутка плиток');
+});
+
+/* ---------- кнопка «Назад» ---------- */
+/* настоящий код пути по экранам (navSnap … navRestore) и go() в песочнице; экраны и загрузки подменены */
+const navLab = (html, st = {}, o = {}) => {
+  const navSrc = html.slice(html.indexOf("const NAV_DID="), html.indexOf('const offTxt='));
+  const goSrc = html.slice(html.indexOf('function go(v,o){'), html.indexOf('/* ---------- склад Sarbon'));
+  const bb = { shown: false, clicks: 0, show() { this.shown = true; }, hide() { this.shown = false; }, onClick(f) { this.clicks++; this.cb = f; } };
+  const S = Object.assign({
+    view: 'shops', did: '', nav: [], navDid: '', navNo: false, shopStep: 'list', shopsCat: '', shopsBz: '', sellerTab: 'orders', shopPlaced: null,
+    cr: { tab: 'today' }, own: { sec: 'x' }, cm: { nb: 0 }, fb: {}, rv: {}, hub: { shops: [{}, {}], me: null }, admin: true, courier: { id: 1 }, auth: true, cc: null, cp: null,
+    tg: o.noTg ? null : { BackButton: bb, isVersionAtLeast: () => o.tgOld ? false : true }
+  }, st);
+  const ui = { lb: false, sheet: false, pov: false, menu: false, cart: 1 }, log = [];
+  const doc = {
+    getElementById: id => id === 'lb' && ui.lb ? {} : id === 'pov' && ui.pov ? { hidden: false } : null,
+    querySelector: q => q === '.fs-bg' && ui.sheet ? { click() { ui.sheet = false; log.push('sheet-close'); } } : null
+  };
+  const w = { scrollY: 0, scrollTo(x, y) { w.scrollY = y; } };
+  const canList = () => o.single ? false : true;
+  const closeViewer = () => { ui.lb = false; log.push('lb-close'); };
+  const closePick = () => { ui.pov = false; log.push('pick-close'); };
+  const menuIsOpen = () => ui.menu;
+  const menuSet = on => { ui.menu = on; log.push('menu-' + on); };
+  const openShop = async d => { if (o.badShop === d) return false; S.did = d; return true; };
+  const noop = () => {};
+  let api;
+  const sellerOpen = tab => { S.sellerTab = tab; if (S.view !== 'seller') api.go('seller'); };
+  const courierOpen = tab => { S.cr.tab = tab; if (S.view !== 'courier') api.go('courier'); };
+  const ownOpen = sec => { S.own.sec = sec; if (S.view !== 'owner') api.go('owner'); };
+  const names = ['S', 'document', 'window', 'canList', 'commOwn', 'closeViewer', 'closePick', 'menuIsOpen', 'menuSet', 'openShop', 'render', 'cartCount', 'sellerOpen', 'courierOpen', 'ownOpen', 'isOwner', 'canBase', 'baseResetUI', 'setScrollLock',
+    'loadMine', 'loadMyDebt', 'loadCfg', 'loadAdmin', 'loadHub', 'loadCourier', 'loadOwner', 'loadBase', 'loadWh', 'loadAnalytics', 'loadComm', 'loadReview', 'L'];
+  const vals = [S, doc, w, canList, () => false, closeViewer, closePick, menuIsOpen, menuSet, openShop, () => log.push('render'), () => ui.cart, sellerOpen, courierOpen, ownOpen, () => true, () => true, noop, noop,
+    noop, noop, noop, noop, noop, noop, noop, noop, noop, noop, noop, noop, (a, b) => a];
+  api = new Function(...names, navSrc + '\n' + goSrc + '\nreturn {go,navBack,navSync,navHere,navPush,navQuiet,navSettle,navParent,navSnap,bkLink,navTg};')(...vals);
+  return Object.assign(api, { S, bb, ui, log, w });
+};
+
+await t('«Назад»: на первом экране стрелки нет, внутри категории и в компании есть; каждый шаг возвращает на экран, откуда пришли', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const n = navLab(html);
+  n.navSync();
+  assert.equal(n.bb.shown, false, 'первый экран (категории): стрелки нет, «Назад» телефона закрывает приложение');
+  // категория → продавцы базара → компания
+  n.navHere(); n.S.shopsCat = 'bazaar';
+  n.navSync(); assert.equal(n.bb.shown, true, 'в категории стрелка есть');
+  n.navHere(); n.S.shopsBz = 'b1';
+  await n.S.openShop; n.S.did = 'a'; n.S.shopStep = 'list'; n.go('shop');
+  assert.equal(n.bb.shown, true);
+  assert.deepEqual(n.S.nav.map(e => e.v + ':' + (e.cat || '') + ':' + (e.bz || '')), ['shops::', 'shops:bazaar:', 'shops:bazaar:b1'], 'путь: категории → категория → базар');
+  await n.navBack();
+  assert.equal(n.S.view, 'shops'); assert.equal(n.S.shopsCat, 'bazaar'); assert.equal(n.S.shopsBz, 'b1', 'из компании назад — в тот же базар, а не в начало');
+  await n.navBack(); assert.equal(n.S.shopsCat, 'bazaar'); assert.equal(n.S.shopsBz, '', 'из базара — к базарам');
+  await n.navBack(); assert.equal(n.S.shopsCat, ''); assert.equal(n.S.nav.length, 0, 'из категории — к категориям, путь пуст');
+  assert.equal(n.bb.shown, false, 'вернулись на первый экран: стрелка спрятана');
+  await n.navBack(); assert.equal(n.S.view, 'shops', 'на первом экране «Назад» ничего не делает: закроет приложение сам телефон');
+  assert.equal(n.bb.clicks, 1, 'обработчик стрелки подключён один раз');
+});
+
+await t('«Назад»: панель продавца, вкладки не шаги; смена компании заменяет экран; возврат в панель на ту же вкладку', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const n = navLab(html, { did: 'a', navDid: 'a', view: 'shop' });
+  n.S.nav = [{ v: 'shops', did: '', cat: '', bz: '', y: 0 }];
+  n.go('seller'); assert.equal(n.S.nav.length, 2, 'каталог → панель продавца: один шаг');
+  n.S.sellerTab = 'debts'; n.S.sellerTab = 'stock';
+  const len = n.S.nav.length;
+  // вкладки меняются через sellerOpen в том же экране: путь не растёт
+  n.S.view = 'seller'; n.S.sellerTab = 'reports'; n.navSync();
+  assert.equal(n.S.nav.length, len, 'вкладки внутри раздела не считаются шагами');
+  // смена компании из панели: экран заменяется
+  n.S.did = 'b'; n.S.view = 'shop'; n.navQuiet(() => n.go('seller'));
+  assert.equal(n.S.nav.length, len, 'переключатель компаний не добавляет шаг');
+  assert.equal(n.S.navDid, 'b');
+  // в каталог из меню и обратно кнопкой: вернулись в панель на ту же вкладку
+  n.S.sellerTab = 'debts';
+  n.go('shop'); await n.navBack();
+  assert.equal(n.S.view, 'seller'); assert.equal(n.S.sellerTab, 'debts', 'панель открылась на той же вкладке');
+  await n.navBack();
+  assert.equal(n.S.view, 'shop'); assert.equal(n.S.did, 'a', 'компания, из которой пришли, открыта заново');
+  await n.navBack(); assert.equal(n.S.view, 'shops'); assert.equal(n.bb.shown, false);
+});
+
+await t('«Назад»: на экран, где уже были, возвращаемся без повторов; корзина и оформленный заказ', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const n = navLab(html);
+  n.S.did = 'a'; n.go('shop'); n.go('mine'); n.go('about');
+  assert.equal(n.S.nav.length, 3);
+  n.go('shops');
+  assert.deepEqual(n.S.nav, [], 'пункт меню «Продавцы» ведёт на уже пройденный экран: путь обрезан до него');
+  assert.equal(n.bb.shown, false);
+  // корзина: «Назад» возвращает в каталог
+  n.S.did = 'a'; n.go('shop');
+  n.navHere(); n.S.shopStep = 'cart'; n.navSync();
+  assert.equal(n.bb.shown, true);
+  await n.navBack(); assert.equal(n.S.shopStep, 'list'); assert.equal(n.S.view, 'shop');
+  // заказ оформлен или корзину очистили: каталог уже показан, лишний шаг убирается сам
+  n.navHere(); n.S.shopStep = 'cart'; n.S.shopStep = 'list'; n.navSync();
+  assert.equal(n.S.nav.filter(e => e.v === 'shop').length, 0, 'шаг «каталог» не остаётся рядом с тем же каталогом');
+  // из «Мои заказы» повторить заказ: корзина открывается, назад — к заказам
+  n.go('mine'); n.S.shopStep = 'cart'; n.go('shop');
+  assert.equal(n.S.view, 'shop'); await n.navBack(); assert.equal(n.S.view, 'mine', 'повтор заказа: назад — к списку заказов');
+  const m = navLab(html);
+  for (let i = 0; i < 80; i++) { m.S.did = 'd' + (i % 40); m.go(i % 2 ? 'shop' : 'mine'); }
+  assert.ok(m.S.nav.length <= 30, 'путь не бесконечный');
+});
+
+await t('«Назад»: сначала закрывается то, что открыто поверх экрана (фото, нижняя панель, сборочный лист, меню), потом уходим с экрана', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const n = navLab(html);
+  n.S.nav = []; n.navSync(); assert.equal(n.bb.shown, false);
+  n.ui.lb = true; n.navSync(); assert.equal(n.bb.shown, true, 'открыто фото: стрелка есть даже на первом экране');
+  await n.navBack(); assert.deepEqual(n.log, ['lb-close']); assert.equal(n.bb.shown, false, 'закрыли фото: стрелка опять спрятана');
+  n.S.did = 'a'; n.go('shop'); n.log.length = 0;
+  n.ui.sheet = true; await n.navBack(); assert.deepEqual(n.log, ['sheet-close'], 'нижняя панель закрылась, экран остался'); assert.equal(n.S.view, 'shop');
+  n.ui.pov = true; await n.navBack(); assert.ok(n.log.includes('pick-close') && n.S.view === 'shop', 'сборочный лист закрылся');
+  n.ui.menu = true; n.navSync(); assert.equal(n.bb.shown, true); await n.navBack(); assert.ok(n.log.includes('menu-false') && n.S.view === 'shop', 'меню закрылось, экран остался');
+  await n.navBack(); assert.equal(n.S.view, 'shops', 'и только следующее «Назад» уходит с экрана');
+  // несколько окон сразу: по одному за раз, фото первое
+  n.ui.lb = true; n.ui.sheet = true; n.log.length = 0; await n.navBack(); await n.navBack();
+  assert.deepEqual(n.log, ['lb-close', 'sheet-close']);
+});
+
+await t('«Назад»: путь пуст (открыли по ссылке) — «Назад» ведёт на уровень выше; ошибка открытия компании никуда не уводит', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  let n = navLab(html, { view: 'shop', did: 'a', navDid: 'a' });
+  n.navSync(); assert.equal(n.bb.shown, true, 'каталог по ссылке: список продавцов выше, стрелка есть');
+  await n.navBack(); assert.equal(n.S.view, 'shops');
+  n = navLab(html, { view: 'shop', did: 'a', navDid: 'a' }, { single: true });
+  n.navSync(); assert.equal(n.bb.shown, false, 'продавец один: каталог первый экран, «Назад» закрывает приложение');
+  n = navLab(html, { view: 'seller', did: 'a', navDid: 'a' }, { single: true });
+  n.navSync(); assert.equal(n.bb.shown, true, 'панель продавца по ссылке: выше каталог');
+  await n.navBack(); assert.equal(n.S.view, 'shop'); n.navSync(); assert.equal(n.bb.shown, false);
+  n = navLab(html, { view: 'mine' }); n.navSync(); await n.navBack(); assert.equal(n.S.view, 'shops', '«Мои заказы» по ссылке: назад — к списку');
+  n = navLab(html, { view: 'shops', shopsCat: 'bazaar', shopsBz: 'b1' }); await n.navBack(); assert.equal(n.S.shopsBz, ''); await n.navBack(); assert.equal(n.S.shopsCat, '');
+  // вернулись в панель другой компании, а сейчас открыта панель этой: экран нарисован заново, а не остался надписью «Загружаем каталог»
+  n = navLab(html, { view: 'seller', did: 'b', navDid: 'b' });
+  n.S.nav = [{ v: 'seller', did: 'a', tab: 'debts', y: 0 }];
+  await n.navBack();
+  assert.equal(n.S.view, 'seller'); assert.equal(n.S.did, 'a'); assert.equal(n.S.navDid, 'a'); assert.equal(n.S.sellerTab, 'debts'); assert.ok(n.log.includes('render'), 'панель нарисована заново');
+  assert.equal(n.S.nav.length, 0);
+  // тот же экран повторно: шаг не добавляется
+  n = navLab(html, { view: 'shop', did: 'a', navDid: 'a' }); n.go('shop'); assert.equal(n.S.nav.length, 0, 'тот же экран: путь не растёт');
+  // компания не открылась (нет сети): остаёмся на месте, шаг не теряется
+  n = navLab(html, { view: 'seller', did: 'b', navDid: 'b' }, { badShop: 'a' });
+  n.S.nav = [{ v: 'shop', did: 'a', step: 'list', y: 0 }];
+  await n.navBack(); assert.equal(n.S.view, 'seller'); assert.equal(n.S.nav.length, 1, 'шаг остался, можно нажать ещё раз');
+  // компании больше нет в списке: шаг убран, следующее «Назад» идёт дальше, а не застревает
+  n = navLab(html, { view: 'seller', did: 'b', navDid: 'b', hub: { loaded: true, shops: [{ id: 'b' }], me: null } }, { badShop: 'gone' });
+  n.S.nav = [{ v: 'shops', did: '', cat: '', bz: '', y: 0 }, { v: 'shop', did: 'gone', step: 'list', y: 0 }];
+  await n.navBack(); assert.equal(n.S.view, 'seller'); assert.equal(n.S.nav.length, 1, 'исчезнувшая компания убрана из пути');
+  await n.navBack(); assert.equal(n.S.view, 'shops', 'и «Назад» идёт дальше');
+});
+
+await t('«Назад»: стрелка Telegram включается, где она есть; надписи «← …» на экране остаются только без неё; в коде всё подключено', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const a = navLab(html), b = navLab(html, {}, { noTg: true }), c = navLab(html, {}, { tgOld: true });
+  assert.equal(a.bkLink('shops', 'X'), '', 'в Telegram надпись не нужна');
+  assert.ok(/data-act="shops">← X</.test(b.bkLink('shops', 'X')) && /data-act="shops">← X</.test(c.bkLink('shops', 'X')), 'в браузере и в старом Telegram надпись остаётся');
+  b.S.nav = [{ v: 'shops' }]; b.navSync(); assert.equal(b.bb.shown, false, 'без стрелки Telegram ничего не падает');
+  assert.ok(/backHTML=\(\)=>canList\(\)\?bkLink\('shops'/.test(html) && /bkLink\('shoplist'/.test(html) && /bkLink\('catback'/.test(html) && /bkLink\('bzback'/.test(html), 'надписи «Все продавцы», «К каталогу», «Категории», «Базары» идут через bkLink');
+  assert.ok(!/class="btn ghost sm backlink"/.test(html.replace(/const bkLink=[^\n]*/, '')), 'других «← …» вне bkLink нет');
+  // шаги вглубь и вперёд записываются там, где они совершаются
+  assert.ok(/a==='opencat'\)\{if\(SHOP_CATS\.includes\(t\.dataset\.k\)\)\{navHere\(\)/.test(html) && /a==='openbz'\)\{navHere\(\)/.test(html) && /a==='opencart'\)\{navHere\(\)/.test(html), 'категория, базар и корзина записывают шаг');
+  assert.ok(/function renderNav\(\)[\s\S]*?menuSync\(\);\n  navSync\(\);\n\}/.test(html), 'каждая перерисовка обновляет стрелку');
+  assert.ok(/menuBack=null;\n  \}\n  navSync\(\)/.test(html), 'меню открыли или закрыли: стрелка обновляется');
+  const lb = html.slice(html.indexOf('function lbOpen('), html.indexOf('document.addEventListener(\'error\''));
+  assert.ok(!/BackButton/.test(lb) && /navSync\(\)/.test(lb), 'просмотр фото не держит свою стрелку: её ведёт общий код');
+  assert.ok(/MutationObserver/.test(html) && /NAV_DID\.includes\(v\)&&canList\(\)\)S\.nav=\[\{v:'shops'/.test(html), 'нижние панели отслеживаются; вход по ссылке в компанию получает «Назад» к списку продавцов');
+  assert.ok(/S\.nav=\[\];/.test(html.slice(html.indexOf('async function leaveDone('), html.indexOf('/* Переключатель «Смотреть как»'))), 'после выхода из роли путь очищается');
+  const es = html.slice(html.indexOf('async function enterSeller('), html.indexOf('/* Выйти из роли продавца'));
+  assert.ok(/navQuiet\(\(\)=>sellerOpen\(tab\)\)/.test(es), 'смена компании из панели продавца не добавляет шаг');
 });
 
 /* ---------- итог ---------- */

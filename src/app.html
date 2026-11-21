@@ -1014,7 +1014,7 @@ div.lgd{cursor:default}
 const $=(s,r)=>(r||document).querySelector(s);
 const MAX_QTY=10000,MAX_LINES=30,MAX_CATS=40,MAX_ITEMS=300;
 const S={
-  view:'shops',as:'',shopsCat:'',shopsBz:'',sellerTab:'orders',filter:'active',dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
+  view:'shops',as:'',nav:[],navDid:'',navNo:false,shopsCat:'',shopsBz:'',sellerTab:'orders',filter:'active',dbt:newDebts(),mdebt:newMyDebt(),pay:null,courier:null,cr:newCour(),dv:newDv(),
   cfg:clone(DEFAULT),
   form:{name:'',phone:'',mode:'pickup',address:'',date:'',time:'',comment:'',region:'',terr:'',loc:null,fp:'in'},
   region:'',showFar:false,regSent:false,regOnly:null,
@@ -1057,7 +1057,107 @@ const isAgent=()=>!!(S.hub.me&&S.hub.me.agent);
 /* общая база магазинов: смотрят владелец, агенты и дистрибьюторы */
 const canBase=()=>!!(S.auth&&S.hub.me&&(isOwner()||isAgent()||S.hub.me.sells.length));
 const canList=()=>S.hub.shops.length>1||!!(S.hub.me&&(S.hub.me.owner||S.hub.me.sells.length>1));
-const backHTML=()=>canList()?'<button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все продавцы','Barcha sotuvchilar')+'</button>':'';
+/* ---------- «Назад»: путь по экранам, одна кнопка и для Telegram (стрелка сверху), и для кнопки «Назад» телефона ----------
+   S.nav — экраны, куда можно вернуться (последний — ближайший). Текущий экран в нём не хранится.
+   Новый экран кладёт в путь предыдущий; вкладки внутри раздела шагами не считаются; если на экран уже заходили, путь обрезается до него. */
+const NAV_DID=['shop','seller','courier','profile','comm'];   // экраны, которые относятся к открытой компании
+const NAV_MAX=30;
+const navTg=()=>{try{return !!(S.tg&&S.tg.BackButton&&S.tg.isVersionAtLeast&&S.tg.isVersionAtLeast('6.1'))}catch(e){return false}};
+/* где есть стрелка Telegram, надпись «← …» на самом экране не нужна; в старом Telegram и в обычном браузере она остаётся */
+const bkLink=(act,txt)=>navTg()?'':'<button type="button" class="btn ghost sm backlink" data-act="'+act+'">← '+txt+'</button>';
+const backHTML=()=>canList()?bkLink('shops',L('Все продавцы','Barcha sotuvchilar')):'';
+const navKey=e=>e.v+'|'+(e.did||'')+(e.v==='shops'?'|'+(e.cat||'')+'|'+(e.bz||''):e.v==='shop'?'|'+(e.step==='cart'?'c':'l'):'');
+/* снимок текущего экрана: по нему потом можно вернуться */
+function navSnap(){
+  const v=S.view,e={v,did:NAV_DID.includes(v)?(S.navDid||S.did||''):'',y:Math.round(window.scrollY||0)};
+  if(v==='shops'){e.cat=S.shopsCat||'';e.bz=S.shopsBz||''}
+  else if(v==='shop')e.step=S.shopStep==='cart'?'cart':'list';
+  else if(v==='seller')e.tab=S.sellerTab;
+  else if(v==='courier')e.tab=S.cr.tab;
+  else if(v==='owner')e.tab=S.own.sec;
+  return e;
+}
+/* шаг вперёд на экран to: предыдущий кладём в путь; на тот, где уже были, возвращаемся, не растя путь */
+function navPush(to){
+  const from=navSnap(),k=navKey(to),i=S.nav.findIndex(x=>navKey(x)===k);
+  if(i>=0){S.nav.length=i;return}
+  if(navKey(from)===k)return;
+  S.nav.push(from);
+  if(S.nav.length>NAV_MAX)S.nav.shift();
+}
+/* шаг вглубь на том же экране (категория → продавцы → базар, каталог → корзина) */
+function navHere(){
+  const e=navSnap(),t=S.nav[S.nav.length-1];
+  if(t&&navKey(t)===navKey(e))return;
+  S.nav.push(e);
+  if(S.nav.length>NAV_MAX)S.nav.shift();
+}
+/* если вернулись на экран, который лежит последним в пути (корзину очистили, заказ оформлен), этот шаг лишний */
+function navSettle(){
+  const k=navKey(navSnap());
+  while(S.nav.length&&navKey(S.nav[S.nav.length-1])===k)S.nav.pop();
+}
+const navQuiet=f=>{S.navNo=true;try{return f()}finally{S.navNo=false}};   // открыть экран без записи в путь
+/* куда ведёт «Назад», если путь пуст (открыли по ссылке): на уровень выше; null — это первый экран */
+function navParent(){
+  const v=S.view,shop=S.did?{v:'shop',did:S.did,step:'list'}:{v:'shops'};
+  if(v==='shops')return S.shopsBz?{v:'shops',cat:S.shopsCat||''}:S.shopsCat?{v:'shops'}:null;
+  if(v==='shop')return S.shopStep==='cart'?{v:'shop',did:S.did,step:'list'}:canList()?{v:'shops'}:null;
+  if(v==='seller'||v==='courier'||v==='profile'||(v==='comm'&&!commOwn()))return shop;
+  return canList()||!S.did?{v:'shops'}:shop;
+}
+/* что открыто поверх экрана и закрывается «Назад» раньше, чем экран: фото на весь экран, нижняя панель, сборочный лист, меню */
+function navOver(){
+  if(document.getElementById('lb'))return closeViewer;
+  const bg=document.querySelector('.fs-bg');if(bg)return ()=>bg.click();
+  const pv=document.getElementById('pov');if(pv&&!pv.hidden)return closePick;
+  if(menuIsOpen())return ()=>menuSet(false);
+  return null;
+}
+/* стрелка «←» в Telegram видна, если есть куда вернуться; на первом экране её нет, и «Назад» телефона закрывает приложение */
+function navSync(){
+  navSettle();
+  if(!navTg())return;
+  try{
+    if(!S.navReg){S.navReg=true;S.tg.BackButton.onClick(navBack)}
+    const on=!!(navOver()||S.nav.length||navParent());
+    if(on!==S.navBtn){S.navBtn=on;S.tg.BackButton[on?'show':'hide']()}
+  }catch(e){}
+}
+async function navBack(){
+  navSettle();
+  const c=navOver();
+  if(c){c();navSync();return}
+  if(S.navBusy||S.switching)return;
+  const e=S.nav.length?S.nav[S.nav.length-1]:navParent();
+  if(!e)return;
+  S.navBusy=true;
+  try{await navRestore(e)}finally{S.navBusy=false;navSync()}
+}
+/* возвращает на экран e: при необходимости открывает его компанию, возвращает вкладку и положение прокрутки */
+async function navRestore(e){
+  const dep=NAV_DID.includes(e.v);
+  let same=e.v===S.view&&(!dep||!e.did||e.did===S.did);
+  if(dep&&e.did&&e.did!==S.did){
+    if(!(await openShop(e.did))){
+      // компании больше нет в списке: этот шаг не вернуть, убираем его, иначе «Назад» застрянет; нет сети: шаг остаётся, можно нажать ещё раз
+      if(S.hub.loaded&&!S.hub.shops.some(x=>x.id===e.did)){const j=S.nav.indexOf(e);if(j>=0)S.nav.splice(j,1)}
+      return;
+    }
+    same=false;S.view='';   // openShop стёр экран надписью «Загружаем каталог»: рисуем заново
+  }
+  const i=S.nav.indexOf(e);if(i>=0)S.nav.length=i;
+  if(e.v==='shops'){S.shopsCat=e.cat||'';S.shopsBz=e.bz||''}
+  if(e.v==='shop'){S.shopPlaced=null;S.shopStep=e.step==='cart'&&cartCount()>0?'cart':'list'}
+  if(same){render();window.scrollTo(0,e.y||0);return}
+  navQuiet(()=>{
+    if(e.v==='seller'&&S.admin)sellerOpen(e.tab||'orders');
+    else if(e.v==='courier'&&S.courier)courierOpen(e.tab||'today');
+    else if(e.v==='owner'&&isOwner())ownOpen(e.tab||S.own.sec);
+    else go(e.v,{back:true});
+  });
+  window.scrollTo(0,e.y||0);
+}
 const offTxt=()=>L('Этот продавец сейчас не принимает заказы.','Bu sotuvchi hozir buyurtma qabul qilmayapti.');
 const offHTML=()=>S.off?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(offTxt())+'</div>':'';
 const sellLink=()=>{const m=S.hub.me&&S.hub.me.sells.find(x=>x.id===S.did);return m&&m.link||''};
@@ -1550,6 +1650,7 @@ function renderNav(){
   });
   paintBar();
   menuSync();
+  navSync();
 }
 /* на широком экране меню стоит слева всегда и окном не бывает */
 function menuSync(){
@@ -1577,6 +1678,7 @@ function menuSet(on){
     if(inside||!document.activeElement||document.activeElement===document.body){const b=menuBack&&document.contains(menuBack)&&!$('#menu').contains(menuBack)?menuBack:$('#menubtn');try{b.focus({preventScroll:true})}catch(e){}}
     menuBack=null;
   }
+  navSync();   // пока меню открыто, «Назад» закрывает его
 }
 document.addEventListener('keydown',e=>{
   if(!menuIsOpen())return;
@@ -1865,7 +1967,7 @@ function renderCart(){
   const pk=pickup();
   if(!bzShop()&&(!S.form.date||S.form.date<pk.min))S.form.date=pk.min;
   S.shopStep='cart';
-  view.innerHTML='<div class="wrap shop"><button type="button" class="btn ghost sm backlink" data-act="shoplist">← '+L('К каталогу','Katalogga')+'</button><h1>'+L('Корзина','Savat')+'</h1>'+offHTML()+'<div class="stack">'
+  view.innerHTML='<div class="wrap shop">'+bkLink('shoplist',L('К каталогу','Katalogga'))+'<h1>'+L('Корзина','Savat')+'</h1>'+offHTML()+'<div class="stack">'
     +'<div class="card" id="clines" style="margin-bottom:0"></div>'
     +'<div class="sum" id="csum"></div><div id="cmin"></div>'
     +'<section class="sec" style="padding-top:6px"><h2>'+L('Получение заказа','Buyurtmani olish')+'</h2><div class="stack">'
@@ -4288,7 +4390,6 @@ async function removePhoto(id,n){
 }
 
 /* просмотр фото на весь экран: свайп между фото, × / касание тёмного поля / Esc / «Назад» в Telegram закрывают */
-function lbBack(){closeViewer()}
 function openViewer(id,pp,did,atVideo){
   const p=pp||S.prod.items.find(x=>x.id===id);if(!p)return;
   const vs=phVers(p),hv=vdOk(p.vd);if(!vs.length&&!hv)return;
@@ -4341,14 +4442,14 @@ function lbOpen(items,label,start){
     const c=el.querySelector('#lb-cnt');if(c&&many)c.textContent=(start+1)+' / '+items.length;
     el.querySelectorAll('#lb-dots i').forEach((d,k)=>d.classList.toggle('on',k===start));
   }
-  try{if(S.tg&&S.tg.BackButton&&S.tg.isVersionAtLeast&&S.tg.isVersionAtLeast('6.1')){S.tg.BackButton.onClick(lbBack);S.tg.BackButton.show();S.lbTg=true}}catch(e){}
+  navSync();   // стрелка «←» в Telegram закрывает просмотр (navBack)
 }
 function closeViewer(){
   const el=document.getElementById('lb');
   if(el){el.querySelectorAll('video').forEach(v=>{try{v.pause();v.removeAttribute('src');v.load()}catch(e){}});el.remove()}
   S.lbItems=null;
   document.documentElement.classList.remove('lb-open');
-  if(S.lbTg){S.lbTg=false;try{S.tg.BackButton.offClick(lbBack);S.tg.BackButton.hide()}catch(e){}}
+  navSync();
 }
 document.addEventListener('error',e=>{const t=e.target;if(t&&t.tagName==='IMG'&&t.dataset&&t.dataset.abimg){const f=t.closest('figure');if(f)f.remove()}else if(t&&t.tagName==='IMG'&&t.classList&&t.classList.contains('lb-poster'))t.remove()},true);   // у видео нет кадра-заставки: остаётся тёмный экран с ▶
 document.addEventListener('keydown',e=>{
@@ -5416,7 +5517,8 @@ function render(){
   else if(S.view==='courier')renderCourier();
   else renderSeller();
 }
-function go(v){
+function go(v,o){
+  // o.back: возврат кнопкой «Назад»: путь не растёт и список продавцов не сбрасывается
   // каталог, профиль и панель продавца есть только внутри дистрибьютора
   if(!S.did&&(v==='shop'||v==='profile'||v==='seller'||v==='courier'))v='shops';
   if(v==='courier'&&!S.courier)v='shop';
@@ -5426,12 +5528,14 @@ function go(v){
   if(v==='review'&&!isOwner())v='shops';
   if(v==='analytics'&&!isOwner())v='shops';
   if(v==='comm'&&!(isOwner()||(S.admin&&S.did)))v='shops';
-  const was=S.view;
+  const was=S.view,back=!!(o&&o.back);
+  if(!back&&!S.navNo)navPush({v,did:NAV_DID.includes(v)?S.did:'',step:S.shopStep==='cart'?'cart':'list',cat:'',bz:''});
+  S.navNo=false;
   if(was==='comm'&&v!=='comm')S.cm.nb=0;
   if(v==='base'&&was!=='base')baseResetUI();
   if(v==='feedback'&&was!=='feedback'){S.fb.sent='';S.fb.err=''}
-  if(v==='shops'){S.shopsCat='';S.shopsBz=''}
-  S.view=v;S.cc=null;S.cp=null;setScrollLock();
+  if(v==='shops'&&!back){S.shopsCat='';S.shopsBz=''}
+  S.view=v;S.navDid=S.did;S.cc=null;S.cp=null;setScrollLock();
   render();window.scrollTo(0,0);
   if(v==='mine')loadMine();
   if(v==='debt')loadMyDebt(true);
@@ -5759,8 +5863,8 @@ function renderShops(){
   const bk=ck==='bazaar'&&h.loaded?bzSel():'';   // открытый базар: '', 'none' («Без базара») или номер
   const bkName=bk==='none'?L('Без базара','Bozor koʻrsatilmagan'):bzName(bzList().find(x=>x.id===bk));
   const pickBz=ck==='bazaar'&&!bk&&h.loaded&&!!bzGroups();   // вместо продавцов показаны базары
-  let out='<div class="wrap page">'+(bk?'<button type="button" class="btn ghost sm backlink" data-act="bzback">← '+L('Базары','Bozorlar')+'</button><div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Базар','Bozor')+'</div><h1>'+esc(bkName)+'</h1></div></div>'
-    :ck?'<button type="button" class="btn ghost sm backlink" data-act="catback">← '+L('Категории','Kategoriyalar')+'</button><div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Категория','Kategoriya')+'</div><h1>'+esc(shopCatName(ck))+'</h1></div></div>'
+  let out='<div class="wrap page">'+(bk?bkLink('bzback',L('Базары','Bozorlar'))+'<div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Базар','Bozor')+'</div><h1>'+esc(bkName)+'</h1></div></div>'
+    :ck?bkLink('catback',L('Категории','Kategoriyalar'))+'<div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Категория','Kategoriya')+'</div><h1>'+esc(shopCatName(ck))+'</h1></div></div>'
     :'<div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Продукты питания: продавцы и покупатели в одном приложении','Oziq-ovqat mahsulotlari: sotuvchilar va xaridorlar bir ilovada')+'</div></div></div>');
   if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
@@ -5847,8 +5951,9 @@ async function enterSeller(did,tab){
   if(!S.admin){go('shop');return false}
   // openShop стёр экран надписью «Загружаем каталог». Если мы уже были в панели продавца (переключатель компаний), sellerOpen только подкрасил бы вкладки
   // в несуществующем экране и оставил надпись навсегда, поэтому панель открываем заново: sellerOpen пойдёт через go('seller')
-  if(S.view==='seller'&&S.did!==was)S.view='shop';
-  sellerOpen(tab);
+  // смена компании внутри панели продавца заменяет экран, а не добавляет шаг в путь «Назад»
+  if(S.view==='seller'&&S.did!==was){S.view='shop';navQuiet(()=>sellerOpen(tab))}
+  else sellerOpen(tab);
   return true;
 }
 /* Выйти из роли продавца открытой компании. Доступ теряет только этот человек; компания, данные и другие продавцы не меняются.
@@ -5888,7 +5993,7 @@ async function leaveGo(did,nm){
 }
 /* Роли больше нет: компания закрывается как открытая, меню и список ролей обновляются, показывается главный экран */
 async function leaveDone(did,nm){
-  S.epoch++;resetShopState();S.did='';
+  S.epoch++;resetShopState();S.did='';S.nav=[];   // путь вёл через компанию, которой больше нет
   await loadHub();
   if(S.as&&!asRoles().some(x=>x[0]===S.as))S.as='';
   go('shops');
@@ -6753,7 +6858,7 @@ function ownTitleHTML(){
 }
 function renderOwner(){
   const o=S.own,sec=o.sec||'dist',info=ownSecInfo(sec);
-  let h='<div class="wrap page"><button type="button" class="btn ghost sm backlink" data-act="shops">← '+L('Все продавцы','Barcha sotuvchilar')+'</button><div class="eyebrow" style="margin-top:12px">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1><div id="tbar"></div>';
+  let h='<div class="wrap page">'+bkLink('shops',L('Все продавцы','Barcha sotuvchilar'))+'<div class="eyebrow" style="margin-top:12px">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1><div id="tbar"></div>';
   if(!o.loaded)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
@@ -7199,9 +7304,9 @@ document.addEventListener('click',e=>{
   else if(a==='coopen'){menuSet(false);coOpen()}
   else if(a==='inbox'){menuSet(false);inboxOpen()}
   else if(a==='shops')go('shops');
-  else if(a==='opencat'){if(SHOP_CATS.includes(t.dataset.k)){S.shopsCat=t.dataset.k;S.shopsBz='';renderShops();window.scrollTo(0,0)}}
+  else if(a==='opencat'){if(SHOP_CATS.includes(t.dataset.k)){navHere();S.shopsCat=t.dataset.k;S.shopsBz='';renderShops();window.scrollTo(0,0)}}
   else if(a==='catback'){S.shopsCat='';S.shopsBz='';renderShops();window.scrollTo(0,0)}
-  else if(a==='openbz'){S.shopsBz=t.dataset.b;renderShops();window.scrollTo(0,0)}
+  else if(a==='openbz'){navHere();S.shopsBz=t.dataset.b;renderShops();window.scrollTo(0,0)}
   else if(a==='bzback'){S.shopsBz='';renderShops();window.scrollTo(0,0)}
   else if(a==='owner')go('owner');
   else if(a==='hubreload'){S.hub.err=false;renderShops();loadHub()}
@@ -7368,7 +7473,7 @@ document.addEventListener('click',e=>{
     paintCartLines();
     paintShopBar();renderNav();
   }
-  else if(a==='opencart'){S.shopStep='cart';renderShop();window.scrollTo(0,0)}
+  else if(a==='opencart'){navHere();S.shopStep='cart';renderShop();window.scrollTo(0,0)}
   else if(a==='shoplist'){S.shopStep='list';renderShop();window.scrollTo(0,0)}
   else if(a==='shopagain'){S.shopPlaced=null;S.shopStep='list';renderShop();window.scrollTo(0,0)}
   else if(a==='cadd'){
@@ -7961,7 +8066,8 @@ function tick(){
   else if(vw==='review'&&isOwner())v='review';
   else if(vw==='analytics'&&isOwner())v='analytics';
   else if(vw==='comm'&&isOwner())v='comm';
-  S.view=v;
+  S.view=v;S.navDid=S.did;
+  if(NAV_DID.includes(v)&&canList())S.nav=[{v:'shops',did:'',cat:'',bz:'',y:0}];   // открыли по ссылке сразу в компанию: «Назад» ведёт к списку продавцов
   const hp=sp&&!QS.get('d')&&v==='shop'&&S.did===sp.did?sp.pid:'';   // пришли по ссылке из канала: каталог сразу на этом товаре
   if(hp)S.shopStep='list';
   render();
@@ -7980,6 +8086,12 @@ function tick(){
   if(isOwner()&&v!=='owner')loadDisputes();
   loadMine();if(v!=='debt')loadMyDebt(false);
   setInterval(tick,15000);
+  // нижние панели, просмотр фото и сборочный лист открываются в разных местах: следим за экраном, чтобы стрелка «←» появлялась и пряталась вовремя
+  if(typeof MutationObserver==='function'){
+    let navQ=0;
+    new MutationObserver(()=>{if(navQ)return;navQ=1;setTimeout(()=>{navQ=0;navSync()},0)}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden']});
+  }
+  navSync();
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState!=='visible')return;
     loadCfg();loadMine();loadMyDebt(S.view==='debt');loadAdmin();loadCourier();if(isOwner())loadCommOwner();
