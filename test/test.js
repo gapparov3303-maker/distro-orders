@@ -8816,6 +8816,33 @@ await t('меню: «Смотреть как» убирает чужие стр�
   assert.ok(/openShop\(did\)/.test(es) && /sellerOpen\(tab\)/.test(es) && /if\(!S\.admin\)\{go\('shop'\)/.test(es), 'открывает компанию, раздел; без прав — каталог');
 });
 
+await t('переключатель компаний: после смены компании панель продавца рисуется заново, а не остаётся надпись «Загружаем каталог»', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('async function enterSeller('), html.indexOf('/* Выйти из роли продавца'));
+  const lab = (view, did, admin = true) => {
+    const S = { view, did, admin, shopPlaced: 1, shopStep: 'x' }, calls = [];
+    // openShop стирает экран, как настоящий: ставит новую компанию (или не открывает её)
+    const openShop = async d => { if (d === 'bad') return false; S.did = d; return true; };
+    const enter = new Function('S', 'openShop', 'go', 'render', 'sellerOpen', src + '\nreturn enterSeller;')(S, openShop, v => calls.push(['go', v]), () => calls.push(['render']), t => calls.push(['open', t, S.view]));
+    return { S, calls, enter };
+  };
+  // были в панели продавца, выбрали другую компанию: sellerOpen должен пойти через go('seller'), для этого экран уже не «seller»
+  let w = lab('seller', 'a'); assert.equal(await w.enter('b', 'debts'), true);
+  assert.deepEqual(w.calls, [['open', 'debts', 'shop']], 'при смене компании из панели продавца экран сброшен, чтобы sellerOpen нарисовал его заново');
+  // та же компания: экран не трогаем
+  w = lab('seller', 'a'); await w.enter('a', 'orders'); assert.deepEqual(w.calls, [['open', 'orders', 'seller']], 'та же компания: ничего не сбрасывается');
+  // из другого экрана (меню): как раньше
+  w = lab('shop', 'a'); await w.enter('b', 'stock'); assert.deepEqual(w.calls, [['open', 'stock', 'shop']]);
+  w = lab('comm', 'a'); await w.enter('b', 'orders'); assert.deepEqual(w.calls, [['open', 'orders', 'comm']], 'с экрана комиссии: как раньше');
+  // нет прав в этой компании: каталог
+  w = lab('seller', 'a'); w.S.admin = false; await w.enter('b', 'orders'); assert.deepEqual(w.calls, [['go', 'shop']]);
+  // не открылась: экран перерисован, раздел не открывается
+  w = lab('seller', 'a'); assert.equal(await w.enter('bad', 'orders'), false); assert.deepEqual(w.calls, [['render']]);
+  // и sellerOpen по-прежнему рисует панель через go, когда экран другой, а на самом экране только подкрашивает вкладки
+  const so = html.slice(html.indexOf('function sellerOpen('), html.indexOf('function paintSeller('));
+  assert.ok(/if\(S\.view!=='seller'\)go\('seller'\);\s*else\{paintTabs\(\);paintSeller\(\)/.test(so), 'sellerOpen: другой экран — go, тот же — только вкладки');
+});
+
 await t('вкладки на экране: «Входящие», группы владельца и разделы компании; переключатель компаний; куда ведут нажатия', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const me = ownerMe({ sells: [{ id: 'a', name: 'Альфа' }, { id: 'b', name: 'Бета' }] });
