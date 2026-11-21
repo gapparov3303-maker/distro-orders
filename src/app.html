@@ -7291,8 +7291,14 @@ document.addEventListener('click',e=>{
   else if(a==='fbdone')fbDone(t.dataset.id,true);
   else if(a==='fbundo')fbDone(t.dataset.id,false);
   else if(a==='nav'){
-    if(t.dataset.v==='shop'&&S.did&&S.view!=='shop'){S.shopPlaced=null;S.shopStep='list'}
-    go(t.dataset.v);
+    const nv=t.dataset.v;
+    // «Каталог» при нескольких продавцах ведёт на первый экран (категории и список), а не в ту компанию, где были в прошлый раз;
+    // в каталоге компании (и в её корзине) строка только закрывает меню: вы уже там
+    if(nv==='shop'&&canList()){if(S.view!=='shop')go('shops')}
+    else{
+      if(nv==='shop'&&S.did&&S.view!=='shop'){S.shopPlaced=null;S.shopStep='list'}
+      go(nv);
+    }
     menuSet(false);
   }
   else if(a==='menu')menuSet(!menuIsOpen());
