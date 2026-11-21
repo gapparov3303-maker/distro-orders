@@ -11562,12 +11562,13 @@ const ownLab = (html, st = {}, uz = false) => {
   const SHOP_CATS = ['maker', 'importer', 'wholesale', 'distributor', 'bazaar'];
   const catName = { maker: 'Производители', importer: 'Импортеры', wholesale: 'Оптовики', distributor: 'Дистрибьюторы', bazaar: 'Базары' };
   const S = Object.assign({ own: { shops: [], legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50, fname: '', fcode: '', fcat: '', fbz: '', err2: '' }, cm: { o: null } }, st);
+  S.own.cardOpen = S.own.cardOpen || {};
   const env = {
     S, L: (ru, u) => (uz ? u : ru), esc: escH, hintD: () => '', plTovar: n => 'товаров', cleanCat: x => (SHOP_CATS.includes(x) ? x : ''), shopCatName: k => catName[k], SHOP_CATS,
     bzList: () => [{ id: 'b1', name: 'Центральный', uz: 'Markaziy' }, { id: 'b2', name: 'Новый', uz: 'Yangi' }], bzOf: r => (r && r.bz) || '', bzName: b => b.name, bzOptsHTML: () => '<option>bz</option>',
     fmtPct: p => String(p).replace('.', ','), ownErr: x => String(x)
   };
-  const api = new Function(...Object.keys(env), src + '\nreturn {ownListHTML,ownPctHTML,ownAddHTML,ownCatSel,ownBzSel};')(...Object.values(env));
+  const api = new Function(...Object.keys(env), src + '\nreturn {ownListHTML,ownPctHTML,ownAddHTML,ownCatSel,ownBzSel,ownAllLab};')(...Object.values(env));
   return Object.assign(api, { S });
 };
 const shopRec = (id, o = {}) => Object.assign({ id, name: 'Компания ' + id, items: 3, sellers: 1, own: true, on: true, cat: '', bz: '', legal: '', link: 'https://t.me/x?start=' + id }, o);
@@ -11582,8 +11583,8 @@ await t('владелец, «Продавцы → Список»: кнопка �
   let h = m.ownListHTML();
   assert.ok(/id="ownaddopen" data-act="ownaddopen" aria-expanded="false">＋ Добавить продавца</.test(h), 'кнопка сверху');
   assert.ok(!/data-own="fname"/.test(h), 'пока не нажали, формы нет');
-  assert.ok(h.indexOf('ownaddopen') < h.indexOf('class="card"'), 'кнопка над списком');
-  assert.equal(count(h, /<div class="card">/g), 3, 'три карточки');
+  assert.ok(h.indexOf('ownaddopen') < h.indexOf('class="card sblk"'), 'кнопка над списком');
+  assert.equal(count(h, /<div class="card sblk">/g), 3, 'три карточки');
   // в каждой карточке выбор категории; выбрана текущая
   assert.equal(count(h, /data-ocat=/g), 3);
   assert.ok(/data-ocat="a"[^>]*>[\s\S]*?<option value="maker" selected>Производители/.test(h), 'у первого выбрана его категория');
@@ -11625,6 +11626,91 @@ await t('владелец, «Продавцы → Список»: кнопка �
   m = ownLab(html, { own: { shops: [shops[1]], legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50 }, cm: { o: { rows } } }, true);
   h = m.ownListHTML();
   assert.ok(/＋ Sotuvchi qoʻshish/.test(h) && /Komissiya foizi, %/.test(h) && />Kategoriya<\/div>/.test(h) && /% ni saqlash/.test(h));
+});
+
+await t('владелец, список продавцов: карточки свёрнуты, в шапке название, статус, сводка и стрелка; поля остаются в разметке; «Свернуть все / Развернуть все»', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const count = (h, re) => (h.match(re) || []).length;
+  const shops = [shopRec('a', { cat: 'maker', items: 14 }), shopRec('b', { own: false, on: false }), shopRec('c')];
+  const rows = [{ id: 'a', pct: 2.5, pays: [] }, { id: 'b', pct: 0, pays: [] }, { id: 'c', pct: 1, err: true }];
+  const mk = (extra = {}, sh = shops, uz = false) => ownLab(html, { own: Object.assign({ shops: sh, legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50, cardOpen: {} }, extra), cm: { o: { rows } } }, uz);
+  const head = (h, id) => h.match(new RegExp('<button type="button" class="sbh shd" data-act="oshop" data-id="' + id + '"[\\s\\S]*?</button>'))[0];
+  // по умолчанию всё свёрнуто
+  let m = mk(), h = m.ownListHTML();
+  assert.equal(count(h, /class="sbh shd" data-act="oshop" data-id="\w+" aria-expanded="false" aria-controls="sc-\w+"/g), 3, 'три шапки, все закрыты');
+  assert.equal(count(h, /<div class="sbb" id="sc-\w+" hidden>/g), 3, 'три тела спрятаны');
+  assert.equal(count(h, /class="sbh shd"[^>]*aria-expanded="true"/g), 0);
+  // шапка: название, статус, сводка, стрелка; «доступ» и поля внутри тела
+  const ha = head(h, 'a');
+  assert.ok(/<span class="shnm">Компания a<\/span><span class="dtag">в списке<\/span>/.test(ha), 'название и статус');
+  assert.ok(/<span class="dmeta">14 товаров · код выдан · комиссия 2,5%<\/span>/.test(ha), 'сводка: товары · код · комиссия');
+  assert.ok(/<span class="sbc" aria-hidden="true"><\/span>/.test(ha), 'стрелка есть');
+  assert.ok(!/доступ|data-ocat|data-opct|data-olegal|<input/.test(ha), 'в шапке только сводка, полей нет');
+  assert.ok(/<span class="dtag">скрыт<\/span>/.test(head(h, 'b')) && /3 товаров · кода нет · комиссия 0%/.test(head(h, 'b')), 'скрытый продавец: статус «скрыт», комиссия 0% тоже показана');
+  assert.ok(/3 товаров · код выдан<\/span>/.test(head(h, 'c')) && !/комиссия/.test(head(h, 'c')), 'нет данных по комиссии: в сводке её нет');
+  assert.ok(/id="sc-a" hidden><div class="dmeta" style="margin-bottom:12px">доступ: 1 чел\.<\/div>/.test(h), 'доступ внутри тела');
+  // свёрнутое не вырезается из разметки: набранное и поля на месте
+  assert.equal(count(h, /data-olegal=/g), 3);
+  assert.equal(count(h, /data-ocat=/g), 3);
+  assert.equal(count(h, /data-act="owndel"/g), 3, 'у обычных продавцов кнопка «Удалить» в теле карточки');
+  assert.ok(!/data-act="owndel"/.test(mk({}, [shopRec('main'), shopRec('x')]).ownListHTML().split('id="sc-x"')[0]), 'у первого продавца («main») удалить нельзя');
+  m = mk({ legals: { a: 'ООО Икс' }, pcts: { a: '4' } });
+  h = m.ownListHTML();
+  assert.ok(/data-olegal="a"[^>]*value="ООО Икс"/.test(h) && /data-opct="a"[^>]*value="4"/.test(h), 'набранное в свёрнутой карточке не пропадает');
+  // раскрыта одна: только её тело открыто, подпись общей кнопки «Свернуть все»
+  m = mk({ cardOpen: { b: true } });
+  h = m.ownListHTML();
+  assert.ok(/data-id="b" aria-expanded="true"/.test(head(h, 'b')) && /<div class="sbb" id="sc-b">/.test(h), 'раскрытая карточка');
+  assert.equal(count(h, /<div class="sbb" id="sc-\w+" hidden>/g), 2, 'остальные спрятаны');
+  assert.ok(/id="ownall" data-act="ownall">Свернуть все</.test(h), 'есть раскрытые: «Свернуть все»');
+  m = mk();
+  assert.ok(/id="ownall" data-act="ownall">Развернуть все</.test(m.ownListHTML()), 'всё закрыто: «Развернуть все»');
+  assert.equal(m.ownAllLab(), 'Развернуть все');
+  // кнопка «все» только когда продавцов больше одного
+  assert.ok(!/ownall/.test(mk({}, [shops[0]]).ownListHTML()) && !/ownall/.test(mk({}, []).ownListHTML()), 'один продавец или ни одного: кнопки нет');
+  // узбекский
+  m = mk({ cardOpen: { a: true } }, shops, true);
+  h = m.ownListHTML();
+  assert.ok(/Hammasini yopish/.test(h) && /14 ta mahsulot · kod berilgan · komissiya 2,5%/.test(h) && /kirish: 1 kishi/.test(h) && /roʻyxatda/.test(h), 'узбекский');
+  assert.ok(/Hammasini ochish/.test(mk({}, shops, true).ownListHTML()));
+  // шапка — настоящая кнопка с большой областью нажатия; сводка не «растягивает» шапку и не обрезается
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.ok(/\.shl\{[^}]*min-width:0/.test(css) && /\.shnm\{[^}]*overflow-wrap:anywhere/.test(css), 'длинное название переносится');
+});
+
+await t('список продавцов: нажатие на шапку только прячет и показывает тело, «все» переключает сразу все; новый продавец открыт', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const line = a => html.match(new RegExp("  else if\\(a==='" + a + "'\\)\\{[^\\n]*\\}\\n"))[0];
+  const body = (a, l) => l.replace(new RegExp("^  else if\\(a==='" + a + "'\\)\\{"), '').replace(/\}\n$/, '');
+  const lab = S => () => (S.own.shops.some(r => S.own.cardOpen[r.id]) ? 'Свернуть все' : 'Развернуть все');
+  // одна карточка
+  const l1 = line('oshop');
+  assert.ok(!/renderOwner|innerHTML/.test(l1), 'не перерисовывается: набранное не пропадёт');
+  const S = { own: { shops: [{ id: 'a' }, { id: 'b' }], cardOpen: {} } };
+  const els = { 'sc-a': { hidden: true }, ownall: { textContent: 'Развернуть все' } };
+  const click = id => { const t = { dataset: { id }, attrs: {}, setAttribute(n, v) { this.attrs[n] = v; } }; new Function('S', 't', 'document', 'ownAllLab', body('oshop', l1))(S, t, { getElementById: x => els[x] || null }, lab(S)); return t; };
+  let t = click('a');
+  assert.deepEqual([S.own.cardOpen.a, els['sc-a'].hidden, t.attrs['aria-expanded'], els.ownall.textContent], [true, false, 'true', 'Свернуть все'], 'открылась, общая кнопка обновилась');
+  t = click('a');
+  assert.deepEqual([S.own.cardOpen.a, els['sc-a'].hidden, t.attrs['aria-expanded'], els.ownall.textContent], [false, true, 'false', 'Развернуть все'], 'закрылась');
+  click('zzz');
+  assert.equal(S.own.cardOpen.zzz, true, 'карточки нет на экране — состояние всё равно запоминается, ошибки нет');
+  // «все»
+  const l2 = line('ownall');
+  let calls = 0;
+  const all = S2 => new Function('S', 'renderOwner', body('ownall', l2))(S2, () => { calls++; });
+  const S2 = { own: { shops: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], cardOpen: {} } };
+  all(S2);
+  assert.deepEqual(S2.own.cardOpen, { a: true, b: true, c: true }, 'ничего не открыто — раскрылись все');
+  all(S2);
+  assert.deepEqual(S2.own.cardOpen, { a: false, b: false, c: false }, 'есть открытые — закрылись все');
+  S2.own.cardOpen.b = true; all(S2);
+  assert.deepEqual(S2.own.cardOpen, { a: false, b: false, c: false }, 'открыта одна — «Свернуть все» закрывает и её');
+  assert.equal(calls, 3, 'каждое нажатие перерисовывает один раз');
+  // новый продавец показывается раскрытым; состояние есть в S.own
+  assert.ok(/o\.cardOpen\[r\.data\.shop\.id\]=true/.test(fnOf(html, 'ownAdd')), 'после добавления карточка нового продавца раскрыта');
+  assert.ok(/own:\{[^\n]*cardOpen:\{\}/.test(html), 'состояние хранится в S.own.cardOpen, по умолчанию пустое (всё свёрнуто)');
+  assert.ok(/aria-controls="sc-'\+esc\(r\.id\)\+'"/.test(fnOf(html, 'ownListHTML')) && /id="sc-'\+esc\(r\.id\)\+'"/.test(fnOf(html, 'ownListHTML')), 'шапка связана с телом через aria-controls');
 });
 
 await t('владелец: процент комиссии меняется только в карточке продавца, на экране «Платежи комиссии» он показан, а кнопка ведёт к карточке', () => {
