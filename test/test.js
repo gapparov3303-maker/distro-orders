@@ -11498,6 +11498,29 @@ await t('«Назад»: стрелка Telegram включается, где о
   assert.ok(/navQuiet\(\(\)=>sellerOpen\(tab\)\)/.test(es), 'смена компании из панели продавца не добавляет шаг');
 });
 
+await t('меню: «Каталог» при нескольких продавцах ведёт на первый экран, в каталоге компании только закрывает меню, при одном продавце открывает его каталог', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const body = html.match(/else if\(a==='nav'\)\{\n([\s\S]*?)\n  \}\n  else if\(a==='menu'\)/)[1];
+  const run = (v, st, list) => {
+    const S = Object.assign({ view: 'mine', did: 'viva', shopStep: 'cart', shopPlaced: 5 }, st), calls = [];
+    new Function('t', 'S', 'canList', 'go', 'menuSet', body)({ dataset: { v } }, S, () => list, x => calls.push(['go', x]), x => calls.push(['menu', x]));
+    return { S, calls };
+  };
+  let r = run('shop', { view: 'mine' }, true);
+  assert.deepEqual(r.calls, [['go', 'shops'], ['menu', false]], 'из «Заказов» (компания ещё открыта в памяти): первый экран, а не её каталог');
+  r = run('shop', { view: 'seller' }, true); assert.deepEqual(r.calls, [['go', 'shops'], ['menu', false]], 'из панели продавца: первый экран');
+  r = run('shop', { view: 'shops' }, true); assert.deepEqual(r.calls, [['go', 'shops'], ['menu', false]], 'на списке: возврат к категориям');
+  r = run('shop', { view: 'shop' }, true); assert.deepEqual(r.calls, [['menu', false]], 'в каталоге компании: меню закрылось, экран не трогаем');
+  r = run('shop', { view: 'shop', shopStep: 'cart' }, true); assert.deepEqual(r.calls, [['menu', false]], 'в корзине компании тоже');
+  assert.equal(r.S.shopStep, 'cart', 'корзина не сбрасывается');
+  // продавец один: как раньше — каталог единственной компании
+  r = run('shop', { view: 'mine' }, false); assert.deepEqual(r.calls, [['go', 'shop'], ['menu', false]]); assert.equal(r.S.shopStep, 'list'); assert.equal(r.S.shopPlaced, null, 'каталог открывается с начала');
+  r = run('shop', { view: 'shop' }, false); assert.deepEqual(r.calls, [['go', 'shop'], ['menu', false]]);
+  // остальные строки меню без изменений
+  r = run('mine', { view: 'shop' }, true); assert.deepEqual(r.calls, [['go', 'mine'], ['menu', false]]);
+  r = run('debt', { view: 'shops' }, false); assert.deepEqual(r.calls, [['go', 'debt'], ['menu', false]]);
+});
+
 /* ---------- итог ---------- */
 let bad = 0;
 for (const r of results) {
