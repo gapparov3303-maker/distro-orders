@@ -7203,7 +7203,7 @@ await t('подсказки под полями: в каждой форме пр
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
   // сколько подсказок минимум должно быть в каждой форме (по числу полей)
-  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, crPickHTML: 1, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 10, ownAddHTML: 2, cmShopHTML: 3, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
+  const need = { formHTML: 6, terrFieldHTML: 1, regionFieldHTML: 1, renderProfile: 4, settingsHTML: 6, payBlockHTML: 2, crPickHTML: 1, voidFormHTML: 1, resFormHTML: 1, debtorHTML: 2, hdVoidForm: 1, hdResForm: 1, couriersHTML: 1, dvCardHTML: 2, stockRowHTML: 1, clientSheetHTML: 2, baseFormHTML: 10, ownAddHTML: 2, cmShopHTML: 2, ownPctHTML: 1, commSellerHTML: 2, cmPayHTML: 1, commOwnerHTML: 1, ownPeopleHTML: 3, dispHandHTML: 1, dispCardHTML: 1 };
   for (const [name, n] of Object.entries(need)) {
     const body = fn(name);
     const k = (body.match(/hintD\(/g) || []).length;
@@ -8303,7 +8303,8 @@ await t('категории дистрибьюторов: пять катего�
   assert.ok(/id="s-cat" data-catsel="1"/.test(st) && /SHOP_CATS\.map/.test(st), 'у продавца есть поле «Категория»');
   assert.ok(/dataset\.catsel!==undefined\)catSave\(/.test(html) && /api\('PUT','\/api\/admin\/category'/.test(fn('catSave')));
   // владелец: подраздел, выбор у каждого, выбор при создании
-  assert.ok(/\['cats',L\('Категории','Kategoriyalar'\)/.test(html) && /sec==='cats'\)h\+=ownCatsHTML\(\)/.test(html), 'подраздел «Категории»');
+  assert.ok(!/L\('Категории продавцов'/.test(html) && !/sec==='cats'/.test(html) && !/ownCatsHTML/.test(html), 'отдельного подраздела «Категории» нет: категория — поле в карточке продавца');
+  assert.ok(/ownCatSel\(r\.id,r\.cat\)/.test(fn('ownListHTML')) && /data-ocat=/.test(fn('ownCatSel')), 'в карточке продавца в «Списке» выбор категории');
   assert.ok(/'\/api\/hub\/admin\/shops\/'\+encodeURIComponent\(id\)\+'\/cat'/.test(fn('ownCat')), 'владелец меняет через площадку');
   assert.ok(/id="o-cat" data-own="fcat"/.test(fn('ownAddHTML')) && /cleanCat\(o\.fcat\)\?\{cat:cleanCat\(o\.fcat\)\}/.test(fn('ownAdd')), 'при создании можно выбрать категорию');
   // подсказки в формах
@@ -8601,7 +8602,7 @@ await t('базары: экраны покупателя (группы и «Бе
   // владелец
   assert.ok(/\['bz',L\('Базары','Bozorlar'\),L\('Базары','Bozorlar'\)\]/.test(html) && /sec==='bz'\)h\+=ownBzHTML\(\)/.test(html), 'подраздел «Базары»');
   assert.ok(/'\/api\/hub\/admin\/bazaars'/.test(fn('bzAdd')) && /'\/api\/hub\/admin\/bazaars\/'\+encodeURIComponent\(id\)/.test(fn('bzSaveRow')) && /'DELETE','\/api\/hub\/admin\/bazaars\//.test(fn('bzDel')), 'добавить, переименовать, удалить');
-  assert.ok(/ownBzSel\(r\.id,r\.bz\)/.test(fn('ownCatsHTML')) && /data-obz=/.test(fn('ownBzSel')) && /\{cat:'bazaar',bz:cleanBz\(v\)\}/.test(fn('ownBz')), 'перевод продавца на другой базар');
+  assert.ok(/ownBzSel\(r\.id,r\.bz\)/.test(fn('ownListHTML')) && /data-obz=/.test(fn('ownBzSel')) && /\{cat:'bazaar',bz:cleanBz\(v\)\}/.test(fn('ownBz')), 'перевод продавца на другой базар');
   assert.ok(/id="o-bz" data-own="fbz"/.test(fn('ownAddHTML')) && /\{bz:cleanBz\(o\.fbz\)\}/.test(fn('ownAdd')), 'выбор базара при создании');
   assert.ok(/dataset\.own==='fcat'\)\{S\.own\.fcat=t\.value;/.test(html), 'выбрали «Базары» в форме создания — поле базара появляется без потери введённого');
   // подсказки в формах
@@ -8714,14 +8715,14 @@ await t('меню: плоский список без раскрывающихс
   let m = menuLab(html, { auth: false });
   let g = m.menuGroups();
   assert.deepEqual(g.map(x => x[0]), [''], 'одна группа без заголовка');
-  assert.deepEqual(menuRows(g).map(x => x.n), ['Каталог', 'Заказы']);
+  assert.deepEqual(menuRows(g).map(x => x.n), ['Каталог', 'Мои заказы']);
   assert.ok(menuRows(g).every(x => x.a === 'nav' && x.d.v === x.k), 'обе строки ведут на свой экран');
   assert.deepEqual(menuRows(m.menuGroups()).map(x => x.on), [true, false], 'отмечена только открытая строка: каталог');
   m = menuLab(html, { view: 'shops' }, { cart: 3, act: 2 });
   assert.deepEqual(menuRows(m.menuGroups()).map(x => [x.k, x.b, x.on]), [['shop', 3, true], ['mine', 2, false]], 'числа: товары в корзине и заказы в пути; открыт каталог');
   // зашёл в компанию, есть долг
   m = menuLab(html, { did: 'a', mdebt: { ok: true, total: 500, ask: 1 } });
-  assert.deepEqual(menuRows(m.menuGroups()).map(x => x.n), ['Каталог', 'Заказы', 'Мой долг', 'Профиль']);
+  assert.deepEqual(menuRows(m.menuGroups()).map(x => x.n), ['Каталог', 'Мои заказы', 'Мой долг', 'Профиль']);
   assert.equal(menuRows(m.menuGroups()).find(x => x.k === 'debt').c, 'warn', 'число долга жёлтое');
   m = menuLab(html, { did: 'a', mdebt: { ok: true, total: 0, ask: 0 } });
   assert.ok(!menuRows(m.menuGroups()).some(x => x.k === 'debt'), 'нет долга — строки нет');
@@ -8731,7 +8732,7 @@ await t('меню: плоский список без раскрывающихс
   g = m.menuGroups();
   assert.deepEqual(g.map(x => x[0]), ['', 'Моя работа', 'Площадка']);
   assert.deepEqual(g[1][1].map(x => x.n), ['Моя компания', 'Доставка', 'Покупатели', 'Склад'], 'моя работа: компания, доставка, покупатели (бывшая «База»), склад');
-  assert.deepEqual(g[2][1].map(x => x.n), ['Входящие', 'Продавцы', 'Команда', 'Аналитика', 'Настройки'], 'площадка: пять строк, подразделы уйдут во вкладки');
+  assert.deepEqual(g[2][1].map(x => x.n), ['Входящие', 'Продавцы', 'Люди', 'Аналитика', 'Настройки'], 'площадка: пять строк, подразделы уйдут во вкладки');
   const all = menuRows(g);
   assert.ok(all.length <= 13, 'строк не больше тринадцати даже у владельца со всеми ролями: ' + all.length);
   assert.equal(new Set(all.map(x => x.k)).size, all.length, 'ключи строк разные');
@@ -8862,13 +8863,21 @@ await t('вкладки на экране: «Входящие», группы в
   assert.deepEqual([b.cur, b.tabs.length], ['fb', 4], 'обращения — тоже вкладка «Входящих»');
   // группы владельца
   b = lab({ view: 'owner', own: { sec: 'wh', dn: 0, fbn: 0 } }).barSpec();
-  assert.deepEqual(b.tabs.map(x => x.id), ['people', 'agents', 'agadd', 'wh', 'terr', 'clients'], 'команда: люди, агенты, добавить агента, склад, территории, перенос покупателей');
+  assert.deepEqual(b.tabs.map(x => x.id), ['people', 'agents', 'wh'], 'люди: все, агенты, склад');
+  assert.deepEqual(b.tabs.map(x => x.n), ['Все', 'Агенты', 'Склад'], 'названия вкладок; кладовщик остаётся «Склад»');
+  assert.equal(lab({ view: 'owner', own: { sec: 'wh' } }, { uz: 1 }).barSpec().tabs.map(x => x.n).join('|'), 'Hammasi|Agentlar|Ombor');
   assert.equal(b.cur, 'wh');
   assert.ok(b.tabs.every(x => x.a === 'otab' && x.d.t === x.id), 'каждая вкладка открывает свой раздел');
   b = lab({ view: 'owner', own: { sec: 'bz' } }).barSpec();
-  assert.deepEqual(b.tabs.map(x => x.id), ['dist', 'cats', 'bz', 'add'], 'продавцы: список, категории, базары, добавить');
+  assert.deepEqual(b.tabs.map(x => x.id), ['dist', 'bz'], 'продавцы: список и базары; «Категории» и «Добавить» ушли внутрь списка');
+  assert.deepEqual(b.tabs.map(x => x.n), ['Список', 'Базары']);
   b = lab({ view: 'owner', own: { sec: 'video' } }).barSpec();
-  assert.deepEqual(b.tabs.map(x => x.id), ['title', 'about', 'video'], 'настройки: название, о нас, видео');
+  assert.deepEqual(b.tabs.map(x => x.id), ['title', 'about', 'video', 'terr', 'clients'], 'настройки площадки: название, о нас, видео, районы и города, служебное');
+  assert.deepEqual(b.tabs.map(x => x.n), ['Название', 'О нас', 'Видео', 'Районы и города', 'Служебное']);
+  // группа «Люди» (id остался team): строка меню и подпись над заголовком
+  assert.equal(lab({ view: 'owner', own: { sec: 'agents' } }).ownSecs().find(g => g[0] === 'team')[1], 'Люди');
+  assert.equal(lab({ view: 'owner', own: { sec: 'agents' } }, { uz: 1 }).ownSecs().find(g => g[0] === 'team')[1], 'Odamlar');
+  assert.deepEqual(lab({ view: 'owner' }).ownSecs().map(g => g[0]), ['dists', 'team', 'inbox', 'site'], 'группы владельца');
   // компания продавца: разделы и переключатель компаний
   const subs = [['orders', 'Заказы', 4], ['debts', 'Долги', 1, 'warn'], ['comm', 'Комиссия', 2, 'bad'], ['settings', 'Настройки']];
   const sl = lab({ view: 'seller', did: 'b', admin: true, sellerTab: 'debts' }, { sub: subs });
@@ -8950,7 +8959,7 @@ await t('фото компании и строка адреса: экраны (�
 await t('выход из роли продавца: кнопка внизу настроек, перед выходом сохранение и вопрос, после — главный экран', async () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const st = html.slice(html.indexOf('function settingsHTML()'), html.indexOf('/* Категория дистрибьютора меняется сразу'));
-  assert.ok(/\+leaveRoleHTML\(\);\s*$/.test(st.trimEnd()) || /\+leaveRoleHTML\(\);\n\}/.test(st), 'карточка выхода — последняя в настройках');
+  assert.ok(/\+leaveRoleHTML\(\);\n  return[\s\S]*sblkHTML\('svc',L\('Служебное','Xizmat'\),svc\);\n\}/.test(st), 'карточка выхода — последняя в блоке «Служебное», а блок — последний в настройках');
   const card = html.slice(html.indexOf('const leaveRoleHTML='), html.indexOf('function paintLeave('));
   assert.ok(/Выйти из роли продавца/.test(card) && /Sotuvchi rolidan chiqish/.test(card), 'надпись на двух языках');
   assert.ok(/data-act="leaverole"/.test(card) && /dangerbtn/.test(card) && /S\.leaving\?' disabled'/.test(card), 'красная кнопка, пока идёт запрос — недоступна');
@@ -10102,7 +10111,7 @@ await t('«О нас»: у каждой роли рамка «Почему Sarbo
   // каждое название кнопки в новых разделах есть в приложении (вне самих текстов «О нас»)
   const rest = html.slice(0, i0) + html.slice(i1) + sh + wk;
   const PLACEHOLDER = new Set(['Выдан покупателю · время', 'Xaridorga topshirildi · vaqt', 'Продавец · название', 'Sotuvchi · nomi', 'Faqat qutida · 10 dona', 'Только коробками · 10 шт', '1 л', '1 l', '1 кг', '1 kg']);
-  const names = [['shop', 'Заказ у продавца Базара'], ['shop', 'Написать нам'], ['seller', 'Заказы Базара'], ['seller', 'Каталог'], ['wh', null], ['owner', 'Склад и Базары'], ['owner', 'Обращения и «Смотреть как»']];
+  const names = [['shop', 'Заказ у продавца Базара'], ['shop', 'Написать нам'], ['seller', 'Заказы Базара'], ['seller', 'Товары'], ['wh', null], ['owner', 'Склад и Базары'], ['owner', 'Обращения и «Смотреть как»']];
   const miss = [];
   for (const [k, n] of names) {
     const r = ROLES.find(x => x.k === k);
@@ -10522,12 +10531,14 @@ await t('дальняя доставка на экране: настройки �
   assert.ok(/const toCr = o\.status === 'ready' && o\.mode === 'delivery' && !o\.far/.test(wk) && /filter\(o => o\.mode === 'delivery' && !o\.far\)/.test(wk), 'доставщикам такой заказ не уходит');
 });
 
-await t('владелец: «Агенты» отдельно от «Добавить агента», территории свёрнуты, сетка в две колонки, «Выбрать все»', () => {
+await t('владелец: «Агенты» с кнопкой «＋ Добавить агента» (форма раскрывается внутри), территории свёрнуты, сетка в две колонки, «Выбрать все»', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const src = html.slice(html.indexOf('function ownPeopleHTML('), html.indexOf('async function ownTerrAdd('));
   assert.ok(src.length > 500, 'функция найдена');
-  // меню: два пункта рядом, у каждого свой заголовок экрана
-  assert.ok(/\['agents',L\('Агенты','Agentlar'\),L\('Агенты','Agentlar'\)\],\['agadd',L\('Добавить агента','Agent qoʻshish'\),L\('Добавить агента','Agent qoʻshish'\)\],\['wh'/.test(html), 'пункты «Агенты» и «Добавить агента» в меню владельца');
+  const fn2 = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nasync function ', i + 10), k = html.indexOf('\nfunction ', i + 10); return html.slice(i, Math.min(...[j, k].filter(x => x > 0))); };
+  // меню: «Все», «Агенты», «Склад»; отдельной вкладки «Добавить агента» больше нет
+  assert.ok(/\['people',L\('Все','Hammasi'\),L\('Все люди','Barcha odamlar'\)\],\['agents',L\('Агенты','Agentlar'\),L\('Агенты','Agentlar'\)\],\['wh',/.test(html), 'вкладки «Все», «Агенты», «Склад» в группе «Люди»');
+  assert.ok(!/\['agadd'/.test(html), 'вкладки «Добавить агента» нет');
   const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const names = ['Navoiy shahri', 'Karmana', 'Nurota', 'Navbahor', 'Konimex', 'Xatirchi', 'Qiziltepa', 'Ziyovuddin', 'Mirbozor', 'Oqtosh', 'Zarafshon', 'Uchquduq', 'Tomdi', 'Zafarobod'];
   const terr = names.map((n, i) => ({ id: 't' + i, name: n, n: 0 }));
@@ -10537,7 +10548,7 @@ await t('владелец: «Агенты» отдельно от «Добави
     { id: 'a2', name: 'Бобур', on: false, used: false, n: 0, terr: ['t0', 't1', 't10'], link: '' },
     { id: 'a3', name: 'Азиз', on: true, used: true, n: 1, terr: ['tZZ'], link: '' }
   ];
-  const own = (extra, ag) => Object.assign({ ppl: { terr, agents: ag || agents }, pbusy: false, perr: '', aname: '', acode: '', aterr: [], agopen: {}, amade: null }, extra);
+  const own = (extra, ag) => Object.assign({ ppl: { terr, agents: ag || agents }, pbusy: false, perr: '', aname: '', acode: '', aterr: [], agopen: {}, agOpen: false, amade: null }, extra);
   const draw = (uz, part, extra, ag) => { const S = { own: own(extra, ag) }; return new Function('S', 'L', 'esc', 'hintD', 'ownSecInfo', 'num', src + '\nreturn ownPeopleHTML;')(S, (ru, u) => uz ? u : ru, esc, () => '', () => ({ title: '' }), x => x)(part); };
   const count = (h, re) => (h.match(re) || []).length;
   // список: один заголовок, у каждого агента строка территорий и «Изменить», галочек нет
@@ -10548,8 +10559,9 @@ await t('владелец: «Агенты» отдельно от «Добави
   assert.equal(count(h, /data-act="agtopen"/g), 3);
   assert.equal(count(h, /Изменить/g), 3);
   assert.ok(!/data-agterr/.test(h) && !/pgrid/.test(h), 'пока не нажали «Изменить», галочек нет');
-  assert.ok(/data-act="otab" data-t="agadd"/.test(h), 'внизу списка кнопка «Добавить агента» ведёт на свой экран');
-  assert.ok(!/data-aterr|data-own="aname"/.test(h), 'формы добавления в списке нет');
+  assert.ok(/id="agaddopen" data-act="agaddopen" aria-expanded="false">＋ Добавить агента</.test(h), 'вверху списка кнопка «＋ Добавить агента»');
+  assert.ok(h.indexOf('agaddopen') < h.indexOf('class="bcard"'), 'кнопка стоит над списком');
+  assert.ok(!/data-aterr|data-own="aname"/.test(h), 'пока кнопку не нажали, формы добавления нет');
   assert.equal(count(h, /data-act="agentdel"/g), 3);
   // раскрытая карточка: четырнадцать плашек в сетке, отмечены три, счётчик и «Готово»
   h = draw(false, 'agents', { agopen: { a2: true } });
@@ -10560,7 +10572,7 @@ await t('владелец: «Агенты» отдельно от «Добави
   assert.equal(count(h, /Изменить/g), 2, 'у раскрытой карточки вместо «Изменить» «Готово»');
   // пустой список и код после «Новый код»
   h = draw(false, 'agents', {}, []);
-  assert.ok(/Агентов пока нет/.test(h) && /data-t="agadd"/.test(h));
+  assert.ok(/Агентов пока нет/.test(h) && /data-act="agaddopen"/.test(h));
   h = draw(false, 'agents', { amade: { name: 'Бобур', code: 'k-123456789012', reset: true } });
   assert.ok(/Новый код: Бобур/.test(h) && /k-123456789012/.test(h) && /data-act="amadeclose"/.test(h));
   // узбекский вариант
@@ -10570,28 +10582,34 @@ await t('владелец: «Агенты» отдельно от «Добави
   assert.ok(!/Oʻchirish<\/button><button[^>]*data-act="agentcode"/.test(h), 'узбекские подписи «Отключить» и «Удалить» не совпадают');
   h = draw(true, 'agents', {}, [agents[0], agents[2]]);
   assert.ok(/va yana|barchasi: 14/.test(h) && /Agent qoʻshish/.test(h));
-  // экран «Добавить агента»: форма, счётчик, сетка, «Выбрать все»
-  h = draw(false, 'agadd');
-  assert.ok(/data-own="aname"/.test(h) && /data-own="acode"/.test(h) && /data-act="agentadd"/.test(h), 'форма');
+  // форма «Добавить агента» раскрывается над списком: поля, счётчик, сетка, «Выбрать все»
+  h = draw(false, 'agents', { agOpen: true });
+  assert.ok(/aria-expanded="true">Скрыть форму</.test(h) && /data-own="aname"/.test(h) && /data-own="acode"/.test(h) && /data-act="agentadd"/.test(h), 'форма');
   assert.equal(count(h, /data-aterr=/g), 14);
   assert.ok(/id="ag-cnt">выбрано 0 из 14</.test(h) && /data-act="agtall">Выбрать все</.test(h) && /class="pgrid"/.test(h));
-  assert.ok(!/data-agterr|data-act="agenton"|class="bcard"/.test(h), 'списка агентов на этом экране нет');
-  h = draw(false, 'agadd', { aterr: ids });
+  assert.equal(count(h, /class="bcard"/g), 3, 'список агентов остаётся под формой');
+  assert.ok(h.indexOf('data-own="aname"') < h.indexOf('class="bcard"'), 'форма над списком');
+  h = draw(false, 'agents', { agOpen: true, aterr: ids });
   assert.ok(/выбрано 14 из 14/.test(h) && /data-act="agtall">Снять все</.test(h) && count(h, /data-aterr="[^"]*" checked/g) === 14);
-  h = draw(true, 'agadd', { aterr: ['t0'] });
-  assert.ok(/tanlandi: 1 \/ 14/.test(h) && /Hammasini tanlash/.test(h) && /Agent shaxsiy kod oladi/.test(h));
-  // после добавления вместо формы код; после «Нового кода» (reset) форма остаётся
-  h = draw(false, 'agadd', { amade: { name: 'Бобур', code: 'k-123456789012', reset: false } });
-  assert.ok(/Агент добавлен: Бобур/.test(h) && !/data-own="aname"/.test(h) && /data-act="amadeclose"/.test(h));
-  h = draw(false, 'agadd', { amade: { name: 'Бобур', code: 'k-123456789012', reset: true } });
-  assert.ok(/data-own="aname"/.test(h) && !/Новый код: Бобур/.test(h));
+  h = draw(true, 'agents', { agOpen: true, aterr: ['t0'] });
+  assert.ok(/tanlandi: 1 \/ 14/.test(h) && /Hammasini tanlash/.test(h) && /Formani yashirish/.test(h));
+  h = draw(true, 'agents');
+  assert.ok(/＋ Agent qoʻshish/.test(h), 'узбекская кнопка');
+  // после добавления форма закрыта, наверху код; после «Нового кода» код тоже наверху, форма как была
+  h = draw(false, 'agents', { amade: { name: 'Бобур', code: 'k-123456789012', reset: false } });
+  assert.ok(/Агент добавлен: Бобур/.test(h) && !/data-own="aname"/.test(h) && /data-act="amadeclose"/.test(h) && h.indexOf('Агент добавлен') < h.indexOf('class="bcard"'));
+  h = draw(false, 'agents', { agOpen: true, amade: { name: 'Бобур', code: 'k-123456789012', reset: true } });
+  assert.ok(/data-own="aname"/.test(h) && /Новый код: Бобур/.test(h));
   // без территорий строки территорий нет
-  h = draw(false, 'agadd', { ppl: { terr: [], agents: [] } });
-  assert.ok(!/pgrid|ag-cnt|agtall/.test(h));
+  h = draw(false, 'agents', { agOpen: true, ppl: { terr: [], agents: [] } });
+  assert.ok(/data-own="aname"/.test(h) && !/pgrid|ag-cnt|agtall/.test(h));
+  assert.ok(/ownPeopleHTML\(part\)/.test(src) && !/part==='agadd'/.test(src), 'старой части «agadd» нет');
   // обработчики
   assert.ok(/a==='agtopen'\)\{const o=S\.own;o\.agopen\[t\.dataset\.id\]=!o\.agopen\[t\.dataset\.id\];renderOwner\(\)\}/.test(html), 'agtopen открывает и закрывает правку территорий');
   assert.ok(/a==='agtall'\)\{[^}]*o\.aterr=o\.aterr\.length===ids\.length\?\[\]:ids/.test(html), 'agtall выбирает всё или снимает всё');
-  assert.ok(/a==='amadeclose'\)\{S\.own\.amade=null;if\(S\.own\.sec==='agadd'\)ownOpen\('agents'\);else renderOwner\(\)\}/.test(html), 'после «Готово, код сохранён» открывается список');
+  assert.ok(/a==='amadeclose'\)\{S\.own\.amade=null;renderOwner\(\)\}/.test(html), 'после «Готово, код сохранён» код убирается, список на месте');
+  assert.ok(/a==='agaddopen'\)\{S\.own\.agOpen=!S\.own\.agOpen;renderOwner\(\)\}/.test(html), '«＋ Добавить агента» раскрывает и закрывает форму');
+  assert.ok(/o\.aterr=\[\];o\.agOpen=false;renderOwner\(\)/.test(fn2('ownAgentAdd')), 'после добавления форма закрывается');
   assert.ok(/classList\.toggle\('on',t\.checked\)/.test(html) && /id="ag-cnt"/.test(html), 'плашка и счётчик меняются сразу, без перерисовки');
   // три узбекских «Отключить» больше не совпадают с «Удалить»
   assert.ok(!/L\('Отключить','Oʻchirish'\)/.test(html), 'узбекское «Отключить» не «Oʻchirish»');
@@ -11519,6 +11537,305 @@ await t('меню: «Каталог» при нескольких продавц
   // остальные строки меню без изменений
   r = run('mine', { view: 'shop' }, true); assert.deepEqual(r.calls, [['go', 'mine'], ['menu', false]]);
   r = run('debt', { view: 'shops' }, false); assert.deepEqual(r.calls, [['go', 'debt'], ['menu', false]]);
+});
+
+/* ---------- структура меню: «Мои заказы», «Товары», «Продавцы», «Люди», блоки настроек ---------- */
+const escH = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const fnOf = (html, name) => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const a = html.indexOf('\nfunction ', i + 10), b = html.indexOf('\nasync function ', i + 10), c = [a, b].filter(x => x > 0); return html.slice(i, c.length ? Math.min(...c) : i + 6000); };
+
+await t('названия: у покупателя «Мои заказы», у продавца вкладки «Товары» и «Категории товаров»; слово «Каталог» осталось только у покупателя', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  assert.deepEqual(menuRows(menuLab(html, { auth: false }).menuGroups()).map(x => x.n), ['Каталог', 'Мои заказы']);
+  assert.deepEqual(menuRows(menuLab(html, { auth: false }, { uz: 1 }).menuGroups()).map(x => x.n), ['Katalog', 'Mening buyurtmalarim']);
+  assert.ok(/\['prod',L\('Товары','Mahsulotlar'\),rn,'warn'\]/.test(html), 'вкладка продавца «Товары»');
+  assert.ok(!/\['prod',L\('Каталог'/.test(html), 'прежней вкладки «Каталог» у продавца нет');
+  assert.ok(/\['orders',L\('Заказы','Buyurtmalar'\)/.test(html), 'вкладка «Заказы» у продавца осталась как была');
+  const pr = fnOf(html, 'prodHTML');
+  assert.ok(/<h3>'\+L\('Категории товаров','Mahsulot kategoriyalari'\)\+'<\/h3>/.test(pr), 'внутри «Товаров» справочник называется «Категории товаров»');
+  assert.ok(!/<h3>'\+L\('Категории','Kategoriyalar'\)/.test(pr), 'голого «Категории» там больше нет');
+  assert.ok(/Сначала добавьте товары на вкладке «Товары»/.test(html) && /Avval «Mahsulotlar» boʻlimida/.test(html), 'подсказка в остатках ведёт на вкладку «Товары»');
+  assert.ok(!/Сначала добавьте товары на вкладке «Каталог»/.test(html));
+});
+
+const ownLab = (html, st = {}, uz = false) => {
+  const src = html.slice(html.indexOf('function ownAddHTML('), html.indexOf('function ownTitleHTML('));
+  const SHOP_CATS = ['maker', 'importer', 'wholesale', 'distributor', 'bazaar'];
+  const catName = { maker: 'Производители', importer: 'Импортеры', wholesale: 'Оптовики', distributor: 'Дистрибьюторы', bazaar: 'Базары' };
+  const S = Object.assign({ own: { shops: [], legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50, fname: '', fcode: '', fcat: '', fbz: '', err2: '' }, cm: { o: null } }, st);
+  const env = {
+    S, L: (ru, u) => (uz ? u : ru), esc: escH, hintD: () => '', plTovar: n => 'товаров', cleanCat: x => (SHOP_CATS.includes(x) ? x : ''), shopCatName: k => catName[k], SHOP_CATS,
+    bzList: () => [{ id: 'b1', name: 'Центральный', uz: 'Markaziy' }, { id: 'b2', name: 'Новый', uz: 'Yangi' }], bzOf: r => (r && r.bz) || '', bzName: b => b.name, bzOptsHTML: () => '<option>bz</option>',
+    fmtPct: p => String(p).replace('.', ','), ownErr: x => String(x)
+  };
+  const api = new Function(...Object.keys(env), src + '\nreturn {ownListHTML,ownPctHTML,ownAddHTML,ownCatSel,ownBzSel};')(...Object.values(env));
+  return Object.assign(api, { S });
+};
+const shopRec = (id, o = {}) => Object.assign({ id, name: 'Компания ' + id, items: 3, sellers: 1, own: true, on: true, cat: '', bz: '', legal: '', link: 'https://t.me/x?start=' + id }, o);
+
+await t('владелец, «Продавцы → Список»: кнопка «＋ Добавить продавца», форма раскрывается над списком; в карточке категория, базар и процент комиссии', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const shops = [shopRec('a', { cat: 'maker' }), shopRec('b', { cat: 'bazaar', bz: 'b2' }), shopRec('c')];
+  const rows = [{ id: 'a', pct: 2.5, pays: [] }, { id: 'b', pct: 0, pays: [] }, { id: 'c', pct: 1, err: true }];
+  const count = (h, re) => (h.match(re) || []).length;
+  // закрыто: одна кнопка сверху, формы нет
+  let m = ownLab(html, { own: { shops, legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50 }, cm: { o: { rows } } });
+  let h = m.ownListHTML();
+  assert.ok(/id="ownaddopen" data-act="ownaddopen" aria-expanded="false">＋ Добавить продавца</.test(h), 'кнопка сверху');
+  assert.ok(!/data-own="fname"/.test(h), 'пока не нажали, формы нет');
+  assert.ok(h.indexOf('ownaddopen') < h.indexOf('class="card"'), 'кнопка над списком');
+  assert.equal(count(h, /<div class="card">/g), 3, 'три карточки');
+  // в каждой карточке выбор категории; выбрана текущая
+  assert.equal(count(h, /data-ocat=/g), 3);
+  assert.ok(/data-ocat="a"[^>]*>[\s\S]*?<option value="maker" selected>Производители/.test(h), 'у первого выбрана его категория');
+  assert.ok(/<div class="unit" style="margin-bottom:4px">Категория<\/div>/.test(h), 'у выбора категории подпись');
+  // поле базара только у продавца категории «Базары», выбран его базар
+  assert.equal(count(h, /data-obz=/g), 1, 'базар только у категории «Базары»');
+  assert.ok(/data-obz="b"[^>]*>[\s\S]*?<option value="b2" selected>Новый/.test(h));
+  // процент комиссии: есть значение — поле и «Сохранить %»; ноль тоже значение; нет данных — подпись
+  assert.equal(count(h, /data-opct=/g), 2);
+  assert.ok(/id="pc-a" data-opct="a" maxlength="5" value="2,5"/.test(h) && /id="pc-b" data-opct="b" maxlength="5" value="0"/.test(h), 'проценты: 2,5 и 0');
+  assert.equal(count(h, /data-act="ownpct"/g), 2);
+  assert.ok(/Процент комиссии: нет данных/.test(h), 'без данных по продавцу — подпись вместо поля');
+  // состояние процента ещё не пришло с сервера
+  m = ownLab(html, { own: { shops: [shops[0]], legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50 }, cm: { o: null } });
+  h = m.ownListHTML();
+  assert.ok(/Процент комиссии: загружаем…/.test(h) && !/data-opct=/.test(h), 'пока комиссия грузится — «загружаем», поля нет');
+  // набранное, но не сохранённое значение не затирается перерисовкой
+  m = ownLab(html, { own: { shops: [shops[0]], legals: {}, pcts: { a: '3,5' }, busy: '', rc: '', addOpen: false, max: 50 }, cm: { o: { rows } } });
+  assert.ok(/data-opct="a" maxlength="5" value="3,5"/.test(m.ownListHTML()), 'введённое значение сохраняется при перерисовке');
+  // стёртое поле остаётся пустым (чтобы набрать заново), а не возвращает старое число
+  m = ownLab(html, { own: { shops: [shops[0]], legals: {}, pcts: { a: '' }, busy: '', rc: '', addOpen: false, max: 50 }, cm: { o: { rows } } });
+  assert.ok(/data-opct="a" maxlength="5" value=""/.test(m.ownListHTML()), 'пустое поле не заменяется прежним числом');
+  // пока идёт запрос, кнопка «Сохранить %» недоступна
+  m = ownLab(html, { own: { shops: [shops[0]], legals: {}, pcts: {}, busy: 'pct', rc: '', addOpen: false, max: 50 }, cm: { o: { rows } } });
+  assert.ok(/data-act="ownpct" data-id="a" disabled/.test(m.ownListHTML()));
+  // категорию в строке «мелким» больше не дублируют
+  m = ownLab(html, { own: { shops: [shops[0]], legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50 }, cm: { o: { rows } } });
+  assert.ok(!/class="dmeta"[^>]*>[^<]*Производители/.test(m.ownListHTML()), 'название категории только в выборе, не в серой строке');
+  // раскрыто: форма добавления над карточками, кнопка меняет подпись
+  m = ownLab(html, { own: { shops, legals: {}, pcts: {}, busy: '', rc: '', addOpen: true, max: 50, fname: '', fcode: '', fcat: '', fbz: '', err2: '' }, cm: { o: { rows } } });
+  h = m.ownListHTML();
+  assert.ok(/aria-expanded="true">Скрыть форму</.test(h) && /data-own="fname"/.test(h) && /id="ownadd"/.test(h), 'форма раскрыта');
+  assert.ok(h.indexOf('data-own="fname"') < h.indexOf('data-ocat="a"'), 'форма над списком');
+  // нет продавцов: пустое состояние без второй кнопки «Добавить»
+  m = ownLab(html, { own: { shops: [], legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50 }, cm: { o: { rows: [] } } });
+  h = m.ownListHTML();
+  assert.ok(/Продавцов пока нет/.test(h) && count(h, /data-act="ownaddopen"/g) === 1 && !/data-t="add"/.test(h), 'одна кнопка сверху, старой ссылки на вкладку «Добавить» нет');
+  // узбекский
+  m = ownLab(html, { own: { shops: [shops[1]], legals: {}, pcts: {}, busy: '', rc: '', addOpen: false, max: 50 }, cm: { o: { rows } } }, true);
+  h = m.ownListHTML();
+  assert.ok(/＋ Sotuvchi qoʻshish/.test(h) && /Komissiya foizi, %/.test(h) && />Kategoriya<\/div>/.test(h) && /% ni saqlash/.test(h));
+});
+
+await t('владелец: процент комиссии меняется только в карточке продавца, на экране «Платежи комиссии» он показан, а кнопка ведёт к карточке', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  assert.equal((html.match(/data-opct=/g) || []).length, 1, 'поле процента одно, в карточке продавца');
+  assert.equal((html.match(/data-act="ownpct"/g) || []).length, 1);
+  const cm = fnOf(html, 'cmShopHTML');
+  assert.ok(!/data-opct|ownpct|pctrow/.test(cm), 'на экране комиссии поля процента и кнопки «Сохранить %» нет');
+  assert.ok(/L\('Процент комиссии: ','Komissiya foizi: '\)\+'<b>'\+esc\(fmtPct\(r\.pct\)\)\+'%<\/b>/.test(cm), 'процент показан, на двух языках');
+  assert.ok(/data-act="otab" data-t="dist">'\+L\('Изменить процент','Foizni oʻzgartirish'\)/.test(cm), 'кнопка «Изменить процент» открывает «Продавцы → Список»');
+  assert.ok(/Записать полученную оплату/.test(cm), 'запись полученной оплаты осталась на экране комиссии');
+  assert.ok(/«Продавцы» → «Список»/.test(fnOf(html, 'ownStatsHTML')) && /«Sotuvchilar» → «Roʻyxat»/.test(fnOf(html, 'ownStatsHTML')), 'подсказка внизу экрана называет новое место');
+  // после сохранения число в памяти обновляется сразу, список перерисовывается, когда пришли свежие данные
+  const lc = fnOf(html, 'loadCommOwner');
+  assert.ok(/S\.view==='comm'\|\|\(S\.view==='owner'&&S\.own\.sec==='dist'\)\)ownRefresh\(\)/.test(lc), 'свежие данные перерисовывают и «Список»');
+});
+
+await t('владелец: «Сохранить %» проверяет число 0–50, сохраняет через площадку, обновляет число в памяти и убирает набранное', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('async function ownPct('), html.indexOf('/* ---------- комиссия: дистрибьютор отмечает оплату'));
+  const run = async (typed, apiRes) => {
+    const S = { own: { busy: '', pcts: { a: typed } }, cm: { o: { rows: [{ id: 'a', pct: 2.5 }] } } }, log = [];
+    const env = { S, L: (ru) => ru, api: async (m, u, b) => { log.push(['api', m, u, b]); return apiRes; }, toast: x => log.push(['toast', x]), ownErr: e => 'ERR:' + e, ownRender: () => log.push(['render', S.own.busy]), loadCommOwner: () => log.push(['loadComm']), loadOwnerStats: () => log.push(['stats']), fmtPct: p => String(p).replace('.', ',') };
+    await new Function(...Object.keys(env), src + '\nreturn ownPct;')(...Object.values(env))('a');
+    return { S, log };
+  };
+  let r = await run('3,5', { ok: true, data: { pct: 3.5 } });
+  assert.deepEqual(r.log.find(x => x[0] === 'api'), ['api', 'PUT', '/api/hub/admin/shops/a', { pct: 3.5 }], 'запятая понимается как точка');
+  assert.equal(r.S.cm.o.rows[0].pct, 3.5, 'число в памяти обновилось сразу (список не покажет старое)');
+  assert.ok(!('a' in r.S.own.pcts), 'набранное убрано');
+  assert.ok(r.log.some(x => x[0] === 'loadComm') && r.log.some(x => x[0] === 'stats'), 'свежие данные запрошены');
+  assert.equal(r.S.own.busy, '', 'занятость снята');
+  for (const bad of ['', 'abc', '-1', '50,1', '51']) {
+    r = await run(bad, { ok: true, data: { pct: 1 } });
+    assert.ok(!r.log.some(x => x[0] === 'api'), 'неверное «' + bad + '» на сервер не уходит');
+    assert.equal(r.log.find(x => x[0] === 'toast')[1], 'ERR:bad_pct');
+    assert.equal(r.S.cm.o.rows[0].pct, 2.5, 'число не тронуто');
+  }
+  r = await run('50', { ok: true, data: { pct: 50 } }); assert.equal(r.S.cm.o.rows[0].pct, 50, 'граница 50 допустима');
+  r = await run('0', { ok: true, data: { pct: 0 } }); assert.equal(r.S.cm.o.rows[0].pct, 0, 'ноль допустим');
+  r = await run('4', { ok: false, data: { error: 'forbidden' } });
+  assert.equal(r.S.cm.o.rows[0].pct, 2.5, 'ошибка сервера: число не меняется');
+  assert.equal(r.S.own.pcts.a, '4', 'ошибка сервера: набранное остаётся');
+  assert.equal(r.log.find(x => x[0] === 'toast')[1], 'ERR:forbidden');
+});
+
+await t('владелец: старые вкладки «Добавить», «Категории» и «Добавить агента» открывают новое место, а «Базары» и остальные остаются как были', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('const OWN_OLD='), html.indexOf('function ownMadeHTML('));
+  const run = sec => {
+    const S = { view: 'owner', own: { sec: 'x', perr: 'e', addOpen: false, agOpen: false } }, log = [];
+    const env = { S, go: v => log.push(['go', v]), renderNav: () => log.push('nav'), renderOwner: () => log.push('render'), loadOwnerFb: () => log.push('fb'), loadOwnerVid: () => log.push('vid'), window: { scrollTo: () => {} } };
+    new Function(...Object.keys(env), src + '\nreturn ownOpen;')(...Object.values(env))(sec);
+    return { S, log };
+  };
+  let r = run('add'); assert.deepEqual([r.S.own.sec, r.S.own.addOpen, r.S.own.agOpen], ['dist', true, false], '«Добавить» → «Список» с открытой формой');
+  r = run('cats'); assert.deepEqual([r.S.own.sec, r.S.own.addOpen], ['dist', false], '«Категории» → «Список»');
+  r = run('agadd'); assert.deepEqual([r.S.own.sec, r.S.own.agOpen, r.S.own.addOpen], ['agents', true, false], '«Добавить агента» → «Агенты» с открытой формой');
+  for (const k of ['bz', 'people', 'agents', 'wh', 'terr', 'clients', 'title', 'fb']) { r = run(k); assert.deepEqual([r.S.own.sec, r.S.own.addOpen, r.S.own.agOpen], [k, false, false], k + ' остаётся собой'); }
+  r = run('fb'); assert.ok(r.log.includes('fb'), 'обращения подгружаются');
+  r = run('video'); assert.ok(r.log.includes('vid'), 'видео подгружаются');
+  assert.equal(run('dist').S.own.perr, '', 'ошибка прежнего раздела сбрасывается');
+  // новый ряд открывается с экрана «не владелец»: переход на экран владельца
+  const S2 = { view: 'shops', own: { sec: 'dist', perr: '' } }, log2 = [];
+  new Function('S', 'go', 'renderNav', 'renderOwner', 'loadOwnerFb', 'loadOwnerVid', 'window', src + '\nreturn ownOpen;')(S2, v => log2.push(v), () => {}, () => {}, () => {}, () => {}, { scrollTo() {} })('add');
+  assert.deepEqual(log2, ['owner'], 'с другого экрана — переход на экран владельца'); assert.equal(S2.own.addOpen, true);
+});
+
+await t('владелец: экран создания продавца закрывается после добавления; кнопки «＋ Добавить …» только переключают форму', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  assert.ok(/o\.fname='';o\.fcode='';o\.fcat='';o\.fbz='';o\.addOpen=false;/.test(fnOf(html, 'ownAdd')), 'после добавления форма закрыта, код показан сверху (ownMadeHTML)');
+  assert.ok(/a==='ownaddopen'\)\{S\.own\.addOpen=!S\.own\.addOpen;renderOwner\(\)\}/.test(html));
+  const ro = fnOf(html, 'renderOwner');
+  assert.ok(/sec==='dist'\)h\+=ownMadeHTML\(\)\+ownListHTML\(\)/.test(ro), 'код нового продавца и «Новый код» показываются в «Списке»');
+  assert.ok(!/sec==='add'|sec==='cats'/.test(ro), 'веток «add» и «cats» в экране владельца нет');
+  assert.ok(/addOpen:false,agOpen:false/.test(html), 'состояние форм в S.own');
+  assert.ok(/id="o-name"/.test(fnOf(html, 'ownAddHTML')) && /id="o-cat" data-own="fcat"/.test(fnOf(html, 'ownAddHTML')), 'в форме создания остались название, категория и базар');
+});
+
+await t('владелец: «Люди» (Все · Агенты · Склад) и «Настройки» (Название · О нас · Видео · Районы и города · Служебное): подписи, группы, переносы', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('const ownSecs=()=>['), html.indexOf('/* старые названия вкладок'));
+  const get = uz => new Function('L', src + '\nreturn {ownSecs,ownSecInfo};')((ru, u) => (uz ? u : ru));
+  const ru = get(false), uzl = get(true);
+  assert.deepEqual(ru.ownSecs().map(g => g[1]), ['Продавцы', 'Люди', 'Входящие', 'Настройки'], 'четыре группы владельца в меню');
+  assert.deepEqual(uzl.ownSecs().map(g => g[1]), ['Sotuvchilar', 'Odamlar', 'Kelganlar', 'Sozlamalar']);
+  assert.deepEqual(ru.ownSecs().find(g => g[0] === 'dists')[2].map(x => x[1]), ['Список', 'Базары']);
+  assert.deepEqual(ru.ownSecs().find(g => g[0] === 'team')[2].map(x => x[1]), ['Все', 'Агенты', 'Склад']);
+  assert.deepEqual(uzl.ownSecs().find(g => g[0] === 'team')[2].map(x => x[1]), ['Hammasi', 'Agentlar', 'Ombor']);
+  assert.deepEqual(ru.ownSecs().find(g => g[0] === 'site')[2].map(x => x[1]), ['Название', 'О нас', 'Видео', 'Районы и города', 'Служебное']);
+  assert.deepEqual(uzl.ownSecs().find(g => g[0] === 'site')[2].map(x => x[1]), ['Nomi', 'Biz haqimizda', 'Video', 'Tuman va shaharlar', 'Xizmat']);
+  // территории и перенос покупателей больше не в «Людях»
+  assert.ok(!ru.ownSecs().find(g => g[0] === 'team')[2].some(x => ['terr', 'clients', 'agadd'].includes(x[0])));
+  assert.deepEqual(ru.ownSecInfo('people'), { group: 'Люди', title: 'Все люди' });
+  assert.deepEqual(ru.ownSecInfo('wh'), { group: 'Люди', title: 'Склад' }, 'кладовщик остаётся «Склад» вместе с ставкой перевозки');
+  assert.deepEqual(ru.ownSecInfo('terr'), { group: 'Настройки', title: 'Районы и города' });
+  assert.deepEqual(ru.ownSecInfo('clients'), { group: 'Настройки', title: 'Служебное' });
+  assert.deepEqual(ru.ownSecInfo('dist'), { group: 'Продавцы', title: 'Продавцы' });
+  assert.deepEqual(uzl.ownSecInfo('people'), { group: 'Odamlar', title: 'Barcha odamlar' });
+  // «Входящие» не изменились
+  assert.deepEqual(ru.ownSecs().find(g => g[0] === 'inbox')[2].map(x => x[0]), ['disp', 'fb']);
+  // экраны частей: «Районы и города» и «Служебное»
+  const ppl = html.slice(html.indexOf('function ownPeopleHTML('), html.indexOf('async function ownTerrAdd('));
+  const draw = (part, extra, uz) => { const S = { own: Object.assign({ ppl: { total: 40, free: 5, terr: [{ id: 't1', name: 'Навои', n: 3 }], agents: [], wh: [], whrate: 500 }, pbusy: false, perr: '', tname: '', imp: null, wrate: null, wname: '', wcode: '', wbz: '', wmade: null, agopen: {}, agOpen: false, aterr: [], amade: null, aname: '', acode: '' }, extra) }; return new Function('S', 'L', 'esc', 'hintD', 'ownSecInfo', 'num', 'bzList', ppl + '\nreturn ownPeopleHTML;')(S, (a, b) => (uz ? b : a), escH, () => '', () => ({ title: '' }), x => x, () => [])(part); };
+  let h = draw('terr');
+  assert.ok(/<h3>Районы и города<\/h3>/.test(h) && /data-act="terrsave"/.test(h) && /data-act="terradd"/.test(h) && /data-act="terrpreset"/.test(h), 'вкладка «Районы и города» работает как прежние «Территории»');
+  assert.ok(!/<h3>Территории<\/h3>/.test(h));
+  h = draw('clients');
+  assert.ok(/<h3>Перенос покупателей<\/h3>/.test(h) && /data-act="baseimport"/.test(h) && /Нужен один раз/.test(h), 'в «Служебном» разовый перенос');
+  assert.ok(!/data-v="base"|Открыть базу|Покупателей в базе|Без территории/.test(h), 'ежедневных кнопок и цифр базы в «Служебном» нет: база — в «Покупателях»');
+  h = draw('clients', { imp: { added: 4, linked: 2, skipped: 1 }, perr: 'Ошибка' });
+  assert.ok(/Перенос выполнен: добавлено 4, уже были в базе 2, пропущено 1/.test(h) && /role="alert"[^>]*>Ошибка/.test(h), 'итог переноса и ошибка');
+  h = draw('clients', { pbusy: true });
+  assert.ok(/data-act="baseimport" disabled/.test(h), 'пока идёт запрос — кнопка недоступна');
+  assert.ok(/Sotuvchilar xaridorlarini oʻtkazish/.test(draw('clients', {}, true)) && /<h3>Tuman va shaharlar<\/h3>/.test(draw('terr', {}, true)), 'узбекский');
+});
+
+await t('вкладки компании: Заказы · Товары · Остатки · Долги · Доставщики · Отчёты · (Комиссия) · Настройки', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const subs = html.slice(html.indexOf('const sellerSubs='), html.indexOf('/* Роли человека'));
+  const ids = [...subs.matchAll(/\['(\w+)',L\('/g)].map(m => m[1]);
+  assert.deepStrictEqual(ids, ['orders', 'prod', 'stock', 'debts', 'dlv', 'reports', 'comm', 'settings'], 'порядок вкладок');
+  assert.ok(/\['prod',L\('Товары','Mahsulotlar'\)/.test(subs) && !/Каталог/.test(subs), 'вкладка называется «Товары»');
+});
+
+await t('настройки компании: четыре сворачиваемых блока, все поля на месте, раскрыт первый; сворачивание только прячет', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const src = html.slice(html.indexOf('function sblkHTML('), html.indexOf('/* Выход из роли продавца этой компании'));
+  const SHOP_CATS = ['maker', 'bazaar'];
+  const draw = (open, uz) => {
+    const S = { sblk: open, cfg: { shop: { name: 'Н', legal: '', info: '', infoUz: '', phone: '', telegram: '', category: '', address: '', addressUz: '', leadHours: 2, deliveryLeadHours: 24, minOrder: 0, deliveryFee: 0, freeDeliveryFrom: 0, openFrom: 9, openTo: 20, delivery: true } }, leaving: false };
+    const env = { S, L: (ru, u) => (uz ? u : ru), esc: escH, hintD: () => '', logoEditHTML: () => '[ЛОГО]', sellLinkHTML: () => '<div class="card">[ССЫЛКА]</div>', discEditHTML: () => '[СКИДКИ]', farEditHTML: () => '[ДАЛЬНЯЯ]', regionsOn: () => true, regionsEditHTML: () => '[РЕГИОНЫ]', xbtn: () => '[ЭКСПОРТ]', leaveRoleHTML: () => '<div class="card">[ВЫХОД]</div>', SHOP_CATS, shopCatName: k => k, cleanCat: x => x || '', bzOptsHTML: () => '', bzHintHTML: () => '' };
+    return new Function(...Object.keys(env), src + '\nreturn settingsHTML;')(...Object.values(env))();
+  };
+  const blocks = h => [...h.matchAll(/<div class="card sblk">([\s\S]*?)<div class="sbb" id="sb-(\w+)"( hidden)?>([\s\S]*?)<\/div><\/div>(?=<div class="card sblk">|$)/g)].map(m => ({ head: m[1], k: m[2], hidden: !!m[3], body: m[4] }));
+  let h = draw({ about: true });
+  const bl = blocks(h);
+  assert.deepEqual(bl.map(x => x.k), ['about', 'order', 'ship', 'svc'], 'четыре блока по порядку');
+  assert.deepEqual(bl.map(x => x.hidden), [false, true, true, true], 'раскрыт только первый');
+  assert.deepEqual(bl.map(x => (x.head.match(/<span>([^<]+)<\/span>/) || [])[1]), ['О компании', 'Условия заказа', 'Самовывоз и доставка', 'Служебное']);
+  assert.ok(bl.every(x => /type="button" class="sbh" data-act="sblk" data-k="\w+" aria-expanded="(true|false)" aria-controls="sb-\w+"/.test(x.head)), 'заголовок — кнопка с aria-expanded и aria-controls');
+  assert.deepEqual(bl.map(x => /aria-expanded="true"/.test(x.head)), [true, false, false, false]);
+  // каждое поле в своём блоке, даже в свёрнутых (сохранение и проверки видят все поля)
+  const has = (b, x) => b.body.includes(x);
+  const about = bl[0], order = bl[1], ship = bl[2], svc = bl[3];
+  for (const x of ['[ЛОГО]', 'id="s-name"', 'id="s-legal"', 'id="s-info"', 'id="s-infouz"', 'id="s-phone"', 'id="s-tg"', 'id="s-cat"', 'id="s-bzbox"', '[ССЫЛКА]']) assert.ok(has(about, x), '«О компании»: ' + x);
+  for (const x of ['id="s-from"', 'id="s-to"', 'id="s-minorder"', '[СКИДКИ]']) assert.ok(has(order, x), '«Условия заказа»: ' + x);
+  for (const x of ['id="s-addr"', 'id="s-addruz"', 'id="s-lead"', 'id="s-delivery"', 'id="s-dlead"', 'id="s-dfee"', 'id="s-dfree"', '[РЕГИОНЫ]', 'id="farbox"']) assert.ok(has(ship, x), '«Самовывоз и доставка»: ' + x);
+  for (const x of ['Резервная копия', '[ЭКСПОРТ]', '[ВЫХОД]']) assert.ok(has(svc, x), '«Служебное»: ' + x);
+  // порядок внутри «Самовывоза и доставки» и «Условий заказа»
+  const ix = (b, x) => b.body.indexOf(x);
+  const seq = (b, xs) => xs.every((x, i) => i === 0 || ix(b, xs[i - 1]) < ix(b, x));
+  assert.ok(seq(ship, ['id="s-addr"', 'id="s-addruz"', 'id="s-lead"', 'id="s-delivery"', 'id="s-dlead"', 'id="s-dfee"', 'id="s-dfree"', '[РЕГИОНЫ]', 'id="farbox"']), 'самовывоз и доставка: адрес, срок самовывоза, доставка вкл., срок, стоимость, бесплатно от, регионы, дальняя');
+  assert.ok(seq(order, ['id="s-from"', 'id="s-to"', 'id="s-minorder"', '[СКИДКИ]']), 'условия: время работы, минимум, скидки');
+  assert.ok(seq(about, ['[ЛОГО]', 'id="s-name"', 'id="s-legal"', 'id="s-info"', 'id="s-infouz"', 'id="s-phone"', 'id="s-tg"', 'id="s-cat"', 'id="s-bzbox"', '[ССЫЛКА]']), 'о компании: фото, названия, адрес, связь, категория, базар, ссылка');
+  // ни одно поле не пропало и не дублируется
+  const ids = [...h.matchAll(/ id="(s-[a-z-]+)"/g)].map(m => m[1]);
+  assert.equal(new Set(ids).size, ids.length, 'id полей не повторяются');
+  for (const id of ['s-name', 's-legal', 's-info', 's-infouz', 's-phone', 's-tg', 's-cat', 's-bz', 's-addr', 's-addruz', 's-lead', 's-delivery', 's-dlead', 's-dfee', 's-dfree', 's-minorder', 's-from', 's-to']) assert.ok(ids.includes(id), 'поле на месте: ' + id);
+  assert.deepEqual([...h.matchAll(/data-s="(\w+)"/g)].map(m => m[1]).sort(), ['address', 'addressUz', 'delivery', 'deliveryFee', 'deliveryLeadHours', 'freeDeliveryFrom', 'info', 'infoUz', 'leadHours', 'legal', 'minOrder', 'name', 'openFrom', 'openTo', 'phone', 'telegram'], 'все шестнадцать полей настроек на месте, ни одно не пропало и не задвоилось');
+  // состояние: другой раскрытый блок, все раскрыты, все свёрнуты
+  assert.deepEqual(blocks(draw({ ship: true, svc: true })).map(x => !x.hidden), [false, false, true, true]);
+  assert.deepEqual(blocks(draw({})).map(x => x.hidden), [true, true, true, true]);
+  assert.ok(/<div class="savebar" id="savebar"><\/div><div class="card sblk">/.test(h), 'полоска сохранения над блоками');
+  // узбекский
+  assert.deepEqual(blocks(draw({}, true)).map(x => (x.head.match(/<span>([^<]+)<\/span>/) || [])[1]), ['Kompaniya haqida', 'Buyurtma shartlari', 'Olib ketish va yetkazib berish', 'Xizmat']);
+  // две заметки вместо одной: про минимум рядом с минимумом, про стоимость рядом с доставкой
+  assert.ok(/Минимальная сумма считается по товарам и действует и на самовывоз, и на доставку\./.test(order.body) && !/Стоимость доставки добавляется/.test(order.body));
+  assert.ok(/Стоимость доставки добавляется к заказу только при доставке/.test(ship.body) && !/Минимальная сумма считается/.test(ship.body));
+});
+
+await t('настройки компании: нажатие на заголовок блока открывает и закрывает его, не перерисовывая поля; состояние хранится', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const line = html.match(/  else if\(a==='sblk'\)\{[^\n]*\}\n/)[0];
+  const body = line.replace(/^  else if\(a==='sblk'\)\{/, '').replace(/\}\n$/, '');
+  const run = (S, k, el) => { const btn = { dataset: { k }, attrs: {}, setAttribute(n, v) { this.attrs[n] = v; } }; new Function('S', 't', 'document', body)(S, btn, { getElementById: id => el[id] || null }); return btn; };
+  const S = { sblk: { about: true } }, box = { about: { hidden: false }, ship: { hidden: true } };
+  let b = run(S, 'ship', { 'sb-ship': box.ship });
+  assert.deepEqual([S.sblk.ship, box.ship.hidden, b.attrs['aria-expanded']], [true, false, 'true'], 'свёрнутый открылся');
+  b = run(S, 'about', { 'sb-about': box.about });
+  assert.deepEqual([S.sblk.about, box.about.hidden, b.attrs['aria-expanded']], [false, true, 'false'], 'раскрытый свернулся');
+  b = run(S, 'order', {});
+  assert.equal(S.sblk.order, true, 'блока нет на экране — состояние всё равно запоминается');
+  assert.ok(!/renderSeller|paintSeller|innerHTML/.test(line), 'поля не перерисовываются: набранное не пропадёт');
+  assert.ok(/\n  sblk:\{about:true\},/.test(html), 'в состоянии приложения по умолчанию раскрыт «О компании»');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.ok(/\.sbb\[hidden\]\{display:none\}/.test(css), 'свёрнутый блок скрыт даже если у .sbb есть display');
+  assert.ok(/\.sbh\{[^}]*min-height:48px/.test(css) && /\.sbh\[aria-expanded="true"\] \.sbc\{transform:rotate\(-135deg\)/.test(css), 'крупная область нажатия и стрелка поворачивается');
+});
+
+await t('«О нас»: пути в подсказках совпадают с новой структурой (Люди, Районы и города, Служебное, «＋ Добавить …», Мои заказы, Товары)', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const i0 = html.indexOf('const ABOUT_ROLES=['), i1 = html.indexOf('\n];', i0) + 3;
+  const ROLES = new Function('return ' + html.slice(i0 + 'const ABOUT_ROLES='.length, i1 - 1))();
+  const all = JSON.stringify(ROLES);
+  assert.ok(!/Команда|Jamoa|«Территории»|«Hududlar»|Перенос покупателей»|«Xaridorlarni oʻtkazish»|Подраздел «Категории»|«Kategoriyalar» boʻlimi/.test(all), 'прежних названий «Команда», «Территории», «Перенос покупателей», подраздела «Категории» нет');
+  const txt = (k, h) => JSON.stringify(ROLES.find(x => x.k === k).secs.find(x => x.h[0] === h));
+  assert.ok(txt('owner', 'Склад и Базары').includes('«Площадка» → «Люди» → «Склад»') && txt('owner', 'Склад и Базары').includes('«Platforma» → «Odamlar» → «Ombor»'), 'склад: путь через «Люди»');
+  const ppl = txt('owner', 'Люди и агенты');
+  assert.ok(ppl.includes('«＋ Добавить агента»') && ppl.includes('«＋ Agent qoʻshish»') && ppl.includes('«Настройки» → «Районы и города»') && ppl.includes('«Sozlamalar» → «Tuman va shaharlar»'), 'агенты: кнопка и где создаются районы');
+  const money = txt('owner', 'Деньги, аналитика и площадка');
+  assert.ok(money.includes('«Служебное»') && money.includes('«Xizmat»') && money.includes('«Районы и города»') && money.includes('«Tuman va shaharlar»'), 'настройки площадки: районы и служебное');
+  assert.ok(money.includes('«Продавцы» → «Список»') && money.includes('«Sotuvchilar» → «Roʻyxat»'), 'процент комиссии: где менять');
+  const sellers = txt('owner', 'Продавцы');
+  assert.ok(sellers.includes('«＋ Добавить продавца»') && sellers.includes('«＋ Sotuvchi qoʻshish»') && sellers.includes('«Процент комиссии»') && sellers.includes('«Komissiya foizi»'), 'продавцы: кнопка и поля карточки');
+  assert.ok(ROLES.find(x => x.k === 'seller').secs.some(x => x.h[0] === 'Товары' && x.h[1] === 'Mahsulotlar') && !ROLES.find(x => x.k === 'seller').secs.some(x => x.h[0] === 'Каталог'), 'у продавца раздел «Товары»');
+  const set = txt('seller', 'Отчёты, база и настройки');
+  for (const x of ['«О компании»', '«Условия заказа»', '«Самовывоз и доставка»', '«Служебное»', '«Kompaniya haqida»', '«Buyurtma shartlari»', '«Olib ketish va yetkazib berish»', '«Xizmat»']) assert.ok(set.includes(x), 'настройки продавца: ' + x);
+  assert.ok(txt('shop', 'Заказ у продавца Базара').includes('«Мои заказы»') && txt('shop', 'Заказ у продавца Базара').includes('«Mening buyurtmalarim»'), 'покупатель: «Мои заказы»');
+  // «＋ …» из подсказок существует в приложении слово в слово
+  for (const x of ['＋ Добавить продавца', '＋ Sotuvchi qoʻshish', '＋ Добавить агента', '＋ Agent qoʻshish']) assert.ok(html.slice(0, i0).includes(x) || html.slice(i1).includes(x), 'кнопка есть в приложении: ' + x);
 });
 
 /* ---------- итог ---------- */
