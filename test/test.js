@@ -1173,17 +1173,17 @@ await t('остатки: покупатель всегда видит, скол�
   let it = await clean();
   assert.equal(it.av, 40);                                        // много: «В наличии», а в корзине упирается в 40
   assert.equal(it.lw, undefined);
-  assert.equal((await place(newUser(), [{ id: 'p2', qty: 29 }])).status, 200);   // свободно 11 — ещё выше порога 10
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 29 }])).status, 200);   // доступно 11 — ещё выше порога 10
   it = await clean();
   assert.equal(it.av, 11);
   assert.equal(it.lw, undefined);
-  assert.equal((await place(newUser(), [{ id: 'p2', qty: 2 }])).status, 200);    // свободно 9 — «Мало (осталось 9)»
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 2 }])).status, 200);    // доступно 9 — «Мало (осталось 9)»
   it = await clean();
   assert.equal(it.av, 9);
   assert.equal(it.lw, 1);
   assert.equal((await place(newUser(), [{ id: 'p2', qty: 9 }])).status, 200);
   it = await clean();
-  assert.equal(it.av, 0);                                         // свободно 0 — «Нет в наличии»
+  assert.equal(it.av, 0);                                         // доступно 0 — «Нет в наличии»
   assert.equal(it.lw, undefined);
   const r = await place(newUser(), [{ id: 'p2', qty: 1 }]);
   const d = await jsonOf(r);
@@ -1221,7 +1221,7 @@ await t('остатки: большой склад покупателю не р�
   assert.equal(it.lw, undefined);
   assert.ok(!JSON.stringify(await getProd()).includes('54321'));
   assert.equal((await place(newUser(), [{ id: 'p2', qty: 10000 }])).status, 200);
-  assert.equal((await pubItem('p2')).av, 10000);                   // свободно 44321, но выше 10 000 в заказ всё равно не берут
+  assert.equal((await pubItem('p2')).av, 10000);                   // доступно 44321, но выше 10 000 в заказ всё равно не берут
   // порог выше предела: число в «Мало (осталось N)» точное
   await stockOp({ id: 'p2', op: 'set', n: 10600 });
   await stockOp({ id: 'p2', op: 'low', n: 10550 });
@@ -1230,7 +1230,7 @@ await t('остатки: большой склад покупателю не р�
   assert.equal(it.lw, 1);
 });
 
-await t('остатки: заказ откладывает товар — другим доступно только свободное; заказ принимается целиком или никак', async () => {
+await t('остатки: заказ откладывает товар — другим остаётся только доступное; заказ принимается целиком или никак', async () => {
   await stockWorld();
   await setSt('p2', 10);
   const c1 = newUser(), c2 = newUser(), c3 = newUser(), c4 = newUser();
@@ -1239,7 +1239,7 @@ await t('остатки: заказ откладывает товар — дру
   const o1 = (await jsonOf(r)).order;
   assert.equal(o1.rs, undefined, 'служебная пометка о резерве не должна уходить покупателю');
   assert.deepEqual((await getStock()).p2, { q: 10, r: 7, low: 0 });
-  // второй хочет 4, а свободно 3
+  // второй хочет 4, а доступно 3
   r = await place(c2, [{ id: 'p2', qty: 4 }]);
   assert.equal(r.status, 409);
   assert.deepEqual((await jsonOf(r)).short, [{ id: 'p2', avail: 3 }]);
@@ -1251,13 +1251,13 @@ await t('остатки: заказ откладывает товар — дру
   assert.deepEqual((await jsonOf(r)).short, [{ id: 'p2', avail: 3 }]);
   assert.equal((await adminOrdersOf()).length, nOrders);
   assert.deepEqual((await getStock()).p4, { q: 20, r: 0, low: 0 });
-  // ровно столько, сколько свободно, — можно; смешанный заказ с товаром без учёта тоже
+  // ровно столько, сколько доступно, — можно; смешанный заказ с товаром без учёта тоже
   r = await place(c2, [{ id: 'p4', qty: 5 }, { id: 'p2', qty: 3 }, { id: 'p1', qty: 2 }]);
   assert.equal(r.status, 200);
   const st = await getStock();
   assert.deepEqual([st.p2.q, st.p2.r, st.p4.r], [10, 10, 5]);
   assert.equal(st.p1, undefined, 'товар без учёта не должен получить остаток');
-  // свободного нет
+  // доступного нет
   r = await place(c3, [{ id: 'p2', qty: 1 }]);
   assert.equal(r.status, 409);
   // старый баг-класс: сумма и количество проверяются раньше остатка и не ломаются
@@ -1267,7 +1267,7 @@ await t('остатки: заказ откладывает товар — дру
   assert.ok((await adminOrdersOf()).every(o => o.rs === undefined));
   const mine = await jsonOf(await call('GET', '/api/my-orders', { init: c1.init() }));
   assert.ok(mine.orders.every(o => o.rs === undefined));
-  // всё свободное взять можно, а на единицу больше — нет
+  // всё доступное взять можно, а на единицу больше — нет
   assert.equal((await place(c4, [{ id: 'p4', qty: 15 }])).status, 200);
   assert.equal((await place(c4, [{ id: 'p4', qty: 1 }])).status, 409);
 });
@@ -1333,14 +1333,14 @@ await t('остатки: продавцу приходит предупрежд�
   const o = [];
   const buy = async qty => { const r = await place(newUser(), [{ id: 'p2', qty }]); assert.equal(r.status, 200); o.push(qty); return stockAlerts().length; };
   tgLog = [];
-  assert.equal(await buy(15), 0);                  // свободно 15 — выше порога
-  assert.equal(await buy(6), 1);                   // свободно 9 — ниже порога: предупреждение
+  assert.equal(await buy(15), 0);                  // доступно 15 — выше порога
+  assert.equal(await buy(6), 1);                   // доступно 9 — ниже порога: предупреждение
   const a1 = stockAlerts()[0];
   assert.equal(a1.payload.chat_id, SELLER.id);
   assert.ok(a1.payload.text.includes('Рис, 25 кг: осталось 9 (порог 10)'), a1.payload.text);
   assert.equal(await buy(1), 1);                   // уже ниже порога — повторно не пишем
   assert.equal(await buy(8), 2);                   // закончился
-  assert.ok(stockAlerts()[1].payload.text.includes('свободного остатка нет (на складе 30, в заказах 30)'));
+  assert.ok(stockAlerts()[1].payload.text.includes('доступного остатка нет (на складе 30, в заказах 30)'));
   // приход предупреждений не вызывает, а исправление «вниз» ниже порога — вызывает
   await setSt('p4', 100, 10);
   tgLog = [];
@@ -1401,7 +1401,7 @@ await t('остатки: товар без учёта работает как р
 await t('остатки: каталог, сохранённый продавцом, не затирает остатки, а поля av/q/stock от покупателя игнорируются', async () => {
   await stockWorld();
   await setSt('p2', 10, 4);
-  assert.equal((await place(newUser(), [{ id: 'p2', qty: 7 }])).status, 200);        // свободно 3, мало
+  assert.equal((await place(newUser(), [{ id: 'p2', qty: 7 }])).status, 200);        // доступно 3, мало
   const prod = await getProd();
   assert.equal(prod.items.find(x => x.id === 'p2').av, 3);
   // приложение продавца отправляет каталог обратно вместе с av и придуманными полями
@@ -3102,7 +3102,7 @@ await t('отчёты: «что пора закупать» считает по 
   assert.equal((await setSt('p1', 0)).status, 200);
   d = (await jsonOf(await call('GET', '/api/admin/report?days=30', { init: iS() }))).report;
   assert.deepEqual(d.buy.list.map(x => [x.id, x.left, x.need]), [['p1', 0, 14], ['p4', 6, 40]]);
-  // свободный остаток: отложенное под заказ вычитается
+  // доступный остаток: отложенное под заказ вычитается
   const A = newUser();
   const o = await placeP(A, [{ id: 'p4', qty: 10 }]);
   assert.equal(o.status, 200);
@@ -7619,7 +7619,7 @@ await t('Excel по-узбекски: отчёт — листы, заголов�
   assert.equal(x['Kunlar boʻyicha'][x['Kunlar boʻyicha'].length - 1][0], 'Jami');
   assert.ok(/^(yanvar|fevral|mart|aprel|may|iyun|iyul|avgust|sentyabr|oktyabr|noyabr|dekabr) \d{4}$/.test(x['Oylar boʻyicha'][1][0]), x['Oylar boʻyicha'][1][0]);
   assert.deepEqual(x['Mahsulotlar'][1].slice(0, 3), ['Makaron', '400 g', 50]);
-  assert.deepEqual(x['Nimani sotib olish'][0].slice(0, 5), ['Mahsulot', 'Ogʻirlik / hajm', 'Boʻsh (dona, kg yoki l)', 'Kuniga sotiladi (dona, kg yoki l)', 'Necha kunga yetadi']);
+  assert.deepEqual(x['Nimani sotib olish'][0].slice(0, 5), ['Mahsulot', 'Ogʻirlik / hajm', 'Mavjud (dona, kg yoki l)', 'Kuniga sotiladi (dona, kg yoki l)', 'Necha kunga yetadi']);
   assert.equal(x['Nimani sotib olish'][0][5], '14 kunga sotib olish (dona, kg yoki l)');
   assert.deepEqual(x['Nimani sotib olish'][1].slice(0, 2), ['Makaron', '400 g']);
   noRuCells(x['Xulosa'].concat(x['Kunlar boʻyicha'], x['Oylar boʻyicha'], x['Mahsulotlar'], x['Nimani sotib olish']), []);
@@ -12132,7 +12132,7 @@ await t('настройки компании: нажатие на заголов
 });
 
 /* ---------- остатки: карточки товаров, «Фильтры» и «Все категории» ---------- */
-await t('остатки: фильтр по состоянию и по категории, «Заканчивается» и «Нет свободного» теперь разные списки, счёт и варианты с числами', () => {
+await t('остатки: фильтр по состоянию и по категории, «Заканчивается» и «Нет доступного» теперь разные списки, счёт и варианты с числами', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const i0 = html.indexOf('function stockCounts(){'), i1 = html.indexOf('/* выбор «шт / коробка / блок»');
   assert.ok(i0 > 0 && i1 > i0, 'блок фильтров найден');
@@ -12142,8 +12142,8 @@ await t('остатки: фильтр по состоянию и по катег
   const mk = o => Object.assign({ prod: { cats: [{ id: 'c1', name: 'Крупы' }, { id: 'c2', name: 'Масло' }, { id: 'c3', name: 'Пустая' }], items: [{ id: 'a', cat: 'c1' }, { id: 'b', cat: 'c1' }, { id: 'c', cat: 'c2' }, { id: 'd', cat: 'c2' }] }, sfilter: 'all', scat: '', spanel: '', snote: false, sopen: {} }, o || {});
   const ids = S => make(S).stockList().map(p => p.id).join('');
   assert.equal(ids(mk()), 'abcd', 'без фильтров видны все');
-  assert.equal(ids(mk({ sfilter: 'low' })), 'a', '«Заканчивается» показывает только такие, без «Нет свободного»');
-  assert.equal(ids(mk({ sfilter: 'out' })), 'b', '«Нет свободного» только свои');
+  assert.equal(ids(mk({ sfilter: 'low' })), 'a', '«Заканчивается» показывает только такие, без «Нет доступного»');
+  assert.equal(ids(mk({ sfilter: 'out' })), 'b', '«Нет доступного» только свои');
   assert.equal(ids(mk({ sfilter: 'none' })), 'c', '«Без учёта»');
   assert.equal(ids(mk({ scat: 'c2' })), 'cd', 'категория');
   assert.equal(ids(mk({ scat: 'c2', sfilter: 'low' })), '', 'категория и состояние работают вместе');
@@ -12162,7 +12162,7 @@ await t('остатки: фильтр по состоянию и по катег
   // варианты с числами
   let pn = make(mk({ spanel: 'st' })).stockPanelHTML();
   const opts = h => [...h.matchAll(/data-act="(\w+)" data-v="([^"]*)" aria-pressed="(\w+)"><span>(?:<i class="sdot [a-z]*" aria-hidden="true"><\/i>)?([^<]*)<\/span><b>(\d+)<\/b>/g)].map(m => m[1] + ':' + m[2] + ':' + m[3] + ':' + m[4] + ':' + m[5]);
-  assert.deepEqual(opts(pn), ['sfilter:all:true:Все:4', 'sfilter:low:false:Заканчивается:1', 'sfilter:out:false:Нет свободного:1', 'sfilter:none:false:Без учёта:1']);
+  assert.deepEqual(opts(pn), ['sfilter:all:true:Все:4', 'sfilter:low:false:Заканчивается:1', 'sfilter:out:false:Нет доступного:1', 'sfilter:none:false:Без учёта:1']);
   pn = make(mk({ spanel: 'cat', scat: 'c1' })).stockPanelHTML();
   assert.deepEqual(opts(pn), ['skcat::false:Все категории:4', 'skcat:c1:true:Крупы:2', 'skcat:c2:false:Масло:2'], 'пустой категории в списке нет');
   assert.ok(opts(make(mk({ spanel: 'cat', scat: 'c3' })).stockPanelHTML()).some(x => x.startsWith('skcat:c3:true')), 'если она выбрана, остаётся в списке, чтобы можно было сбросить');
@@ -12173,7 +12173,7 @@ await t('остатки: фильтр по состоянию и по катег
   f = make(mk()).stockFoldHTML(4, true);
   assert.ok(f.includes('data-v="0"') && f.includes('aria-label="Свернуть все"') && f.includes('<i f0>'), 'что-то раскрыто: кнопка «Свернуть все»');
   assert.ok(!make(mk()).stockFoldHTML(1, false).includes('sfoldall') && make(mk()).stockFoldHTML(0, false).includes('data-act="snote"'), 'с одним товаром кнопки «все» нет; «?» есть всегда');
-  assert.ok(make(mk({ sfilter: 'out' })).stockFoldHTML(1, false).startsWith('<span>Нет свободного · 1 тов.</span>'), 'в счёте названо состояние');
+  assert.ok(make(mk({ sfilter: 'out' })).stockFoldHTML(1, false).startsWith('<span>Нет доступного · 1 тов.</span>'), 'в счёте названо состояние');
 });
 
 await t('остатки: каждый товар отдельная карточка, заголовок сворачивает и разворачивает без перерисовки; поля остаются на месте', () => {
@@ -12206,13 +12206,61 @@ await t('остатки: каждый товар отдельная карточ
   // стили
   const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
   assert.ok(/\.sk\[hidden\]\{display:none\}/.test(css) && /\.spanel\[hidden\]\{display:none\}/.test(css), 'скрытое скрыто даже при заданном display');
-  assert.ok(/\.slist\{display:grid;gap:10px/.test(css) && /\.srow\{[^}]*border:1\.5px solid var\(--edge\);border-radius:16px/.test(css), 'карточки с промежутком');
+  assert.ok(/\.slist\{display:grid;gap:8px/.test(css) && /\.srow\{[^}]*border:1\.5px solid var\(--edge\);border-radius:14px/.test(css), 'карточки с промежутком');
   assert.ok(!/\.srow\+\.srow|\.srow:first-child|\.srow select\{|\.srow b\{/.test(css), 'старые линии между строками и чужие правила убраны');
-  assert.ok(/\.sh\[aria-expanded="true"\] \.lchev svg\{transform:rotate\(180deg\)\}/.test(css) && /\.sfbtn\{[^}]*min-height:48px/.test(css) && /\.sico\{[^}]*width:48px;height:48px/.test(css), 'стрелка поворачивается, кнопки крупные');
+  assert.ok(/\.sh\[aria-expanded="true"\] \.lchev svg\{transform:rotate\(180deg\)\}/.test(css) && /\.sfbtn\{[^}]*min-height:40px/.test(css) && /\.sico\{[^}]*width:40px;height:40px/.test(css), 'стрелка поворачивается, кнопки компактные');
   // два языка, без запрещённых слов
   const blk = html.slice(html.indexOf('function stockCounts(){'), html.indexOf('async function loadStock('));
-  for (const x of ['Фильтры', 'Filtrlar', 'Все категории', 'Barcha kategoriyalar', 'Развернуть все', 'Hammasini yoyish', 'Свернуть все', 'Hammasini yigʻish', 'свободно ', 'boʻsh ']) assert.ok(blk.includes(x), 'есть текст: ' + x);
+  for (const x of ['Фильтры', 'Filtrlar', 'Все категории', 'Barcha kategoriyalar', 'Развернуть все', 'Hammasini yoyish', 'Свернуть все', 'Hammasini yigʻish', 'доступно ', 'mavjud ']) assert.ok(blk.includes(x), 'есть текст: ' + x);
   assert.ok(!/магазин|клиент|дистрибьютор/i.test(blk), 'в новых текстах нет запрещённых слов');
+});
+
+await t('остаток называется «доступно» (а не «свободно») везде: карточка, фильтр, подсказки, «О нас», сообщения бота, отчёт; «свободный заказ» и «свободное время» остались', () => {
+  const app = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8'), srv = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8').split('## Для разработчика')[0];
+  // «свободный» там, где речь о заказе, доставщике или времени записи, — это другое слово
+  const keep = /свободного времени|Свободные заказы|Свободные'|Свободный заказ|свободный заказ|станут свободными|свободные и свои|в свободные|снова свободны|свободным для всех|делает заказ свободным/;
+  for (const [name, txt] of [['приложение', app], ['сервер', srv], ['описание', readme]]) {
+    const left = [...txt.matchAll(/.{0,30}[Сс]вободн[а-яё]*.{0,30}/g)].map(m => m[0]).filter(x => !keep.test(x));
+    assert.deepEqual(left, [], name + ': про остаток слово «свободно» не используется');
+  }
+  // по-узбекски остаток тоже «mavjud», а не «boʻsh» (boʻsh = пустой)
+  for (const [name, txt] of [['приложение', app], ['сервер', srv]]) {
+    assert.ok(!/[Bb]oʻsh(i)? (qoldiq|'\+num|shuncha)|Boʻshi yoʻq|boʻsh qoldiq/.test(txt), name + ': остаток по-узбекски не «boʻsh»');
+  }
+  for (const x of ["L('Нет доступного','Mavjud qoldiq yoʻq')", "L('доступно ','mavjud ')", "L('Доступно','Mavjud')", "'Доступно '+num(x.avail)", "'Mavjud '+num(x.avail)"]) assert.ok(app.includes(x), 'в приложении есть: ' + x);
+  assert.ok(srv.includes('доступного остатка нет') && srv.includes('mavjud qoldiq yoʻq') && srv.includes("L('Доступно (шт, кг или л)', 'Mavjud (dona, kg yoki l)')"), 'сообщение бота и колонка отчёта');
+  assert.ok(readme.includes('«Доступно» (на складе минус в заказах)') && readme.includes('«Нет доступного»'), 'описание');
+});
+
+await t('остатки: названия стилей в разметке не совпадают с чужими правилами («cat» из «Товаров» раздул кнопку до 72 пикселей); размеры компактные; журнал синий', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
+  const src = ['stockBarHTML', 'stockPanelHTML', 'stockFoldHTML', 'stockHeadHTML', 'stockRowHTML', 'stockHTML'].map(fn).join('\n');
+  const tokens = new Set();
+  for (const m of src.matchAll(/class="([^"]*)"/g)) for (const x of m[1].replace(/'\+[\s\S]*?\+'/g, ' ').split(/\s+/)) if (/^[a-z][\w-]*$/.test(x)) tokens.add(x);
+  // свои названия описаны только в блоке «Остатков»; общие проверены вручную: их правила нужны и здесь
+  const own = ['sfbar', 'sfbtn', 'sfcat', 'sbdg', 'spanel', 'sopt', 'sdot', 'sfold', 'sico', 'slist', 'sempty', 'srow', 'sh', 'sk', 'sst', 'sfr', 'sn', 'sjcard'];
+  const shared = ['card', 'btn', 'ghost', 'sm', 'note', 'unit', 'st', 'mute', 'warn', 'bad', 'ok', 'lchev', 'snum', 'sact', 'haspk', 'sth', 'fr', 'low', 'out', 'none', 'on', 'hot', 'empty'];
+  const a = css.indexOf('/* остатки: сверху «Фильтры»'), b0 = css.indexOf('/* клиенты */'), b = b0;
+  assert.ok(a > 0 && b0 > a, 'блок стилей «Остатков» найден');
+  const outside = css.slice(0, a) + css.slice(b);
+  const has = (txt, x) => new RegExp('\\.' + x + '(?![\\w-])').test(txt);
+  for (const x of tokens) {
+    if (shared.includes(x)) continue;
+    assert.ok(own.includes(x), 'новое название стиля «' + x + '»: сначала проверьте, что его нет в чужих правилах, потом добавьте в список');
+    assert.ok(!has(outside, x), 'название «' + x + '» уже занято правилами вне блока «Остатков»: элемент получит чужие стили');
+  }
+  for (const x of own) assert.ok(has(css.slice(a, b), x), 'у «' + x + '» есть свои правила');
+  assert.ok(!tokens.has('cat') && tokens.has('sfcat'), 'кнопка категорий называется sfcat, а не cat');
+  // размеры
+  const rule = sel => { const m = css.match(new RegExp('(?:^|\\n)' + sel.replace(/[.\\[\]"=*+?^${}()|]/g, '\\$&') + '\\{([^}]*)\\}')); assert.ok(m, 'правило ' + sel); return m[1]; };
+  assert.ok(/min-height:40px/.test(rule('.sfbtn')) && /min-height:40px/.test(rule('.sfold')) && /width:40px;height:40px/.test(rule('.sico')), 'верхние кнопки и «?» по 40 пикселей');
+  assert.ok(/min-height:56px/.test(rule('.sh')) && /gap:8px/.test(rule('.slist')) && /border-radius:14px/.test(rule('.srow')), 'заголовок карточки 56, промежуток 8');
+  // журнал
+  assert.ok(src.includes('class="card sjcard"') && /background:var\(--info-soft\)/.test(rule('.sjcard')) && /\.sjcard h3\{color:var\(--info\)\}/.test(css), 'журнал синий: цвета из общих переменных, значит и тёмная тема подхватится');
+  assert.ok(/--info:#1F5FA3;/.test(css) && /--info:#7DB6F0;/.test(css), 'у синего есть светлый и тёмный вариант');
 });
 
 await t('«О нас»: пути в подсказках совпадают с новой структурой (Люди, Районы и города, Служебное, «＋ Добавить …», Мои заказы, Товары)', () => {
