@@ -545,13 +545,20 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .pvidb .row-btns{margin-top:8px}
 .pvidb .err{margin-top:8px}
 
-.crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;padding:8px 6px 8px 10px;margin:0 0 10px;background:var(--bg);border:1.5px solid var(--edge);border-radius:14px}
-.crow .cf{display:flex;align-items:center;gap:8px;min-width:0}
-.crow .cf .ltag{margin:0;flex:0 0 auto;width:28px;text-align:center;padding:1px 0}
-.crow .cf input{padding:7px 10px;font-size:15px;background:var(--surface);border-color:var(--line);border-radius:9px}
-.crow .cmv{grid-column:2;grid-row:1/3;display:flex;flex-direction:column;align-items:center;gap:2px}
-.crow .cmv .pmvb{height:30px}
-.crow .x{grid-column:2;grid-row:1/3;appearance:none;border:0;background:transparent;font-size:22px;line-height:1;color:var(--ink-2);cursor:pointer;width:34px;height:34px;border-radius:10px;align-self:center}
+/* вкладка «Товары»: список категорий (кнопка-строка и ▲ ▼ рядом) и название открытой категории */
+.cgo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:0 0 10px}
+.cbtn{appearance:none;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:72px;padding:10px 14px;text-align:left;background:var(--bg);color:var(--ink);border:1.5px solid var(--edge);border-radius:14px;font:inherit;cursor:pointer}
+.cbtn .cn{display:grid;gap:2px;min-width:0}
+.cbtn .cn b{font-size:16px;overflow-wrap:anywhere}
+.cbtn .cn small{font-size:13px;color:var(--ink-2)}
+.cbtn .go{flex:none;width:9px;height:9px;margin-right:4px;border-right:2px solid var(--ink-2);border-top:2px solid var(--ink-2);transform:rotate(45deg)}
+.cgo .cmv{display:flex;flex-direction:column;gap:4px;flex:none}
+.ctitle{font:700 20px var(--f-display);margin:0 0 2px;overflow-wrap:anywhere}
+.ccnt{font-size:14px;color:var(--ink-2);margin:0 0 10px}
+.plist .prow{margin-left:0;margin-right:0}   /* у строки товара поля отрицательные: она висела над карточкой; здесь карточки нет */
+.ccard .cf{display:flex;align-items:center;gap:8px;min-width:0;margin-top:8px}
+.ccard .cf .ltag{margin:0;flex:0 0 auto;width:28px;text-align:center;padding:1px 0}
+.ccard .cf input{flex:1 1 auto}
 @media (max-width:560px){
   .pfbody{grid-template-columns:minmax(0,1fr)}
   .pslots{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;max-width:288px}
@@ -1037,7 +1044,7 @@ const S={
   tg:null,initData:'',uid:null,admin:false,auth:false,ready:false,authErr:'',
   busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,ox:{},
   prod:{cats:[],items:[]},cart:{},shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
-  pfilter:'all',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,cd:null,
+  pcat:'',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,cd:null,
   stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,
   profile:null,blocked:false,pfBusy:false,
   pm:false,xbusy:'',pick:null,pickBusy:false,
@@ -1061,23 +1068,30 @@ const FADE_MS=300;
 let fadeKey=null;
 function screenKey(){
   const v=S.view;let sub='';
-  if(v==='seller')sub=S.sellerTab;
+  if(v==='seller')sub=S.sellerTab+(S.sellerTab==='prod'?'|'+S.pcat:'');   // у «Товаров» ещё и открытая категория
   else if(v==='owner')sub=S.own.sec;
   else if(v==='shop')sub=S.shopStep;
   else if(v==='shops')sub=S.shopsCat+'|'+S.shopsBz;
   else if(v==='analytics')sub=S.an.tab;
   return v+'|'+(S.did||'')+'|'+sub;
 }
-function fadeIn(){
+/* only — один элемент (содержимое вкладки продавца: вкладки сверху остаются на месте); без него — весь экран */
+function fadeIn(only){
   try{
     if(!view.animate||(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches))return;
-    const kids=[...view.children].filter(x=>x.classList&&x.classList.contains('wrap'));
+    const kids=only?[only]:[...view.children].filter(x=>x.classList&&x.classList.contains('wrap'));
     if(kids.length)kids.forEach(el=>el.animate([{opacity:0,transform:'translateY(12px)'},{opacity:1,transform:'none'}],{duration:FADE_MS,easing:'ease-out'}));
     else view.animate([{opacity:0},{opacity:1}],{duration:FADE_MS,easing:'ease-out'});
   }catch(e){}
 }
-function onViewChange(){const k=screenKey(),was=fadeKey;fadeKey=k;if(was!==null&&k!==was)fadeIn()}
-if(typeof MutationObserver==='function')new MutationObserver(onViewChange).observe(view,{childList:true});
+/* смена вкладки продавца или категории меняет только #sbody, а не весь #view: его и проявляем */
+function onViewChange(muts){
+  const k=screenKey(),was=fadeKey;fadeKey=k;
+  if(was===null||k===was)return;
+  const whole=!muts||muts.some(m=>m.target===view);
+  fadeIn(whole?null:document.getElementById('sbody'));
+}
+if(typeof MutationObserver==='function')new MutationObserver(onViewChange).observe(view,{childList:true,subtree:true});
 let toastT=null,saveT=null,psvT=null;
 
 function toast(msg){
@@ -1150,6 +1164,7 @@ function navOver(){
   const bg=document.querySelector('.fs-bg');if(bg)return ()=>bg.click();
   const pv=document.getElementById('pov');if(pv&&!pv.hidden)return closePick;
   if(menuIsOpen())return ()=>menuSet(false);
+  if(S.view==='seller'&&S.sellerTab==='prod'&&S.pcat)return ()=>pcatSet('');
   return null;
 }
 /* стрелка «←» в Telegram видна, если есть куда вернуться; на первом экране её нет, и «Назад» телефона закрывает приложение */
@@ -1210,7 +1225,7 @@ function resetShopState(){
   Object.assign(S,{
     cfg:clone(DEFAULT),prod:{cats:[],items:[]},cart:{},otherCart:null,shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
     admin:false,off:false,profile:null,blocked:false,fav:[],allOrders:[],stats:{doneSum:0,doneCount:0},
-    sellerTab:'orders',pfilter:'all',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
+    sellerTab:'orders',pcat:'',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
     stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,dbt:newDebts(),pay:null,courier:null,cr:newCour(),dv:newDv(),
     pm:false,xbusy:'',pick:null,pickBusy:false,imp:null,impBusy:false,regOnly:null,
     rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
@@ -2438,7 +2453,7 @@ function paintTabs(){
 }
 /* открыть раздел продавца из меню: из любого места приложения */
 function sellerOpen(tab){
-  S.sellerTab=tab;S.sc=null;S.pay=null;S.cp=null;
+  S.sellerTab=tab;S.sc=null;S.pay=null;S.cp=null;S.pcat='';
   if(tab==='debts')S.dbt.open=null;
   if(S.view!=='seller')go('seller');
   else{paintTabs();paintSeller();window.scrollTo(0,0)}
@@ -3648,8 +3663,9 @@ async function modSubmit(ids){
     }else toast(L('Нечего отправлять','Yuboradigan narsa yoʻq'));
     /* товары, у которых не хватает данных, раскрываются сами */
     bad.forEach(b=>{S.pxo[b.id]=true});
-    if(bad.length&&S.pfilter!=='all'&&!S.prod.items.some(p=>p.id===bad[0].id&&p.cat===S.pfilter))S.pfilter='all';
-    paintSeller();
+    const bp=bad.length?S.prod.items.find(x=>x.id===bad[0].id):null;
+    if(bp&&!inModGroup(bp))S.pcat=bp.cat;   // открываем категорию, где не хватает данных
+    paintSeller();navSync();
     if(bad.length){const row=document.getElementById('prow-'+bad[0].id);if(row)try{row.scrollIntoView({block:'start'});window.scrollBy(0,-72)}catch(x){}}
     return;
   }
@@ -3747,8 +3763,8 @@ function pxSumInner(p){
   return '<span class="pth">'+th+'</span><span class="ptx"><b>'+(n?esc(n):'<i>'+L('Без названия','Nomsiz')+'</i>')+'</b><small>'+(w?esc(w)+' · ':'')+(p.price>0?money(p.price):'<em>'+L('цена не указана','narx koʻrsatilmagan')+'</em>')+'</small><span class="ppills">'+pxPills(p)+'</span></span><span class="lchev">'+ICO.chev+'</span>';
 }
 function pxLive(p){const s=document.getElementById('psum-'+p.id);if(s)s.innerHTML=pxSumInner(p)}
-/* товары, которые продавец видит в списке (без «На проверке», с учётом категории): по ним и считаются ▲ ▼ */
-function visProd(){return S.prod.items.filter(p=>!inModGroup(p)&&(S.pfilter==='all'||p.cat===S.pfilter))}
+/* товары открытой категории (без «На проверке»): по ним и считаются ▲ ▼ */
+function visProd(){return S.prod.items.filter(p=>!inModGroup(p)&&p.cat===S.pcat)}
 /* ▲ ▼ стоят в строке товара справа, видны и у свёрнутого, и у раскрытого; у первого серая ▲, у последнего серая ▼ */
 function pmvHTML(p){
   const id=esc(p.id),v=visProd(),i=v.indexOf(p);
@@ -3776,7 +3792,7 @@ function pxSet(id,open){
 }
 /* «Свернуть все» / «Развернуть все»: кнопки остаются на месте под пальцем */
 function pxAll(open){
-  const ids=S.prod.items.filter(p=>!inModGroup(p)&&(S.pfilter==='all'||p.cat===S.pfilter)).map(p=>p.id);
+  const ids=visProd().map(p=>p.id);
   if(open)ids.forEach(id=>{S.pxo[id]=true});else S.pxo={};
   const bar=document.getElementById('pfoldbar'),y=bar?bar.getBoundingClientRect().top:0;
   paintSeller();
@@ -3886,30 +3902,53 @@ async function impApply(){
   S.imp=null;paintSeller();renderNav();
   toast(L('Готово: добавлено '+sm.added+', изменено '+sm.updated+'.','Tayyor: '+sm.added+' ta qoʻshildi, '+sm.updated+' ta oʻzgardi.'));
 }
+/* вкладка «Товары» в два уровня: сначала только категории, внутри категории её товары (S.pcat: '' — список категорий) */
+const catCount=id=>S.prod.items.filter(p=>!inModGroup(p)&&p.cat===id).length;
+const catCountTxt=n=>L(n+' '+plTovar(n),n+' ta mahsulot');
 function prodHTML(){
-  const P=S.prod;
-  if(S.pfilter!=='all'&&!P.cats.some(c=>c.id===S.pfilter))S.pfilter='all';
-  const pend=P.items.filter(inModGroup);
-  const list=P.items.filter(p=>!inModGroup(p)&&(S.pfilter==='all'||p.cat===S.pfilter));
-  let h='<div class="note" style="margin-bottom:14px">'+L('Товары компании. Сначала создайте категории, затем добавляйте товары: название, описание, вес, цену и фото. Покупатели видят изменения сразу. Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым. Выключите «Показывать покупателям», чтобы убрать товар из каталога совсем; включите, и он вернётся.','Kompaniya mahsulotlari. Avval kategoriyalar yarating, keyin mahsulotlar qoʻshing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Xaridorlar oʻzgarishlarni darhol koʻradi. Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi. Mahsulotni katalogdan butunlay olib qoʻyish uchun «Xaridorlarga koʻrsatish» ni oʻchiring; yoqsangiz, u qaytadi.')+'</div>'
+  if(S.pcat&&!S.prod.cats.some(c=>c.id===S.pcat))S.pcat='';
+  return S.pcat?prodCatHTML(S.prod.cats.find(c=>c.id===S.pcat)):prodListHTML();
+}
+/* уровень 1: загрузка прайса, товары «на проверке» и список категорий */
+function prodListHTML(){
+  const P=S.prod,pend=P.items.filter(inModGroup);
+  let h='<div class="note" style="margin-bottom:14px">'+L('Товары компании по категориям. Нажмите на категорию, чтобы открыть её товары: название, описание, вес, цену и фото. Покупатели видят изменения сразу.','Kompaniya mahsulotlari kategoriyalar boʻyicha. Mahsulotlarni koʻrish uchun kategoriyani bosing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Xaridorlar oʻzgarishlarni darhol koʻradi.')+'</div>'
     +'<div class="savebar" id="savebar"></div>';
   h+=impCardHTML();
-  h+='<div class="card"><h3>'+L('Категории товаров','Mahsulot kategoriyalari')+'</h3><div class="unit">'+L('Каждая категория называется на двух языках: покупатель видит название на языке своего приложения. Если узбекское пустое, покажется русское. Удалить можно только пустую категорию.','Har bir kategoriya ikki tilda nomlanadi: xaridor oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
-  P.cats.forEach((c,ci)=>{
-    const id=esc(c.id);
-    const mv=(d,ch,lab,off)=>'<button type="button" class="btn ghost pmvb" data-act="cmove" data-id="'+id+'" data-d="'+d+'" aria-label="'+esc(lab)+'"'+(off?' disabled':'')+'>'+ch+'</button>';
-    h+='<div class="crow" id="crow-'+id+'"><div class="cf"><span class="ltag">RU</span><input type="text" id="cn-'+id+'" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" aria-label="'+esc(L('Название по-русски','Ruscha nomi'))+'" placeholder="'+esc(L('Например: Консервы','Masalan: Консервы'))+'"></div><div class="cf"><span class="ltag uz">UZ</span><input type="text" id="cu-'+id+'" data-cid="'+id+'" data-cp="uz" value="'+esc(c.uz||'')+'" maxlength="40" aria-label="'+esc(L('Название по-узбекски','Oʻzbekcha nomi'))+'" placeholder="'+esc(L('Например: Konservalar','Masalan: Konservalar'))+'"></div><div class="cmv">'+mv(-1,'▲',L('Категория выше','Kategoriya yuqoriga'),ci===0)+'<button type="button" class="x" data-act="cdel" data-id="'+id+'" aria-label="'+esc(L('Удалить категорию','Kategoriyani oʻchirish'))+'">×</button>'+mv(1,'▼',L('Категория ниже','Kategoriya pastga'),ci===P.cats.length-1)+'</div></div>';
-  });
-  h+='<div style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="cadd">'+L('+ Добавить категорию','+ Kategoriya qoʻshish')+'</button></div></div>';
-  h+='<div class="card"><h3>'+L('Товары','Mahsulotlar')+' · '+P.items.length+'</h3>';
   h+='<div id="mban">'+modBanInner()+'</div>';
   if(pend.length)h+='<div class="mgroup"><h4>'+L('На проверке','Tekshiruvda')+' · '+pend.length+'</h4>'+pend.map(modCard).join('')+'</div>';
-  if(P.cats.length>1)h+='<div class="filters" style="margin:8px 0 4px">'+[['all',L('Все','Barchasi')]].concat(P.cats.map(c=>[c.id,nm(c)])).map(c=>'<button type="button" class="chip" data-act="pfilter" data-id="'+esc(c[0])+'" aria-pressed="'+(S.pfilter===c[0])+'">'+esc(c[1])+'</button>').join('')+'</div>';
-  if(!list.length)h+='<div class="unit" style="padding:10px 0">'+(P.items.length-pend.length?L('В этой категории пока ничего нет.','Bu kategoriyada hozircha hech narsa yoʻq.'):L('Товаров пока нет. Нажмите «Добавить товар».','Mahsulotlar hozircha yoʻq. «Mahsulot qoʻshish» tugmasini bosing.'))+'</div>';
-  if(list.length>1)h+='<div class="row-btns pfoldbar" id="pfoldbar"><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="0">'+L('Свернуть все','Hammasini yigʻish')+'</button><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="1">'+L('Развернуть все','Hammasini yoyish')+'</button></div>';
-  list.forEach(p=>{h+=prodRow(p)});
-  h+='<div style="margin-top:10px"><button type="button" class="btn" data-act="pnew">'+L('+ Добавить товар','+ Mahsulot qoʻshish')+'</button></div></div>';
+  h+='<div class="card"><h3>'+L('Категории товаров','Mahsulot kategoriyalari')+'</h3><div class="unit">'+L('Стрелки ▲ ▼ меняют порядок: так же категории идут у покупателей. Удалить можно только пустую категорию.','▲ ▼ tugmalari tartibni oʻzgartiradi: xaridorlarda kategoriyalar shu tartibda turadi. Faqat boʻsh kategoriyani oʻchirish mumkin.')+'</div>';
+  if(!P.cats.length)h+='<div class="unit" style="padding:10px 0">'+L('Категорий пока нет. Нажмите «Добавить категорию», затем добавьте в неё товары.','Kategoriyalar hozircha yoʻq. «Kategoriya qoʻshish» tugmasini bosing, keyin unga mahsulot qoʻshing.')+'</div>';
+  P.cats.forEach((c,ci)=>{
+    const id=esc(c.id),n=nm(c);
+    const mv=(d,ch,lab,off)=>'<button type="button" class="btn ghost pmvb" data-act="cmove" data-id="'+id+'" data-d="'+d+'" aria-label="'+esc(lab)+'"'+(off?' disabled':'')+'>'+ch+'</button>';
+    h+='<div class="cgo" id="crow-'+id+'"><button type="button" class="cbtn" data-act="pcat" data-id="'+id+'"><span class="cn"><b>'+(n?esc(n):'<i>'+L('Без названия','Nomsiz')+'</i>')+'</b><small>'+catCountTxt(catCount(c.id))+'</small></span><span class="go" aria-hidden="true"></span></button>'
+      +'<div class="cmv">'+mv(-1,'▲',L('Категория выше','Kategoriya yuqoriga'),ci===0)+mv(1,'▼',L('Категория ниже','Kategoriya pastga'),ci===P.cats.length-1)+'</div></div>';
+  });
+  h+='<div style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="cadd">'+L('+ Добавить категорию','+ Kategoriya qoʻshish')+'</button></div></div>';
   return h;
+}
+/* уровень 2: одна категория: её название на двух языках, её товары, кнопка «Добавить товар» */
+function prodCatHTML(c){
+  const id=esc(c.id),list=visProd(),n=nm(c);
+  let h=bkLink('pback',L('Категории','Kategoriyalar'))
+    +'<div class="eyebrow" style="margin-top:12px">'+L('Категория','Kategoriya')+'</div><h2 class="ctitle" id="ctitle">'+(n?esc(n):'<i>'+L('Без названия','Nomsiz')+'</i>')+'</h2><div class="ccnt" id="ccnt">'+catCountTxt(list.length)+'</div>'
+    +'<div class="savebar" id="savebar"></div><div id="mban">'+modBanInner()+'</div>'
+    +'<div class="card ccard"><h3>'+L('Название категории','Kategoriya nomi')+'</h3><div class="unit">'+L('Покупатель видит название на языке своего приложения. Если узбекское пустое, покажется русское.','Xaridor oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi.')+'</div>'
+    +'<div class="cf"><span class="ltag">RU</span><input type="text" id="cn-'+id+'" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" aria-label="'+esc(L('Название по-русски','Ruscha nomi'))+'" placeholder="'+esc(L('Например: Консервы','Masalan: Консервы'))+'"></div>'
+    +'<div class="cf"><span class="ltag uz">UZ</span><input type="text" id="cu-'+id+'" data-cid="'+id+'" data-cp="uz" value="'+esc(c.uz||'')+'" maxlength="40" aria-label="'+esc(L('Название по-узбекски','Oʻzbekcha nomi'))+'" placeholder="'+esc(L('Например: Konservalar','Masalan: Konservalar'))+'"></div></div>';
+  if(!list.length)h+='<div class="unit" style="padding:6px 0 10px">'+L('В этой категории пока ничего нет. Нажмите «Добавить товар».','Bu kategoriyada hozircha hech narsa yoʻq. «Mahsulot qoʻshish» tugmasini bosing.')+'</div>';
+  if(list.length>1)h+='<div class="row-btns pfoldbar" id="pfoldbar"><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="0">'+L('Свернуть все','Hammasini yigʻish')+'</button><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="1">'+L('Развернуть все','Hammasini yoyish')+'</button></div>';
+  h+='<div class="plist">'+list.map(prodRow).join('')+'</div>';
+  h+='<div style="margin-top:10px"><button type="button" class="btn" data-act="pnew">'+L('+ Добавить товар','+ Mahsulot qoʻshish')+'</button></div>';
+  h+='<div class="note" style="margin:14px 0 0">'+L('Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым. Выключите «Показывать покупателям», чтобы убрать товар из каталога совсем; включите, и он вернётся.','Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi. Mahsulotni katalogdan butunlay olib qoʻyish uchun «Xaridorlarga koʻrsatish» ni oʻchiring; yoqsangiz, u qaytadi.')+'</div>';
+  h+='<div style="margin-top:22px"><button type="button" class="btn ghost sm dangerbtn" data-act="cdel" data-id="'+id+'">'+L('Удалить категорию','Kategoriyani oʻchirish')+'</button></div>';
+  return h;
+}
+/* открыть категорию («» — вернуться к списку): стрелка Telegram «Назад» тоже закрывает категорию (navOver) */
+function pcatSet(id){
+  S.pcat=id||'';
+  paintSeller();window.scrollTo(0,0);navSync();
 }
 /* ---------- seller: остатки ---------- */
 /* состояние учёта товара: none (не ведётся), ok, low (мало), out (свободного нет) */
@@ -5341,7 +5380,7 @@ const ABOUT_ROLES=[
   ['Согласуйте оплату с покупателем и нажмите «Разрешить отправку»: «Наличные», «Карта», «Перечисление» или «В долг» (срок и часть, оплаченная сразу). Оплата записывается один раз: в заказ, в «Долги» и в Excel. Пока склад не отправил заказ, разрешение можно снять кнопкой «Снять разрешение» (кроме долга).','Toʻlovni xaridor bilan kelishib, «Joʻnatishga ruxsat»ni bosing: «Naqd», «Karta», «Oʻtkazma» yoki «Qarzga» (muddat va darhol toʻlangan qism). Toʻlov bir marta yoziladi: buyurtmaga, «Qarzlar»ga va Excelga. Ombor buyurtmani joʻnatmaguncha ruxsatni «Ruxsatni qaytarish» tugmasi bilan olib tashlash mumkin (qarzdan tashqari).'],
   ['Склад отправляет заказ в Навои. Покупатель нажимает «Получил»: только тогда заказ закрывается, вам приходит сообщение, а в карточке записывается «Выдан покупателю · время» («Доставлен покупателю» при доставке). Закрыть заказ за покупателя нельзя.','Ombor buyurtmani Navoiyga joʻnatadi. Xaridor «Oldim»ni bosadi: buyurtma faqat shundan keyin yopiladi, sizga xabar keladi, kartochkada esa «Xaridorga topshirildi · vaqt» yoziladi (yetkazishda «Xaridorga yetkazildi»). Buyurtmani xaridor oʻrniga yopib boʻlmaydi.']]},
  {img:'sel-catalog',h:['Товары','Mahsulotlar'],cap:['Редактор товара','Tovar muharriri'],li:[
-  ['На вкладке «Товары» создайте категории товаров и товары: название по-русски и по-узбекски, вес или объём, цена и до трёх фото. Приложение само уменьшает фото, обычных снимков с телефона достаточно. Правки сохраняются сами; большая кнопка «Сохранить» внизу карточки товара отправляет их сразу и пишет «Сохранено».','«Mahsulotlar» boʻlimida mahsulot kategoriyalari va mahsulotlarni yarating: rus va oʻzbek tilida nomi, ogʻirligi yoki hajmi, narxi va 3 tagacha rasm. Ilova rasmni oʻzi kichraytiradi, telefondagi oddiy suratlar yetarli. Oʻzgarishlar oʻzi saqlanadi; mahsulot kartochkasi pastidagi katta «Saqlash» tugmasi ularni darhol yuboradi va «Saqlandi» deb yozadi.'],
+  ['На вкладке «Товары» сначала видны только категории с числом товаров. Нажмите на категорию, чтобы открыть её товары; «+ Добавить категорию» создаёт новую, стрелки ▲ ▼ меняют порядок категорий. Внутри категории: её название на двух языках, товары (название по-русски и по-узбекски, вес или объём, цена и до трёх фото) и кнопка «+ Добавить товар». Приложение само уменьшает фото, обычных снимков с телефона достаточно. Правки сохраняются сами; большая кнопка «Сохранить» внизу карточки товара отправляет их сразу и пишет «Сохранено».','«Mahsulotlar» boʻlimida avval faqat kategoriyalar mahsulotlar soni bilan koʻrinadi. Mahsulotlarini ochish uchun kategoriyani bosing; «Kategoriya qoʻshish» yangisini yaratadi, ▲ ▼ tugmalari kategoriyalar tartibini oʻzgartiradi. Kategoriya ichida: ikki tilda nomi, mahsulotlar (rus va oʻzbek tilida nomi, ogʻirligi yoki hajmi, narxi va 3 tagacha rasm) hamda «Mahsulot qoʻshish» tugmasi. Ilova rasmni oʻzi kichraytiradi, telefondagi oddiy suratlar yetarli. Oʻzgarishlar oʻzi saqlanadi; mahsulot kartochkasi pastidagi katta «Saqlash» tugmasi ularni darhol yuboradi va «Saqlandi» deb yozadi.'],
   ['Метки «Акция» (со старой ценой) и «Новинка», цены от количества, блоки и коробки, скидка на заказ от суммы. Прайс можно выгрузить в Excel, поправить цены и загрузить обратно: перед применением вы увидите, что изменится.','«Aksiya» (eski narx bilan) va «Yangilik» belgilari, miqdorga qarab narx, blok va qutilar, summaga qarab chegirma. Prays-listni Excelga yuklab, narxlarni tuzatib, qaytarib yuklash mumkin: qoʻllashdan oldin nima oʻzgarishini koʻrasiz.'],
   ['Новый товар сначала «Черновик». Нажмите «Отправить на проверку»: владелец площадки одобрит товар или вернёт с причиной, что исправить. Правки уже одобренных товаров проверки не требуют.','Yangi tovar avval «Qoralama» boʻladi. «Tekshiruvga yuborish»ni bosing: platforma egasi tovarni tasdiqlaydi yoki nimani tuzatish kerakligini sabab bilan qaytaradi. Tasdiqlangan tovarlarni oʻzgartirish tekshiruvsiz amalga oshadi.'],
   ['Пока товар не одобрен, покупатели видят его серым с надписью «На модерации».','Tovar tasdiqlanmaguncha xaridorlar uni «Tekshiruvda» yozuvli kulrang koʻrinishda koʻradi.'],
@@ -7550,16 +7589,16 @@ document.addEventListener('click',e=>{
   else if(a==='cadd'){
     if(S.prod.cats.length>=MAX_CATS){toast(L('Больше '+MAX_CATS+' категорий нельзя',MAX_CATS+' tadan ortiq kategoriya boʻlmaydi'));return}
     const c={id:'c'+Math.random().toString(36).slice(2,8),name:'Новая категория',uz:'Yangi kategoriya'};
-    S.prod.cats.push(c);queueSave('prod');paintSeller();
+    S.prod.cats.push(c);S.pcat=c.id;queueSave('prod');paintSeller();window.scrollTo(0,0);navSync();   // новая категория сразу открыта: можно назвать её и добавить товары
     const inp=document.querySelector('[data-cid="'+c.id+'"][data-cp="name"]');if(inp){inp.focus();inp.select()}
   }
   else if(a==='cdel'){
     const id=t.dataset.id;
     if(S.prod.items.some(p=>p.cat===id)){toast(L('В категории есть товары. Сначала перенесите или удалите их.','Kategoriyada mahsulotlar bor. Avval ularni koʻchiring yoki oʻchiring.'));return}
-    S.prod.cats=S.prod.cats.filter(c=>c.id!==id);queueSave('prod');paintSeller();
+    S.prod.cats=S.prod.cats.filter(c=>c.id!==id);if(S.pcat===id)S.pcat='';queueSave('prod');paintSeller();window.scrollTo(0,0);navSync();
   }
   else if(a==='cmove'){
-    /* ▲ ▼ у категории: меняет её местом с соседней; порядок тот же у покупателей, в списке категории у товара и в фильтре */
+    /* ▲ ▼ у категории: меняет её местом с соседней; порядок тот же у покупателей и в выборе категории у товара */
     const id=t.dataset.id,d=Number(t.dataset.d)||0,arr=S.prod.cats,pos=arr.findIndex(c=>c.id===id),to=pos+d;
     if(pos<0||to<0||to>=arr.length)return;
     const tmp=arr[pos];arr[pos]=arr[to];arr[to]=tmp;
@@ -7571,7 +7610,8 @@ document.addEventListener('click',e=>{
       if(nb&&!nb.disabled)try{nb.focus({preventScroll:true})}catch(x){}
     }
   }
-  else if(a==='pfilter'){S.pfilter=t.dataset.id;paintSeller()}
+  else if(a==='pcat')pcatSet(t.dataset.id);
+  else if(a==='pback')pcatSet('');
   else if(a==='pfold')pxSet(t.dataset.id,!S.pxo[t.dataset.id]);
   else if(a==='psave')prodSave(t.dataset.id);
   else if(a==='vidadd')vidAdd(t.dataset.id);
@@ -7607,7 +7647,7 @@ document.addEventListener('click',e=>{
   else if(a==='pnew'){
     if(!S.prod.cats.length){toast(L('Сначала создайте категорию','Avval kategoriya yarating'));return}
     if(S.prod.items.length>=MAX_ITEMS){toast(L('Больше '+MAX_ITEMS+' товаров нельзя',MAX_ITEMS+' tadan ortiq mahsulot boʻlmaydi'));return}
-    const cat=S.pfilter!=='all'?S.pfilter:S.prod.cats[0].id;
+    const cat=S.prod.cats.some(c=>c.id===S.pcat)?S.pcat:S.prod.cats[0].id;
     const p={id:'p'+Math.random().toString(36).slice(2,9),cat,name:'Новый товар',uz:'Yangi mahsulot',desc:'',descUz:'',amount:0,unit:'g',price:0,on:true,tag:'',old:0,pv:'',tiers:[],blk:0,box:0};
     S.prod.items.push(p);S.pxo[p.id]=true;queueSave('prod');paintSeller();
     const inp=document.getElementById('pname-'+p.id);
@@ -7626,7 +7666,7 @@ document.addEventListener('click',e=>{
   }
   else if(a==='pmove'){
     const id=t.dataset.id,d=Number(t.dataset.d)||0,arr=S.prod.items;
-    const vis=arr.map((p,i)=>i).filter(i=>!inModGroup(arr[i])&&(S.pfilter==='all'||arr[i].cat===S.pfilter));
+    const vis=arr.map((p,i)=>i).filter(i=>!inModGroup(arr[i])&&arr[i].cat===S.pcat);
     const pos=vis.indexOf(arr.findIndex(p=>p.id===id)),to=pos+d;
     if(pos<0||to<0||to>=vis.length)return;
     const a1=vis[pos],b1=vis[to],tmp=arr[a1];arr[a1]=arr[b1];arr[b1]=tmp;
@@ -7906,6 +7946,13 @@ document.addEventListener('input',e=>{
     else if(k==='mu'){p.mu=t.value==='box'||t.value==='blk'?t.value:'';minSync(p,t.closest('.pf'))}
     else if(k==='only'){onlySet(p,t.dataset.k,t.checked);onlySync(p,t.closest('.pf'))}
     else if(k==='tn'||k==='tp')syncTiers(p);
+    else if(k==='cat'&&S.view==='seller'&&S.sellerTab==='prod'&&S.pcat&&t.value!==S.pcat&&!inModGroup(p)){
+      /* товар перенесён в другую категорию: из этого списка он уходит, говорим куда */
+      p.cat=t.value;queueSave('prod');paintSeller();
+      const to=S.prod.cats.find(x=>x.id===p.cat);
+      toast(L('Перенесён в «'+nm(to)+'»','«'+nm(to)+'» kategoriyasiga koʻchirildi'));
+      return;
+    }
     else p[k]=t.value;
     pxLive(p);
     queueSave('prod');
@@ -7914,6 +7961,7 @@ document.addEventListener('input',e=>{
     const c=S.prod.cats.find(x=>x.id===t.dataset.cid);
     if(!c)return;
     c[t.dataset.cp]=t.value;
+    const ct=document.getElementById('ctitle');if(ct)ct.textContent=nm(c)||L('Без названия','Nomsiz');
     queueSave('prod');
   }
   else if(t.dataset.far){

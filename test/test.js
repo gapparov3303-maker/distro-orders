@@ -6965,31 +6965,32 @@ await t('каталог: товары сворачиваются, всё свё�
   assert.ok(row.indexOf('pmvHTML(p)') > 0 && row.indexOf('pmvHTML(p)') < row.indexOf("(open?'<div class=\"pfbody\""), '▲▼ стоят в строке, до формы: видны и у свёрнутого товара');
   assert.ok(/class="phead"/.test(row) && row.indexOf('</button>') > 0 && row.indexOf('</button>') < row.indexOf('pmvHTML(p)'), 'стрелки стоят рядом с кнопкой-заголовком, а не внутри неё (кнопка в кнопке недопустима)');
   assert.ok(!/pmove/.test(body) && /data-act="pdel"/.test(body) && /data-act="pfold"/.test(body), 'в раскрытой карточке остались удаление и «Свернуть», а ▲▼ внизу убраны');
-  // поведение на заглушках: ▲ у первого и ▼ у последнего серые, «На проверке» и другая категория в счёт не идут
+  // поведение на заглушках: в открытой категории ▲ у первого и ▼ у последнего серые, «На проверке» и другая категория в счёт не идут
   const inMod = p => p.ms === 'wait' || p.ms === 'ret';
   const mk = S0 => new Function('S', 'L', 'esc', 'inModGroup', fn('visProd') + '\n' + fn('pmvHTML') + '\nreturn pmvHTML;')(S0, (ru, uz) => ru, v => String(v), inMod);
-  const items = [{ id: 'a', cat: 'c1' }, { id: 'b', cat: 'c2' }, { id: 'w', cat: 'c1', ms: 'wait' }, { id: 'c', cat: 'c1' }, { id: 'd', cat: 'c2' }];
+  const items = [{ id: 'a', cat: 'c1' }, { id: 'b', cat: 'c2' }, { id: 'w', cat: 'c1', ms: 'wait' }, { id: 'c', cat: 'c1' }, { id: 'd', cat: 'c2' }, { id: 'e', cat: 'c1' }];
   const dis = (h, d) => new RegExp('data-d="' + d + '"[^>]*disabled').test(h);
-  let S1 = { prod: { items }, pfilter: 'all' }, pm = mk(S1);
+  let S1 = { prod: { items }, pcat: 'c1' }, pm = mk(S1);
   assert.ok(dis(pm(items[0]), -1) && !dis(pm(items[0]), 1), 'первый: ▲ серая, ▼ живая');
-  assert.ok(!dis(pm(items[1]), -1) && !dis(pm(items[1]), 1), 'в середине обе живые');
-  assert.ok(dis(pm(items[4]), 1) && !dis(pm(items[4]), -1), 'последний: ▼ серая, ▲ живая');
-  assert.ok(!dis(pm(items[3]), -1) && !dis(pm(items[3]), 1), 'товар после «На проверке» двигается обычно, «На проверке» в счёт не идёт');
-  S1.pfilter = 'c1'; pm = mk(S1);
-  assert.ok(dis(pm(items[0]), -1) && dis(pm(items[3]), 1) && !dis(pm(items[3]), -1), 'при выбранной категории края считаются внутри неё');
+  assert.ok(!dis(pm(items[3]), -1) && !dis(pm(items[3]), 1), 'в середине обе живые; товар после «На проверке» двигается обычно, «На проверке» в счёт не идёт');
+  assert.ok(dis(pm(items[5]), 1) && !dis(pm(items[5]), -1), 'последний: ▼ серая, ▲ живая');
+  S1.pcat = 'c2'; pm = mk(S1);
+  assert.ok(dis(pm(items[1]), -1) && !dis(pm(items[1]), 1) && dis(pm(items[4]), 1) && !dis(pm(items[4]), -1), 'в другой категории края считаются отдельно, внутри неё');
   assert.ok(/data-act="pmove"/.test(pm(items[0])) && /aria-label="Выше"/.test(pm(items[0])) && /aria-label="Ниже"/.test(pm(items[0])), 'две кнопки с подписями для экранных дикторов');
   // нажатие: меняет местами с соседом в видимом списке, «На проверке» перешагивает, на краю ничего не делает
   const html2 = html, st = html2.indexOf("else if(a==='pmove'){") + "else if(a==='pmove'){".length, en = html2.indexOf("\n  else if(a==='phdel')");
   assert.ok(st > 30 && en > st, 'обработчик найден');
   const run = (S0, id, d) => { let saved = 0, painted = 0; new Function('t', 'S', 'inModGroup', 'queueSave', 'paintSeller', 'document', html2.slice(st, en).replace(/\}\s*$/, ''))({ dataset: { id, d: String(d) } }, S0, inMod, () => { saved++ }, () => { painted++ }, { getElementById: () => null }); return { saved, painted }; };
-  const S2 = { prod: { items: items.map(x => ({ ...x })) }, pfilter: 'all' };
+  const S2 = { prod: { items: items.map(x => ({ ...x })) }, pcat: 'c1' };
   run(S2, 'c', 1);
-  assert.deepEqual(S2.prod.items.map(x => x.id), ['a', 'b', 'w', 'd', 'c'], '▼ у «c»: встаёт после «d»');
+  assert.deepEqual(S2.prod.items.map(x => x.id), ['a', 'b', 'w', 'e', 'd', 'c'], '▼ у «c»: встаёт после «e», чужая категория и «На проверке» не мешают');
   const r0 = run(S2, 'a', -1);
   assert.equal(r0.saved + r0.painted, 0, '▲ у первого ничего не делает');
-  const S3 = { prod: { items: items.map(x => ({ ...x })) }, pfilter: 'all' };
+  const r1 = run(S2, 'c', 1);
+  assert.equal(r1.saved + r1.painted, 0, '▼ у последнего ничего не делает');
+  const S3 = { prod: { items: items.map(x => ({ ...x })) }, pcat: 'c1' };
   run(S3, 'c', -1);
-  assert.deepEqual(S3.prod.items.map(x => x.id), ['a', 'c', 'w', 'b', 'd'], '▲ у «c»: «На проверке» не считается, «c» встаёт вместо «b»');
+  assert.deepEqual(S3.prod.items.map(x => x.id), ['c', 'b', 'w', 'a', 'd', 'e'], '▲ у «c»: «На проверке» и «b» из другой категории пропускаются, «c» встаёт вместо «a»');
   assert.ok(/aria-expanded="'\+open/.test(row), 'состояние читается и для экранных дикторов');
   assert.ok(/a==='pfold'\)pxSet\(/.test(html) && /a==='pfoldall'\)pxAll\(/.test(html), 'обработчики одной карточки и «все»');
   assert.ok(/data-act="pfoldall" data-v="0"/.test(html) && /data-act="pfoldall" data-v="1"/.test(html), 'кнопки «Свернуть все» и «Развернуть все»');
@@ -7125,30 +7126,34 @@ await t('форма товара и категорий: поля подписа�
   assert.ok(/pfLab\(k,lab\)/.test(rv) && /pfHint\(k\)/.test(rv) && /pfHintRow\('amount'\)/.test(rv) && /pfHintRow\('price'\)/.test(rv) && /pfHintRow\('oldS'\)/.test(rv), 'форма владельца при проверке: то же');
   // категории показываются на языке интерфейса: и в выпадающих списках, и в фильтре
   assert.equal((html.match(/esc\(nm\(c\)\)/g) || []).length >= 2, true, 'списки категорий в формах товара');
-  assert.ok(/P\.cats\.map\(c=>\[c\.id,nm\(c\)\]\)/.test(html), 'фильтр категорий в редакторе');
+  assert.ok(!/data-act="pfilter"/.test(html) && !/S\.pfilter/.test(html), 'фильтра-чипов по категориям в редакторе больше нет: категории открываются по одной');
+  assert.ok(/n=nm\(c\)/.test(fn('prodListHTML')) && /n=nm\(c\)/.test(fn('prodCatHTML')), 'название категории на языке интерфейса: в списке и внутри');
   // новые товар и категория создаются с обоими названиями, независимо от языка интерфейса
   assert.ok(/name:'Новый товар',uz:'Yangi mahsulot'/.test(html) && /name:'Новая категория',uz:'Yangi kategoriya'/.test(html), 'названия по умолчанию на обоих языках');
   assert.ok(!/name:L\('Новый товар'/.test(html) && !/name:L\('Новая категория'/.test(html), 'русское название не зависит от языка интерфейса');
-  // строка категории: отдельная рамка, у каждого поля значок языка вместо длинной подписи, подпись для чтения с экрана остаётся
-  const crow = html.slice(html.indexOf('id="crow-\'+id+\'"><div class="cf">'), html.indexOf('id="crow-\'+id+\'"><div class="cf">') + 1100);
-  assert.ok(/data-cp="name"/.test(crow) && /data-cp="uz"/.test(crow) && (crow.match(/class="ltag/g) || []).length === 2, 'в строке категории два поля с значками RU и UZ');
+  // название открытой категории: две строки, у каждого значок языка вместо длинной подписи, подпись для чтения с экрана остаётся
+  const crow = fn('prodCatHTML');
+  assert.ok(/data-cp="name"/.test(crow) && /data-cp="uz"/.test(crow) && (crow.match(/class="ltag/g) || []).length === 2, 'на экране категории два поля с значками RU и UZ');
   assert.ok(!/<label/.test(crow) && /aria-label="'\+esc\(L\('Название по-русски','Ruscha nomi'\)\)/.test(crow) && /aria-label="'\+esc\(L\('Название по-узбекски','Oʻzbekcha nomi'\)\)/.test(crow), 'длинных подписей нет, но у полей есть aria-label на двух языках');
-  assert.ok(/\.crow\{[^}]*border:1\.5px solid var\(--edge\);border-radius:14px/.test(html) && /\.crow\{[^}]*margin:0 0 10px/.test(html), 'каждая категория в своей рамке с отступом');
+  assert.ok(/\.cgo\{[^}]*margin:0 0 10px/.test(html) && /\.cbtn\{[^}]*border:1\.5px solid var\(--edge\);border-radius:14px/.test(html), 'каждая категория в списке в своей рамке с отступом');
+  assert.ok(/\.ccard \.cf\{/.test(html), 'строки названия категории оформлены');
 });
 
 await t('порядок категорий: ▲ ▼ в карточке категории, нажатие меняет места, порядок сохраняется и виден покупателям', async () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   // разметка: справа столбик ▲ · ✕ · ▼, у первой категории ▲ серая, у последней ▼ серая
   const st0 = html.indexOf('P.cats.forEach((c,ci)=>{'), en0 = html.indexOf('data-act="cadd"', st0);
+  assert.equal(html.split('P.cats.forEach((c,ci)=>{').length, 2, 'цикл один: список категорий на первом уровне');
   assert.ok(st0 > 0 && en0 > st0, 'цикл категорий найден');
   const loop = html.slice(st0, en0);
-  assert.ok(loop.indexOf("mv(-1,'▲'") > 0 && loop.indexOf("mv(-1,'▲'") < loop.indexOf('data-act="cdel"') && loop.indexOf('data-act="cdel"') < loop.indexOf("mv(1,'▼'"), '▲ сверху, ✕ посередине, ▼ снизу');
+  assert.ok(loop.indexOf("mv(-1,'▲'") > 0 && loop.indexOf("mv(-1,'▲'") < loop.indexOf("mv(1,'▼'"), '▲ сверху, ▼ снизу');
+  assert.ok(!/data-act="cdel"/.test(loop) && /data-act="pcat"/.test(loop), 'в строке списка нет удаления (оно внутри категории), а сама строка открывает категорию');
   assert.ok(/mv\(-1,'▲',[^)]*\),ci===0\)/.test(loop) && /mv\(1,'▼',[^)]*\),ci===P\.cats\.length-1\)/.test(loop), 'у первой ▲ и у последней ▼ неактивны');
   assert.ok(/class="btn ghost pmvb" data-act="cmove" data-id="'\+id\+'" data-d="'\+d\+'" aria-label="'\+esc\(lab\)\+'"/.test(loop) && /Категория выше/.test(loop) && /Kategoriya yuqoriga/.test(loop) && /Категория ниже/.test(loop) && /Kategoriya pastga/.test(loop), 'подписи для экранных дикторов на двух языках');
-  assert.ok(/\.crow \.cmv\{[^}]*flex-direction:column/.test(html), 'столбик');
+  assert.ok(/\.cgo \.cmv\{[^}]*flex-direction:column/.test(html), 'столбик');
   assert.ok(/id="crow-'\+id\+'"/.test(loop), 'у карточки есть номер, на нём держится прокрутка к ней');
   // нажатие: меняет категорию местом с соседней, на краю ничего не делает, сохраняет каталог
-  const st = html.indexOf("else if(a==='cmove'){") + "else if(a==='cmove'){".length, en = html.indexOf("\n  else if(a==='pfilter')", st);
+  const st = html.indexOf("else if(a==='cmove'){") + "else if(a==='cmove'){".length, en = html.indexOf("\n  else if(a==='pcat')", st);
   assert.ok(st > 30 && en > st, 'обработчик найден');
   const run = (S0, id, d) => { const log = []; new Function('t', 'S', 'queueSave', 'paintSeller', 'document', html.slice(st, en).replace(/\}\s*$/, ''))({ dataset: { id, d: String(d) } }, S0, k => log.push('save:' + k), () => log.push('paint'), { getElementById: () => null }); return log; };
   const mkS = () => ({ prod: { cats: ['a', 'b', 'c', 'd'].map(id => ({ id, name: id.toUpperCase() })), items: [] } });
@@ -7178,6 +7183,150 @@ await t('порядок категорий: ▲ ▼ в карточке кате
   assert.deepEqual(after.map(i => [i.id, i.cat]), [['q0', 'ca'], ['q1', 'cb'], ['q2', 'cc']], 'товары остались в своих категориях');
   assert.equal((await dPut(sid, { cats: (await dSee(sid, iD())).cats, items: after.map(i => i.id === 'q0' ? { ...i, price: 1500 } : i) })).status, 200);
   assert.deepEqual((await dSee(sid, A.init())).cats.map(c => c.id), ['cc', 'ca', 'cb'], 'после другой правки порядок не сбивается');
+});
+
+await t('«Товары» в два уровня: сначала только категории со счётчиком, внутри категории её товары, название и «Добавить товар»', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
+  const cst = name => { const m = html.match(new RegExp('\\nconst ' + name + '=[^\\n]*\\n')); assert.ok(m, name); return m[0]; };
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const inMod = p => p.ms === 'wait' || p.ms === 'ret';
+  const draw = (S0, o = {}) => {
+    const env = { S: S0, L: (ru, uz) => (o.uz ? uz : ru), esc, nm: x => (!x ? '' : (o.uz && x.uz ? x.uz : x.name)), inModGroup: inMod, impCardHTML: () => '[ПРАЙС]', modBanInner: () => '[БАННЕР]',
+      modCard: p => '<mcard ' + p.id + '>', prodRow: p => '<prow ' + p.id + '>', bkLink: (act, txt) => '<back ' + act + ' ' + txt + '>' };
+    return new Function(...Object.keys(env), cst('plTovar') + cst('catCount') + cst('catCountTxt') + fn('visProd') + fn('prodListHTML') + fn('prodCatHTML') + fn('prodHTML') + '\nreturn prodHTML;')(...Object.values(env))();
+  };
+  const mkS = pcat => ({ pcat, prod: { cats: [{ id: 'c1', name: 'Консервы', uz: 'Konservalar' }, { id: 'c2', name: 'Напитки', uz: '' }, { id: 'c3', name: 'Пустая', uz: 'Boʻsh' }],
+    items: [{ id: 'a', cat: 'c1' }, { id: 'w', cat: 'c1', ms: 'wait' }, { id: 'b', cat: 'c1' }, { id: 'd', cat: 'c2' }] } });
+  // уровень 1: только категории, ни одного товара в списке
+  let S1 = mkS(''), h = draw(S1);
+  assert.ok(!/<prow /.test(h) && !/data-act="pnew"/.test(h) && !/data-act="cdel"/.test(h) && !/data-cid=/.test(h), 'на первом уровне нет товаров, «Добавить товар», удаления и полей названия');
+  assert.deepEqual([...h.matchAll(/data-act="pcat" data-id="(\w+)"/g)].map(m => m[1]), ['c1', 'c2', 'c3'], 'три строки-кнопки по порядку категорий');
+  assert.ok(/<b>Консервы<\/b><small>2 товара<\/small>/.test(h), 'счётчик: «На проверке» в счёт не идёт');
+  assert.ok(/<b>Напитки<\/b><small>1 товар<\/small>/.test(h) && /<b>Пустая<\/b><small>0 товаров<\/small>/.test(h), 'один товар и пустая категория');
+  assert.ok(h.includes('[ПРАЙС]') && h.includes('[БАННЕР]') && h.includes('<mcard w>') && /data-act="cadd"/.test(h) && /id="savebar"/.test(h), 'прайс из Excel, баннер черновиков, «На проверке», «Добавить категорию» и строка сохранения на месте');
+  assert.ok(h.indexOf('[ПРАЙС]') < h.indexOf('<mcard w>') && h.indexOf('<mcard w>') < h.indexOf('data-act="pcat"') && h.indexOf('data-act="pcat"') < h.indexOf('data-act="cadd"'), 'порядок: прайс, на проверке, категории, добавить категорию');
+  assert.ok(/data-act="cmove" data-id="c1" data-d="-1"[^>]*disabled/.test(h) && !/data-act="cmove" data-id="c1" data-d="1"[^>]*disabled/.test(h) && /data-act="cmove" data-id="c3" data-d="1"[^>]*disabled/.test(h), '▲ у первой и ▼ у последней серые');
+  assert.ok(!/магазин|клиент|дистрибьютор/i.test(h), 'в тексте нет запрещённых слов');
+  S1.prod.cats = []; h = draw(S1);
+  assert.ok(/Категорий пока нет/.test(h) && /data-act="cadd"/.test(h) && !/data-act="pcat"/.test(h), 'категорий нет: подсказка и кнопка «Добавить категорию»');
+  // уровень 2: одна категория
+  const S2 = mkS('c1'); h = draw(S2);
+  assert.ok(/<back pback Категории>/.test(h), 'кнопка «← Категории» (без Telegram) возвращает к списку');
+  assert.ok(/class="eyebrow"[^>]*>Категория<\/div><h2 class="ctitle" id="ctitle">Консервы<\/h2><div class="ccnt" id="ccnt">2 товара<\/div>/.test(h), 'шапка: «Категория», название, счётчик');
+  assert.ok(h.indexOf('<prow a>') < h.indexOf('Фото сжимается') && h.indexOf('data-act="pnew"') < h.indexOf('Фото сжимается') && h.indexOf('Фото сжимается') < h.indexOf('data-act="cdel"'), 'длинная подсказка про «В наличии» стоит под товарами, а не загораживает их сверху');
+  assert.ok(/class="plist">(<prow a><prow b>)<\/div>/.test(h) && /\.plist \.prow\{margin-left:0;margin-right:0\}/.test(html), 'товары в своём блоке, без отрицательных полей: не выходят за края страницы');
+  assert.ok(h.indexOf('<prow a>') > 0 && h.indexOf('<prow a>') < h.indexOf('<prow b>'), 'товары этой категории по порядку');
+  assert.ok(!/<prow d>/.test(h) && !/<prow w>/.test(h) && !/<mcard/.test(h), 'товаров другой категории и «На проверке» здесь нет');
+  assert.ok(/id="cn-c1" data-cid="c1" data-cp="name" value="Консервы"/.test(h) && /id="cu-c1" data-cid="c1" data-cp="uz" value="Konservalar"/.test(h), 'название категории на двух языках в двух полях');
+  assert.ok(/data-act="pnew"/.test(h) && /data-act="cdel" data-id="c1"/.test(h) && /id="pfoldbar"/.test(h) && h.includes('[БАННЕР]') && /id="savebar"/.test(h), '«Добавить товар», «Удалить категорию», «Свернуть все», баннер и строка сохранения');
+  assert.ok(h.indexOf('data-act="pnew"') < h.indexOf('data-act="cdel"'), 'удаление категории ниже «Добавить товар»');
+  assert.ok(!/data-act="pcat"/.test(h) && !/data-act="cadd"/.test(h) && !h.includes('[ПРАЙС]'), 'список категорий и прайс на втором уровне не показываются');
+  h = draw(mkS('c2')); assert.ok(!/id="pfoldbar"/.test(h) && /1 товар/.test(h), 'один товар: «Свернуть все» не нужно');
+  h = draw(mkS('c3')); assert.ok(/В этой категории пока ничего нет/.test(h) && /0 товаров/.test(h) && /data-act="pnew"/.test(h), 'пустая категория: подсказка и «Добавить товар»');
+  // категории нет (удалена): возвращаемся к списку
+  const S3 = mkS('gone'); h = draw(S3);
+  assert.equal(S3.pcat, '', 'несуществующая категория сбрасывается'); assert.ok(/data-act="pcat"/.test(h));
+  // узбекский
+  h = draw(mkS(''), { uz: true });
+  assert.ok(/Mahsulot kategoriyalari/.test(h) && /<small>2 ta mahsulot<\/small>/.test(h) && /<b>Konservalar<\/b>/.test(h) && /<b>Напитки<\/b>/.test(h) && /Kategoriya qoʻshish/.test(h), 'узбекский: заголовок, счётчик, названия (пустое узбекское — русское), кнопка');
+  h = draw(mkS('c1'), { uz: true });
+  assert.ok(/Kategoriya<\/div><h2 class="ctitle" id="ctitle">Konservalar<\/h2>/.test(h) && /Kategoriya nomi/.test(h) && /Mahsulot qoʻshish/.test(h) && /Kategoriyani oʻchirish/.test(h) && /<back pback Kategoriyalar>/.test(h), 'узбекский: шапка, название, кнопки');
+  assert.ok(!/магазин|клиент|дистрибьютор/i.test(draw(mkS('c1'))), 'на втором уровне тоже нет запрещённых слов');
+  // стили
+  assert.ok(/\.cbtn\{[^}]*min-height:72px/.test(html) && /\.cbtn \.go\{/.test(html) && /\.ctitle\{/.test(html), 'стили строки категории, стрелки «›» и заголовка');
+  assert.ok(!/\.crow\b/.test(html.replace(/id="crow-/g, '')) , 'старые стили строки с двумя полями убраны');
+});
+
+await t('«Товары»: открыть и закрыть категорию, новая категория открывается сама, товар создаётся в открытой, перенос в другую категорию, «Назад»', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 4000); };
+  const part = (from, to) => { const a = html.indexOf(from), b = html.indexOf(to, a); assert.ok(a > 0 && b > a, 'кусок кода ' + from); return html.slice(a + from.length, b).replace(/\}\s*$/, ''); };
+  const inMod = p => p.ms === 'wait' || p.ms === 'ret';
+  const mkS = (pcat, extra) => ({ pcat, view: 'seller', sellerTab: 'prod', pxo: {}, cart: {}, stk: {}, prod: { cats: [{ id: 'c1', name: 'Консервы', uz: 'Konservalar' }, { id: 'c2', name: 'Напитки', uz: 'Ichimliklar' }], items: [{ id: 'a', cat: 'c1' }, { id: 'd', cat: 'c2' }] }, ...extra });
+  const mkEnv = S0 => { const log = []; return { log, env: { S: S0, L: (ru, uz) => ru, nm: x => (x ? x.name : ''), inModGroup: inMod, MAX_CATS: 40, MAX_ITEMS: 500, saveCart: () => {},
+    queueSave: k => log.push('save:' + k), paintSeller: () => log.push('paint'), navSync: () => log.push('nav'), toast: m => log.push('toast:' + m),
+    window: { scrollTo: () => log.push('top') }, document: { querySelector: () => null, getElementById: () => null }, pxLive: () => log.push('live') } }; };
+  const call = (code, S0, t) => { const { log, env } = mkEnv(S0); new Function('t', ...Object.keys(env), code)(t, ...Object.values(env)); return log; };
+  // открыть и закрыть
+  const pcatSet = fn('pcatSet');
+  assert.ok(/a==='pcat'\)pcatSet\(t\.dataset\.id\)/.test(html) && /a==='pback'\)pcatSet\(''\)/.test(html), 'строка категории открывает её, «← Категории» закрывает');
+  let S = mkS(''), { log, env } = mkEnv(S);
+  new Function(...Object.keys(env), pcatSet + "\npcatSet('c2');")(...Object.values(env));
+  assert.equal(S.pcat, 'c2'); assert.deepEqual(log, ['paint', 'top', 'nav'], 'открыли: перерисовка, наверх, стрелка Telegram обновлена');
+  S = mkS('c2'); ({ log, env } = mkEnv(S));
+  new Function(...Object.keys(env), pcatSet + "\npcatSet('');")(...Object.values(env));
+  assert.equal(S.pcat, '', 'закрыли: снова список');
+  // новая категория: создаётся и сразу открыта
+  const cadd = part("else if(a==='cadd'){", "\n  else if(a==='cdel')");
+  S = mkS(''); log = call(cadd, S, {});
+  assert.equal(S.prod.cats.length, 3); assert.equal(S.pcat, S.prod.cats[2].id, 'новая категория открыта'); assert.deepEqual(S.prod.cats[2].name, 'Новая категория'); assert.equal(S.prod.cats[2].uz, 'Yangi kategoriya');
+  assert.deepEqual(log, ['save:prod', 'paint', 'top', 'nav'], 'сохранение, перерисовка, наверх, стрелка');
+  S = mkS(''); S.prod.cats = Array.from({ length: 40 }, (_, i) => ({ id: 'k' + i, name: 'К' + i })); log = call(cadd, S, {});
+  assert.equal(S.prod.cats.length, 40); assert.equal(S.pcat, ''); assert.ok(/toast:Больше 40/.test(log.join()), 'на предельном числе категорий не добавляет');
+  // удаление: пустая уходит и возвращает к списку, с товарами — остаётся и объясняет
+  const cdel = part("else if(a==='cdel'){", "\n  else if(a==='cmove')");
+  S = mkS('c2'); S.prod.items = [{ id: 'a', cat: 'c1' }]; log = call(cdel, S, { dataset: { id: 'c2' } });
+  assert.deepEqual(S.prod.cats.map(c => c.id), ['c1']); assert.equal(S.pcat, '', 'удалили открытую категорию: снова список');
+  assert.deepEqual(log, ['save:prod', 'paint', 'top', 'nav']);
+  S = mkS('c1'); log = call(cdel, S, { dataset: { id: 'c1' } });
+  assert.equal(S.prod.cats.length, 2); assert.equal(S.pcat, 'c1', 'в категории есть товары: остаётся на месте'); assert.ok(/toast:В категории есть товары/.test(log.join()) && !/paint/.test(log.join()));
+  S = mkS('c1'); S.prod.items = [{ id: 'w', cat: 'c1', ms: 'wait' }]; log = call(cdel, S, { dataset: { id: 'c1' } });
+  assert.equal(S.prod.cats.length, 2, 'товар «на проверке» тоже не даёт удалить категорию');
+  // новый товар: в открытой категории
+  const pnew = part("else if(a==='pnew'){", "\n  else if(a==='pdel')");
+  S = mkS('c2'); log = call(pnew, S, {});
+  const np = S.prod.items[S.prod.items.length - 1];
+  assert.equal(np.cat, 'c2', 'товар создан в открытой категории'); assert.equal(np.name, 'Новый товар'); assert.equal(S.pxo[np.id], true, 'и сразу раскрыт');
+  S = mkS(''); call(pnew, S, {}); assert.equal(S.prod.items[S.prod.items.length - 1].cat, 'c1', 'категория не открыта: первая по порядку (запасной путь)');
+  S = mkS('c1'); S.prod.cats = []; log = call(pnew, S, {}); assert.ok(/toast:Сначала создайте категорию/.test(log.join()) && S.prod.items.length === 2);
+  // «Назад» Telegram закрывает категорию
+  const navOver = fn('navOver');
+  const over = (S0, o = {}) => new Function('S', 'document', 'closeViewer', 'closePick', 'menuIsOpen', 'menuSet', 'pcatSet', navOver + '\nreturn navOver();')(S0, { getElementById: () => null, querySelector: () => null }, () => {}, () => {}, () => !!o.menu, () => 'menu', () => 'pcatSet');
+  assert.equal(over(mkS('c1'))(), 'pcatSet', '«Назад» в категории: закрывает её и показывает список');
+  assert.equal(over(mkS('')), null, 'в списке категорий «Назад» ведёт дальше, как раньше');
+  assert.equal(over(mkS('c1', { sellerTab: 'stock' })), null, 'на другой вкладке категория не мешает');
+  assert.equal(over(mkS('c1', { view: 'shop' })), null, 'на другом экране тоже');
+  assert.equal(over(mkS('c1'), { menu: true })(), 'menu', 'открытое меню закрывается раньше категории');
+  assert.ok(/function navSync\(\)\{\s*navSettle\(\);[\s\S]*navOver\(\)\|\|S\.nav\.length/.test(html), 'стрелка Telegram следит за navOver');
+  // вход на вкладку «Товары» всегда с начала списка
+  assert.ok(/function sellerOpen\(tab\)\{\s*S\.sellerTab=tab;[^\n]*S\.pcat='';/.test(html), 'нажали «Товары» в меню: открыт список категорий');
+  assert.equal(html.split('\n').filter(l => /go\('seller'/.test(l) && !/^\s*\/\//.test(l)).length, 1, 'на панель продавца заходят только через sellerOpen (один вызов go, и он внутри)');
+  // перенос товара в другую категорию в открытой категории: уходит из списка, говорим куда
+  const chg = part("else if(t.dataset.pid!==undefined){", "\n  else if(t.dataset.cid!==undefined)");
+  const ch = (S0, tv) => { const { log, env } = mkEnv(S0); const t = { dataset: { pid: S0.prod.items[0].id, pp: 'cat' }, value: tv, closest: () => null };
+    new Function('t', ...Object.keys(env), chg)(t, ...Object.values(env)); return log; };
+  S = mkS('c1'); log = ch(S, 'c2');
+  assert.equal(S.prod.items[0].cat, 'c2'); assert.deepEqual(log, ['save:prod', 'paint', 'toast:Перенесён в «Напитки»'], 'перенесён, список перерисован, названа новая категория');
+  S = mkS('c1'); log = ch(S, 'c1'); assert.deepEqual(log, ['live', 'save:prod'], 'выбрали ту же категорию: ничего не уходит');
+  S = mkS(''); log = ch(S, 'c2'); assert.equal(S.prod.items[0].cat, 'c2'); assert.deepEqual(log, ['live', 'save:prod'], 'форма «На проверке» (список категорий): без перерисовки');
+  S = mkS('c1'); S.prod.items[0].ms = 'ret'; log = ch(S, 'c2'); assert.deepEqual(log, ['live', 'save:prod'], 'товар «на проверке» из списка не пропадает');
+  assert.ok(/else if\(k==='cat'&&S\.view==='seller'&&S\.sellerTab==='prod'&&S\.pcat&&t\.value!==S\.pcat&&!inModGroup\(p\)\)\{/.test(html), 'условие переноса в коде');
+  assert.ok(/» kategoriyasiga koʻchirildi/.test(html), 'то же сообщение по-узбекски');
+});
+
+await t('«Товары»: «Отправить на проверку» с неполным товаром открывает его категорию; сохранение названия категории обновляет заголовок', async () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const i = html.indexOf('async function modSubmit('), src = html.slice(i, html.indexOf('\n}\n', i) + 3);
+  assert.ok(i > 0);
+  const inMod = p => p.ms === 'wait' || p.ms === 'ret';
+  const S = { pcat: '', pxo: {}, msubBusy: false, prod: { cats: [{ id: 'c1', name: 'А' }, { id: 'c2', name: 'Б' }], items: [{ id: 'a', cat: 'c1', name: 'Один', ms: 'draft' }, { id: 'd', cat: 'c2', name: 'Два', ms: 'draft' }, { id: 'w', cat: 'c1', name: 'Три', ms: 'ret' }] } };
+  const go = async bad => {
+    const log = [];
+    const env = { S, L: (ru, uz) => ru, nm: x => x.name, inModGroup: inMod, paintModBits: () => {}, flushSave: async () => {}, api: async () => ({ ok: false, data: { bad } }), mergeMod: () => {}, MOD_WHY: { price: ['цену', 'narxi'], name: ['название', 'nomi'] },
+      toast: m => log.push('toast:' + m), paintSeller: () => log.push('paint:' + S.pcat), navSync: () => log.push('nav'), document: { getElementById: () => null }, window: { scrollBy: () => {} } };
+    const f = new Function(...Object.keys(env), 'return ' + src.replace(/^function modSubmit/, 'async function modSubmit'))(...Object.values(env));
+    await f(); return log;
+  };
+  let log = await go([{ id: 'd', why: ['price'] }]);
+  assert.equal(S.pcat, 'c2', 'открылась категория товара, у которого не хватает данных'); assert.equal(S.pxo.d, true, 'и сам товар раскрыт');
+  assert.deepEqual(log, ['toast:«Два»: укажите цену', 'paint:c2', 'nav'], 'сначала открыта категория, потом перерисовка');
+  S.pcat = ''; log = await go([{ id: 'w', why: ['name'] }]);
+  assert.equal(S.pcat, '', 'товар «на проверке» виден и так: категория не открывается');
+  S.pcat = 'c1'; await go([{ id: 'd', why: ['price'] }]); assert.equal(S.pcat, 'c2', 'из другой категории переходим в нужную');
+  S.pcat = 'c1'; await go([]); assert.equal(S.pcat, 'c1', 'без неполных товаров остаёмся где были');
+  // заголовок категории живёт вместе с полем названия
+  assert.ok(/const ct=document\.getElementById\('ctitle'\);if\(ct\)ct\.textContent=nm\(c\)\|\|L\('Без названия','Nomsiz'\)/.test(html), 'пока печатают название, заголовок меняется сразу');
 });
 
 await t('недоступный товар: покупатель видит «Скоро будет» / «Tez orada», продавец в строке товара — «Нет в наличии»', async () => {
@@ -11550,7 +11699,7 @@ await t('названия: у покупателя «Мои заказы», у �
   assert.ok(/\['prod',L\('Товары','Mahsulotlar'\),rn,'warn'\]/.test(html), 'вкладка продавца «Товары»');
   assert.ok(!/\['prod',L\('Каталог'/.test(html), 'прежней вкладки «Каталог» у продавца нет');
   assert.ok(/\['orders',L\('Заказы','Buyurtmalar'\)/.test(html), 'вкладка «Заказы» у продавца осталась как была');
-  const pr = fnOf(html, 'prodHTML');
+  const pr = fnOf(html, 'prodListHTML');
   assert.ok(/<h3>'\+L\('Категории товаров','Mahsulot kategoriyalari'\)\+'<\/h3>/.test(pr), 'внутри «Товаров» справочник называется «Категории товаров»');
   assert.ok(!/<h3>'\+L\('Категории','Kategoriyalar'\)/.test(pr), 'голого «Категории» там больше нет');
   assert.ok(/Сначала добавьте товары на вкладке «Товары»/.test(html) && /Avval «Mahsulotlar» boʻlimida/.test(html), 'подсказка в остатках ведёт на вкладку «Товары»');
@@ -11850,10 +11999,12 @@ await t('смена экрана: плавное появление 0,3 с то�
     const el = (...cls) => ({ classList: { contains: c => cls.includes(c) }, animate: o.noanim ? undefined : (kf, opt) => { calls.push({ kf, opt, cls }); } });
     const view = Object.assign(el('view'), { children: o.nowrap ? [el('bar')] : [el('wrap', 'page'), el('bar')] });
     if (o.noanim) view.children.forEach(c => { c.animate = undefined; });
-    const S = { view: 'shops', did: '', sellerTab: 'orders', own: { sec: 'dist' }, shopStep: 'list', shopsCat: '', shopsBz: '', an: { tab: 'cats' } };
+    const S = { view: 'shops', did: '', sellerTab: 'orders', pcat: '', own: { sec: 'dist' }, shopStep: 'list', shopsCat: '', shopsBz: '', an: { tab: 'cats' } };
     const win = { matchMedia: () => ({ matches: !!o.reduce }) };
-    const api = new Function('S', 'view', 'window', src + '\nreturn {screenKey,fadeIn,onViewChange,FADE_MS};')(S, view, win);
-    return { S, calls, api };
+    const sb = el('sbody');
+    const doc = { getElementById: id => (id === 'sbody' && !o.nosbody ? sb : null) };
+    const api = new Function('S', 'view', 'window', 'document', src + '\nreturn {screenKey,fadeIn,onViewChange,FADE_MS};')(S, view, win, doc);
+    return { S, calls, api, view, sb };
   };
   let m = mk();
   assert.equal(m.api.FADE_MS, 300, '0,3 секунды');
@@ -11889,8 +12040,28 @@ await t('смена экрана: плавное появление 0,3 с то�
   m = mk({ nowrap: true }); m.api.onViewChange(); m.S.view = 'owner'; m.api.onViewChange();
   assert.equal(m.calls.length, 1);
   assert.deepEqual(m.calls[0].kf, [{ opacity: 0 }, { opacity: 1 }], 'без .wrap: только прозрачность');
-  // подключение: следит за содержимым #view, на CSS-анимацию не опирается
-  assert.ok(/new MutationObserver\(onViewChange\)\.observe\(view,\{childList:true\}\)/.test(html), 'наблюдатель за #view');
+  // вкладки продавца и категории «Товаров» меняют только #sbody: проявляется он один, вкладки сверху стоят на месте
+  m = mk(); m.S.view = 'seller'; m.api.onViewChange([{ target: m.view }]);
+  m.S.sellerTab = 'prod'; m.api.onViewChange([{ target: m.sb }]);
+  assert.equal(m.calls.length, 1, 'вкладка продавца сменилась (меняется только #sbody): эффект есть');
+  assert.deepEqual(m.calls[0].cls, ['sbody'], 'двигается только содержимое вкладки');
+  assert.deepEqual(m.calls[0].kf, [{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], 'тот же эффект: проявление и подъём на 12 px');
+  m.S.pcat = 'c1'; m.api.onViewChange([{ target: m.sb }]);
+  assert.equal(m.calls.length, 2, 'открыли категорию в «Товарах»: эффект');
+  assert.deepEqual(m.calls[1].cls, ['sbody']);
+  m.S.pcat = ''; m.api.onViewChange([{ target: m.sb }]);
+  assert.equal(m.calls.length, 3, 'вернулись к списку категорий: эффект');
+  m.api.onViewChange([{ target: m.sb }]); m.api.onViewChange([{ target: {} }]);
+  assert.equal(m.calls.length, 3, 'перерисовка внутри вкладки (сохранение, данные, свёрнутая строка): эффекта нет');
+  m.S.sellerTab = 'stock'; m.S.pcat = 'zzz'; m.api.onViewChange([{ target: m.sb }]);
+  assert.equal(m.calls.length, 4, 'другая вкладка: эффект'); m.S.pcat = 'yyy'; m.api.onViewChange([{ target: m.sb }]);
+  assert.equal(m.calls.length, 4, 'категория важна только на вкладке «Товары»');
+  m.S.view = 'owner'; m.api.onViewChange([{ target: m.view }]);
+  assert.equal(m.calls.length, 5); assert.deepEqual(m.calls[4].cls, ['wrap', 'page'], 'смена всего экрана двигает .wrap, а не #sbody');
+  m = mk({ nosbody: true }); m.S.view = 'seller'; m.api.onViewChange([{ target: m.view }]); m.S.sellerTab = 'prod'; m.api.onViewChange([{ target: {} }]);
+  assert.equal(m.calls.length, 1); assert.deepEqual(m.calls[0].cls, ['wrap', 'page'], 'нет #sbody: проявляется весь экран, а не ничего');
+  // подключение: следит за содержимым #view и всем, что внутри (вкладки продавца меняют только #sbody), на CSS-анимацию не опирается
+  assert.ok(/new MutationObserver\(onViewChange\)\.observe\(view,\{childList:true,subtree:true\}\)/.test(html), 'наблюдатель за #view и вложенным');
   assert.ok(!/#view\s*\{[^}]*(animation|transition)/.test(html), 'на #view нет CSS-анимации');
   assert.ok(/prefers-reduced-motion: reduce/.test(src), 'учитывает «уменьшить анимацию»');
 });
