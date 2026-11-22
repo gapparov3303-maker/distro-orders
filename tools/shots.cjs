@@ -47,7 +47,7 @@ async function toWebp(png, file) {
       await page.goto('http://app.test' + sh.url);
       await page.waitForTimeout(sh.wait || 1300);
       if (sh.prep) await sh.prep(page, st, lang);
-      await page.evaluate(() => Promise.all([...document.images].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; }))));
+      await page.evaluate(() => Promise.all([...document.images].filter(i => i.offsetParent !== null).map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; }))));
       await page.waitForTimeout(250);
       const png = await page.screenshot({ type: 'png' });
       const file = path.join(OUT, sh.name + '-' + lang + '.webp');

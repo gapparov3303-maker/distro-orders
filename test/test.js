@@ -12361,6 +12361,116 @@ await t('платежи комиссии: карточка продавца св
   for (const cl of ['srow', 'sh', 'sk', 'sn', 'sst', 'lchev', 'sfold', 'sico', 'slist']) assert.ok(new RegExp('\\.' + cl + '(?![\\w-])').test(css), 'общий класс .' + cl + ' определён');
 });
 
+await t('заказы продавца: одна кнопка «Фильтр: …» с числом, «Ещё» со сборкой и Excel, строка счётчиков вместо плиток и чипов', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const i0 = html.indexOf('const ordAct='), i1 = html.indexOf('/* ---------- оплата при выдаче и долги ---------- */');
+  assert.ok(i0 > 0 && i1 > i0, 'блок «Заказов» найден');
+  const make = (S, L) => new Function('S', 'L', 'ICO', 'xtoolsHTML', 'ymd', 'shopNow', 'money', 'orderCard', '$', 'paintSeller',
+    html.slice(i0, i1) + '\nreturn {ordCounts,ordFilters,ordBarHTML,ordPanelHTML,ordersHTML};')(
+    S, L || ((ru, uz) => ru), { filt: '<i filt>', chev: '<i chev>' }, () => '<div class="xtools">X</div>', () => '2026-01-02', () => new Date(), x => x + ' сум', (o, m) => '<card ' + o.id + ' ' + m + '>', () => null, () => {});
+  const od = (id, status, day) => ({ id, status, pickupAt: day || '2026-01-02T10:00' });
+  const S1 = o => Object.assign({ allOrders: [od('1', 'new'), od('2', 'new', '2026-01-03T10:00'), od('3', 'accepted'), od('4', 'ready'), od('5', 'done'), od('6', 'cancelled'), od('7', 'done')], stats: { doneSum: 3420000 }, filter: 'active', op: '', oo: {} }, o);
+  const A = make(S1());
+  const c = A.ordCounts();
+  assert.deepEqual(c, { active: 4, done: 2, cancelled: 1, all: 7 }, 'числа по статусам: активные = новые + в работе + готовые');
+  // кнопка фильтра: название выбранного и число
+  let h = A.ordBarHTML();
+  assert.ok(h.includes('<span class="oft">Фильтр: Активные</span>') && h.includes('<span class="sbdg">4</span>'), 'на кнопке «Фильтр: Активные» и число 4');
+  assert.ok(/data-act="opanel" data-v="st" aria-expanded="false" aria-controls="opanel"/.test(h) && /data-act="opanel" data-v="more" aria-expanded="false" aria-controls="opanel"/.test(h), 'две кнопки открывают одну панель; закрыта');
+  assert.ok(h.includes('<div class="spanel" id="opanel" hidden></div>'), 'пока закрыта — пустая и скрытая');
+  assert.ok(make(S1({ filter: 'done' })).ordBarHTML().includes('Фильтр: Завершены</span>') && make(S1({ filter: 'done' })).ordBarHTML().includes('<span class="sbdg">2</span>'), 'выбрали «Завершены» — надпись и число 2');
+  assert.ok(make(S1({ filter: 'all' })).ordBarHTML().includes('Фильтр: Все') && make(S1({ filter: 'bad' })).ordBarHTML().includes('Фильтр: Активные'), '«Все»; неизвестное значение читается как «Активные»');
+  assert.ok(make(S1(), (ru, uz) => uz).ordBarHTML().includes('Filtr: Faol') && make(S1(), (ru, uz) => uz).ordBarHTML().includes('<span>Yana</span>'), 'по-узбекски: «Filtr: Faol», «Yana»');
+  // панель статусов
+  h = make(S1({ op: 'st' })).ordBarHTML();
+  assert.ok(h.includes('<div class="spanel" id="opanel">') && h.includes('aria-expanded="true" aria-controls="opanel"'), 'панель открыта, кнопка знает об этом');
+  const opts = [...h.matchAll(/<button type="button" class="sopt" data-act="filter" data-v="(\w+)" aria-pressed="(\w+)"><span>([^<]+)<\/span><b>(\d+)<\/b>/g)].map(m => m.slice(1).join('|'));
+  assert.deepEqual(opts, ['active|true|Активные|4', 'done|false|Завершены|2', 'cancelled|false|Отменены|1', 'all|false|Все|7'], 'четыре статуса с числами, выбранный отмечен');
+  // «Ещё»: сборка и Excel
+  h = make(S1({ op: 'more' })).ordBarHTML();
+  assert.ok(h.includes('<div class="xtools">X</div>') && !h.includes('data-act="filter"'), 'в «Ещё» сборочный лист и Excel');
+  // страница: бар, счётчики, сумма, список; старых плиток и чипов нет
+  h = A.ordersHTML();
+  assert.ok(h.startsWith('<div id="obar">') && !h.includes('class="stats"') && !h.includes('class="filters"') && !h.includes('class="xtools"'), 'сверху бар, плиток и чипов нет, сборка спрятана в «Ещё»');
+  assert.ok(h.includes('<div class="osum"><span class="oc hot"><b>2</b> Новые</span><span class="oc"><b>1</b> В работе</span><span class="oc"><b>3</b> На сегодня</span></div>'), 'счётчики: 2 новых, 1 в работе, 3 на сегодня (активные с датой сегодня; заказ на завтра не считается)');
+  assert.ok(h.includes('<div class="omoney">Завершено на сумму: <b>3420000 сум</b></div>'), 'сумма завершённых отдельной строкой');
+  assert.equal((h.match(/<card \d \w+>/g) || []).length, 4, 'в списке 4 активных заказа');
+  assert.ok(h.includes('<card 1 seller>') && !h.includes('<card 5 '), 'карточки продавца');
+  assert.ok(!make(S1({ allOrders: [od('1', 'accepted')] })).ordersHTML().includes('oc hot'), 'нет новых — «Новые» не подсвечены');
+  assert.ok(make(S1({ allOrders: [] })).ordersHTML().includes('Заказов пока нет'), 'пустой список');
+  assert.ok(make(S1({ filter: 'cancelled' })).ordersHTML().includes('<card 6 seller>') && !make(S1({ filter: 'cancelled' })).ordersHTML().includes('<card 1 '), 'отфильтрованный список');
+  // действия
+  const hc = html.slice(html.indexOf("else if(a==='filter')"), html.indexOf("else if(a==='otog')"));
+  assert.ok(/S\.filter=t\.dataset\.v;S\.op='';paintSeller\(\)/.test(hc) && /else if\(a==='opanel'\)\{S\.op=S\.op===t\.dataset\.v\?'':t\.dataset\.v;paintObar\(\)\}/.test(hc), 'выбор статуса закрывает панель; вторая кнопка закрывает ту же панель');
+  assert.ok(/a==='pmenu'\)\{S\.pm=!S\.pm;paintObar\(\)\}/.test(html), 'меню сборки открывается внутри панели, без перерисовки списка');
+  assert.ok((html.match(/pm:false,op:'',oo:\{\}/g) || []).length === 2, 'состояние есть и в начале, и при смене продавца');
+  assert.ok(/S\.sellerTab=tab;S\.sc=null;S\.spanel='';S\.op='';/.test(html), 'при уходе на другой раздел панель закрывается');
+  // стили: новое — в блоке остатков (там их родные .sfbtn/.spanel/.sopt), промежутки по шкале
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  const a = css.indexOf('/* остатки: сверху «Фильтры»'), b = css.indexOf('/* клиенты */');
+  for (const x of ['ofl', 'oft', 'ofr', 'ofd']) assert.ok(new RegExp('\\.' + x + '\\{').test(css.slice(a, b)), 'стиль .' + x + ' рядом со стилями кнопок');
+  assert.ok(/\.osum\{[^}]*margin:10px 0 0/.test(css) && /\.omoney\{[^}]*margin:6px 0 10px/.test(css), 'промежутки счётчиков 10 и 6');
+});
+
+await t('заказы продавца: карточка свёрнута до строки; главная кнопка видна, остальное после нажатия; у доставщика и покупателя карточка прежняя', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const i0 = html.indexOf('function orderCard('), i1 = html.indexOf('function renderMine(');
+  assert.ok(i0 > 0 && i1 > i0, 'orderCard найдена');
+  const names = ['okey', 'S', 'esc', 'L', 'orderThumbs', 'pill', 'whenText', 'noWhen', 'regionName', 'itemRow', 'discRow', 'money', 'farFeeRow', 'farCardHTML', 'telHref', 'ICO', 'kgTxt', 'fmtWhen', 'payText', 'orderBaseHTML', 'NEXT_LIVE', 'sellerActs', 'courierActs', 'payBlockHTML', 'farSent'];
+  const make = (S, acts) => new Function(...names, html.slice(i0, i1) + '\nreturn {orderCard,ordSyncOpen};')(
+    (id, d) => d + '|' + id, S, x => String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'), (ru, uz) => ru,
+    () => '<div class="thx">T</div>', o => '<span class="st">' + o.status + '</span>', () => 'вс, 13:00', () => false, () => '', it => it.name, () => '', x => x + ' сум', () => '', () => '', x => x, { chev: '<i c>', copy: '<i copy>', pin: '<i pin>' },
+    x => x + ' кг', () => '', () => 'наличные', () => '', ['new', 'accepted', 'ready'], () => acts, () => '<a class="btn ghost sm">call</a>', () => '<div class="payb">P</div>', () => false);
+  const S0 = o => Object.assign({ did: 'd1', ox: {}, oo: {}, crs: [], pay: null }, o);
+  const ord = o => Object.assign({ id: 'N-1', status: 'new', name: 'Шахло', org: 'Малика', phone: '+998900000000', mode: 'pickup', total: 100, items: [{ name: 'Рис' }] }, o);
+  const prim = '<button type="button" class="btn sm" data-act="status">Принять</button>', ghost = '<button type="button" class="btn ghost sm" data-act="scancel">Отменить</button><button type="button" class="btn ghost sm" data-act="pick1">Лист</button>';
+  // продавец, свёрнуто
+  let h = make(S0(), prim + ghost).orderCard(ord(), 'seller');
+  assert.ok(h.startsWith('<article class="ord sc is-new hp" data-st="new">'), 'новый заказ: свёрнутая карточка, подсвечена, есть главная кнопка');
+  assert.ok(/<button type="button" class="odh" data-act="otog" data-id="N-1" data-d="d1" aria-expanded="false" aria-controls="od-N-1">/.test(h), 'шапка — кнопка, знает, что закрыта');
+  assert.ok(h.includes('<span class="odn"><b>N-1 · Малика</b><small>вс, 13:00</small></span><span class="ods"><span class="st">new</span><b>100 сум</b></span><span class="lchev"><i c></span>'), 'в шапке: номер, покупатель, время, статус, сумма, стрелка');
+  assert.ok(h.includes('<div class="odet" id="od-N-1" hidden>'), 'детали скрыты атрибутом, а не вырезаны');
+  const det = h.slice(h.indexOf('<div class="odet"'), h.indexOf('<div class="acts">'));
+  assert.ok(det.includes('class="cust"') && det.includes('class="tot"') && det.includes('<div class="thx">T</div>'), 'внутри деталей покупатель, оплата, фото');
+  assert.ok(!det.includes('class="oid"') && !det.includes('class="when"') && !det.includes('<b>100 сум</b>'), 'номер, время и сумма не повторяются: они в шапке');
+  assert.ok(h.indexOf('<div class="acts">') > h.indexOf('class="tot"') && h.includes('<div class="acts">' + prim + ghost), 'кнопки вне скрытых деталей: главная видна и когда свёрнуто');
+  // имя, если нет организации
+  assert.ok(make(S0(), prim).orderCard(ord({ org: '' }), 'seller').includes('<b>N-1 · Шахло</b>'), 'без организации — имя');
+  assert.ok(make(S0(), prim).orderCard(ord({ org: '<i>' }), 'seller').includes('&lt;i>') && !make(S0(), prim).orderCard(ord({ org: '<i>' }), 'seller').includes('<b>N-1 · <i>'), 'экранирование');
+  // раскрыто
+  h = make(S0({ oo: { 'd1|N-1': 1 } }), prim + ghost).orderCard(ord(), 'seller');
+  assert.ok(h.includes(' ex') && h.includes('aria-expanded="true"') && h.includes('<div class="odet" id="od-N-1">'), 'раскрыта: класс ex, детали без hidden');
+  // главной кнопки нет (завершён, только «Сборочный лист»): строка без кнопок
+  h = make(S0(), ghost).orderCard(ord({ status: 'done' }), 'seller');
+  assert.ok(h.startsWith('<article class="ord sc" data-st="done">') && !/ hp/.test(h.split('>')[0]), 'без главной кнопки — без hp: пустой блок кнопок скрыт');
+  // окно оплаты считается главным, оно видно и когда свёрнуто
+  assert.ok(make(S0(), '<div class="payb">P</div>').orderCard(ord({ status: 'ready' }), 'seller').startsWith('<article class="ord sc hp"'), 'окно оплаты/выбора доставщика остаётся на виду');
+  // два варианта разметки кнопки без класса: «btn  sm» из дальней доставки
+  assert.ok(/hp/.test(make(S0(), '<button type="button" class="btn  sm" data-act="farpayopen">x</button>').orderCard(ord({ status: 'accepted' }), 'seller').split('>')[0]), 'кнопка с двумя пробелами в классе тоже главная');
+  // длинный заказ: свёртка товаров внутри карточки по-прежнему на месте
+  h = make(S0(), prim).orderCard(ord({ items: [1, 2, 3, 4].map(i => ({ name: 'Т' + i })) }), 'seller');
+  assert.ok(/class="ord sc is-new fold hp"/.test(h) && h.includes('data-act="oitems" data-id="N-1"'), 'при 4+ товарах есть и свёртка товаров (класс open занят ею, поэтому карточка раскрывается классом ex)');
+  // доставщик и покупатель: как раньше
+  for (const m of ['courier', 'mine']) {
+    h = make(S0(), 'x').orderCard(ord({ shopName: 'Магазин' }), m);
+    assert.ok(h.startsWith('<article class="ord" data-st="new"><div class="otop"><div class="thx">T</div><span class="st">new</span></div><div class="ob">') && h.includes('<span class="oid">N-1</span><span class="when">вс, 13:00</span>') && h.includes('<div class="tot"><b>100 сум</b>') && !h.includes('odh') && !h.includes('odet'), m + ': разметка прежняя, без шапки-кнопки');
+  }
+  // раскрытие на месте
+  const mk = () => { const cl = new Set(['ord', 'sc']), hd = { v: 'false', setAttribute(k, v) { this.v = v; } }, dt = { hidden: true }; return { cl, hd, dt, card: { classList: { toggle: (c, on) => { on ? cl.add(c) : cl.delete(c); } }, querySelector: s => s === '.odh' ? hd : s === '.odet' ? dt : null } }; };
+  const sync = make(S0(), '').ordSyncOpen, x = mk();
+  sync(x.card, true); assert.ok(x.cl.has('ex') && x.hd.v === 'true' && x.dt.hidden === false, 'раскрыли на месте');
+  sync(x.card, false); assert.ok(!x.cl.has('ex') && x.hd.v === 'false' && x.dt.hidden === true, 'свернули на месте');
+  sync(null, true);
+  // нажатие по шапке
+  assert.ok(/else if\(a==='otog'\)\{\s*const k=okey\(t\.dataset\.id,t\.dataset\.d\|\|S\.did\),on=!S\.oo\[k\];\s*if\(on\)S\.oo\[k\]=1;else delete S\.oo\[k\];\s*ordSyncOpen\(t\.closest\('\.ord'\),on\);/.test(html), 'нажатие запоминает состояние в S.oo и меняет карточку на месте');
+  // стили
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.ok(css.includes('.ord.sc:not(.ex) .acts>.btn.ghost,.ord.sc:not(.ex) .acts>.btn:not(.ghost)~.btn:not(.ghost){display:none}'), 'свёрнутая: прячем второстепенные и вторую главную кнопку, окно оплаты (внутри .payb) не трогаем');
+  assert.ok(css.includes('.ord.sc:not(.ex):not(.hp) .acts{display:none}') && css.includes('.ord.sc .odet[hidden]{display:none}'), 'пустой блок кнопок и скрытые детали не занимают места');
+  assert.ok(/\.odh\{[^}]*min-height:56px/.test(css) && /\.ord\.sc \.acts \.btn\{min-height:40px;font-size:14px\}/.test(css) && /\.odh\[aria-expanded="true"\] \.lchev svg\{transform:rotate\(180deg\)\}/.test(css), 'шапка 56, кнопки 40, стрелка поворачивается');
+  assert.ok(/\.ord\.sc\.is-new|\.ord\.is-new\{/.test(css), 'подсветка новых — прежнее правило .is-new');
+});
+
 await t('«О нас»: пути в подсказках совпадают с новой структурой (Люди, Районы и города, Служебное, «＋ Добавить …», Мои заказы, Товары)', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const i0 = html.indexOf('const ABOUT_ROLES=['), i1 = html.indexOf('\n];', i0) + 3;
