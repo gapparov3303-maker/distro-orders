@@ -12206,9 +12206,9 @@ await t('остатки: каждый товар отдельная карточ
   // стили
   const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
   assert.ok(/\.sk\[hidden\]\{display:none\}/.test(css) && /\.spanel\[hidden\]\{display:none\}/.test(css), 'скрытое скрыто даже при заданном display');
-  assert.ok(/\.slist\{display:grid;gap:10px/.test(css) && /\.srow\{[^}]*border:1\.5px solid var\(--edge\);border-radius:16px/.test(css), 'карточки с промежутком');
+  assert.ok(/\.slist\{display:grid;gap:8px/.test(css) && /\.srow\{[^}]*border:1\.5px solid var\(--edge\);border-radius:14px/.test(css), 'карточки с промежутком');
   assert.ok(!/\.srow\+\.srow|\.srow:first-child|\.srow select\{|\.srow b\{/.test(css), 'старые линии между строками и чужие правила убраны');
-  assert.ok(/\.sh\[aria-expanded="true"\] \.lchev svg\{transform:rotate\(180deg\)\}/.test(css) && /\.sfbtn\{[^}]*min-height:48px/.test(css) && /\.sico\{[^}]*width:48px;height:48px/.test(css), 'стрелка поворачивается, кнопки крупные');
+  assert.ok(/\.sh\[aria-expanded="true"\] \.lchev svg\{transform:rotate\(180deg\)\}/.test(css) && /\.sfbtn\{[^}]*min-height:40px/.test(css) && /\.sico\{[^}]*width:40px;height:40px/.test(css), 'стрелка поворачивается, кнопки компактные');
   // два языка, без запрещённых слов
   const blk = html.slice(html.indexOf('function stockCounts(){'), html.indexOf('async function loadStock('));
   for (const x of ['Фильтры', 'Filtrlar', 'Все категории', 'Barcha kategoriyalar', 'Развернуть все', 'Hammasini yoyish', 'Свернуть все', 'Hammasini yigʻish', 'доступно ', 'mavjud ']) assert.ok(blk.includes(x), 'есть текст: ' + x);
@@ -12231,6 +12231,36 @@ await t('остаток называется «доступно» (а не «с�
   for (const x of ["L('Нет доступного','Mavjud qoldiq yoʻq')", "L('доступно ','mavjud ')", "L('Доступно','Mavjud')", "'Доступно '+num(x.avail)", "'Mavjud '+num(x.avail)"]) assert.ok(app.includes(x), 'в приложении есть: ' + x);
   assert.ok(srv.includes('доступного остатка нет') && srv.includes('mavjud qoldiq yoʻq') && srv.includes("L('Доступно (шт, кг или л)', 'Mavjud (dona, kg yoki l)')"), 'сообщение бота и колонка отчёта');
   assert.ok(readme.includes('«Доступно» (на складе минус в заказах)') && readme.includes('«Нет доступного»'), 'описание');
+});
+
+await t('остатки: названия стилей в разметке не совпадают с чужими правилами («cat» из «Товаров» раздул кнопку до 72 пикселей); размеры компактные; журнал синий', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
+  const src = ['stockBarHTML', 'stockPanelHTML', 'stockFoldHTML', 'stockHeadHTML', 'stockRowHTML', 'stockHTML'].map(fn).join('\n');
+  const tokens = new Set();
+  for (const m of src.matchAll(/class="([^"]*)"/g)) for (const x of m[1].replace(/'\+[\s\S]*?\+'/g, ' ').split(/\s+/)) if (/^[a-z][\w-]*$/.test(x)) tokens.add(x);
+  // свои названия описаны только в блоке «Остатков»; общие проверены вручную: их правила нужны и здесь
+  const own = ['sfbar', 'sfbtn', 'sfcat', 'sbdg', 'spanel', 'sopt', 'sdot', 'sfold', 'sico', 'slist', 'sempty', 'srow', 'sh', 'sk', 'sst', 'sfr', 'sn', 'sjcard'];
+  const shared = ['card', 'btn', 'ghost', 'sm', 'note', 'unit', 'st', 'mute', 'warn', 'bad', 'ok', 'lchev', 'snum', 'sact', 'haspk', 'sth', 'fr', 'low', 'out', 'none', 'on', 'hot', 'empty'];
+  const a = css.indexOf('/* остатки: сверху «Фильтры»'), b0 = css.indexOf('/* клиенты */'), b = b0;
+  assert.ok(a > 0 && b0 > a, 'блок стилей «Остатков» найден');
+  const outside = css.slice(0, a) + css.slice(b);
+  const has = (txt, x) => new RegExp('\\.' + x + '(?![\\w-])').test(txt);
+  for (const x of tokens) {
+    if (shared.includes(x)) continue;
+    assert.ok(own.includes(x), 'новое название стиля «' + x + '»: сначала проверьте, что его нет в чужих правилах, потом добавьте в список');
+    assert.ok(!has(outside, x), 'название «' + x + '» уже занято правилами вне блока «Остатков»: элемент получит чужие стили');
+  }
+  for (const x of own) assert.ok(has(css.slice(a, b), x), 'у «' + x + '» есть свои правила');
+  assert.ok(!tokens.has('cat') && tokens.has('sfcat'), 'кнопка категорий называется sfcat, а не cat');
+  // размеры
+  const rule = sel => { const m = css.match(new RegExp('(?:^|\\n)' + sel.replace(/[.\\[\]"=*+?^${}()|]/g, '\\$&') + '\\{([^}]*)\\}')); assert.ok(m, 'правило ' + sel); return m[1]; };
+  assert.ok(/min-height:40px/.test(rule('.sfbtn')) && /min-height:40px/.test(rule('.sfold')) && /width:40px;height:40px/.test(rule('.sico')), 'верхние кнопки и «?» по 40 пикселей');
+  assert.ok(/min-height:56px/.test(rule('.sh')) && /gap:8px/.test(rule('.slist')) && /border-radius:14px/.test(rule('.srow')), 'заголовок карточки 56, промежуток 8');
+  // журнал
+  assert.ok(src.includes('class="card sjcard"') && /background:var\(--info-soft\)/.test(rule('.sjcard')) && /\.sjcard h3\{color:var\(--info\)\}/.test(css), 'журнал синий: цвета из общих переменных, значит и тёмная тема подхватится');
+  assert.ok(/--info:#1F5FA3;/.test(css) && /--info:#7DB6F0;/.test(css), 'у синего есть светлый и тёмный вариант');
 });
 
 await t('«О нас»: пути в подсказках совпадают с новой структурой (Люди, Районы и города, Служебное, «＋ Добавить …», Мои заказы, Товары)', () => {
