@@ -47,7 +47,7 @@ const SHOTS = [
   { name: 'shop-debt', role: 'shop', url: U + 'debt', data: { '/api/hub/debts': () => ({ debts: [MY_DEBT], total: MY_DEBT.bal, over: MY_DEBT.over, late: 1, n: 1, ask: 1 }) } },
 
   // продавец
-  { name: 'sel-orders', role: 'seller', url: U + 'seller', data: SELL_ORD, prep: async (page) => { await scrollTo(page, '.filters', 62); } },
+  { name: 'sel-orders', role: 'seller', url: U + 'seller', data: SELL_ORD, prep: async (page) => { await scrollTo(page, '#obar', 62); } },
   { name: 'sel-pay', role: 'seller', url: U + 'seller', data: SELL_ORD, prep: async (page) => {
     await click(page, 'article.ord:has-text("N-4799") [data-act="payopen"]'); await wait(page, 400);
     await scrollTo(page, 'article.ord:has-text("N-4799")', 60);

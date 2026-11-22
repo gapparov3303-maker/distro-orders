@@ -281,6 +281,29 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .ord .acts{gap:6px;margin-top:2px}
 .ord .acts .btn{flex:1 1 auto;padding:0 9px;min-height:32px;font-size:12px;border-radius:10px}
 .ord .acts .btn:only-child{flex:0 0 auto}
+.ord .meta:empty{display:none}
+/* «Заказы» у продавца: свёрнутая карточка, сверху номер, покупатель, статус и сумма; детали и второстепенные кнопки видны после нажатия */
+.osum{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.oc{display:inline-flex;gap:5px;align-items:baseline;padding:5px 11px;border:1.5px solid var(--edge);border-radius:999px;background:var(--surface);font-size:13px;color:var(--ink-2)}
+.oc b{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.oc.hot{border-color:var(--accent);background:var(--accent-soft)}
+.omoney{margin:6px 0 10px;font-size:13px;color:var(--ink-2)}
+.omoney b{color:var(--ink);font-variant-numeric:tabular-nums}
+.ord.sc{padding:0}
+.odh{appearance:none;display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:8px 10px 8px 12px;border:0;border-radius:inherit;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.odh .odn{flex:1 1 0;min-width:0;display:grid;gap:2px}
+.odh .odn b{font-weight:700;font-size:15px;line-height:1.2;overflow-wrap:anywhere}
+.odh .odn small{font-size:12px;color:var(--ink-2)}
+.odh .ods{flex:none;display:grid;gap:3px;justify-items:end;max-width:50%}
+.odh .ods b{font-size:15px;line-height:1.2;white-space:nowrap;font-variant-numeric:tabular-nums}
+.odh[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
+.ord.sc .ob{padding:0 10px 0 12px}
+.ord.sc.ex .ob,.ord.sc.hp .ob{padding-bottom:10px}
+.ord.sc .odet[hidden]{display:none}
+.ord.sc .odet{display:grid;gap:3px}
+.ord.sc .acts .btn{min-height:40px;font-size:14px}
+.ord.sc:not(.ex) .acts>.btn.ghost,.ord.sc:not(.ex) .acts>.btn:not(.ghost)~.btn:not(.ghost){display:none}
+.ord.sc:not(.ex):not(.hp) .acts{display:none}
 .xtools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}
 .xmenu{display:flex;flex-wrap:wrap;gap:6px;width:100%}
 .xmenu .chip[disabled]{opacity:.45;cursor:default}
@@ -646,6 +669,12 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .cmrow .sh .sst b{font-size:15px;white-space:nowrap}
 .cmrow .sk{gap:8px}
 .cmrow .cmh{margin:0 0 2px}
+.ofl{flex:1 1 0;min-width:0;display:inline-flex;align-items:center;gap:6px}
+.oft{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofr{flex:none;display:inline-flex;align-items:center;gap:6px}
+.ofd{font-size:18px;line-height:1;letter-spacing:.05em}
+.sfbtn[aria-expanded="true"] .ofr svg{transform:rotate(180deg)}
+.spanel .xtools{margin:0}
 /* клиенты */
 .cmeta{font-size:12.5px;color:var(--ink-2);margin-top:6px}
 .ced{margin-top:8px;display:grid;gap:10px}
@@ -1088,7 +1117,7 @@ const S={
   pcat:'',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,cd:null,
   stk:{},stkLoaded:false,sfilter:'all',scat:'',spanel:'',snote:false,sopen:{},sbusy:{},sc:null,jr:[],jrOpen:false,
   profile:null,blocked:false,pfBusy:false,
-  pm:false,xbusy:'',pick:null,pickBusy:false,
+  pm:false,op:'',oo:{},xbusy:'',pick:null,pickBusy:false,
   fav:[],favT:null,favSeq:0,imp:null,impBusy:false,
   rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0},
   an:{days:30,sh:'',tab:'cats',sort:'sum',all:false,data:null,shops:[],err:false,seq:0},
@@ -1268,7 +1297,7 @@ function resetShopState(){
     admin:false,off:false,profile:null,blocked:false,fav:[],allOrders:[],stats:{doneSum:0,doneCount:0},
     sellerTab:'orders',pcat:'',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
     stk:{},stkLoaded:false,sfilter:'all',scat:'',spanel:'',snote:false,sopen:{},sbusy:{},sc:null,jr:[],jrOpen:false,dbt:newDebts(),pay:null,courier:null,cr:newCour(),dv:newDv(),
-    pm:false,xbusy:'',pick:null,pickBusy:false,imp:null,impBusy:false,regOnly:null,
+    pm:false,op:'',oo:{},xbusy:'',pick:null,pickBusy:false,imp:null,impBusy:false,regOnly:null,
     rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
   });
   S.form.region='';
@@ -2373,9 +2402,10 @@ function orderCard(o,m){
   // картинки товаров есть только у открытого сейчас дистрибьютора
   const del=o.mode==='delivery';
   const nItems=(o.items||[]).length,fold=nItems>=4,open=fold&&!!S.ox[key];
-  return '<article class="ord'+(m==='seller'&&o.status==='new'?' is-new':'')+(fold?' fold'+(open?' open':''):'')+'" data-st="'+esc(o.status)+'"><div class="otop">'+orderThumbs(o,od)+pill(o)+'</div><div class="ob">'
-    +(m==='mine'&&o.shopName?'<div class="dtag">'+esc(o.shopName)+'</div>':'')
-    +'<div class="meta"><span class="oid">'+esc(o.id)+'</span><span class="when">'+esc(whenText(o))+'</span>'+(noWhen(o)&&!del?'':'<span class="spec">'+(del?(noWhen(o)?L('Адрес: ','Manzil: '):L('Доставка: ','Yetkazib berish: '))+esc((o.region&&regionName(o.region)?regionName(o.region)+', ':'')+(o.address||'')):L('Самовывоз','Olib ketish'))+'</span>')+'</div>'
+  const sc=m==='seller',ex=sc&&!!S.oo[key];
+  // у продавца карточка свёрнута до строки «номер, покупатель, статус, сумма»; здесь всё, что раскрывается
+  const inner=(m==='mine'&&o.shopName?'<div class="dtag">'+esc(o.shopName)+'</div>':'')
+    +'<div class="meta">'+(sc?'':'<span class="oid">'+esc(o.id)+'</span><span class="when">'+esc(whenText(o))+'</span>')+(noWhen(o)&&!del?'':'<span class="spec">'+(del?(noWhen(o)?L('Адрес: ','Manzil: '):L('Доставка: ','Yetkazib berish: '))+esc((o.region&&regionName(o.region)?regionName(o.region)+', ':'')+(o.address||'')):L('Самовывоз','Olib ketish'))+'</span>')+'</div>'
     +(fold?'<button type="button" class="ptg" data-act="oitems" data-id="'+esc(o.id)+'"'+dd+' aria-expanded="'+(open?'true':'false')+'"><span>'+nItems+' '+L(nItems<5?'товара':'товаров','mahsulot')+'</span><i>'+(open?L('Свернуть','Yigʻish'):L('Показать','Koʻrsatish'))+'</i></button>':'')
     +'<div class="pls">'
     +(o.items||[]).map(it=>'<div class="pl">'+itemRow(it)+'</div>').join('')
@@ -2397,9 +2427,21 @@ function orderCard(o,m){
     +((m==='seller'||m==='courier')&&(o.loc||(o.bs&&o.bs.loc))?(l=>'<div class="oloc"><button type="button" class="lchip" data-act="map" data-lat="'+l.lat+'" data-lng="'+l.lng+'" data-t="'+esc(o.org||o.name)+'">'+ICO.pin+L('Точка на карте','Xaritadagi nuqta')+'</button></div>')(o.loc||o.bs.loc):'')
     +(o.comment?'<div class="cm">'+esc(o.comment)+'</div>':'')
     +((m==='seller'||m==='courier')&&o.debt?'<div class="note warnnote">'+L('Долг покупателя: ','Xaridor qarzi: ')+money(o.debt.bal)+(o.debt.days?' · '+L('просрочка '+o.debt.days+' дн.',o.debt.days+' kun kechikdi'):'')+'</div>':'')
-    +'<div class="tot"><b>'+money(o.total)+'</b><span>'+(o.pay?esc(payText(o)):o.far?L('оплата до отправки','joʻnatishdan oldin toʻlov'):noWhen(o)?L('оплата по договорённости','toʻlov kelishuv boʻyicha'):L('оплата при получении','olganda toʻlanadi'))+'</span></div>'
-    +(acts?'<div class="acts">'+acts+'</div>':'')
-    +'</div></article>';
+    +'<div class="tot">'+(sc?'':'<b>'+money(o.total)+'</b>')+'<span>'+(o.pay?esc(payText(o)):o.far?L('оплата до отправки','joʻnatishdan oldin toʻlov'):noWhen(o)?L('оплата по договорённости','toʻlov kelishuv boʻyicha'):L('оплата при получении','olganda toʻlanadi'))+'</span></div>';
+  if(!sc)return '<article class="ord'+(fold?' fold'+(open?' open':''):'')+'" data-st="'+esc(o.status)+'"><div class="otop">'+orderThumbs(o,od)+pill(o)+'</div><div class="ob">'+inner+(acts?'<div class="acts">'+acts+'</div>':'')+'</div></article>';
+  // hp: в свёрнутой карточке остаётся одна главная кнопка (или окно оплаты/выбора доставщика), остальные кнопки и детали показываются после раскрытия
+  const id=esc(o.id),hp=/class="btn\s+sm"|class="payb"/.test(acts);
+  return '<article class="ord sc'+(o.status==='new'?' is-new':'')+(fold?' fold'+(open?' open':''):'')+(ex?' ex':'')+(hp?' hp':'')+'" data-st="'+esc(o.status)+'">'
+    +'<button type="button" class="odh" data-act="otog" data-id="'+id+'" data-d="'+esc(od)+'" aria-expanded="'+ex+'" aria-controls="od-'+id+'"><span class="odn"><b>'+id+' · '+esc(o.org||o.name)+'</b><small>'+esc(whenText(o))+'</small></span><span class="ods">'+pill(o)+'<b>'+money(o.total)+'</b></span><span class="lchev">'+ICO.chev+'</span></button>'
+    +'<div class="ob"><div class="odet" id="od-'+id+'"'+(ex?'':' hidden')+'><div class="otop">'+orderThumbs(o,od)+'</div>'+inner+'</div>'+(acts?'<div class="acts">'+acts+'</div>':'')+'</div></article>';
+}
+/* раскрыть или свернуть карточку заказа без перерисовки: список не прыгает, поля оплаты не теряют ввод */
+function ordSyncOpen(card,on){
+  if(!card)return;
+  card.classList.toggle('ex',on);
+  const h=card.querySelector('.odh'),d=card.querySelector('.odet');
+  if(h)h.setAttribute('aria-expanded',String(on));
+  if(d)d.hidden=!on;
 }
 function renderMine(){
   let h='<div class="wrap page"><h1>'+L('Мои заказы','Mening buyurtmalarim')+'</h1>'+bannerSlot();
@@ -2494,7 +2536,7 @@ function paintTabs(){
 }
 /* открыть раздел продавца из меню: из любого места приложения */
 function sellerOpen(tab){
-  S.sellerTab=tab;S.sc=null;S.spanel='';S.pay=null;S.cp=null;S.pcat='';
+  S.sellerTab=tab;S.sc=null;S.spanel='';S.op='';S.pay=null;S.cp=null;S.pcat='';
   if(tab==='debts')S.dbt.open=null;
   if(S.view!=='seller')go('seller');
   else{paintTabs();paintSeller();window.scrollTo(0,0)}
@@ -2514,17 +2556,35 @@ function paintSeller(){
   else b.innerHTML=settingsHTML();
   paintSave();
 }
+/* верхняя строка «Заказов»: «Фильтр: …» и «Ещё»; под ней открывается список статусов с числом заказов, а в «Ещё» сборочный лист и выгрузка в Excel */
+const ordAct=o=>o.status==='new'||o.status==='accepted'||o.status==='ready';
+function ordCounts(){
+  const all=S.allOrders;
+  return {active:all.filter(ordAct).length,done:all.filter(o=>o.status==='done').length,cancelled:all.filter(o=>o.status==='cancelled').length,all:all.length};
+}
+const ordFilters=()=>[['active',L('Активные','Faol')],['done',L('Завершены','Yakunlangan')],['cancelled',L('Отменены','Bekor qilingan')],['all',L('Все','Hammasi')]];
+function ordBarHTML(){
+  const c=ordCounts(),fl=ordFilters(),cur=fl.find(f=>f[0]===S.filter)||fl[0];
+  return '<div class="sfbar">'
+    +'<button type="button" class="sfbtn sfcat on" data-act="opanel" data-v="st" aria-expanded="'+(S.op==='st')+'" aria-controls="opanel"><span class="ofl">'+ICO.filt+'<span class="oft">'+L('Фильтр: ','Filtr: ')+cur[1]+'</span></span><span class="ofr"><span class="sbdg">'+c[cur[0]]+'</span>'+ICO.chev+'</span></button>'
+    +'<button type="button" class="sfbtn" data-act="opanel" data-v="more" aria-expanded="'+(S.op==='more')+'" aria-controls="opanel"><span class="ofd" aria-hidden="true">⋯</span><span>'+L('Ещё','Yana')+'</span></button>'
+    +'</div><div class="spanel" id="opanel"'+(S.op?'':' hidden')+'>'+ordPanelHTML(c,fl)+'</div>';
+}
+function ordPanelHTML(c,fl){
+  if(S.op==='st')return '<h4>'+L('Статус','Holati')+'</h4>'+fl.map(f=>'<button type="button" class="sopt" data-act="filter" data-v="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'"><span>'+f[1]+'</span><b>'+c[f[0]]+'</b></button>').join('');
+  if(S.op==='more')return '<h4>'+L('Сборка и выгрузка','Yigʻish va yuklash')+'</h4>'+xtoolsHTML();
+  return '';
+}
+const paintObar=()=>{const b=$('#obar');if(b)b.innerHTML=ordBarHTML();else paintSeller()};
 function ordersHTML(){
-  const all=S.allOrders,today=ymd(shopNow());
-  const act=o=>o.status==='new'||o.status==='accepted'||o.status==='ready';
+  const all=S.allOrders,today=ymd(shopNow()),act=ordAct;
   const nNew=all.filter(o=>o.status==='new').length;
   const nWork=all.filter(o=>o.status==='accepted').length;
   const nToday=all.filter(o=>act(o)&&String(o.pickupAt).slice(0,10)===today).length;
   const sum=Number(S.stats.doneSum)||0;
-  let h='<div class="stats"><div class="stat'+(nNew?' hot':'')+'"><small>'+L('Новые','Yangi')+'</small><b>'+nNew+'</b></div><div class="stat"><small>'+L('В работе','Ishlanmoqda')+'</small><b>'+nWork+'</b></div><div class="stat"><small>'+L('На сегодня','Bugunga')+'</small><b>'+nToday+'</b></div><div class="stat"><small>'+L('Завершено на сумму','Yakunlangan summa')+'</small><b>'+money(sum)+'</b></div></div>';
-  const fl=[['active',L('Активные','Faol')],['done',L('Завершены','Yakunlangan')],['cancelled',L('Отменены','Bekor qilingan')],['all',L('Все','Hammasi')]];
-  h+='<div class="filters">'+fl.map(f=>'<button type="button" class="chip" data-act="filter" data-v="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+'</button>').join('')+'</div>';
-  h+=xtoolsHTML();
+  const oc=(n,ru,uz,hot)=>'<span class="oc'+(hot?' hot':'')+'"><b>'+n+'</b> '+L(ru,uz)+'</span>';
+  let h='<div id="obar">'+ordBarHTML()+'</div>';
+  h+='<div class="osum">'+oc(nNew,'Новые','Yangi',nNew>0)+oc(nWork,'В работе','Ishlanmoqda')+oc(nToday,'На сегодня','Bugunga')+'</div><div class="omoney">'+L('Завершено на сумму: ','Yakunlangan summa: ')+'<b>'+money(sum)+'</b></div>';
   let list=all.filter(o=>S.filter==='all'?true:S.filter==='active'?act(o):o.status===S.filter);
   if(S.filter==='active')list.sort((a,b)=>String(a.pickupAt).localeCompare(String(b.pickupAt))||String(a.createdAt).localeCompare(String(b.createdAt)));
   else list.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -5452,8 +5512,8 @@ const ABOUT_ROLES=[
  {img:'sel-orders',h:['Заказы','Buyurtmalar'],cap:['Заказы продавца','Sotuvchining buyurtmalari'],li:[
   ['Новые заказы приходят в чат с ботом и в «Продавец → Заказы»: состав, сумма, самовывоз или доставка с адресом, время, имя и телефон покупателя, комментарий. Число на значке меню держится, пока заказ не принят или не отменён.','Yangi buyurtmalar bot chatiga va «Sotuvchi → Buyurtmalar»ga keladi: tarkibi, summa, olib ketish yoki manzil bilan yetkazib berish, vaqt, xaridorning ismi va telefoni, izoh. Menyudagi raqam buyurtma qabul qilinmaguncha yoki bekor qilinmaguncha turadi.'],
   ['Кнопки по порядку: «Принять в работу» → «Готов к выдаче» (при доставке «Готов к отправке») → «Выдан покупателю». На каждом шаге покупатель получает сообщение. Отмена просит подтверждение.','Tugmalar ketma-ket: «Ishga qabul qilish» → «Topshirishga tayyor» (yetkazib berishda «Joʻnatishga tayyor») → «Xaridorga topshirildi». Har bir qadamda xaridorga xabar boradi. Bekor qilish tasdiq soʻraydi.'],
-  ['Вверху счётчики «Новые», «В работе», «На сегодня» и фильтры «Активные», «Завершены», «Отменены».','Tepada «Yangi», «Ishlanmoqda», «Bugunga» hisoblagichlari va «Faol», «Yakunlangan», «Bekor qilingan» filtrlari bor.'],
-  ['«Сборочный лист» показывает, сколько чего достать со склада для всех заказов сразу. Заказы можно выгрузить в Excel: файл придёт в чат с ботом.','«Yigʻish roʻyxati» barcha buyurtmalar uchun ombordan nima va qancha olish kerakligini birdaniga koʻrsatadi. Buyurtmalarni Excelga yuklash mumkin: fayl bot chatiga keladi.']]},
+  ['Вверху кнопка «Фильтр»: «Активные», «Завершены», «Отменены» или «Все», у каждого видно число заказов. Ниже счётчики «Новые», «В работе», «На сегодня» и сумма завершённых. Каждый заказ свёрнут в одну строку: номер, покупатель, статус и сумма; главная кнопка («Принять в работу» и так далее) под ней, а состав, адрес, телефон и остальные кнопки видны после нажатия на строку.','Tepada «Filtr» tugmasi: «Faol», «Yakunlangan», «Bekor qilingan» yoki «Hammasi», har birida buyurtmalar soni koʻrinadi. Pastda «Yangi», «Ishlanmoqda», «Bugunga» hisoblagichlari va yakunlangan buyurtmalar summasi. Har bir buyurtma bir qatorga yigʻilgan: raqami, xaridor, holati va summasi; asosiy tugma («Ishga qabul qilish» va hokazo) shu qator ostida, tarkibi, manzili, telefoni va boshqa tugmalar qatorni bosganda koʻrinadi.'],
+  ['Кнопка «Ещё» рядом с фильтром открывает «Сборочный лист» и выгрузку в Excel. «Сборочный лист» показывает, сколько чего достать со склада для всех заказов сразу. Заказы можно выгрузить в Excel: файл придёт в чат с ботом.','«Yana» tugmasi filtr yonida «Yigʻish roʻyxati» va Excelga yuklashni ochadi. «Yigʻish roʻyxati» barcha buyurtmalar uchun ombordan nima va qancha olish kerakligini birdaniga koʻrsatadi. Buyurtmalarni Excelga yuklash mumkin: fayl bot chatiga keladi.']]},
  {img:'sel-pay',h:['Выдача и оплата','Topshirish va toʻlov'],cap:['Выбор способа оплаты при выдаче','Topshirishda toʻlov usulini tanlash'],li:[
   ['Когда нажимаете «Выдан покупателю», приложение спрашивает, как заплатил покупатель: наличные, карта, перечисление или в долг.','«Xaridorga topshirildi»ni bossangiz, ilova xaridor qanday toʻlaganini soʻraydi: naqd, karta, pul oʻtkazish yoki qarzga.'],
   ['В долг вы выдаёте любому покупателю по своему решению и ставите срок: 3, 7, 14, 30 дней или своё число. Можно взять часть суммы сразу, остальное в долг.','Qarzga istalgan xaridorga oʻz xohishingizga koʻra berasiz va muddat qoʻyasiz: 3, 7, 14, 30 kun yoki oʻz sonizni. Summaning bir qismini darhol olib, qolganini qarzga qoldirish mumkin.'],
@@ -7891,7 +7951,7 @@ document.addEventListener('click',e=>{
   else if(a==='cretry')clientCardOpen(S.base.cd);
   else if(a==='cgrp'){const el=document.getElementById('cf-grp');if(el&&S.base.cf){el.value=t.dataset.v;S.base.cf.grp=t.dataset.v;el.focus()}}
   else if(a==='bxport')doExport(t.dataset.k,undefined,baseShop());
-  else if(a==='pmenu'){S.pm=!S.pm;paintSeller()}
+  else if(a==='pmenu'){S.pm=!S.pm;paintObar()}
   else if(a==='whof'){S.own.who.f=t.dataset.v;S.own.who.all=false;renderOwner()}
   else if(a==='whoall'){S.own.who.all=true;const l=$('#who-list');if(l)l.innerHTML=whoListHTML()}
   else if(a==='dxmenu'){S.dxm=!S.dxm;dPaint()}
@@ -7916,7 +7976,13 @@ document.addEventListener('click',e=>{
     const er=$('#e-address');if(er)er.textContent='';
     markAddr();
   }
-  else if(a==='filter'){S.filter=t.dataset.v;paintSeller()}
+  else if(a==='filter'){S.filter=t.dataset.v;S.op='';paintSeller()}
+  else if(a==='opanel'){S.op=S.op===t.dataset.v?'':t.dataset.v;paintObar()}
+  else if(a==='otog'){
+    const k=okey(t.dataset.id,t.dataset.d||S.did),on=!S.oo[k];
+    if(on)S.oo[k]=1;else delete S.oo[k];
+    ordSyncOpen(t.closest('.ord'),on);
+  }
   else if(a==='status'){setStatus(t.dataset.id,t.dataset.to)}
   else if(a==='payopen')payOpen(t.dataset.id)
   else if(a==='farpayopen'||a==='farsendopen'){S.farp={key:okey(t.dataset.id,S.did),mode:a==='farpayopen'?'pay':'send',busy:false};paintSeller()}
