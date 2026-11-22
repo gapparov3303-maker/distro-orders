@@ -12298,6 +12298,69 @@ await t('промежутки между блоками: единая тесна
   assert.deepEqual(bigCss, [], 'в стилях вертикальные отступы не больше 16 пикселей');
 });
 
+await t('платежи комиссии: карточка продавца сворачивается и разворачивается на месте; при входе все свёрнуты; кнопка «все»', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const i0 = html.indexOf('function cmShopHTML(r){'), i1 = html.indexOf('/* Экран владельца: что ждёт подтверждения');
+  assert.ok(i0 > 0 && i1 > i0, 'блок карточки найден');
+  const make = S => new Function('S', 'L', 'esc', 'money', 'fmtPct', 'cmDueLab', 'cmPayHTML', 'hintD', 'ICO', '$', 'document',
+    html.slice(i0, i1) + '\nreturn {cmShopHTML,cmFoldHTML};')(
+    S, (ru, uz) => ru, x => String(x).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'), x => x + ' сум', x => String(x), due => due < 0 ? 'Аванс' : 'К оплате', p => '<i p' + p.id + '>', () => '', { chev: '<i c>', fold0: '<i f0>', fold1: '<i f1>' }, () => null, { querySelectorAll: () => [] });
+  const S0 = o => Object.assign({ cm: { ow: {}, all: {}, fo: {}, busy: '' } }, o);
+  const pays = n => Array.from({ length: n }, (_, i) => ({ id: 'h' + i, st: 'ok' })).concat([{ id: 'w1', st: 'wait' }]);
+  const row = o => Object.assign({ id: 'a', name: 'SOF', pct: 3, acc: 100, paid: 40, due: 60, pays: [] }, o);
+  // свёрнуто по умолчанию: шапка-кнопка, тело скрыто, но на месте
+  let h = make(S0()).cmShopHTML(row());
+  assert.ok(h.startsWith('<div class="srow cmrow hot" id="cmr-a">'), 'карточка-строка; к оплате больше 0 — выделена');
+  assert.ok(/<button type="button" class="sh" data-act="cmtog" data-did="a" aria-expanded="false" aria-controls="cmk-a">/.test(h), 'шапка — кнопка со стрелкой для скринридера');
+  assert.ok(h.includes('<span class="sn"><b>SOF</b><small>комиссия 3%</small></span>') && h.includes('<span class="sst"><small>К оплате</small><b>60 сум</b></span>') && h.includes('<span class="lchev"><i c></span>'), 'в шапке название, процент, «К оплате» и стрелка');
+  assert.ok(h.includes('<div class="sk" id="cmk-a" hidden>') && h.includes('data-act="commopen"') && h.includes('data-act="otab"'), 'тело скрыто атрибутом, а не вырезано: кнопки и введённое остаются в странице');
+  h = make(S0({ cm: { ow: {}, all: {}, fo: { a: true }, busy: '' } })).cmShopHTML(row());
+  assert.ok(h.includes('aria-expanded="true"') && h.includes('<div class="sk" id="cmk-a">') && !h.includes(' hidden>'), 'раскрыто: тело видно');
+  // выделение только там, где есть что платить
+  assert.ok(!make(S0()).cmShopHTML(row({ due: 0 })).includes(' hot"') && !make(S0()).cmShopHTML(row({ due: -5 })).includes(' hot"'), 'нет долга или переплата — без выделения');
+  assert.ok(make(S0()).cmShopHTML(row({ due: -5 })).includes('<small>Аванс</small><b>5 сум</b>'), 'переплата подписана «Аванс», сумма без минуса');
+  // форма «Записать оплату» живёт в теле, даже если карточка свёрнута
+  h = make(S0({ cm: { ow: { a: { a: '5000', note: '', open: true } }, all: {}, fo: {}, busy: '' } })).cmShopHTML(row());
+  assert.ok(h.includes('value="5000"') && h.includes('data-act="commadd"') && h.indexOf('data-act="commadd"') > h.indexOf('class="sk"'), 'введённая сумма не теряется при сворачивании');
+  // история: ждущие подтверждения тут не показываются, показываются 5, остальное по кнопке
+  h = make(S0()).cmShopHTML(row({ pays: pays(7) }));
+  assert.equal((h.match(/<i ph\d>/g) || []).length, 5, 'в истории 5 последних');
+  assert.ok(!h.includes('<i pw1>') && h.includes('Показать все (7)'), 'платёж, который ждёт подтверждения, в карточке не дублируется');
+  h = make(S0({ cm: { ow: {}, all: { a: true }, fo: {}, busy: '' } })).cmShopHTML(row({ pays: pays(7) }));
+  assert.equal((h.match(/<i ph\d>/g) || []).length, 7);
+  // продавец без данных: обычная карточка, сворачивать нечего
+  h = make(S0()).cmShopHTML(row({ err: true }));
+  assert.ok(!h.includes('cmtog') && h.includes('Нет данных по этому продавцу') && h.includes('style="margin:0"'), 'без данных стрелки нет');
+  // экранирование
+  h = make(S0()).cmShopHTML(row({ id: 'a"b', name: '<b>x' }));
+  assert.ok(h.includes('data-did="a&quot;b"') && h.includes('&lt;b>x') && !h.includes('<b>x</b>'), 'название и номер экранируются');
+  // кнопка «Развернуть все / Свернуть все»
+  const F = make(S0());
+  let f = F.cmFoldHTML(5, 4, false);
+  assert.ok(f.startsWith('<span>Продавцов: 5</span>') && f.includes('data-act="cmfoldall" data-v="1"') && f.includes('aria-label="Развернуть все"') && f.includes('<i f1>'), 'всё свёрнуто: «Развернуть все»');
+  f = F.cmFoldHTML(5, 4, true);
+  assert.ok(f.includes('data-v="0"') && f.includes('aria-label="Свернуть все"') && f.includes('<i f0>'), 'что-то открыто: «Свернуть все»');
+  assert.ok(!F.cmFoldHTML(2, 1, false).includes('cmfoldall'), 'свёртывать можно одну карточку — кнопки «все» нет');
+  // при входе на экран все свёрнуты, состояние живёт в S.cm.fo
+  assert.ok(/ow:\{\},all:\{\},fo:\{\}\}/.test(html), 'в состоянии есть fo');
+  assert.ok(/if\(v==='comm'&&was!=='comm'\)S\.cm\.fo=\{\};/.test(html), 'при входе на экран все карточки свёрнуты');
+  // переключение — без перерисовки экрана, иначе страница прыгает и теряется ввод
+  const act = name => { const i = html.indexOf("else if(a==='" + name + "'"); assert.ok(i > 0, name); return html.slice(i, html.indexOf('\n  else if(a===', i + 10)); };
+  for (const n of ['cmtog', 'cmfoldall']) {
+    const b = act(n);
+    assert.ok(b.includes('cmSyncOpen()') && !/renderComm|ownRefresh|ownRender|view\.innerHTML/.test(b), n + ': меняет карточки на месте');
+  }
+  assert.ok(/b\.hidden=!o/.test(html.slice(html.indexOf('function cmSyncOpen('), html.indexOf('function commOwnerHTML('))), 'cmSyncOpen прячет и показывает тело атрибутом hidden');
+  assert.ok(act('cmfoldall').includes('window.scrollBy'), 'кнопка «все» остаётся под пальцем');
+  // кнопка «все» показывается, когда карточек с данными больше одной; список — в #cmlist
+  const co = html.slice(html.indexOf('function commOwnerHTML('), html.indexOf('function renderComm('));
+  assert.ok(/fr\.length>1\)h\+='<div class="sfold" id="cmfold">'/.test(co) && /id="cmlist"/.test(co) && /const fr=rows\.filter\(r=>!r\.err\)/.test(co), 'строка со счётом и кнопкой над списком');
+  // стили: выделение и общие классы остатков
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  for (const sel of ['.cmrow.hot', '.cmrow.hot .sh', '.cmrow .sh .sst', '.cmrow .sk']) assert.ok(css.includes('\n' + sel + '{'), 'стиль ' + sel);
+  for (const cl of ['srow', 'sh', 'sk', 'sn', 'sst', 'lchev', 'sfold', 'sico', 'slist']) assert.ok(new RegExp('\\.' + cl + '(?![\\w-])').test(css), 'общий класс .' + cl + ' определён');
+});
+
 await t('«О нас»: пути в подсказках совпадают с новой структурой (Люди, Районы и города, Служебное, «＋ Добавить …», Мои заказы, Товары)', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const i0 = html.indexOf('const ABOUT_ROLES=['), i1 = html.indexOf('\n];', i0) + 3;
