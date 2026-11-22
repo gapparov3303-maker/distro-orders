@@ -571,12 +571,46 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .pst.low{color:var(--warn)}
 .cline .cn small.lowtxt{color:var(--warn);font-weight:600}
 .badge.warn{background:var(--warn-soft);color:var(--warn)}
-.srow{padding:14px 0;border-top:1px solid var(--line);display:grid;gap:10px}
-.srow:first-child{border-top:0;padding-top:4px}
-.sh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.sh .sn{min-width:0}
+/* остатки: сверху «Фильтры» и «Все категории», ниже счёт и одна кнопка «свернуть/развернуть все»; каждый товар отдельная карточка */
+.sfbar{display:flex;gap:8px}
+.sfbtn{appearance:none;flex:none;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 12px;border:1.5px solid var(--edge);border-radius:12px;background:var(--surface);color:var(--ink);font:600 15px var(--f-body);cursor:pointer}
+.sfbtn.cat{flex:1 1 0;min-width:0;justify-content:space-between}
+.sfbtn.cat>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sfbtn.on{background:var(--accent-soft);border-color:var(--accent)}
+.sfbtn svg{flex:none;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+@media (max-width:360px){.sfbtn{gap:6px;padding:0 10px;font-size:14px}}
+.sbdg{min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:var(--surface-2);font-size:13px;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.sfbtn.on .sbdg{background:var(--accent);color:var(--accent-ink)}
+.spanel{display:grid;gap:8px;margin-top:8px;padding:12px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface)}
+.spanel[hidden]{display:none}
+.spanel h4{margin:0 0 2px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.sopt{appearance:none;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:46px;padding:0 12px;border:1.5px solid var(--edge);border-radius:12px;background:var(--bg);color:var(--ink);font:600 15px var(--f-body);text-align:left;cursor:pointer}
+.sopt>span{display:inline-flex;align-items:center;min-width:0;overflow-wrap:anywhere}
+.sopt b{flex:none;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.sopt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.sopt[aria-pressed="true"] b{color:var(--tx)}
+.sdot{flex:none;width:8px;height:8px;margin-right:8px;border-radius:50%;background:var(--mute)}
+.sdot.warn{background:var(--warn)}
+.sdot.bad{background:var(--bad)}
+.sfold{display:flex;align-items:center;gap:8px;margin:14px 0 10px;min-height:48px;font-size:14px;color:var(--ink-2)}
+.sfold>span{flex:1;min-width:0}
+.sico{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;border:1.5px solid var(--edge);border-radius:12px;background:var(--surface);color:var(--ink);font:700 17px var(--f-body);cursor:pointer}
+.sico svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sico[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent)}
+#snote{margin-bottom:10px}
+.slist{display:grid;gap:10px;margin-bottom:14px}
+.srow{background:var(--surface);border:1.5px solid var(--edge);border-radius:16px;overflow:hidden}
+.sempty{padding:14px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface);color:var(--ink-2);font-size:14px}
+.sh{appearance:none;display:flex;align-items:center;gap:10px;width:100%;min-height:68px;padding:10px 14px;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.sh .sn{flex:1 1 0;min-width:0}
 .sh .sn b{display:block;font-weight:600;overflow-wrap:anywhere}
 .sh .sn small{display:block;font-size:12px;color:var(--ink-2);overflow-wrap:anywhere}
+.sh .sst{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:50%}
+.sh .sfr{font-size:13px;color:var(--ink-2);white-space:nowrap}
+.sh .sfr b{font-weight:700;color:var(--ink)}
+.sh[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
+.sk{display:grid;gap:10px;padding:2px 14px 14px}
+.sk[hidden]{display:none}
 .snum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .snum div{background:var(--surface-2);border:1px solid var(--edge);border-radius:10px;padding:8px 10px;min-width:0}
 .snum small{display:block;font-size:11px;color:var(--ink-2)}
@@ -984,10 +1018,6 @@ div.lgd{cursor:default}
 .rtfld span{display:block;margin-bottom:4px;font-size:12px;color:var(--ink-2)}
 .rtfld input{width:100%}
 #regrate:empty{display:none}
-.srow{padding:12px 0;border-bottom:1px solid var(--line)}
-.srow:last-child{border-bottom:0}
-.srow b{display:block;margin-bottom:8px;font-size:15px}
-.srow select{width:100%}
 /* широкий экран: меню стоит слева всегда (правила стоят в конце, чтобы переопределить .bar и .toast) */
 @media (min-width:1000px){
   body{padding-left:260px}
@@ -1045,7 +1075,7 @@ const S={
   busy:false,dirty:false,saving:false,again:false,saveState:'',cc:null,ox:{},
   prod:{cats:[],items:[]},cart:{},shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
   pcat:'',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,cd:null,
-  stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,
+  stk:{},stkLoaded:false,sfilter:'all',scat:'',spanel:'',snote:false,sopen:{},sbusy:{},sc:null,jr:[],jrOpen:false,
   profile:null,blocked:false,pfBusy:false,
   pm:false,xbusy:'',pick:null,pickBusy:false,
   fav:[],favT:null,favSeq:0,imp:null,impBusy:false,
@@ -1226,7 +1256,7 @@ function resetShopState(){
     cfg:clone(DEFAULT),prod:{cats:[],items:[]},cart:{},otherCart:null,shopCat:'all',shopStep:'list',shopPlaced:null,q:'',
     admin:false,off:false,profile:null,blocked:false,fav:[],allOrders:[],stats:{doneSum:0,doneCount:0},
     sellerTab:'orders',pcat:'',medit:{},pxo:{},psv:null,vid:null,upl:{},dirtyC:false,dirtyP:false,dirty:false,saving:false,again:false,saveState:'',cd:null,cc:null,
-    stk:{},stkLoaded:false,sfilter:'all',sbusy:{},sc:null,jr:[],jrOpen:false,dbt:newDebts(),pay:null,courier:null,cr:newCour(),dv:newDv(),
+    stk:{},stkLoaded:false,sfilter:'all',scat:'',spanel:'',snote:false,sopen:{},sbusy:{},sc:null,jr:[],jrOpen:false,dbt:newDebts(),pay:null,courier:null,cr:newCour(),dv:newDv(),
     pm:false,xbusy:'',pick:null,pickBusy:false,imp:null,impBusy:false,regOnly:null,
     rep:{days:30,data:null,busy:false,err:false,sel:-1,hov:-1,allP:false,tab:false,seq:0,drag:false,skip:0}
   });
@@ -2453,7 +2483,7 @@ function paintTabs(){
 }
 /* открыть раздел продавца из меню: из любого места приложения */
 function sellerOpen(tab){
-  S.sellerTab=tab;S.sc=null;S.pay=null;S.cp=null;S.pcat='';
+  S.sellerTab=tab;S.sc=null;S.spanel='';S.pay=null;S.cp=null;S.pcat='';
   if(tab==='debts')S.dbt.open=null;
   if(S.view!=='seller')go('seller');
   else{paintTabs();paintSeller();window.scrollTo(0,0)}
@@ -3966,11 +3996,56 @@ function applyStk(){
     if(v){p.av=v.av;if(v.lw)p.lw=1}
   });
 }
-function statsHTML(){
+/* сколько товаров в каждом состоянии учёта */
+function stockCounts(){
   const c={none:0,ok:0,low:0,out:0};
   S.prod.items.forEach(p=>{c[stState(p)]++});
-  const st=(lab,v,hot)=>'<div class="stat'+(hot?' hot':'')+'"><small>'+lab+'</small><b>'+v+'</b></div>';
-  return st(L('Под учётом','Hisobda'),c.ok+c.low+c.out)+st(L('Без учёта','Hisobsiz'),c.none)+st(L('Заканчивается','Tugayapti'),c.low,c.low>0)+st(L('Нет свободного','Boʻshi yoʻq'),c.out,c.out>0);
+  return c;
+}
+const stName=k=>({low:L('Заканчивается','Tugayapti'),out:L('Нет свободного','Boʻshi yoʻq'),none:L('Без учёта','Hisobsiz'),ok:L('В наличии','Mavjud')})[k]||'';
+/* товары, которые видны при выбранном состоянии и категории: «Заканчивается» и «Нет свободного» теперь разные списки */
+function stockList(){
+  if(S.scat&&!S.prod.cats.some(c=>c.id===S.scat))S.scat='';
+  return S.prod.items.filter(p=>(!S.scat||p.cat===S.scat)&&(S.sfilter==='all'||stState(p)===S.sfilter));
+}
+/* строка «Фильтры» и «Все категории»; под ней открывается список вариантов с числом товаров */
+function stockBarHTML(){
+  const act=S.sfilter!=='all',cat=S.prod.cats.find(c=>c.id===S.scat);
+  return '<div class="sfbar">'
+    +'<button type="button" class="sfbtn'+(act?' on':'')+'" data-act="spanel" data-v="st" aria-expanded="'+(S.spanel==='st')+'" aria-controls="spanel">'+ICO.filt+'<span>'+L('Фильтры','Filtrlar')+'</span>'+(act?'<span class="sbdg">1</span>':'')+'</button>'
+    +'<button type="button" class="sfbtn cat'+(cat?' on':'')+'" data-act="spanel" data-v="cat" aria-expanded="'+(S.spanel==='cat')+'" aria-controls="spanel"><span>'+(cat?(nm(cat)?esc(nm(cat)):L('Без названия','Nomsiz')):L('Все категории','Barcha kategoriyalar'))+'</span>'+ICO.chev+'</button>'
+    +'</div><div class="spanel" id="spanel"'+(S.spanel?'':' hidden')+'>'+stockPanelHTML()+'</div>';
+}
+function stockPanelHTML(){
+  if(!S.spanel)return '';
+  const all=S.prod.items.length;
+  const opt=(act,v,on,lab,n,dot)=>'<button type="button" class="sopt" data-act="'+act+'" data-v="'+esc(v)+'" aria-pressed="'+on+'"><span>'+(dot?'<i class="sdot '+dot+'" aria-hidden="true"></i>':'')+esc(lab)+'</span><b>'+n+'</b></button>';
+  if(S.spanel==='st'){
+    const c=stockCounts();
+    return '<h4>'+L('Остаток','Qoldiq')+'</h4>'+opt('sfilter','all',S.sfilter==='all',L('Все','Hammasi'),all)
+      +opt('sfilter','low',S.sfilter==='low',stName('low'),c.low,'warn')+opt('sfilter','out',S.sfilter==='out',stName('out'),c.out,'bad')+opt('sfilter','none',S.sfilter==='none',stName('none'),c.none,'');
+  }
+  return '<h4>'+L('Категория','Kategoriya')+'</h4>'+opt('skcat','',!S.scat,L('Все категории','Barcha kategoriyalar'),all)
+    +S.prod.cats.map(c=>({c:c,n:S.prod.items.filter(p=>p.cat===c.id).length})).filter(x=>x.n>0||x.c.id===S.scat).map(x=>opt('skcat',x.c.id,S.scat===x.c.id,nm(x.c)||L('Без названия','Nomsiz'),x.n)).join('');
+}
+/* строка со счётом, «?» и одной кнопкой «свернуть все / развернуть все»; счёт берём по тому, что реально на экране */
+function stockFoldHTML(n,anyOpen){
+  const txt=(S.sfilter!=='all'?stName(S.sfilter)+' · ':'')+catCountTxt(n);
+  return '<span>'+esc(txt)+'</span>'
+    +'<button type="button" class="sico" data-act="snote" aria-expanded="'+S.snote+'" aria-controls="snote" aria-label="'+esc(L('Подсказка','Yordam'))+'">?</button>'
+    +(n>1?'<button type="button" class="sico" data-act="sfoldall" data-v="'+(anyOpen?'0':'1')+'" aria-label="'+esc(anyOpen?L('Свернуть все','Hammasini yigʻish'):L('Развернуть все','Hammasini yoyish'))+'">'+(anyOpen?ICO.fold0:ICO.fold1)+'</button>':'');
+}
+/* согласует раскрытые и свёрнутые карточки с S.sopen без перерисовки: страница не прыгает, поля не теряют ввод */
+function stockSyncOpen(){
+  const rows=[...document.querySelectorAll('#slist .srow')];
+  let any=false;
+  rows.forEach(r=>{
+    const o=!!S.sopen[r.id.slice(5)],h=r.querySelector('.sh'),b=r.querySelector('.sk');
+    if(o)any=true;
+    if(h)h.setAttribute('aria-expanded',String(o));
+    if(b)b.hidden=!o;
+  });
+  const f=$('#sfold');if(f)f.innerHTML=stockFoldHTML(rows.length,any);
 }
 /* выбор «шт / коробка / блок» для прихода, если у товара есть упаковки */
 function stockUnitSel(p){
@@ -3980,28 +4055,29 @@ function stockUnitSel(p){
 }
 const stockUnit=id=>{const el=document.getElementById('su-'+id);return el&&el.value&&el.value!=='pc'?el.value:''};
 const pkSmall=(p,n)=>{const t=packText(p,n);return t?'<small class="pk">'+esc(t)+'</small>':''};
+/* заголовок карточки: название, состояние, сколько свободно; нажатие раскрывает и сворачивает */
+function stockHeadHTML(p){
+  const id=esc(p.id),s=S.stk[p.id],st=stState(p),w=weightLabel(p),cat=S.prod.cats.find(c=>c.id===p.cat);
+  const pill='<span class="st '+({none:'mute',out:'bad',low:'warn',ok:'ok'})[st]+'">'+stName(st)+'</span>';
+  const free=s?'<span class="sfr">'+L('свободно ','boʻsh ')+'<b>'+esc(qtyStr(p,num(stkAvail(s))))+'</b></span>':'';
+  return '<button type="button" class="sh" data-act="stog" data-id="'+id+'" aria-expanded="'+!!S.sopen[p.id]+'" aria-controls="sk-'+id+'"><span class="sn"><b>'+esc(p.name)+'</b><small>'+(w?esc(w):'')+(w&&cat?' · ':'')+(cat?esc(nm(cat)):'')+'</small></span><span class="sst">'+pill+free+'</span><span class="lchev">'+ICO.chev+'</span></button>';
+}
 function stockRowHTML(p){
-  const id=esc(p.id),s=S.stk[p.id],st=stState(p),dis=S.sbusy[p.id]?' disabled':'',w=weightLabel(p);
-  const cat=S.prod.cats.find(c=>c.id===p.cat);
-  const pill=st==='none'?'<span class="st mute">'+L('Без учёта','Hisobsiz')+'</span>'
-    :st==='out'?'<span class="st bad">'+L('Нет свободного','Boʻshi yoʻq')+'</span>'
-    :st==='low'?'<span class="st warn">'+L('Заканчивается','Tugayapti')+'</span>'
-    :'<span class="st ok">'+L('В наличии','Mavjud')+'</span>';
-  const head='<div class="sh"><div class="sn"><b>'+esc(p.name)+'</b><small>'+(w?esc(w):'')+(w&&cat?' · ':'')+(cat?esc(cat.name):'')+'</small></div>'+pill+'</div>';
+  const id=esc(p.id),s=S.stk[p.id],dis=S.sbusy[p.id]?' disabled':'';
+  const head=stockHeadHTML(p);
   const numIn=(k,ph,aria,val)=>'<input type="number" id="'+k+'-'+id+'" inputmode="numeric" min="0" max="1000000" step="1"'+(k==='sl'?' data-sl="'+id+'"':'')+' value="'+val+'" placeholder="'+esc(ph)+'" aria-label="'+esc(aria)+'"'+dis+'>';
   const lowIn='<div class="sth"><label for="sl-'+id+'">'+L('Предупредить, когда меньше','Bundan kam qolsa ogohlantirish')+'</label>'+numIn('sl','0',L('Порог «мало»','«Oz qoldi» chegarasi'),s?s.low:'')+'</div>'+hintD('Когда свободного станет столько или меньше, будет пометка «Заканчивается» и придёт предупреждение. Ноль — не предупреждать.','Boʻshi shuncha yoki kam qolganda «Tugayapti» belgisi chiqadi va ogohlantirish keladi. Nol — ogohlantirmaslik.');
-  if(!s){
-    return '<div class="srow" id="srow-'+id+'">'+head
-      +'<div class="sact'+(packSize(p,'blk')||packSize(p,'box')?' haspk':'')+'">'+numIn('sn',L('Сколько на складе','Omborda qancha'),L('Сколько сейчас на складе','Hozir omborda qancha'),'')+stockUnitSel(p)
-      +'<button type="button" class="btn sm" data-act="sstart" data-id="'+id+'"'+dis+'>'+L('Начать учёт','Hisobni boshlash')+'</button></div>'+lowIn+'</div>';
-  }
-  return '<div class="srow" id="srow-'+id+'">'+head
-    +'<div class="snum"><div><small>'+L('На складе','Omborda')+'</small><b>'+esc(qtyStr(p,num(s.q)))+'</b>'+pkSmall(p,s.q)+'</div><div><small>'+L('В заказах','Buyurtmalarda')+'</small><b>'+esc(qtyStr(p,num(s.r)))+'</b>'+pkSmall(p,s.r)+'</div><div class="fr '+st+'"><small>'+L('Свободно','Boʻsh')+'</small><b>'+esc(qtyStr(p,num(stkAvail(s))))+'</b>'+pkSmall(p,stkAvail(s))+'</div></div>'
-    +'<div class="sact'+(packSize(p,'blk')||packSize(p,'box')?' haspk':'')+'">'+numIn('sn',L('Количество','Miqdori'),L('Количество','Miqdori'),'')+stockUnitSel(p)
-    +'<button type="button" class="btn sm" data-act="sin" data-id="'+id+'"'+dis+'>'+L('+ Приход','+ Kirim')+'</button>'
-    +'<button type="button" class="btn ghost sm" data-act="sset" data-id="'+id+'"'+dis+'>'+L('Задать остаток','Qoldiqni belgilash')+'</button></div>'
-    +lowIn
-    +'<div><button type="button" class="btn ghost sm" data-act="soff" data-id="'+id+'"'+dis+'>'+(S.sc===p.id?L('Точно отключить учёт?','Hisob oʻchirilsinmi?'):L('Отключить учёт','Hisobni oʻchirish'))+'</button></div></div>';
+  const body=!s
+    ?'<div class="sact'+(packSize(p,'blk')||packSize(p,'box')?' haspk':'')+'">'+numIn('sn',L('Сколько на складе','Omborda qancha'),L('Сколько сейчас на складе','Hozir omborda qancha'),'')+stockUnitSel(p)
+      +'<button type="button" class="btn sm" data-act="sstart" data-id="'+id+'"'+dis+'>'+L('Начать учёт','Hisobni boshlash')+'</button></div>'+lowIn
+    :'<div class="snum"><div><small>'+L('На складе','Omborda')+'</small><b>'+esc(qtyStr(p,num(s.q)))+'</b>'+pkSmall(p,s.q)+'</div><div><small>'+L('В заказах','Buyurtmalarda')+'</small><b>'+esc(qtyStr(p,num(s.r)))+'</b>'+pkSmall(p,s.r)+'</div><div class="fr '+stState(p)+'"><small>'+L('Свободно','Boʻsh')+'</small><b>'+esc(qtyStr(p,num(stkAvail(s))))+'</b>'+pkSmall(p,stkAvail(s))+'</div></div>'
+      +'<div class="sact'+(packSize(p,'blk')||packSize(p,'box')?' haspk':'')+'">'+numIn('sn',L('Количество','Miqdori'),L('Количество','Miqdori'),'')+stockUnitSel(p)
+      +'<button type="button" class="btn sm" data-act="sin" data-id="'+id+'"'+dis+'>'+L('+ Приход','+ Kirim')+'</button>'
+      +'<button type="button" class="btn ghost sm" data-act="sset" data-id="'+id+'"'+dis+'>'+L('Задать остаток','Qoldiqni belgilash')+'</button></div>'
+      +lowIn
+      +'<div><button type="button" class="btn ghost sm" data-act="soff" data-id="'+id+'"'+dis+'>'+(S.sc===p.id?L('Точно отключить учёт?','Hisob oʻchirilsinmi?'):L('Отключить учёт','Hisobni oʻchirish'))+'</button></div>';
+  /* свёрнутая карточка только скрыта, поля остаются в ней: ввод и подсказки работают как раньше */
+  return '<div class="srow" id="srow-'+id+'">'+head+'<div class="sk" id="sk-'+id+'"'+(S.sopen[p.id]?'':' hidden')+'>'+body+'</div></div>';
 }
 const JR_KIND={start:['Начат учёт','Hisob boshlandi'],in:['Приход','Kirim'],fix:['Исправление остатка','Qoldiq tuzatildi'],out:['Списано по заказу','Buyurtma boʻyicha chiqim'],off:['Учёт отключён','Hisob oʻchirildi']};
 function jrDate(t){
@@ -4021,14 +4097,14 @@ function jrHTML(){
 function stockHTML(){
   if(!S.stkLoaded)return '<div class="empty"><b>'+L('Загружаем остатки','Qoldiqlar yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   if(!S.prod.items.length)return '<div class="empty"><b>'+L('Товаров пока нет','Mahsulotlar hozircha yoʻq')+'</b>'+L('Сначала добавьте товары на вкладке «Товары».','Avval «Mahsulotlar» boʻlimida mahsulot qoʻshing.')+'</div>';
-  const fl=[['all',L('Все','Hammasi')],['low',L('Заканчивается','Tugayapti')],['out',L('Нет свободного','Boʻshi yoʻq')],['none',L('Без учёта','Hisobsiz')]];
-  const list=S.prod.items.filter(p=>{const s=stState(p);return S.sfilter==='all'||(S.sfilter==='low'?(s==='low'||s==='out'):s===S.sfilter)});
+  const list=stockList();
   const hasPk=S.prod.items.some(p=>packSize(p,'box')||packSize(p,'blk'));
-  let h='<div class="note" style="margin-bottom:14px">'+(hasPk?L('Если у товара указан блок или коробка, приход и остаток можно вводить ими: выберите единицу рядом с полем, программа пересчитает в штуки. ','Agar mahsulotda blok yoki quti koʻrsatilgan boʻlsa, kirim va qoldiqni ular bilan kiritish mumkin: maydon yonida birlikni tanlang, dastur donaga hisoblab beradi. '):'')+L('Укажите, сколько единиц товара на складе (мешков, коробок, упаковок — как товар продаётся в каталоге). Заказ откладывает товар, при «Выдан» или «Доставлен» он списывается, при отмене возвращается. Когда свободного остаётся меньше порога, покупатели видят «Мало (осталось N)», а вам приходит сообщение в Telegram. Когда свободного нет, товар в каталоге становится серым сам.',
-    'Omborda necha birlik (qop, quti, qadoq — katalogda qanday sotilsa) borligini kiriting. Buyurtma mahsulotni band qiladi, «Topshirildi» yoki «Yetkazildi» boʻlganda ombordan chiqariladi, bekor qilinsa qaytadi. Boʻsh qoldiq chegaradan kam boʻlsa, xaridorlar «Oz qoldi (N ta)» deb koʻradi, sizga Telegramda xabar keladi. Boʻsh qoldiq boʻlmasa, mahsulot katalogda oʻzi kulrang boʻladi.')+'</div>'
-    +'<div class="stats" id="sstats">'+statsHTML()+'</div>'
-    +'<div class="filters">'+fl.map(f=>'<button type="button" class="chip" data-act="sfilter" data-v="'+f[0]+'" aria-pressed="'+(S.sfilter===f[0])+'">'+f[1]+'</button>').join('')+'</div>'
-    +'<div class="card">'+(list.length?list.map(stockRowHTML).join(''):'<div class="unit" style="padding:10px 0">'+L('В этом списке пусто.','Bu roʻyxat boʻsh.')+'</div>')+'</div>'
+  const note=(hasPk?L('Если у товара указан блок или коробка, приход и остаток можно вводить ими: выберите единицу рядом с полем, программа пересчитает в штуки. ','Agar mahsulotda blok yoki quti koʻrsatilgan boʻlsa, kirim va qoldiqni ular bilan kiritish mumkin: maydon yonida birlikni tanlang, dastur donaga hisoblab beradi. '):'')+L('Укажите, сколько единиц товара на складе (мешков, коробок, упаковок — как товар продаётся в каталоге). Заказ откладывает товар, при «Выдан» или «Доставлен» он списывается, при отмене возвращается. Когда свободного остаётся меньше порога, покупатели видят «Мало (осталось N)», а вам приходит сообщение в Telegram. Когда свободного нет, товар в каталоге становится серым сам.',
+    'Omborda necha birlik (qop, quti, qadoq — katalogda qanday sotilsa) borligini kiriting. Buyurtma mahsulotni band qiladi, «Topshirildi» yoki «Yetkazildi» boʻlganda ombordan chiqariladi, bekor qilinsa qaytadi. Boʻsh qoldiq chegaradan kam boʻlsa, xaridorlar «Oz qoldi (N ta)» deb koʻradi, sizga Telegramda xabar keladi. Boʻsh qoldiq boʻlmasa, mahsulot katalogda oʻzi kulrang boʻladi.');
+  let h='<div id="sbar">'+stockBarHTML()+'</div>'
+    +'<div class="sfold" id="sfold">'+stockFoldHTML(list.length,list.some(p=>S.sopen[p.id]))+'</div>'
+    +'<div class="note" id="snote"'+(S.snote?'':' hidden')+'>'+note+'</div>'
+    +'<div class="slist" id="slist">'+(list.length?list.map(stockRowHTML).join(''):'<div class="sempty">'+L('В этом списке пусто.','Bu roʻyxat boʻsh.')+'</div>')+'</div>'
     +'<div class="card"><h3>'+L('Журнал движений','Harakatlar jurnali')+'</h3><div class="unit">'+L('Приходы, исправления и списания по выданным заказам. Показаны последние записи.','Kirimlar, tuzatishlar va topshirilgan buyurtmalar boʻyicha chiqimlar. Oxirgi yozuvlar koʻrsatilgan.')+'</div>'
     +'<button type="button" class="btn ghost sm" data-act="sjr">'+(S.jrOpen?L('Скрыть журнал','Jurnalni yashirish'):L('Показать журнал','Jurnalni koʻrsatish'))+'</button>'
     +'<div id="jrbody">'+(S.jrOpen?jrHTML():'')+'</div></div>';
@@ -4041,7 +4117,6 @@ function paintStock(){
 function paintStockRow(id){
   const p=S.prod.items.find(x=>x.id===id),el=document.getElementById('srow-'+id);
   if(p&&el)el.outerHTML=stockRowHTML(p);
-  const st=$('#sstats');if(st)st.innerHTML=statsHTML();
   paintTabs();
 }
 async function loadStock(){
@@ -4089,7 +4164,11 @@ async function stockDo(id,body,okMsg,soft){
   else toast(r.status===404?L('Такого товара уже нет','Bunday mahsulot endi yoʻq'):L('Не удалось сохранить. Проверьте соединение.','Saqlab boʻlmadi. Ulanishni tekshiring.'));
   const row=document.getElementById('srow-'+id),ae=document.activeElement;
   if(!soft||!(row&&ae&&row.contains(ae)))paintStockRow(id);
-  else{const st=$('#sstats');if(st)st.innerHTML=statsHTML();paintTabs()}
+  else{
+    const p=S.prod.items.find(x=>x.id===id),h=row&&row.querySelector('.sh');
+    if(p&&h)h.outerHTML=stockHeadHTML(p);
+    paintTabs();
+  }
   if(S.jrOpen)loadJournal();
 }
 
@@ -5390,7 +5469,8 @@ const ABOUT_ROLES=[
  {img:'sel-stock',h:['Остатки','Qoldiq'],cap:['Остатки на складе','Ombor qoldigʻi'],li:[
   ['Учёт включается по каждому товару: введите, сколько единиц на складе. Приложение показывает «На складе», «В заказах» (отложено под принятые заказы) и «Свободно». Покупатель может заказать только свободное.','Hisob har bir tovar uchun alohida yoqiladi: omborda necha birlik borligini kiriting. Ilova «Omborda», «Buyurtmalarda» (qabul qilingan buyurtmalarga ajratilgan) va «Boʻsh»ni koʻrsatadi. Xaridor faqat boʻsh qoldiqni buyurtma qila oladi.'],
   ['Когда приезжает товар, нажмите «+ Приход»; после пересчёта на складе поправьте число кнопкой «Задать остаток». Выдача заказа списывает товар сама, отмена возвращает.','Tovar kelganda «+ Kirim»ni bosing; ombor qayta sanalgach, sonni «Qoldiqni belgilash» tugmasi bilan tuzating. Buyurtma topshirilganda tovar oʻzi hisobdan chiqadi, bekor qilinsa qaytadi.'],
-  ['Укажите порог «Предупредить, когда меньше»: когда товар на исходе, вам придёт сообщение в Telegram, а покупатели увидят «Мало (осталось N)».','«Bundan kam qolsa ogohlantirish» chegarasini belgilang: tovar tugayotganda Telegramga xabar keladi, xaridorlar esa «Oz qoldi (N ta)»ni koʻradi.']]},
+  ['Укажите порог «Предупредить, когда меньше»: когда товар на исходе, вам придёт сообщение в Telegram, а покупатели увидят «Мало (осталось N)».','«Bundan kam qolsa ogohlantirish» chegarasini belgilang: tovar tugayotganda Telegramga xabar keladi, xaridorlar esa «Oz qoldi (N ta)»ni koʻradi.'],
+  ['Каждый товар это отдельная карточка, при открытии они свёрнуты: нажмите на товар, чтобы раскрыть. Сверху «Фильтры» (остаток: заканчивается, нет свободного, без учёта) и «Все категории». Кнопка со стрелками раскрывает или сворачивает все, «?» показывает подсказку.','Har bir tovar alohida kartochka, ochilganda ular yigʻilgan: ochish uchun tovarni bosing. Tepada «Filtrlar» (qoldiq: tugayapti, boʻsh qoldiq yoʻq, hisobsiz) va «Barcha kategoriyalar». Strelkali tugma hammasini ochadi yoki yigʻadi, «?» yordam matnini koʻrsatadi.']]},
  {img:'sel-debts',h:['Долги','Qarzlar'],cap:['Долги покупателей','Xaridorlar qarzlari'],li:[
   ['Вверху «Всего должны», «Просрочено» и число должников. Ниже покупатели: просроченные первыми.','Tepada «Jami qarz», «Muddati oʻtgan» va qarzdorlar soni. Pastda xaridorlar: muddati oʻtganlar birinchi.'],
   ['«Принять оплату» принимает любую сумму, в том числе часть долга. Оплата закрывает самые старые долги первыми. Ошибочную оплату отменяет только продавец и только с причиной.','«Toʻlovni qabul qilish» istalgan summani, jumladan qarzning bir qismini qabul qiladi. Toʻlov eng eski qarzlarni birinchi yopadi. Xato toʻlovni faqat sotuvchi va faqat sabab bilan bekor qiladi.'],
@@ -6167,7 +6247,9 @@ const ICO={
   tel:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l1.5 4-2 1.3a11 11 0 0 0 5.2 5.2L15 12.5l4 1.5v4a1.5 1.5 0 0 1-1.6 1.5C10.7 19 5 13.3 4.5 5.6A1.5 1.5 0 0 1 5 4z"/></svg>',
   chev:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>',
   pin:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>',
-  filt:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>'
+  filt:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>',
+  fold1:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7l6 5 6-5M6 13l6 5 6-5"/></svg>',
+  fold0:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17l6-5 6 5M6 11l6-5 6 5"/></svg>'
 };
 /* знаки на карточке: что значит каждый — в окне «?»; нажатие на знак оставляет в списке только такие магазины */
 const SIGNS=()=>({
@@ -7702,7 +7784,29 @@ document.addEventListener('click',e=>{
   else if(a==='rtab'){S.rep.tab=!S.rep.tab;paintRep()}
   else if(a==='rall'){S.rep.allP=!S.rep.allP;paintRep()}
   else if(a==='rretry')loadReport();
-  else if(a==='sfilter'){S.sfilter=t.dataset.v;paintStock()}
+  else if(a==='sfilter'){S.sfilter=t.dataset.v;S.spanel='';paintStock()}
+  else if(a==='skcat'){S.scat=t.dataset.v;S.spanel='';paintStock()}
+  else if(a==='spanel'){
+    S.spanel=S.spanel===t.dataset.v?'':t.dataset.v;
+    const b=$('#sbar');if(b)b.innerHTML=stockBarHTML();
+  }
+  else if(a==='stog'){
+    const id=t.dataset.id;
+    if(S.sopen[id]){delete S.sopen[id];if(S.sc===id){S.sc=null;paintStockRow(id)}}else S.sopen[id]=true;   // свёрнули — вопрос «Точно отключить учёт?» сбрасывается
+    stockSyncOpen();
+  }
+  else if(a==='sfoldall'){
+    const open=t.dataset.v==='1',f=$('#sfold'),y=f?f.getBoundingClientRect().top:0;
+    document.querySelectorAll('#slist .srow').forEach(r=>{const id=r.id.slice(5);if(open)S.sopen[id]=true;else delete S.sopen[id]});
+    if(!open&&S.sc){const sc=S.sc;S.sc=null;paintStockRow(sc)}
+    stockSyncOpen();
+    const nf=$('#sfold');if(f&&nf){const d=nf.getBoundingClientRect().top-y;if(d)window.scrollBy(0,d)}   // кнопка остаётся под пальцем
+  }
+  else if(a==='snote'){
+    S.snote=!S.snote;
+    const n=$('#snote');if(n)n.hidden=!S.snote;
+    t.setAttribute('aria-expanded',String(S.snote));
+  }
   else if(a==='sjr'){S.jrOpen=!S.jrOpen;paintStock();if(S.jrOpen)loadJournal()}
   else if(a==='sin'||a==='sset'){
     const id=t.dataset.id,n=stockNum(id,'sn',a==='sin'?1:0);

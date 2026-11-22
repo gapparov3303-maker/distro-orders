@@ -12131,6 +12131,90 @@ await t('настройки компании: нажатие на заголов
   assert.ok(/\.sbh\{[^}]*min-height:48px/.test(css) && /\.sbh\[aria-expanded="true"\] \.sbc\{transform:rotate\(-135deg\)/.test(css), 'крупная область нажатия и стрелка поворачивается');
 });
 
+/* ---------- остатки: карточки товаров, «Фильтры» и «Все категории» ---------- */
+await t('остатки: фильтр по состоянию и по категории, «Заканчивается» и «Нет свободного» теперь разные списки, счёт и варианты с числами', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const i0 = html.indexOf('function stockCounts(){'), i1 = html.indexOf('/* выбор «шт / коробка / блок»');
+  assert.ok(i0 > 0 && i1 > i0, 'блок фильтров найден');
+  const make = S => new Function('S', 'L', 'esc', 'nm', 'stState', 'ICO', 'catCountTxt', '$', 'document',
+    html.slice(i0, i1) + '\nreturn {stockCounts,stName,stockList,stockBarHTML,stockPanelHTML,stockFoldHTML,stockSyncOpen};')(
+    S, (ru, uz) => ru, x => String(x), c => c.name, p => ({ a: 'low', b: 'out', c: 'none', d: 'ok' })[p.id], { filt: '<i f>', chev: '<i c>', fold0: '<i f0>', fold1: '<i f1>' }, n => n + ' тов.', () => null, { querySelectorAll: () => [] });
+  const mk = o => Object.assign({ prod: { cats: [{ id: 'c1', name: 'Крупы' }, { id: 'c2', name: 'Масло' }, { id: 'c3', name: 'Пустая' }], items: [{ id: 'a', cat: 'c1' }, { id: 'b', cat: 'c1' }, { id: 'c', cat: 'c2' }, { id: 'd', cat: 'c2' }] }, sfilter: 'all', scat: '', spanel: '', snote: false, sopen: {} }, o || {});
+  const ids = S => make(S).stockList().map(p => p.id).join('');
+  assert.equal(ids(mk()), 'abcd', 'без фильтров видны все');
+  assert.equal(ids(mk({ sfilter: 'low' })), 'a', '«Заканчивается» показывает только такие, без «Нет свободного»');
+  assert.equal(ids(mk({ sfilter: 'out' })), 'b', '«Нет свободного» только свои');
+  assert.equal(ids(mk({ sfilter: 'none' })), 'c', '«Без учёта»');
+  assert.equal(ids(mk({ scat: 'c2' })), 'cd', 'категория');
+  assert.equal(ids(mk({ scat: 'c2', sfilter: 'low' })), '', 'категория и состояние работают вместе');
+  assert.equal(ids(mk({ scat: 'c1', sfilter: 'out' })), 'b');
+  const gone = mk({ scat: 'zz' });
+  assert.equal(ids(gone), 'abcd', 'удалённая категория не прячет все товары');
+  assert.equal(gone.scat, '', 'и выбор сбрасывается');
+  assert.deepEqual(make(mk()).stockCounts(), { none: 1, ok: 1, low: 1, out: 1 });
+  // кнопки сверху
+  let bar = make(mk()).stockBarHTML();
+  assert.equal((bar.match(/data-act="spanel"/g) || []).length, 2, 'две кнопки: «Фильтры» и «Все категории»');
+  assert.ok(bar.includes('>Фильтры<') && bar.includes('Все категории') && !bar.includes('sbdg'), 'без выбора нет цифры на «Фильтры»');
+  assert.ok(/id="spanel" hidden>/.test(bar), 'список вариантов закрыт');
+  bar = make(mk({ sfilter: 'low', scat: 'c2' })).stockBarHTML();
+  assert.ok(bar.includes('<span class="sbdg">1</span>') && bar.includes('<span>Масло</span>') && !bar.includes('Все категории'), 'выбран фильтр — цифра 1; выбрана категория — её название на кнопке');
+  // варианты с числами
+  let pn = make(mk({ spanel: 'st' })).stockPanelHTML();
+  const opts = h => [...h.matchAll(/data-act="(\w+)" data-v="([^"]*)" aria-pressed="(\w+)"><span>(?:<i class="sdot [a-z]*" aria-hidden="true"><\/i>)?([^<]*)<\/span><b>(\d+)<\/b>/g)].map(m => m[1] + ':' + m[2] + ':' + m[3] + ':' + m[4] + ':' + m[5]);
+  assert.deepEqual(opts(pn), ['sfilter:all:true:Все:4', 'sfilter:low:false:Заканчивается:1', 'sfilter:out:false:Нет свободного:1', 'sfilter:none:false:Без учёта:1']);
+  pn = make(mk({ spanel: 'cat', scat: 'c1' })).stockPanelHTML();
+  assert.deepEqual(opts(pn), ['skcat::false:Все категории:4', 'skcat:c1:true:Крупы:2', 'skcat:c2:false:Масло:2'], 'пустой категории в списке нет');
+  assert.ok(opts(make(mk({ spanel: 'cat', scat: 'c3' })).stockPanelHTML()).some(x => x.startsWith('skcat:c3:true')), 'если она выбрана, остаётся в списке, чтобы можно было сбросить');
+  assert.equal(make(mk()).stockPanelHTML(), '', 'закрытая панель пустая');
+  // строка счёта и кнопка «свернуть/развернуть все»
+  let f = make(mk()).stockFoldHTML(4, false);
+  assert.ok(f.includes('<span>4 тов.</span>') && f.includes('data-act="sfoldall" data-v="1"') && f.includes('aria-label="Развернуть все"') && f.includes('<i f1>'), 'всё свёрнуто: кнопка «Развернуть все»');
+  f = make(mk()).stockFoldHTML(4, true);
+  assert.ok(f.includes('data-v="0"') && f.includes('aria-label="Свернуть все"') && f.includes('<i f0>'), 'что-то раскрыто: кнопка «Свернуть все»');
+  assert.ok(!make(mk()).stockFoldHTML(1, false).includes('sfoldall') && make(mk()).stockFoldHTML(0, false).includes('data-act="snote"'), 'с одним товаром кнопки «все» нет; «?» есть всегда');
+  assert.ok(make(mk({ sfilter: 'out' })).stockFoldHTML(1, false).startsWith('<span>Нет свободного · 1 тов.</span>'), 'в счёте названо состояние');
+});
+
+await t('остатки: каждый товар отдельная карточка, заголовок сворачивает и разворачивает без перерисовки; поля остаются на месте', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 10); return html.slice(i, j > 0 ? j : i + 6000); };
+  const row = fn('stockRowHTML'), head = fn('stockHeadHTML');
+  assert.ok(/class="sh" data-act="stog" data-id="'\+id\+'" aria-expanded="'\+!!S\.sopen\[p\.id\]\+'" aria-controls="sk-'\+id\+'"/.test(head), 'заголовок: кнопка с aria-expanded');
+  assert.ok(/class="sk" id="sk-'\+id\+'"'\+\(S\.sopen\[p\.id\]\?'':' hidden'\)/.test(row), 'тело карточки только скрыто, а не убрано');
+  assert.ok(row.includes("(S.sopen[p.id]?'':' hidden')+'>'+body+'</div></div>'"), 'в тело кладётся всё содержимое, свёрнуто оно или нет');
+  for (const x of ['data-act="sin"', 'data-act="sset"', 'data-act="soff"', 'data-act="sstart"', "numIn('sl'", 'hintD(']) assert.ok(row.includes(x), 'в карточке осталось: ' + x);
+  assert.ok(row.includes('id="srow-') && /document\.getElementById\('srow-'\+id\)/.test(fn('paintStockRow')), 'идентификатор карточки прежний: строка перерисовывается по нему');
+  assert.ok(!/class="sr"/.test(head) && head.includes('class="sst"'), 'правая часть заголовка не называется .sr: это служебный скрытый класс');
+  const hAct = a => { const m = html.match(new RegExp("  else if\\(a==='" + a + "'\\)\\{[\\s\\S]*?\\n  \\}\\n|  else if\\(a==='" + a + "'\\)\\{[^\\n]*\\}\\n")); assert.ok(m, 'обработчик ' + a); return m[0]; };
+  for (const a of ['stog', 'sfoldall']) { const h = hAct(a); assert.ok(h.includes('stockSyncOpen()') && !/paintStock\(\)|paintSeller|innerHTML/.test(h), a + ': только прячет и показывает'); }
+  assert.ok(/aria-expanded/.test(fn('stockSyncOpen')) && /\.hidden=!o/.test(fn('stockSyncOpen')), 'согласование раскрытых с памятью');
+  assert.ok(hAct('stog').includes('S.sc=null'), 'при сворачивании вопрос «Точно отключить учёт?» сбрасывается');
+  // у каждого действия экрана своё имя: «scat» уже занято каталогом покупателя
+  for (const a of ['skcat', 'spanel', 'stog', 'sfoldall', 'snote', 'sfilter']) assert.equal((html.match(new RegExp("a==='" + a + "'", 'g')) || []).length, 1, 'действие ' + a + ' описано один раз');
+  assert.ok(!/data-act="scat"/.test(fn('stockPanelHTML')), 'панель категорий не использует действие каталога');
+  assert.ok(/a==='sfilter'\)\{S\.sfilter=t\.dataset\.v;S\.spanel=''/.test(html) && /a==='skcat'\)\{S\.scat=t\.dataset\.v;S\.spanel=''/.test(html), 'выбор варианта закрывает список');
+  assert.ok(/S\.sellerTab=tab;S\.sc=null;S\.spanel='';/.test(html), 'при смене вкладки список вариантов закрывается');
+  assert.equal((html.match(/sfilter:'all',scat:'',spanel:'',snote:false,sopen:\{\},/g) || []).length, 2, 'состояние задано и при запуске, и при сбросе');
+  // плиток-счётчиков и строки из чипов больше нет
+  assert.ok(!/statsHTML|id="sstats"/.test(html) && !/data-act="sfilter" data-v="'\+f\[0\]/.test(html), 'прежние плитки и чипы убраны');
+  const sd = html.slice(html.indexOf('async function stockDo('), html.indexOf('/* ---------- отчёты (продавец)'));
+  assert.ok(sd.includes('stockHeadHTML(p)') && !sd.includes('sstats'), 'тихое сохранение порога обновляет только заголовок: поле не теряет курсор');
+  // подсказка спрятана за «?»
+  const sh = fn('stockHTML');
+  assert.ok(/id="snote"'\+\(S\.snote\?'':' hidden'\)/.test(sh) && /data-act="snote"/.test(fn('stockFoldHTML')), 'пояснение открывается по «?», по умолчанию скрыто');
+  // стили
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.ok(/\.sk\[hidden\]\{display:none\}/.test(css) && /\.spanel\[hidden\]\{display:none\}/.test(css), 'скрытое скрыто даже при заданном display');
+  assert.ok(/\.slist\{display:grid;gap:10px/.test(css) && /\.srow\{[^}]*border:1\.5px solid var\(--edge\);border-radius:16px/.test(css), 'карточки с промежутком');
+  assert.ok(!/\.srow\+\.srow|\.srow:first-child|\.srow select\{|\.srow b\{/.test(css), 'старые линии между строками и чужие правила убраны');
+  assert.ok(/\.sh\[aria-expanded="true"\] \.lchev svg\{transform:rotate\(180deg\)\}/.test(css) && /\.sfbtn\{[^}]*min-height:48px/.test(css) && /\.sico\{[^}]*width:48px;height:48px/.test(css), 'стрелка поворачивается, кнопки крупные');
+  // два языка, без запрещённых слов
+  const blk = html.slice(html.indexOf('function stockCounts(){'), html.indexOf('async function loadStock('));
+  for (const x of ['Фильтры', 'Filtrlar', 'Все категории', 'Barcha kategoriyalar', 'Развернуть все', 'Hammasini yoyish', 'Свернуть все', 'Hammasini yigʻish', 'свободно ', 'boʻsh ']) assert.ok(blk.includes(x), 'есть текст: ' + x);
+  assert.ok(!/магазин|клиент|дистрибьютор/i.test(blk), 'в новых текстах нет запрещённых слов');
+});
+
 await t('«О нас»: пути в подсказках совпадают с новой структурой (Люди, Районы и города, Служебное, «＋ Добавить …», Мои заказы, Товары)', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const i0 = html.indexOf('const ABOUT_ROLES=['), i1 = html.indexOf('\n];', i0) + 3;
