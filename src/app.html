@@ -98,8 +98,8 @@ html.mn-open,html.mn-open body{overflow:hidden}
 }
 
 /* sections, chips */
-.sec{padding-top:18px}
-.sec h2{font:700 13px/1.2 var(--f-display);letter-spacing:.02em;display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+.sec{padding-top:12px}
+.sec h2{font:700 13px/1.2 var(--f-display);letter-spacing:.02em;display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
 .chip{appearance:none;border:1.5px solid var(--edge);background:var(--surface-2);border-radius:999px;height:36px;min-width:36px;padding:0 12px;cursor:pointer;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
 .chip[aria-pressed="true"]{background:var(--bg);border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 
@@ -116,7 +116,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);outline:none;
 input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--bad)}
 textarea{resize:vertical;min-height:72px}
 input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
-.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .form .full{grid-column:1/-1}
 @media (max-width:540px){.form{grid-template-columns:minmax(0,1fr)}}
 .err{color:var(--bad);font-size:12px;margin-top:4px;min-height:0}
@@ -143,16 +143,16 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;font-size:13px;z-index:50;max-width:calc(100% - 32px);text-align:center}
 
 /* orders */
-.page{padding-block:18px 56px}
+.page{padding-block:12px 48px}
 .page h1{font:700 18px/1.25 var(--f-display);margin-bottom:6px;text-wrap:balance}
-.lead{color:var(--ink-2);margin-bottom:16px;max-width:60ch}
-.how{margin:0 0 16px;padding:14px 14px 4px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface)}
-.how h2{font:700 15px/1.3 var(--f-display);margin:0 0 12px}
+.lead{color:var(--ink-2);margin-bottom:12px;max-width:60ch}
+.how{margin:0 0 12px;padding:14px 14px 4px;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface)}
+.how h2{font:700 15px/1.3 var(--f-display);margin:0 0 8px}
 .how ol{list-style:none;margin:0;padding:0;counter-reset:hs}
 .how li{counter-increment:hs;position:relative;padding:0 0 12px 34px;font-size:14px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
 .how li::before{content:counter(hs);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--tx);font:700 13px/24px var(--f-display);text-align:center}
 .tagline{margin-top:4px;color:var(--ink-2);font-size:14px;line-height:1.4}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0}
 @media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .stat{background:var(--surface);border:1.5px solid var(--edge);border-radius:12px;padding:10px 12px}
 .stat small{display:block;font-size:12px;color:var(--ink-2)}
@@ -168,7 +168,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .pyrow input[type=tel]{flex:1 1 150px}
 .farbox{display:grid;gap:6px}
 .pyrow.dims input{flex:1 1 70px;min-width:0;width:auto}
-#farbox{display:grid;gap:14px}
+#farbox{display:grid;gap:10px}
 .farbox .farrq{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface);border:1px dashed var(--edge);border-radius:10px;padding:8px 10px;font-size:14px}
 .farbox .pyrow input[type=number]{width:150px}
 .dlist{display:grid;gap:8px}
@@ -182,7 +182,7 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .da small.bad{color:var(--bad);font-weight:600}
 .dhead{margin-bottom:4px}
 .dhead h2{margin:0}
-.dsub{margin:18px 0 8px;font-size:15px}
+.dsub{margin:12px 0 8px;font-size:15px}
 .lbox{background:var(--surface);border:1.5px solid var(--edge);border-radius:14px;padding:2px 12px}
 .lrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
 .lrow:first-child{border-top:0}
@@ -199,15 +199,15 @@ button.lrow .lt{flex:1 1 0}
 .lchev{flex:none;display:inline-flex;color:var(--ink-2)}
 .lchev svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
 button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
-.rolebox{background:var(--surface);border:1.5px solid var(--edge);border-radius:14px;padding:10px 14px;margin-bottom:12px;font-size:14px;display:grid;gap:4px;overflow-wrap:anywhere}
+.rolebox{background:var(--surface);border:1.5px solid var(--edge);border-radius:14px;padding:10px 14px;margin-bottom:8px;font-size:14px;display:grid;gap:4px;overflow-wrap:anywhere}
 .rolebox small{color:var(--ink-2);font-size:12px}
-.dbn{appearance:none;width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:12px;padding:10px 12px;margin-bottom:12px;cursor:pointer;font:inherit}
+.dbn{appearance:none;width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font:inherit}
 .dbn.late{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}
 .dbn b{display:block;font-size:14px;overflow-wrap:anywhere}
 .dbn small{display:block;font-size:12px;font-weight:600}
 .dbn .lchev{color:inherit}
 .dbn .lchev svg{transform:rotate(-90deg)}
-.mdd{margin:18px 0 24px}
+.mdd{margin:12px 0 16px}
 .mdh{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .mdh h2{margin:0;font-size:17px;min-width:0;overflow-wrap:anywhere}
 .mdsum{text-align:right;flex:none}
@@ -240,14 +240,14 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .cfl .payb{flex-basis:100%;margin-top:2px}
 .cfq{display:flex;flex-wrap:wrap;gap:6px;flex-basis:100%}
 .cpl{display:grid;gap:4px;padding:10px 0;border-bottom:1px dashed var(--line)}.cpl:last-child{border-bottom:0}.cph{display:flex;justify-content:space-between;align-items:center;gap:8px}.cph b{font:700 16px var(--f-display);font-variant-numeric:tabular-nums}
-.cmw+.cmw{border-top:1.5px solid var(--edge);margin-top:6px;padding-top:6px}.cmwn{font-size:13px;font-weight:600;color:var(--ink-2)}.cmh{font-size:14px;margin:14px 0 2px}
+.cmw+.cmw{border-top:1.5px solid var(--edge);margin-top:6px;padding-top:6px}.cmwn{font-size:13px;font-weight:600;color:var(--ink-2)}.cmh{font-size:14px;margin:10px 0 2px}
 .dsp{display:grid;gap:8px;background:var(--surface);border:1.5px solid var(--edge);border-radius:14px;padding:12px 14px}
 .dsp .dpw{font-size:14px;color:var(--ink-2)}
 .dsp .dpw b{color:var(--ink)}
 .dvnv{display:grid;gap:2px;padding:8px 0;border-top:1px solid var(--line)}
 .dvnv:first-child{border-top:0}
-.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
-.ordlist{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.ordlist{display:grid;gap:8px;grid-template-columns:minmax(0,1fr)}
 @media (min-width:980px){.ordlist{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .ord{display:block;background:var(--surface);border:1.5px solid var(--oedge);border-left:7px solid var(--bar-mute);border-radius:14px;padding:8px 10px 9px 12px}
 .ord[data-st="new"],.ord[data-st="accepted"],.ord[data-st="ready"]{border-left-color:var(--bc-bar)}
@@ -281,7 +281,7 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .ord .acts{gap:6px;margin-top:2px}
 .ord .acts .btn{flex:1 1 auto;padding:0 9px;min-height:32px;font-size:12px;border-radius:10px}
 .ord .acts .btn:only-child{flex:0 0 auto}
-.xtools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px}
+.xtools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}
 .xmenu{display:flex;flex-wrap:wrap;gap:6px;width:100%}
 .xmenu .chip[disabled]{opacity:.45;cursor:default}
 .xtools .unit{width:100%;font-size:12px;color:var(--ink-2)}
@@ -315,12 +315,12 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .ord.fold.open .ptg i::after{content:" ▴"}
 
 /* settings, cards */
-.card{background:var(--surface);border:1.5px solid var(--edge);border-radius:16px;padding:14px;margin-bottom:14px}
+.card{background:var(--surface);border:1.5px solid var(--edge);border-radius:16px;padding:14px;margin-bottom:10px}
 .card h3{font:700 13px var(--f-display);margin-bottom:2px}
 .card .unit{font-size:12px;color:var(--ink-2);margin-bottom:6px}
-.savebar{font-size:12px;color:var(--ink-2);min-height:18px;margin-bottom:10px}
+.savebar{font-size:12px;color:var(--ink-2);min-height:16px;margin:4px 0 2px}
 .savebar.bad{color:var(--bad)}
-.settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 @media (max-width:540px){.settings{grid-template-columns:minmax(0,1fr)}}
 .settings .full{grid-column:1/-1}
 .sblk{padding:0;overflow:hidden}
@@ -330,33 +330,33 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 .sbb{padding:2px 14px 14px}
 .sbb[hidden]{display:none}
 .shd{align-items:flex-start}
-.ostat{margin:0 0 12px;padding:8px 12px;border-radius:12px;background:var(--bg);border:1.5px solid var(--edge);font-size:13px;font-weight:600;color:var(--tx)}
+.ostat{margin:0 0 8px;padding:8px 12px;border-radius:12px;background:var(--bg);border:1.5px solid var(--edge);font-size:13px;font-weight:600;color:var(--tx)}
 .ostat.off{color:var(--ink-2)}
 .shd .sbc{margin-top:7px}
 .shl{flex:1;min-width:0;display:block}
 .shn{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .shnm{min-width:0;overflow-wrap:anywhere}
 .shd .dmeta{display:block;margin-top:4px;font-weight:400}
-.sbb>.card{background:none;border:0;border-top:1.5px solid var(--edge);border-radius:0;padding:14px 0 0;margin:14px 0 0}
+.sbb>.card{background:none;border:0;border-top:1.5px solid var(--edge);border-radius:0;padding:14px 0 0;margin:10px 0 0}
 
 /* catalog (client) */
-.shop{padding-block:14px 130px}
-.shop h1{font:700 18px/1.25 var(--f-display);margin-bottom:12px}
-.shop .legal{margin:-8px 0 12px;color:var(--ink-2);font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.shop{padding-block:10px 130px}
+.shop h1{font:700 18px/1.25 var(--f-display);margin-bottom:8px}
+.shop .legal{margin:-8px 0 8px;color:var(--ink-2);font-size:14px;line-height:1.35;overflow-wrap:anywhere}
 .legrow{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:0 0 4px}
 .legrow>div{flex:1 1 200px;min-width:0}
 .shop .search{margin-bottom:10px}
 .pchips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;margin:0 -2px 10px;scrollbar-width:none}
 .pchips::-webkit-scrollbar{display:none}
 .pchips .chip{flex:none;white-space:nowrap}
-.chead{font:700 14px var(--f-display);margin:20px 0 10px}
+.chead{font:700 14px var(--f-display);margin:14px 0 8px}
 .chg{padding:8px 0;border-top:1px solid var(--line);font-size:13px}
 .chg b{display:block;font-size:14px}.chg small{display:block;color:var(--ink-2)}
 .chg.bad small{color:var(--bad)}
 .impsum{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0;font-size:13px}
 .impsum b{font-size:15px}
 .chead:first-child{margin-top:4px}
-.pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media (min-width:640px){.pgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (min-width:900px){.pgrid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .pcard{background:var(--surface);border:2px solid var(--edge);box-shadow:0 2px 6px var(--pcsh);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
@@ -488,10 +488,10 @@ html.lb-open,html.lb-open body{overflow:hidden}
 }
 
 /* seller: catalog editor */
-.prow{padding:12px;margin:16px -6px 0;border:1.5px solid var(--line);border-radius:14px;background:var(--bg);box-shadow:inset 4px 0 0 var(--accent)}
+.prow{padding:12px;margin:12px -6px 0;border:1.5px solid var(--line);border-radius:14px;background:var(--bg);box-shadow:inset 4px 0 0 var(--accent)}
 .prow.off{box-shadow:inset 4px 0 0 var(--mute)}
 .prow.fold{padding:8px 12px;margin-top:10px}
-.pfbody{display:grid;grid-template-columns:232px minmax(0,1fr);gap:14px;margin-top:12px;padding-top:12px;border-top:1.5px solid var(--line)}
+.pfbody{display:grid;grid-template-columns:232px minmax(0,1fr);gap:10px;margin-top:8px;padding-top:8px;border-top:1.5px solid var(--line)}
 .phead{display:flex;align-items:center;gap:6px}
 .phead .psum{width:auto;flex:1 1 0;min-width:0}
 .pmv{display:flex;flex-direction:column;gap:4px;flex:none}
@@ -597,7 +597,7 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .sico svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .sico[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent)}
 #snote{margin-bottom:10px}
-.slist{display:grid;gap:8px;margin-bottom:14px}
+.slist{display:grid;gap:8px;margin-bottom:10px}
 .srow{background:var(--surface);border:1.5px solid var(--edge);border-radius:14px;overflow:hidden}
 .sempty{padding:12px;border:1.5px solid var(--edge);border-radius:14px;background:var(--surface);color:var(--ink-2);font-size:14px}
 .sh{appearance:none;display:flex;align-items:center;gap:10px;width:100%;min-height:56px;padding:8px 12px;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
@@ -640,8 +640,8 @@ html.lb-open,html.lb-open body{overflow:hidden}
 
 /* клиенты */
 .cmeta{font-size:12.5px;color:var(--ink-2);margin-top:6px}
-.ced{margin-top:12px;display:grid;gap:14px}
-.ced .form{gap:12px}
+.ced{margin-top:8px;display:grid;gap:10px}
+.ced .form{gap:8px}
 .ced h3{font:700 13px var(--f-display)}
 .gchips,.achips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .gchips .chip{height:30px;font-size:12px;padding:0 10px}
@@ -661,22 +661,22 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .bnote b{font-weight:700}
 .bfrow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 2px 8px}
 .bfrow .bfound{margin:0}
-.cst{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:2px 0 12px}
+.cst{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:2px 0 8px}
 .cst>div{background:var(--surface-2);border:1px solid var(--edge);border-radius:12px;padding:8px 10px;min-width:0}
 .cst small{display:block;font-size:11.5px;color:var(--ink-2)}
 .cst b{display:block;font-size:14px;overflow-wrap:anywhere}
-.csec{margin:0 0 14px}
+.csec{margin:0 0 10px}
 .csec h3{font:700 13px var(--f-display);margin:0 0 6px}
-.cact{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.cact{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
 .cact .btn{flex:1 1 120px;text-align:center}
 .bannerbad{background:var(--bad-soft);color:var(--bad);border-radius:12px;padding:10px 12px;font-size:13px;font-weight:600}
 
 /* placed */
 .eyebrow{font-size:12px;font-weight:600;color:var(--tx);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
-.stack{display:grid;gap:12px}
+.stack{display:grid;gap:8px}
 .row-btns{display:flex;flex-wrap:wrap;gap:8px}
 /* список дистрибьюторов и раздел владельца */
-.dgrid{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:14px}
+.dgrid{display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:10px}
 @media (max-width:540px){.dgrid{grid-template-columns:minmax(0,1fr)}}
 .dcard{background:var(--surface);border:1.5px solid var(--edge);border-radius:16px;padding:14px;display:grid;gap:8px;align-content:start;min-width:0}
 .dcard h2{font:700 16px/1.25 var(--f-display);overflow-wrap:anywhere}
@@ -690,12 +690,12 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .lgb{flex:none;width:64px;height:64px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:linear-gradient(160deg,var(--stage-a),var(--stage-b));display:flex;align-items:center;justify-content:center;font:700 26px/1 var(--f-display);color:var(--tx)}
 .lgb img{width:100%;height:100%;object-fit:cover;display:block}
 .lgb.sm{width:52px;height:52px;border-radius:12px}
-.shead{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+.shead{display:flex;gap:12px;align-items:center;margin-bottom:8px}
 .shead .stx{min-width:0}
 .shop .shead h1{margin:0}
 .shop .shead .legal{margin:2px 0 0}
 .shop .shead .sinfo{margin:2px 0 0}
-.shop .sinfo{color:var(--ink-2);font-size:13px;line-height:1.35;overflow-wrap:anywhere;margin:-8px 0 12px}
+.shop .sinfo{color:var(--ink-2);font-size:13px;line-height:1.35;overflow-wrap:anywhere;margin:-8px 0 8px}
 .lgedit{display:flex;gap:14px;align-items:center}
 .lgedit .lgtx{flex:1;min-width:0}
 .lgslot{position:relative;flex:none;width:88px;height:88px;border-radius:16px;overflow:hidden;cursor:pointer;display:block}
@@ -715,17 +715,17 @@ html.lb-open,html.lb-open body{overflow:hidden}
 .phrow input{flex:1 1 150px;min-width:0}
 .phrow .btn{flex:none}
 .mgbox{margin-top:4px}
-.mgp{font-size:14px;line-height:1.4;color:var(--ink-2);margin:0 0 12px}
+.mgp{font-size:14px;line-height:1.4;color:var(--ink-2);margin:0 0 8px}
 .mgit{display:block;width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:1.5px solid var(--edge);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
 .mgit b{display:block;overflow-wrap:anywhere}
 .mgit small{display:block;color:var(--ink-2);font-size:12px;margin-top:2px;overflow-wrap:anywhere}
-.mgcmp{display:grid;gap:8px;margin-bottom:12px}
+.mgcmp{display:grid;gap:8px;margin-bottom:8px}
 .mgcmp>div{background:var(--surface-2);border:1.5px solid var(--edge);border-radius:12px;padding:10px 12px;min-width:0}
 .mgcmp small{display:block;font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--ink-2);text-transform:uppercase}
 .mgcmp b{display:block;overflow-wrap:anywhere}
 .mgcmp span{display:block;font-size:13px;color:var(--ink-2);overflow-wrap:anywhere}
 .mgcmp .gone{border-style:dashed}
-.mgl{display:grid;gap:8px;margin-bottom:12px;font-size:14px;line-height:1.4}
+.mgl{display:grid;gap:8px;margin-bottom:8px;font-size:14px;line-height:1.4}
 .mgl>div{overflow-wrap:anywhere}
 .mgw{font-size:13px;font-weight:600;color:var(--warn);background:var(--warn-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 button.mtag{border:0;font-family:inherit;cursor:pointer}
@@ -736,8 +736,8 @@ button.mtag{border:0;font-family:inherit;cursor:pointer}
 @media (max-width:540px){.regs{grid-template-columns:minmax(0,1fr)}}
 .regs[hidden]{display:none}
 .regs .chk{min-height:34px}
-.regbar{margin-bottom:14px}
-.bcard{background:var(--surface);border:1.5px solid var(--edge);border-radius:16px;padding:14px;display:grid;gap:8px;margin-bottom:12px;min-width:0}
+.regbar{margin-bottom:10px}
+.bcard{background:var(--surface);border:1.5px solid var(--edge);border-radius:16px;padding:14px;display:grid;gap:8px;margin-bottom:8px;min-width:0}
 .bcard h3{margin:0;overflow-wrap:anywhere}
 .brow,.btags{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .btags{gap:6px}
@@ -763,12 +763,12 @@ button.mtag{border:0;font-family:inherit;cursor:pointer}
 .regbar select{width:100%}
 .hrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .hrow h1{margin-bottom:0}
-.pctrow{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
+.pctrow{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:8px 0 4px}
 .pctrow>div{flex:0 0 auto}
 .pctrow input[type=text]{width:96px}
 .sum small.sub{display:block;font-size:12px;color:var(--ink-2)}
-.bpage{padding-bottom:30px}
-.btop{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.bpage{padding-bottom:24px}
+.btop{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .page .btop h1{margin:0;font-size:18px;min-width:0;overflow-wrap:anywhere}
 .btop .btn{margin-left:auto;flex:none;height:40px;padding:0 14px}
 .qbtn{appearance:none;flex:none;width:34px;height:34px;border-radius:50%;border:1.5px solid var(--edge);background:var(--surface);font:700 16px/1 var(--f-body);color:var(--ink-2);cursor:pointer;padding:0}
@@ -787,7 +787,7 @@ button.mtag{border:0;font-family:inherit;cursor:pointer}
 .anp .chip.selc span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip.x .xx{margin-left:2px;font-size:13px}
 .bfound{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:2px 2px 8px}
-.bcard{padding:12px 14px;gap:6px;margin-bottom:10px;grid-template-columns:minmax(0,1fr)}
+.bcard{padding:12px 14px;gap:6px;margin-bottom:8px;grid-template-columns:minmax(0,1fr)}
 .bcard>*{min-width:0}
 .bcard.dim{opacity:.62}
 /* карточка магазина в «Базе»: цвет заметно отличается от фона экрана */
@@ -828,7 +828,7 @@ html.sh-open,html.sh-open body{overflow:hidden}
 .fs-head h2{font:700 20px/1.2 var(--f-display)}
 .lnk{appearance:none;border:0;background:transparent;color:var(--tx);font:600 15px var(--f-body);cursor:pointer;padding:8px 0 8px 12px}
 .fs-body{overflow-y:auto;padding:0 18px 8px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
-.fs-t{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin:12px 0 8px}
+.fs-t{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);margin:10px 0 6px}
 .fs-c{display:flex;flex-wrap:wrap;gap:8px}
 .fs-c .chip{height:40px;padding:0 14px;font-size:14px}
 .fs-foot{padding:10px 18px calc(14px + env(safe-area-inset-bottom,0px));flex:none}
@@ -846,7 +846,7 @@ div.lgd{cursor:default}
 .pimg .tag.mod{background:var(--warn-soft);color:var(--warn)}
 .pwait{margin-top:auto;padding-top:6px;font-size:12px;font-weight:600;color:var(--ink-2)}
 .chip.mod{border-style:dashed}
-.modnote{margin-bottom:12px}
+.modnote{margin-bottom:8px}
 /* проверка товаров: продавец */
 .mtag{display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--mute-soft);color:var(--mute);white-space:nowrap;width:max-content}
 .mtag.wait{background:var(--info-soft);color:var(--info)}
@@ -873,14 +873,14 @@ div.lgd{cursor:default}
 .mban{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0}
 /* проверка товаров: владелец */
 .badge.bad{background:var(--bad);color:#fff}
-.seg.s3{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:12px}
+.seg.s3{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:8px}
 .seg.s3 button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;font-size:13px;line-height:1.2}
 .seg.s3 .cnt{font-size:15px;color:var(--ink-2)}
 .seg.s3 .cnt.hot{color:var(--bad)}
 .rvfil{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:8px;margin-bottom:8px}
 .rvfil select{min-width:0;width:100%;font-size:14px;padding-left:10px;padding-right:6px;text-overflow:ellipsis}
-.rvinfo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 12px;font-size:13px;color:var(--ink-2);min-height:34px}
-.rcard{border:1.5px solid var(--edge);background:var(--surface);border-radius:16px;padding:12px;margin-bottom:12px}
+.rvinfo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 8px;font-size:13px;color:var(--ink-2);min-height:34px}
+.rcard{border:1.5px solid var(--edge);background:var(--surface);border-radius:16px;padding:12px;margin-bottom:8px}
 .rtop{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
 .dpill{appearance:none;border:0;border-radius:999px;background:var(--accent-soft);color:var(--tx);font:700 13px var(--f-body);padding:7px 13px;cursor:pointer;max-width:68%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dpill.static{cursor:default;max-width:100%}
@@ -897,7 +897,7 @@ div.lgd{cursor:default}
 .rtiers{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--ink-2)}
 .rwarn{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .rwarn span{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
-.ract{display:flex;gap:8px;margin-top:12px}
+.ract{display:flex;gap:8px;margin-top:8px}
 .ract .btn{flex:1;min-width:0;padding:11px 6px;font-size:14px}
 .rsum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 10px}
 .rsum small{color:var(--ink-2);flex-basis:100%}
@@ -926,18 +926,18 @@ div.lgd{cursor:default}
 .locpaste input{flex:1;min-width:0}
 .locform .err{min-height:0}
 .oloc{margin:6px 0}
-.mapbtns{display:grid;gap:10px;margin:6px 0 12px}
+.mapbtns{display:grid;gap:10px;margin:6px 0 8px}
 .mapco{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0 10px;color:var(--ink-2)}
 @media (prefers-reduced-motion:no-preference){.chip,.seg button{transition:border-color .12s,background-color .12s}}
 /* «О нас» */
-.abt .abhead{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.abt .abhead{display:flex;align-items:center;gap:14px;margin-bottom:12px}
 .abt .abhead .eyebrow{margin-bottom:2px}
 .logo.big{width:64px;height:64px}
 .abintro{white-space:pre-line;font-size:15px;line-height:1.55;color:var(--ink)}
-.abcon{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.abcon{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .abnote{margin-top:8px;overflow-wrap:anywhere}
-.abtitle{font-family:var(--f-display);font-size:17px;line-height:1.25;margin:22px 0 4px}
-.abhint{margin-bottom:12px}
+.abtitle{font-family:var(--f-display);font-size:17px;line-height:1.25;margin:16px 0 4px}
+.abhint{margin-bottom:8px}
 .abrole{padding:0;overflow:hidden}
 .abh{appearance:none;width:100%;min-height:52px;padding:12px 14px;border:0;background:transparent;color:var(--ink);font:600 16px/1.25 var(--f-body);text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px}
 .abh .abn{flex:1;min-width:0;overflow-wrap:anywhere}
@@ -946,21 +946,21 @@ div.lgd{cursor:default}
 .abmine{flex:none;font-size:11px;font-weight:700;letter-spacing:.02em;padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:var(--tx)}
 .abbody{padding:2px 14px 16px;border-top:1.5px solid var(--line)}
 .abbody[hidden]{display:none}
-.ablead{margin:12px 0 4px;font-size:15px;line-height:1.55}
-.absec{margin-top:20px}
+.ablead{margin:8px 0 4px;font-size:15px;line-height:1.55}
+.absec{margin-top:14px}
 .absec h3{font-size:16px;line-height:1.3;margin-bottom:10px}
-.abfig{margin:0 0 12px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.abfig{margin:0 0 8px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .abimg{appearance:none;padding:0;border:1.5px solid var(--edge);border-radius:16px;background:var(--surface);overflow:hidden;cursor:zoom-in;display:block;width:260px;max-width:100%;box-shadow:0 2px 10px var(--pcsh)}
 .abimg img{display:block;width:100%;height:auto;aspect-ratio:54/102}
 .abfig figcaption{font-size:12.5px;color:var(--ink-2)}
 .abli{margin:0;padding:0 0 0 20px;display:grid;gap:9px;font-size:15px;line-height:1.5}
 .abli li::marker{color:var(--tx)}
-.abadv{margin:14px 0 2px;padding:12px 14px;border-radius:14px;background:var(--accent-soft);border:1.5px solid var(--line)}
+.abadv{margin:10px 0 2px;padding:12px 14px;border-radius:14px;background:var(--accent-soft);border:1.5px solid var(--line)}
 .abadv h3{font-size:15px;line-height:1.3;margin:0 0 8px}
 .abck{margin:0;padding:0;list-style:none;display:grid;gap:8px;font-size:14.5px;line-height:1.45}
 .abck li{position:relative;padding-left:24px}
 .abck li::before{content:"✓";position:absolute;left:0;top:0;font-weight:700;color:var(--tx)}
-@media (min-width:700px){.abfig{float:right;margin:0 0 12px 18px}.abli{clear:none}}
+@media (min-width:700px){.abfig{float:right;margin:0 0 8px 18px}.abli{clear:none}}
 .asbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px));background:var(--accent-soft);border-top:1px solid var(--line);font-size:13px;color:var(--ink-2)}
 .asbar[hidden]{display:none}
 .asbar b{color:var(--ink);font-weight:700}
@@ -977,7 +977,7 @@ div.lgd{cursor:default}
 .masi{appearance:none;display:block;width:100%;min-height:44px;padding:10px 14px;background:transparent;border:0;border-top:1px solid var(--line);font:inherit;font-size:14px;color:var(--ink);text-align:left;cursor:pointer}
 .masi[aria-pressed="true"]{font-weight:700;color:var(--tx)}
 /* полоска разделов вверху экрана: вместо раскрывающихся списков в меню */
-.tbar{position:relative;display:flex;gap:6px;overflow-x:auto;margin:0 -16px 14px;padding:2px 16px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.tbar{position:relative;display:flex;gap:6px;overflow-x:auto;margin:0 -16px 10px;padding:2px 16px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 .tbar::-webkit-scrollbar{display:none}
 .tbar .chip{flex:none;gap:6px;white-space:nowrap}
 .tbar .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:none}
@@ -1000,16 +1000,16 @@ div.lgd{cursor:default}
 .cat.em{background:var(--surface-2);border-style:dashed}
 .cat.em .cic{background:var(--bg);color:var(--ink-2)}
 .cat .chev{flex:none;color:var(--ink-2)}
-.soc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 4px}
+.soc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 4px}
 .soc .sc{background:var(--surface);border:1.5px solid var(--edge);border-radius:12px;padding:8px 10px;min-width:0}
 .soc .sc b{display:block;font:700 20px/1.2 var(--f-display);font-variant-numeric:tabular-nums}
 .soc .sc span{display:block;margin-top:2px;font-size:12px;line-height:1.25;color:var(--ink-2);overflow-wrap:anywhere}
 .soc .sc.hot{background:var(--accent-soft);border-color:var(--accent)}
-.socn{margin:0 2px 14px;font-size:12px;color:var(--ink-2)}
-.pophd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 8px}
+.socn{margin:0 2px 10px;font-size:12px;color:var(--ink-2)}
+.pophd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:14px 0 8px}
 .pophd h2{margin:0;font:700 18px var(--f-display)}
 .pophd span{font-size:12px;color:var(--ink-2)}
-.poprow{display:flex;gap:10px;overflow-x:auto;margin:0 -16px;padding:4px 16px 12px;scroll-snap-type:x proximity;scroll-padding:0 16px;-webkit-overflow-scrolling:touch}
+.poprow{display:flex;gap:10px;overflow-x:auto;margin:0 -16px;padding:4px 16px 8px;scroll-snap-type:x proximity;scroll-padding:0 16px;-webkit-overflow-scrolling:touch}
 .popc{flex:0 0 138px;scroll-snap-align:start;appearance:none;padding:0;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
 .popb{padding:10px 12px 12px;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
 .popc .pn{font-size:12px;color:var(--ink-2)}
@@ -1245,7 +1245,7 @@ async function navRestore(e){
   window.scrollTo(0,e.y||0);
 }
 const offTxt=()=>L('Этот продавец сейчас не принимает заказы.','Bu sotuvchi hozir buyurtma qabul qilmayapti.');
-const offHTML=()=>S.off?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(offTxt())+'</div>':'';
+const offHTML=()=>S.off?'<div class="bannerbad" role="alert" style="margin-bottom:8px">'+esc(offTxt())+'</div>':'';
 const sellLink=()=>{const m=S.hub.me&&S.hub.me.sells.find(x=>x.id===S.did);return m&&m.link||''};
 const shopNameOf=did=>{const s=S.hub.shops.find(x=>x.id===did);return s?s.name:''};
 /* Вопрос «да/нет»: окно Telegram, а вне Telegram обычное окно браузера. */
@@ -1328,7 +1328,7 @@ function regionNoteHTML(){
   if(!zoneOn())return '';
   const z=zone(),names=z.slice(0,3).map(regionName).join(', ')+(z.length>3?L(' и ещё '+(z.length-3),' va yana '+(z.length-3)):'');
   const off=S.region&&!z.includes(S.region);
-  return '<div class="note'+(off?' warnnote':'')+'" role="status" style="margin-bottom:12px">'+esc(off
+  return '<div class="note'+(off?' warnnote':'')+'" role="status" style="margin-bottom:8px">'+esc(off
     ?L('Доставка в ваш регион ('+regionName(S.region)+') не работает, но можно заказать с самовывозом. Доставляют: '+names+'.','Sizning hududingizga ('+regionName(S.region)+') yetkazib berilmaydi, lekin olib ketish mumkin. Yetkazib berish: '+names+'.')
     :L('Доставка: '+names+'. В остальные регионы — самовывоз.','Yetkazib berish: '+names+'. Boshqa hududlar uchun — olib ketish.'))+'</div>';
 }
@@ -1867,7 +1867,7 @@ function paintGrid(){
   if(S.shopCat==='all'&&!q&&cats.length>=1){
     const rest=items.filter(p=>!cats.some(c=>c.id===p.cat));
     g.innerHTML=cats.map(c=>{const li=items.filter(p=>p.cat===c.id);return li.length?'<h2 class="chead">'+esc(nm(c))+'</h2><div class="pgrid">'+li.map(productCard).join('')+'</div>':''}).join('')
-      +(rest.length?'<div class="pgrid" style="margin-top:20px">'+rest.map(productCard).join('')+'</div>':'');
+      +(rest.length?'<div class="pgrid" style="margin-top:10px">'+rest.map(productCard).join('')+'</div>':'');
   }else g.innerHTML=(S.shopCat==='mod'?'<div class="note modnote">'+L('Эти товары проверяет площадка. После проверки появятся цена и кнопка «В корзину».','Bu mahsulotlarni platforma tekshirmoqda. Tekshiruvdan keyin narx va «Savatga» tugmasi paydo boʻladi.')+'</div>':'')+'<div class="pgrid">'+items.map(productCard).join('')+'</div>';
 }
 function paintShopBar(){
@@ -1970,7 +1970,7 @@ function paintCartSum(){
   if(showFee&&fee>0&&free>sub&&!(far&&fp!=='in'))notes.push('<div class="note" role="status">'+L('До бесплатной доставки осталось '+money(free-sub)+'.','Bepul yetkazib berishgacha '+money(free-sub)+' qoldi.')+'</div>');
   const nd=nextDiscount(S.cfg,sub);
   if(nd)notes.push('<div class="note" role="status">'+L('Добавьте товаров ещё на '+money(nd.left)+': скидка на заказ будет '+nd.pct+'%.','Yana '+money(nd.left)+' lik mahsulot qoʻshing: buyurtmaga '+nd.pct+'% chegirma boʻladi.')+'</div>');
-  m.innerHTML=notes.length?'<div class="stack" style="margin-top:12px">'+notes.join('')+'</div>':'';
+  m.innerHTML=notes.length?'<div class="stack" style="margin-top:8px">'+notes.join('')+'</div>':'';
   paintShopBar();
 }
 /* Меняет суммы на экране, не перерисовывая поле, в которое клиент печатает количество. */
@@ -2397,7 +2397,7 @@ function renderMine(){
   let h='<div class="wrap page"><h1>'+L('Мои заказы','Mening buyurtmalarim')+'</h1>'+bannerSlot();
   if(!S.ready)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else if(!S.auth)h+='<div class="empty"><b>'+L('Откройте через бота','Bot orqali oching')+'</b>'+L('Чтобы видеть свои заказы, откройте приложение из бота в Telegram.','Buyurtmalaringizni koʻrish uchun ilovani Telegramdagi botdan oching.')+'</div>';
-  else if(!S.myOrders.length)h+='<div class="empty"><b>'+L('Пока нет заказов','Hozircha buyurtma yoʻq')+'</b>'+L('Выберите товары в каталоге, и заказ появится здесь со статусом.','Katalogdan mahsulot tanlang, buyurtma shu yerda holati bilan koʻrinadi.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="nav" data-v="shop">'+L('Открыть каталог','Katalogni ochish')+'</button></div>';
+  else if(!S.myOrders.length)h+='<div class="empty"><b>'+L('Пока нет заказов','Hozircha buyurtma yoʻq')+'</b>'+L('Выберите товары в каталоге, и заказ появится здесь со статусом.','Katalogdan mahsulot tanlang, buyurtma shu yerda holati bilan koʻrinadi.')+'</div><div class="row-btns" style="margin-top:10px;justify-content:center"><button type="button" class="btn" data-act="nav" data-v="shop">'+L('Открыть каталог','Katalogni ochish')+'</button></div>';
   else{
     const list=S.myOrders.slice().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
     h+='<p class="lead">'+L('Заказы у всех продавцов. Статус обновляется, когда продавец принимает и собирает заказ.','Barcha sotuvchilardagi buyurtmalar. Sotuvchi buyurtmani qabul qilib yigʻganda holat yangilanadi.')+'</p><div class="ordlist">'+list.map(o=>orderCard(o,'mine')).join('')+'</div>';
@@ -2419,14 +2419,14 @@ function renderProfile(){
   else{
     const p=S.profile||{name:'',phone:'',org:'',addrs:[]};
     h+='<p class="lead">'+L('Эти данные подставляются в заказ, на любом вашем устройстве. При оформлении заказа их можно изменить.','Bu maʼlumotlar istalgan qurilmangizda buyurtmaga avtomatik qoʻyiladi. Buyurtma berayotganda oʻzgartirish mumkin.')+'</p>'
-      +(S.blocked?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(blockedTxt())+'</div>':'')
+      +(S.blocked?'<div class="bannerbad" role="alert" style="margin-bottom:8px">'+esc(blockedTxt())+'</div>':'')
       +rolesBoxHTML()
       +'<div class="card"><div class="form">'
       +'<div><label class="lab" for="p-name">'+L('Ваше имя','Ismingiz')+'</label><input type="text" id="p-name" data-pf="name" maxlength="60" value="'+esc(p.name)+'" autocomplete="name">'+hintD('Так вас увидят в заказах. Пример: Анвар.','Buyurtmalarda sizni shunday koʻrishadi. Masalan: Anvar.')+'<div class="err" id="pe-name"></div></div>'
       +'<div><label class="lab" for="p-phone">'+L('Телефон','Telefon')+'</label><input type="tel" id="p-phone" data-pf="phone" maxlength="25" value="'+esc(p.phone)+'" placeholder="+998 90 123 45 67" autocomplete="tel">'+hintD('Подставляется в каждый заказ, при оформлении его можно изменить.','Har bir buyurtmaga qoʻyiladi, buyurtma berishda oʻzgartirish mumkin.')+'<div class="err" id="pe-phone"></div></div>'
       +'<div class="full"><label class="lab" for="p-org">'+L('Организация (магазин, кафе, компания)','Tashkilot (doʻkon, kafe, kompaniya)')+'</label><input type="text" id="p-org" data-pf="org" maxlength="80" value="'+esc(p.org)+'" autocomplete="organization">'+hintD('Название вашего магазина, кафе или компании. Пример: магазин «Зафар».','Doʻkon, kafe yoki kompaniyangiz nomi. Masalan: «Zafar» doʻkoni.')+'<div class="err" id="pe-org"></div></div>'
       +'<div class="full"><label class="lab" for="p-addrs">'+L('Адреса доставки: каждый с новой строки, до 5','Yetkazib berish manzillari: har biri yangi qatordan, 5 tagacha')+'</label><textarea id="p-addrs" data-pf="addrs" rows="4" placeholder="'+esc(L('Город, улица, дом, ориентир','Shahar, koʻcha, uy, moʻljal'))+'">'+esc((p.addrs||[]).join('\n'))+'</textarea>'+hintD('Подставляются в заказ одним нажатием. Пример: Навои, ул. Галаба 12, рядом с аптекой.','Buyurtmaga bir bosishda qoʻyiladi. Masalan: Navoiy, Gʻalaba koʻchasi 12, dorixona yonida.')+'<div class="err" id="pe-addrs"></div></div>'
-      +'</div><div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="pfsave" data-act="pfsave">'+L('Сохранить','Saqlash')+'</button></div></div>';
+      +'</div><div class="row-btns" style="margin-top:10px"><button type="button" class="btn" id="pfsave" data-act="pfsave">'+L('Сохранить','Saqlash')+'</button></div></div>';
   }
   view.innerHTML=h+'</div>';
 }
@@ -2472,7 +2472,7 @@ async function saveProfile(){
 function renderSeller(){
   if(!S.admin){view.innerHTML='<div class="wrap page"><div class="empty"><b>'+L('Раздел для продавца','Sotuvchi boʻlimi')+'</b>'+L('Откройте приложение с правами редактора.','Ilovani muharrir huquqi bilan oching.')+'</div></div>';return}
   view.innerHTML='<div class="wrap page">'+backHTML()+'<div class="hrow" style="margin-bottom:10px"><div><div class="eyebrow">'+L('Продавец','Sotuvchi')+' · '+esc(S.cfg.shop.name||DEFAULT.shop.name)+'</div><h1 id="stitle"></h1></div></div><div id="tbar"></div>'
-    +(S.off?'<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(L('Владелец площадки скрыл ваш каталог: покупатели его не видят и не могут заказать.','Platforma egasi katalogingizni yashirgan: xaridorlar uni koʻrmaydi va buyurtma bera olmaydi.'))+'</div>':'')
+    +(S.off?'<div class="bannerbad" role="alert" style="margin-bottom:8px">'+esc(L('Владелец площадки скрыл ваш каталог: покупатели его не видят и не могут заказать.','Platforma egasi katalogingizni yashirgan: xaridorlar uni koʻrmaydi va buyurtma bera olmaydi.'))+'</div>':'')
     +'<div id="sbody"></div></div>';
   paintTabs();
   paintSeller();
@@ -2698,7 +2698,7 @@ function myDebtBlock(x){
     +(pays.length>15?'<p class="rnote">'+L('Показаны последние 15 оплат.','Oxirgi 15 ta toʻlov koʻrsatilgan.')+'</p>':'');
   const btns=(tg?'<a class="btn ghost sm" data-act="contact" href="https://t.me/'+encodeURIComponent(tg)+'?text='+encodeURIComponent(L('Здравствуйте! Вопрос по долгу.','Assalomu alaykum! Qarz boʻyicha savol.'))+'" target="_blank" rel="noopener">'+L('Написать продавцу','Sotuvchiga yozish')+'</a>':'')
     +(ph?'<a class="btn ghost sm" href="'+telHref(ph)+'">'+L('Позвонить','Qoʻngʻiroq')+'</a>':'');
-  if(btns)h+='<div class="row-btns" style="margin-top:12px">'+btns+'</div>';
+  if(btns)h+='<div class="row-btns" style="margin-top:8px">'+btns+'</div>';
   return h+'</section>';
 }
 function renderMyDebt(){
@@ -2712,7 +2712,7 @@ function renderMyDebt(){
     h+='<div class="stats"><div class="stat'+(m.over>0?' hot':'')+'"><small>'+L('Вы должны','Siz qarzdorsiz')+'</small><b>'+money(m.total)+'</b></div>'
       +'<div class="stat"><small>'+L('Просрочено','Muddati oʻtgan')+'</small><b>'+money(m.over)+'</b></div>'
       +'<div class="stat"><small>'+L('Ближайший срок','Eng yaqin muddat')+'</small><b>'+(dues[0]?fDay(dues[0]):'—')+'</b></div></div>';
-    if(m.over>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Есть просроченные платежи. Пожалуйста, свяжитесь с продавцом и оплатите.','Muddati oʻtgan toʻlovlar bor. Iltimos, sotuvchi bilan bogʻlanib, toʻlang.')+'</div>';
+    if(m.over>0)h+='<div class="note warnnote" style="margin-bottom:8px">'+L('Есть просроченные платежи. Пожалуйста, свяжитесь с продавцом и оплатите.','Muddati oʻtgan toʻlovlar bor. Iltimos, sotuvchi bilan bogʻlanib, toʻlang.')+'</div>';
     h+=m.list.map(myDebtBlock).join('')
       +'<p class="rnote">'+L('Выдачу в долг и оплату записывает продавец или доставщик, а вы подтверждаете, что запись верна. Если нет, нажмите «Не так»: продавец увидит.','Qarzga berish va toʻlovni sotuvchi yoki yetkazuvchi yozadi, siz esa yozuv toʻgʻriligini tasdiqlaysiz. Aks holda «Notoʻgʻri»ni bosing: sotuvchi koʻradi.')+'</p>';
   }
@@ -2760,7 +2760,7 @@ function debtsHTML(){
 /* Утреннее напоминание в 9:00: список магазинов с просрочкой приходит продавцу в чат с ботом. Только у продавца. */
 function dmHTML(d){
   if(S.view==='courier'||!S.admin)return '';
-  return '<div class="xtools" style="margin-top:14px"><button type="button" class="btn ghost sm" data-act="dmorn" aria-pressed="'+(d.morning?'true':'false')+'"'+(d.mbusy?' disabled':'')+'>'+(d.morning?L('Утреннее напоминание: вкл','Ertalabki eslatma: yoqilgan'):L('Утреннее напоминание: выкл','Ertalabki eslatma: oʻchirilgan'))+'</button>'
+  return '<div class="xtools" style="margin-top:10px"><button type="button" class="btn ghost sm" data-act="dmorn" aria-pressed="'+(d.morning?'true':'false')+'"'+(d.mbusy?' disabled':'')+'>'+(d.morning?L('Утреннее напоминание: вкл','Ertalabki eslatma: yoqilgan'):L('Утреннее напоминание: выкл','Ertalabki eslatma: oʻchirilgan'))+'</button>'
     +'<div class="unit">'+L('Каждое утро в 9:00 бот пришлёт в чат список покупателей с просроченным долгом. Если просрочки нет, сообщения не будет. Покупателям ничего не отправляется.','Har kuni ertalab soat 9:00 da bot chatga muddati oʻtgan qarzi bor xaridorlar roʻyxatini yuboradi. Muddati oʻtgan qarz boʻlmasa, xabar kelmaydi. Xaridorlarga hech narsa yuborilmaydi.')+'</div></div>';
 }
 async function dMorning(){
@@ -2870,8 +2870,8 @@ function debtorHTML(){
     +'<div class="stats"><div class="stat'+(x.days?' hot':'')+'"><small>'+(adv?L('Аванс покупателя','Xaridor avansi'):L('Долг','Qarz'))+'</small><b>'+money(Math.abs(x.bal))+'</b></div>'
     +'<div class="stat"><small>'+L('Просрочено','Muddati oʻtgan')+'</small><b>'+money(x.over)+'</b></div>'
     +'<div class="stat"><small>'+L('Ближайший срок','Eng yaqin muddat')+'</small><b>'+(x.due?fDay(x.due):'—')+'</b></div></div>';
-  if(x.fl>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Спорных записей: '+x.fl+'. Покупатель ответил «Не так», не получил сообщение или молчит больше суток. Разберитесь с ним и закройте запись с комментарием.','Bahsli yozuvlar: '+x.fl+'. Xaridor «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim. U bilan hal qiling va yozuvni izoh bilan yoping.')+'</div>';
-  if(x.days)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Просрочка: ','Kechikish: ')+x.days+L(' дн. Просрочено ',' kun. Muddati oʻtgan ')+money(x.over)+'</div>';
+  if(x.fl>0)h+='<div class="note warnnote" style="margin-bottom:8px">'+L('Спорных записей: '+x.fl+'. Покупатель ответил «Не так», не получил сообщение или молчит больше суток. Разберитесь с ним и закройте запись с комментарием.','Bahsli yozuvlar: '+x.fl+'. Xaridor «Notoʻgʻri» dedi, xabarni olmadi yoki bir sutkadan ortiq jim. U bilan hal qiling va yozuvni izoh bilan yoping.')+'</div>';
+  if(x.days)h+='<div class="note warnnote" style="margin-bottom:8px">'+L('Просрочка: ','Kechikish: ')+x.days+L(' дн. Просрочено ',' kun. Muddati oʻtgan ')+money(x.over)+'</div>';
   h+='<div class="payb"><div class="pt">'+L('Принять оплату','Toʻlovni qabul qilish')+'</div>'
     +'<div class="pmute">'+L('Можно любую сумму, в том числе часть долга. Оплата закрывает самые старые долги первыми.','Istalgan summa mumkin, qarzning bir qismi ham. Toʻlov eng eski qarzlarni birinchi yopadi.')+'</div>'
     +'<div class="pyrow"><label for="dp-amount">'+L('Сумма','Summa')+'</label><input type="number" id="dp-amount" inputmode="numeric" min="1" step="1" value="'+esc(d.amount)+'" placeholder="0"'+dis+'>'
@@ -3050,11 +3050,11 @@ function crTodayHTML(){
     +'<div class="stat"><small>'+L('Мои','Meniki')+'</small><b>'+mine.length+'</b></div>'
     +'<div class="stat"><small>'+L('Доставлено сегодня','Bugun yetkazilgan')+'</small><b>'+done.length+'</b></div>'
     +'<div class="stat"><small>'+L('Наличные у вас','Sizdagi naqd')+'</small><b>'+money(c.cash)+'</b></div></div>';
-  if(crLimHit())h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Лимит наличных достигнут ('+money(c.lim)+'). Сдайте деньги продавцу: пока не сдадите, новые заказы взять нельзя.','Naqd limiti tugadi ('+money(c.lim)+'). Pulni sotuvchiga topshiring: topshirmaguncha yangi buyurtma olib boʻlmaydi.')+'</div>';
-  if(c.late>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+crLateTxt(c)+'</div>';
-  if(c.ask>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Продавец записал сдачу денег: подтвердите «Верно» или «Не так» ('+c.ask+'). Смотрите вкладку «Касса».','Sotuvchi pul topshirishni yozdi: «Toʻgʻri» yoki «Notoʻgʻri»ni tasdiqlang ('+c.ask+'). «Kassa» boʻlimiga qarang.')+'</div>';
-  if(c.nvn>0)h+='<div class="note" style="margin-bottom:12px">'+L('Оплат картой и переводом ждёт сверки продавцом: '+c.nvn+'. Смотрите вкладку «Касса».','Sotuvchi tekshirishini kutayotgan karta va oʻtkazma toʻlovlari: '+c.nvn+'. «Kassa» boʻlimiga qarang.')+'</div>';
-  if(c.soon)h+='<div class="note" style="margin-bottom:12px">'+L('Собирается заказов: '+c.soon+'. Когда они будут готовы, придёт сообщение в Telegram.','Yigʻilayotgan buyurtmalar: '+c.soon+'. Tayyor boʻlsa, Telegramga xabar keladi.')+'</div>';
+  if(crLimHit())h+='<div class="note warnnote" style="margin-bottom:8px">'+L('Лимит наличных достигнут ('+money(c.lim)+'). Сдайте деньги продавцу: пока не сдадите, новые заказы взять нельзя.','Naqd limiti tugadi ('+money(c.lim)+'). Pulni sotuvchiga topshiring: topshirmaguncha yangi buyurtma olib boʻlmaydi.')+'</div>';
+  if(c.late>0)h+='<div class="note warnnote" style="margin-bottom:8px">'+crLateTxt(c)+'</div>';
+  if(c.ask>0)h+='<div class="note warnnote" style="margin-bottom:8px">'+L('Продавец записал сдачу денег: подтвердите «Верно» или «Не так» ('+c.ask+'). Смотрите вкладку «Касса».','Sotuvchi pul topshirishni yozdi: «Toʻgʻri» yoki «Notoʻgʻri»ni tasdiqlang ('+c.ask+'). «Kassa» boʻlimiga qarang.')+'</div>';
+  if(c.nvn>0)h+='<div class="note" style="margin-bottom:8px">'+L('Оплат картой и переводом ждёт сверки продавцом: '+c.nvn+'. Смотрите вкладку «Касса».','Sotuvchi tekshirishini kutayotgan karta va oʻtkazma toʻlovlari: '+c.nvn+'. «Kassa» boʻlimiga qarang.')+'</div>';
+  if(c.soon)h+='<div class="note" style="margin-bottom:8px">'+L('Собирается заказов: '+c.soon+'. Когда они будут готовы, придёт сообщение в Telegram.','Yigʻilayotgan buyurtmalar: '+c.soon+'. Tayyor boʻlsa, Telegramga xabar keladi.')+'</div>';
   const sec=(t,list)=>list.length?'<h3 class="dsub">'+t+'</h3><div class="ordlist">'+list.map(o=>orderCard(o,'courier')).join('')+'</div>':'';
   h+=sec(L('Мои заказы','Mening buyurtmalarim'),mine)+sec(L('Свободные заказы','Boʻsh buyurtmalar'),free)+sec(L('Уже взяли другие','Boshqalar olgan'),other)+sec(L('Доставлено сегодня','Bugun yetkazilgan'),done);
   if(!mine.length&&!free.length&&!other.length&&!done.length)h+='<div class="empty"><b>'+L('Заказов на доставку пока нет','Yetkazish uchun buyurtma hozircha yoʻq')+'</b>'+L('Когда продавец отметит заказ готовым к отправке, он появится здесь и придёт сообщением в Telegram с кнопкой «Взял».','Sotuvchi buyurtmani joʻnatishga tayyor deb belgilasa, u shu yerda paydo boʻladi va Telegramga «Oldim» tugmasi bilan keladi.')+'</div>';
@@ -3137,12 +3137,12 @@ function crRowHTML(r,cid){
 }
 function crCashHTML(){
   const c=S.cr;
-  let h='<div class="stat hot" style="margin:14px 0"><small>'+L('На руках сейчас','Hozir qoʻlingizda')+'</small><b>'+money(c.cash)+'</b></div>'
+  let h='<div class="stat hot" style="margin:10px 0"><small>'+L('На руках сейчас','Hozir qoʻlingizda')+'</small><b>'+money(c.cash)+'</b></div>'
     +'<p class="rnote">'+L('Это наличные, которые вы приняли от покупателей и должников. Передайте их продавцу: он отметит это у себя, и сумма здесь уменьшится. Карта и перечисление сюда не попадают.','Bu xaridorlar va qarzdorlardan olgan naqd pullaringiz. Sotuvchiga topshiring: u oʻzida belgilaydi va bu yerda summa kamayadi. Karta va oʻtkazma bu yerga kirmaydi.')+'</p>';
-  h+='<div class="note'+(c.late>0?' warnnote':'')+'" style="margin-bottom:12px">'+L('Срок сдачи наличных: ','Naqd pulni topshirish muddati: ')+'<b>'+dlName(c.dl)+'</b>'+(c.cash>0&&c.cs?' · '+L('самые старые деньги на руках с ','eng eski pul qoʻlingizda: ')+esc(jrDate(c.cs)):'')+'</div>';
-  if(c.late>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+crLateTxt(c)+'</div>';
-  if(c.ask>0)h+='<div class="note warnnote" style="margin-bottom:12px">'+L('Продавец записал сдачу денег: подтвердите ниже «Верно» или «Не так» ('+c.ask+').','Sotuvchi pul topshirishni yozdi: quyida «Toʻgʻri» yoki «Notoʻgʻri»ni tasdiqlang ('+c.ask+').')+'</div>';
-  if(c.lim>0)h+='<div class="note'+(c.cash>=c.lim?' warnnote':'')+'" style="margin-bottom:12px">'+L('Лимит наличных: ','Naqd limiti: ')+money(c.lim)+(c.cash>=c.lim?L('. Лимит достигнут: пока не сдадите деньги продавцу, новые заказы и наличные оплаты долга брать нельзя.','. Limit tugadi: pulni topshirmaguncha yangi buyurtma va qarzning naqd toʻlovini olib boʻlmaydi.'):'')+'</div>';
+  h+='<div class="note'+(c.late>0?' warnnote':'')+'" style="margin-bottom:8px">'+L('Срок сдачи наличных: ','Naqd pulni topshirish muddati: ')+'<b>'+dlName(c.dl)+'</b>'+(c.cash>0&&c.cs?' · '+L('самые старые деньги на руках с ','eng eski pul qoʻlingizda: ')+esc(jrDate(c.cs)):'')+'</div>';
+  if(c.late>0)h+='<div class="note warnnote" style="margin-bottom:8px">'+crLateTxt(c)+'</div>';
+  if(c.ask>0)h+='<div class="note warnnote" style="margin-bottom:8px">'+L('Продавец записал сдачу денег: подтвердите ниже «Верно» или «Не так» ('+c.ask+').','Sotuvchi pul topshirishni yozdi: quyida «Toʻgʻri» yoki «Notoʻgʻri»ni tasdiqlang ('+c.ask+').')+'</div>';
+  if(c.lim>0)h+='<div class="note'+(c.cash>=c.lim?' warnnote':'')+'" style="margin-bottom:8px">'+L('Лимит наличных: ','Naqd limiti: ')+money(c.lim)+(c.cash>=c.lim?L('. Лимит достигнут: пока не сдадите деньги продавцу, новые заказы и наличные оплаты долга брать нельзя.','. Limit tugadi: pulni topshirmaguncha yangi buyurtma va qarzning naqd toʻlovini olib boʻlmaydi.'):'')+'</div>';
   if(!c.cashOk)return h+loadingHTML();
   if(c.nv.length)h+='<h3 class="dsub">'+L('Не сверено · ','Tekshirilmagan · ')+c.nv.length+'</h3><p class="rnote">'+L('Оплаты картой и переводом, которые вы приняли. В вашу кассу они не входят: продавец проверит поступление в банке и отметит «Деньги пришли».','Siz qabul qilgan karta va oʻtkazma toʻlovlari. Ular kassangizga kirmaydi: sotuvchi bankda tushganini tekshirib, «Pul tushdi» deb belgilaydi.')+'</p><div class="lbox">'+c.nv.map(x=>nvRowHTML(x)).join('')+'</div>';
   h+='<h3 class="dsub">'+L('История','Tarix')+'</h3>';
@@ -3259,10 +3259,10 @@ function couriersHTML(){
   if(!d.ok)return h+loadingHTML();
   if(!d.list.length)return h+'<div class="empty"><b>'+L('Доставщиков пока нет','Yetkazuvchilar hozircha yoʻq')+'</b>'+L('Если возите заказы сами, этот раздел не нужен.','Buyurtmalarni oʻzingiz olib borsangiz, bu boʻlim kerak emas.')+'</div>';
   const total=d.list.reduce((t,c)=>t+(c.cash||0),0);
-  if(total>0)h+='<div class="note warnnote" style="margin-top:12px">'+L('Наличные у доставщиков: ','Yetkazuvchilardagi naqd pul: ')+money(total)+'</div>';
+  if(total>0)h+='<div class="note warnnote" style="margin-top:8px">'+L('Наличные у доставщиков: ','Yetkazuvchilardagi naqd pul: ')+money(total)+'</div>';
   const lateN=d.list.filter(c=>c.late>0).length;
-  if(lateN>0)h+='<div class="note warnnote" style="margin-top:12px">'+L('Не сдали деньги в срок: '+lateN+'. Они выделены ниже.','Pulni muddatida topshirmaganlar: '+lateN+'. Ular quyida belgilangan.')+'</div>';
-  return h+'<div class="dlist" style="margin-top:12px">'+d.list.map(dvCardHTML).join('')+'</div>';
+  if(lateN>0)h+='<div class="note warnnote" style="margin-top:8px">'+L('Не сдали деньги в срок: '+lateN+'. Они выделены ниже.','Pulni muddatida topshirmaganlar: '+lateN+'. Ular quyida belgilangan.')+'</div>';
+  return h+'<div class="dlist" style="margin-top:8px">'+d.list.map(dvCardHTML).join('')+'</div>';
 }
 function dvCardHTML(c){
   const d=S.dv,st=dvState(c),open=d.open===c.id,dis=d.busy?' disabled':'';
@@ -3945,7 +3945,7 @@ function prodHTML(){
 /* уровень 1: загрузка прайса, товары «на проверке» и список категорий */
 function prodListHTML(){
   const P=S.prod,pend=P.items.filter(inModGroup);
-  let h='<div class="note" style="margin-bottom:14px">'+L('Товары компании по категориям. Нажмите на категорию, чтобы открыть её товары: название, описание, вес, цену и фото. Покупатели видят изменения сразу.','Kompaniya mahsulotlari kategoriyalar boʻyicha. Mahsulotlarni koʻrish uchun kategoriyani bosing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Xaridorlar oʻzgarishlarni darhol koʻradi.')+'</div>'
+  let h='<div class="note" style="margin-bottom:0">'+L('Товары компании по категориям. Нажмите на категорию, чтобы открыть её товары: название, описание, вес, цену и фото. Покупатели видят изменения сразу.','Kompaniya mahsulotlari kategoriyalar boʻyicha. Mahsulotlarni koʻrish uchun kategoriyani bosing: nomi, tavsifi, ogʻirligi, narxi va rasmi. Xaridorlar oʻzgarishlarni darhol koʻradi.')+'</div>'
     +'<div class="savebar" id="savebar"></div>';
   h+=impCardHTML();
   h+='<div id="mban">'+modBanInner()+'</div>';
@@ -3965,7 +3965,7 @@ function prodListHTML(){
 function prodCatHTML(c){
   const id=esc(c.id),list=visProd(),n=nm(c);
   let h=bkLink('pback',L('Категории','Kategoriyalar'))
-    +'<div class="eyebrow" style="margin-top:12px">'+L('Категория','Kategoriya')+'</div><h2 class="ctitle" id="ctitle">'+(n?esc(n):'<i>'+L('Без названия','Nomsiz')+'</i>')+'</h2><div class="ccnt" id="ccnt">'+catCountTxt(list.length)+'</div>'
+    +'<div class="eyebrow">'+L('Категория','Kategoriya')+'</div><h2 class="ctitle" id="ctitle">'+(n?esc(n):'<i>'+L('Без названия','Nomsiz')+'</i>')+'</h2><div class="ccnt" id="ccnt">'+catCountTxt(list.length)+'</div>'
     +'<div class="savebar" id="savebar"></div><div id="mban">'+modBanInner()+'</div>'
     +'<div class="card ccard"><h3>'+L('Название категории','Kategoriya nomi')+'</h3><div class="unit">'+L('Покупатель видит название на языке своего приложения. Если узбекское пустое, покажется русское.','Xaridor oʻz ilovasi tilidagi nomni koʻradi. Oʻzbekcha nom boʻsh boʻlsa, ruscha koʻrinadi.')+'</div>'
     +'<div class="cf"><span class="ltag">RU</span><input type="text" id="cn-'+id+'" data-cid="'+id+'" data-cp="name" value="'+esc(c.name)+'" maxlength="40" aria-label="'+esc(L('Название по-русски','Ruscha nomi'))+'" placeholder="'+esc(L('Например: Консервы','Masalan: Консервы'))+'"></div>'
@@ -3974,8 +3974,8 @@ function prodCatHTML(c){
   if(list.length>1)h+='<div class="row-btns pfoldbar" id="pfoldbar"><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="0">'+L('Свернуть все','Hammasini yigʻish')+'</button><button type="button" class="btn ghost sm" data-act="pfoldall" data-v="1">'+L('Развернуть все','Hammasini yoyish')+'</button></div>';
   h+='<div class="plist">'+list.map(prodRow).join('')+'</div>';
   h+='<div style="margin-top:10px"><button type="button" class="btn" data-act="pnew">'+L('+ Добавить товар','+ Mahsulot qoʻshish')+'</button></div>';
-  h+='<div class="note" style="margin:14px 0 0">'+L('Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым. Выключите «Показывать покупателям», чтобы убрать товар из каталога совсем; включите, и он вернётся.','Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi. Mahsulotni katalogdan butunlay olib qoʻyish uchun «Xaridorlarga koʻrsatish» ni oʻchiring; yoqsangiz, u qaytadi.')+'</div>';
-  h+='<div style="margin-top:22px"><button type="button" class="btn ghost sm dangerbtn" data-act="cdel" data-id="'+id+'">'+L('Удалить категорию','Kategoriyani oʻchirish')+'</button></div>';
+  h+='<div class="note" style="margin:10px 0 0">'+L('Фото сжимается на телефоне. Снимите галочку «В наличии», если товара нет: он останется в каталоге серым. Выключите «Показывать покупателям», чтобы убрать товар из каталога совсем; включите, и он вернётся.','Rasm telefonda siqiladi. Mahsulot boʻlmasa, «Mavjud» belgisini olib tashlang: u katalogda kulrang boʻlib qoladi. Mahsulotni katalogdan butunlay olib qoʻyish uchun «Xaridorlarga koʻrsatish» ni oʻchiring; yoqsangiz, u qaytadi.')+'</div>';
+  h+='<div style="margin-top:16px"><button type="button" class="btn ghost sm dangerbtn" data-act="cdel" data-id="'+id+'">'+L('Удалить категорию','Kategoriyani oʻchirish')+'</button></div>';
   return h;
 }
 /* открыть категорию («» — вернуться к списку): стрелка Telegram «Назад» тоже закрывает категорию (navOver) */
@@ -4365,7 +4365,7 @@ function clientSheetHTML(){
   const b=S.base,x=b.cx||{},d=b.cdd||{},f=b.cf||{},owner=b.role==='owner';
   const phone=String(x.phone||'').replace(/[^\d+]/g,''),tgu=d.my&&d.my.tg;
   let body='';
-  if(d.err)body='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn" data-act="cretry">'+L('Повторить','Qayta urinish')+'</button></div>';
+  if(d.err)body='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="justify-content:center;margin-bottom:10px"><button type="button" class="btn" data-act="cretry">'+L('Повторить','Qayta urinish')+'</button></div>';
   else if(!d.loaded)body='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else{
     const m=d.m||{n:0,ds:0,sum:0,last:''},my=d.my||{};
@@ -4646,7 +4646,7 @@ function sellLinkHTML(){
   const l=sellLink();
   if(!l)return '';
   return '<div class="card"><h3>'+L('Ссылка для покупателей','Xaridorlar uchun havola')+'</h3><div class="unit">'+L('Отправьте её покупателям: она сразу открывает ваш каталог в боте.','Uni xaridorlarga yuboring: u botda darhol katalogingizni ochadi.')+'</div>'
-    +'<div class="mono small">'+esc(l)+'</div><div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="copy" data-v="'+esc(l)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Копировать ссылку','Havolani nusxalash')+'</button></div></div>';
+    +'<div class="mono small">'+esc(l)+'</div><div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost" data-act="copy" data-v="'+esc(l)+'" data-ok="'+esc(L('Ссылка скопирована','Havola nusxalandi'))+'" data-lab="">'+L('Копировать ссылку','Havolani nusxalash')+'</button></div></div>';
 }
 /* Цены по регионам у продавца: у каждого отмеченного региона три поля (цена доставки, бесплатно от, минимальный заказ).
    Пустое поле — как в общих настройках выше (серая подсказка показывает, какие они), 0 — настоящий ноль. */
@@ -4655,7 +4655,7 @@ function ratesEditHTML(){
   if(!only||!z.length)return '';
   const rt=s.rates&&typeof s.rates==='object'?s.rates:{},def=ratesFor(s,'pickup','');
   const f=(id,k,lab)=>{const v=rt[id]&&rt[id][k];return '<label class="rtfld"><span>'+lab+'</span><input type="number" inputmode="numeric" min="0" max="'+RATE_MAX+'" data-rate="'+id+':'+k+'" value="'+(typeof v==='number'?v:'')+'" placeholder="'+esc(L('как в общих: ','umumiy: ')+num(def[k]))+'" aria-label="'+esc(regionName(id)+': '+lab)+'"></label>'};
-  return '<div class="lab" style="margin-top:14px">'+L('Цены по регионам','Hududlar boʻyicha narxlar')+'</div>'
+  return '<div class="lab" style="margin-top:10px">'+L('Цены по регионам','Hududlar boʻyicha narxlar')+'</div>'
     +'<div class="note">'+L('Для каждого отмеченного региона можно задать свои цену доставки, порог бесплатной доставки и минимальный заказ. Пустое поле значит «как в общих настройках выше», а 0 — настоящий ноль (бесплатно, нет порога, нет минимума). Минимальный заказ региона действует только на доставку, самовывоз считается по общему.','Har bir belgilangan hudud uchun yetkazib berish narxi, bepul yetkazish chegarasi va minimal buyurtmani alohida belgilash mumkin. Boʻsh maydon «yuqoridagi umumiy sozlamalardagidek» degani, 0 esa haqiqiy nol (bepul, chegarasiz, minimumsiz). Hududning minimal buyurtmasi faqat yetkazib berishga taʼsir qiladi, olib ketish umumiy boʻyicha hisoblanadi.')+'</div>'
     +z.map(id=>'<div class="rtrow"><div class="rtname">'+esc(regionName(id))+'</div><div class="rtgrid">'
       +f(id,'fee',L('Доставка, сум','Yetkazib berish, soʻm'))+f(id,'free',L('Бесплатно от, сум','Bepul boʻladigan summa, soʻm'))+f(id,'min',L('Минимальный заказ, сум','Minimal buyurtma, soʻm'))
@@ -4670,7 +4670,7 @@ function regionsEditHTML(){
     +'<div class="regs" id="regbox"'+(only?'':' hidden')+'>'+REGIONS.map(r=>'<label class="chk"><input type="checkbox" data-sreg="'+r.id+'"'+(z.includes(r.id)?' checked':'')+'> '+esc(regionName(r.id))+'</label>').join('')+'</div>'
     +'<div id="ratebox">'+ratesEditHTML()+'</div>'
     +'<div class="note" style="margin-top:8px">'+L('Покупатель из неотмеченного региона не сможет заказать доставку, но самовывоз ему доступен. Если не отметить ни одного региона, доставка будет по всей стране.','Belgilanmagan hududdagi xaridor yetkazib berishni tanlay olmaydi, lekin olib ketish unga ochiq. Birorta hudud belgilanmasa, yetkazib berish butun mamlakat boʻylab boʻladi.')+'</div>'
-    +'<div style="margin-top:12px"><label class="lab" for="s-home">'+L('Регион вашего склада (где самовывоз)','Omboringiz hududi (olib ketish joyi)')+'</label><select id="s-home" data-s="home"><option value="">'+L('Не указывать','Koʻrsatilmasin')+'</option>'
+    +'<div style="margin-top:8px"><label class="lab" for="s-home">'+L('Регион вашего склада (где самовывоз)','Omboringiz hududi (olib ketish joyi)')+'</label><select id="s-home" data-s="home"><option value="">'+L('Не указывать','Koʻrsatilmasin')+'</option>'
     +REGIONS.map(r=>'<option value="'+r.id+'"'+(s.home===r.id?' selected':'')+'>'+esc(regionName(r.id))+'</option>').join('')+'</select>'
     +'<div class="unit">'+L('Покупатели этого региона увидят вас в списке первыми, даже если вы туда не доставляете.','Shu hududdagi xaridorlar sizni roʻyxatda birinchi koʻradi, hatto yetkazib bermasangiz ham.')+'</div></div></div>';
 }
@@ -5155,7 +5155,7 @@ function paintReview(){
   const v=S.rv,body=$('#rvbody');if(!body)return;
   const sg=$('#rvsegs');if(sg)sg.innerHTML=rvSegsHTML();
   if(!v.loaded){
-    body.innerHTML=v.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="rvreload">'+L('Повторить','Qayta urinish')+'</button></div>'
+    body.innerHTML=v.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:10px;justify-content:center"><button type="button" class="btn" data-act="rvreload">'+L('Повторить','Qayta urinish')+'</button></div>'
       :'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
     paintRvSheet();return;
   }
@@ -5208,7 +5208,7 @@ function paintRvSheet(){
       +'<div class="fs-head"><h2>'+L('Вернуть товар продавцу','Mahsulotni sotuvchiga qaytarish')+'</h2><button type="button" class="lnk" data-act="rsx">'+L('Закрыть','Yopish')+'</button></div>'
       +'<div class="fs-body"><div class="rsum"><b>'+esc(r.name)+'</b><small>'+esc(r.dname)+'</small></div>'
       +'<div class="fs-t">'+L('Быстрые причины','Tezkor sabablar')+'</div><div class="fs-c" id="rwhy">'+RV_WHY().map(x=>'<button type="button" class="chip" data-act="rwhy" data-k="'+x[0]+'" data-ph="'+esc(x[2])+'" aria-pressed="false">'+esc(x[1])+'</button>').join('')+'</div>'
-      +'<label class="lab" for="rtxt" style="margin-top:14px">'+L('Что нужно исправить','Nimani tuzatish kerak')+'</label><textarea id="rtxt" data-rtxt="1" maxlength="300" rows="4" placeholder="'+esc(L('Напишите, что исправить. Продавец получит это сообщением.','Nimani tuzatishni yozing. Sotuvchi buni xabar sifatida oladi.'))+'">'+esc(v.rtxt)+'</textarea><div class="rcount" id="rcount"></div></div>'
+      +'<label class="lab" for="rtxt" style="margin-top:10px">'+L('Что нужно исправить','Nimani tuzatish kerak')+'</label><textarea id="rtxt" data-rtxt="1" maxlength="300" rows="4" placeholder="'+esc(L('Напишите, что исправить. Продавец получит это сообщением.','Nimani tuzatishni yozing. Sotuvchi buni xabar sifatida oladi.'))+'">'+esc(v.rtxt)+'</textarea><div class="rcount" id="rcount"></div></div>'
       +'<div class="fs-foot"><button type="button" class="btn" id="rsend" data-act="rsend" disabled>'+L('Вернуть продавцу','Sotuvchiga qaytarish')+'</button></div></div>';
     rvRetSync();
   }else if(v.edit){
@@ -5263,7 +5263,7 @@ function rvEditHTML(e){
     +'<div class="fs-head"><h2>'+L('Изменить товар','Mahsulotni tuzatish')+'</h2><button type="button" class="lnk" data-act="rsx">'+L('Закрыть','Yopish')+'</button></div>'
     +'<div class="fs-body"><div class="rsum"><span class="dpill static">'+esc(e.dname)+'</span>'+modTag(p)+'</div>'
     +'<div class="pph" id="rvph"></div>'
-    +'<div class="pf rvform" style="margin-top:12px">'
+    +'<div class="pf rvform" style="margin-top:8px">'
     +fld('name',L('Название','Nomi'),inp('name','text',p.name,' maxlength="60"'),'full')
     +fld('uz',L('Название по-узбекски','Oʻzbekcha nomi'),inp('uz','text',p.uz||'',' maxlength="60"'),'full')
     +fld('desc',L('Описание','Tavsif'),ta('desc',p.desc||''),'full')
@@ -5659,7 +5659,7 @@ function ownAboutHTML(){
     +'<div class="full"><label class="lab" for="o-abph">'+L('Телефон','Telefon')+'</label><input type="tel" id="o-abph" data-own="faPhone" inputmode="tel" maxlength="25" placeholder="+998 90 123 45 67" value="'+esc(v('faPhone',a.phone))+'">'+hintD('Кнопка «Позвонить».','«Qoʻngʻiroq qilish» tugmasi.')+'</div>'
     +'<div class="full"><label class="lab" for="o-abtg">Telegram</label><input type="text" id="o-abtg" data-own="faTg" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="120" placeholder="sarbon_optom_bot" value="'+esc(v('faTg',a.tg))+'">'+hintD('Ник без @ или ссылка t.me. Кнопка «Написать в Telegram».','@ siz nik yoki t.me havolasi. «Telegramda yozish» tugmasi.')+'</div>'
     +'<div class="full"><label class="lab" for="o-abig">Instagram</label><input type="text" id="o-abig" data-own="faIg" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="120" placeholder="sarbon.navoi" value="'+esc(v('faIg',a.ig))+'">'+hintD('Ник без @ или ссылка на профиль.','@ siz nik yoki profil havolasi.')+'</div></div>'
-    +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="ownabout"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button><button type="button" class="btn ghost" data-act="nav" data-v="about">'+L('Открыть «О нас»','«Biz haqimizda»ni ochish')+'</button></div></div>';
+    +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="ownabout"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button><button type="button" class="btn ghost" data-act="nav" data-v="about">'+L('Открыть «О нас»','«Biz haqimizda»ni ochish')+'</button></div></div>';
   return h;
 }
 async function ownAbout(){
@@ -5778,7 +5778,7 @@ function paintWhList(){
 function renderWh(){
   const W=S.wh,cnt=t=>W.orders.filter(o=>whTab(o)===t).length,wait=cnt('wait'),okn=cnt('ok'),inn=cnt('in'),sentn=cnt('sent');
   let h='<div class="wrap page"><div class="hrow"><div><div class="eyebrow">'+L('Склад Sarbon','Sarbon ombori')+'</div><h1>'+L('Склад','Ombor')+'</h1></div></div>';
-  if(!W.ok)h+=W.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="whreload">'+L('Повторить','Qayta urinish')+'</button></div>'
+  if(!W.ok)h+=W.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:10px;justify-content:center"><button type="button" class="btn" data-act="whreload">'+L('Повторить','Qayta urinish')+'</button></div>'
     :'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
   else{
     const bz=W.info&&W.info.bz?bzList().find(x=>x.id===W.info.bz):null;
@@ -5916,9 +5916,9 @@ function shopsListHTML(list){
   if(!S.region)return bar+grid(all);
   const near=all.filter(r=>servesRegion(r,S.region)),far=all.filter(r=>!servesRegion(r,S.region));
   if(!far.length)return bar+grid(near);
-  if(!near.length)return bar+'<div class="note warnnote" role="status" style="margin-bottom:12px">'+esc(L('В вашем регионе ('+regionName(S.region)+') пока нет продавцов с доставкой. Ниже те, у кого можно заказать с самовывозом.','Sizning hududingizda ('+regionName(S.region)+') yetkazib beradigan sotuvchilar hozircha yoʻq. Quyida olib ketish bilan buyurtma berish mumkin boʻlganlar.'))+'</div>'+grid(far);
+  if(!near.length)return bar+'<div class="note warnnote" role="status" style="margin-bottom:8px">'+esc(L('В вашем регионе ('+regionName(S.region)+') пока нет продавцов с доставкой. Ниже те, у кого можно заказать с самовывозом.','Sizning hududingizda ('+regionName(S.region)+') yetkazib beradigan sotuvchilar hozircha yoʻq. Quyida olib ketish bilan buyurtma berish mumkin boʻlganlar.'))+'</div>'+grid(far);
   return bar+grid(near)
-    +'<div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn ghost" data-act="showfar" aria-expanded="'+S.showFar+'">'
+    +'<div class="row-btns" style="justify-content:center;margin-bottom:10px"><button type="button" class="btn ghost" data-act="showfar" aria-expanded="'+S.showFar+'">'
     +(S.showFar?L('Скрыть тех, кто не доставляет к вам','Sizga yetkazib bermaydiganlarni yashirish'):L('Показать и тех, кто не доставляет к вам ('+far.length+')','Sizga yetkazib bermaydiganlarni ham koʻrsatish ('+far.length+')'))+'</button></div>'
     +(S.showFar?'<p class="lead">'+L('Эти продавцы не доставляют в ваш регион, но у них можно заказать с самовывозом.','Bu sotuvchilar sizning hududingizga yetkazib bermaydi, lekin olib ketish bilan buyurtma berish mumkin.')+'</p>'+grid(far):'');
 }
@@ -6032,27 +6032,27 @@ function bzHowHTML(b){
   const ls=String(raw).split('\n').map(x=>x.trim()).filter(Boolean);
   if(!ls.length)return '';
   const head=ls[0],steps=ls.slice(1);
-  return '<div class="how">'+(steps.length?'<h2>'+esc(head)+'</h2><ol>'+steps.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>':'<p style="margin:0 0 12px;font-size:14px;line-height:1.45">'+esc(head)+'</p>')+'</div>';
+  return '<div class="how">'+(steps.length?'<h2>'+esc(head)+'</h2><ol>'+steps.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ol>':'<p style="margin:0 0 8px;font-size:14px;line-height:1.45">'+esc(head)+'</p>')+'</div>';
 }
 function renderShops(){
   const h=S.hub,me=h.me,ck=SHOP_CATS.includes(S.shopsCat)?S.shopsCat:'';
   const bk=ck==='bazaar'&&h.loaded?bzSel():'';   // открытый базар: '', 'none' («Без базара») или номер
   const bkName=bk==='none'?L('Без базара','Bozor koʻrsatilmagan'):bzName(bzList().find(x=>x.id===bk));
   const pickBz=ck==='bazaar'&&!bk&&h.loaded&&!!bzGroups();   // вместо продавцов показаны базары
-  let out='<div class="wrap page">'+(bk?bkLink('bzback',L('Базары','Bozorlar'))+'<div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Базар','Bozor')+'</div><h1>'+esc(bkName)+'</h1></div></div>'
-    :ck?bkLink('catback',L('Категории','Kategoriyalar'))+'<div class="hrow" style="margin-top:12px"><div><div class="eyebrow">'+L('Категория','Kategoriya')+'</div><h1>'+esc(shopCatName(ck))+'</h1></div></div>'
+  let out='<div class="wrap page">'+(bk?bkLink('bzback',L('Базары','Bozorlar'))+'<div class="hrow" style="margin-top:8px"><div><div class="eyebrow">'+L('Базар','Bozor')+'</div><h1>'+esc(bkName)+'</h1></div></div>'
+    :ck?bkLink('catback',L('Категории','Kategoriyalar'))+'<div class="hrow" style="margin-top:8px"><div><div class="eyebrow">'+L('Категория','Kategoriya')+'</div><h1>'+esc(shopCatName(ck))+'</h1></div></div>'
     :'<div class="hrow"><div><h1>'+esc(hubTitle())+'</h1><div class="tagline">'+L('Продукты питания: продавцы и покупатели в одном приложении','Oziq-ovqat mahsulotlari: sotuvchilar va xaridorlar bir ilovada')+'</div></div></div>');
   if(!h.loaded&&!h.err)out+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
-  else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
+  else if(!h.loaded)out+='<div class="empty"><b>'+L('Не удалось загрузить список','Roʻyxatni yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:10px;justify-content:center"><button type="button" class="btn" data-act="hubreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
     out+=bannerSlot();
     if(ck&&!pickBz)out+='<p class="lead">'+L('Выберите продавца, чтобы посмотреть каталог и заказать товары. В одной корзине товары только одного продавца.','Katalog va buyurtma uchun sotuvchini tanlang. Bitta savatda faqat bitta sotuvchining mahsulotlari boʻladi.')+'</p>';
     if(bk&&bk!=='none')out+=bzHowHTML(bzList().find(x=>x.id===bk));
     const pc=pendingCart();
-    if(pc)out+='<div class="note" style="margin-bottom:12px">🛒 '+esc(L('В корзине '+pc.n+' поз.'+(pc.name?' · «'+pc.name+'»':''),'Savatda '+pc.n+' ta mahsulot'+(pc.name?' · «'+pc.name+'»':'')))+' <button type="button" class="btn ghost sm" data-act="opencartshop" data-id="'+esc(pc.did)+'">'+L('Открыть корзину','Savatni ochish')+'</button></div>';
+    if(pc)out+='<div class="note" style="margin-bottom:8px">🛒 '+esc(L('В корзине '+pc.n+' поз.'+(pc.name?' · «'+pc.name+'»':''),'Savatda '+pc.n+' ta mahsulot'+(pc.name?' · «'+pc.name+'»':'')))+' <button type="button" class="btn ghost sm" data-act="opencartshop" data-id="'+esc(pc.did)+'">'+L('Открыть корзину','Savatni ochish')+'</button></div>';
     const as=viewAs();
     const dels=me&&me.delivers||[];
-    if(!ck&&dels.length&&(!as||as==='courier'))out+='<div class="row-btns" style="margin-bottom:14px">'+dels.map(x=>'<button type="button" class="btn ghost sm" data-act="courierof" data-id="'+esc(x.id)+'">'+esc(L('Доставка: ','Yetkazib berish: ')+x.name)+'</button>').join('')+'</div>';
+    if(!ck&&dels.length&&(!as||as==='courier'))out+='<div class="row-btns" style="margin-bottom:10px">'+dels.map(x=>'<button type="button" class="btn ghost sm" data-act="courierof" data-id="'+esc(x.id)+'">'+esc(L('Доставка: ','Yetkazib berish: ')+x.name)+'</button>').join('')+'</div>';
     if(!ck)out+=socHTML();
     out+=ck?catListHTML(ck):catsHTML();
     if(!ck)out+=popHTML();
@@ -6272,7 +6272,7 @@ function renderBase(){
   const b=S.base,ag=S.hub.me&&S.hub.me.agent,w=baseW();
   let h='<div class="wrap page bpage">';
   if(!b.loaded&&!b.err)h+='<h1>'+L('База покупателей','Xaridorlar bazasi')+'</h1><div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
-  else if(!b.loaded)h+='<h1>'+L('База покупателей','Xaridorlar bazasi')+'</h1><div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="basereload">'+L('Повторить','Qayta urinish')+'</button></div>';
+  else if(!b.loaded)h+='<h1>'+L('База покупателей','Xaridorlar bazasi')+'</h1><div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:10px;justify-content:center"><button type="button" class="btn" data-act="basereload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
     h+='<div class="btop"><h1 id="btitle"></h1><button type="button" class="qbtn" data-act="blegend" aria-label="'+esc(L('Что значат знаки','Belgilar nimani anglatadi'))+'">?</button>'
       +(w?'<button type="button" class="btn" data-act="basenew">＋ '+L('Добавить','Qoʻshish')+'</button>':'')+'</div>';
@@ -6324,7 +6324,7 @@ function baseFormHTML(){
     +'<div class="full"><label class="lab" for="bf-note">'+L('Заметка о визите (покупатель и продавцы её не видят)','Tashrif haqida eslatma (xaridor va sotuvchilar koʻrmaydi)')+'</label><textarea id="bf-note" data-bf="note" rows="3" maxlength="500">'+esc(f.note)+'</textarea>'+hintD('Что удалось выяснить за визит. Пример: придёт во вторник, интересует масло.','Tashrif vaqtida nima aniqlandi. Masalan: seshanba kuni keladi, yogʻ qiziqtiradi.')+'</div>'
     +(b.edit!=='new'?'<div class="full mgbox"><button type="button" class="btn ghost" data-act="mgopen" data-id="'+esc(b.edit)+'">'+L('Объединить с дублем…','Dublikat bilan birlashtirish…')+'</button>'+hintD('Если этот покупатель записан в базе дважды: дубль вольётся сюда, его номера и аккаунты перейдут к этому покупателю.','Xaridor bazada ikki marta yozilgan boʻlsa: dublikat shu yerga qoʻshiladi, uning raqamlari va akkauntlari shu xaridorga oʻtadi.')+'</div>':'')
     +'</div><div class="err" id="bferr" role="alert">'+esc(b.ferr)+'</div>'
-    +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn" data-act="basesave"'+(b.busy?' disabled':'')+'>'+(b.busy?L('Сохраняем…','Saqlanmoqda…'):L('Сохранить','Saqlash'))+'</button><button type="button" class="btn ghost" data-act="basecancel"'+(b.busy?' disabled':'')+'>'+L('Отмена','Bekor qilish')+'</button></div></div>';
+    +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="basesave"'+(b.busy?' disabled':'')+'>'+(b.busy?L('Сохраняем…','Saqlanmoqda…'):L('Сохранить','Saqlash'))+'</button><button type="button" class="btn ghost" data-act="basecancel"'+(b.busy?' disabled':'')+'>'+L('Отмена','Bekor qilish')+'</button></div></div>';
 }
 function bChip(act,k,v,lab,n,on){return '<button type="button" class="chip" data-act="'+act+'" data-k="'+k+'" data-v="'+esc(v)+'" aria-pressed="'+on+'">'+esc(lab)+(n!==undefined?'<span class="cnt">'+n+'</span>':'')+'</button>'}
 /* все добавленные районы, даже пока без клиентов; число — с учётом остальных фильтров. Агенту — его территории */
@@ -6365,8 +6365,8 @@ function paintBase(){
   if(owner&&b.ag)bar+='<button type="button" class="chip on x" data-act="bclr" data-k="ag">'+esc(bAgName(b.ag))+'<span class="xx" aria-hidden="true">✕</span><span class="sr">'+esc(L('Сбросить','Bekor qilish'))+'</span></button>';
   bar+='</div>';
   h+=bar+'<div class="bfrow"><div class="bfound">'+L('Найдено: ','Topildi: ')+num(b.total)+'</div>'+(b.role!=='agent'&&baseShop()?xbtn('clients','','bxport'):'')+'</div>';
-  h+=b.items.length?b.items.map(baseCardHTML).join(''):'<div class="empty"><b>'+L('Никого не найдено','Hech kim topilmadi')+'</b>'+(b.mc&&!b.q&&!b.f&&!b.terr&&!b.ag&&!b.ty?(owner?L('Пока никто не заказывал. Нажмите «С заказами», чтобы увидеть всю базу.','Hozircha hech kim buyurtma bermagan. Butun bazani koʻrish uchun «Buyurtmalilar» tugmasini bosing.'):L('У вас ещё никто не заказывал. Нажмите «Мои покупатели», чтобы увидеть всю базу.','Sizdan hali hech kim buyurtma bermagan. Butun bazani koʻrish uchun «Mening xaridorlarim» tugmasini bosing.')):L('Измените поиск или фильтры.','Qidiruv yoki filtrlarni oʻzgartiring.'))+'</div><div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn ghost" data-act="breset">'+L('Сбросить фильтры','Filtrlarni tozalash')+'</button></div>';
-  if(b.more)h+='<div class="row-btns" style="justify-content:center;margin-bottom:14px"><button type="button" class="btn ghost" data-act="basemore">'+L('Показать ещё','Yana koʻrsatish')+'</button></div>';
+  h+=b.items.length?b.items.map(baseCardHTML).join(''):'<div class="empty"><b>'+L('Никого не найдено','Hech kim topilmadi')+'</b>'+(b.mc&&!b.q&&!b.f&&!b.terr&&!b.ag&&!b.ty?(owner?L('Пока никто не заказывал. Нажмите «С заказами», чтобы увидеть всю базу.','Hozircha hech kim buyurtma bermagan. Butun bazani koʻrish uchun «Buyurtmalilar» tugmasini bosing.'):L('У вас ещё никто не заказывал. Нажмите «Мои покупатели», чтобы увидеть всю базу.','Sizdan hali hech kim buyurtma bermagan. Butun bazani koʻrish uchun «Mening xaridorlarim» tugmasini bosing.')):L('Измените поиск или фильтры.','Qidiruv yoki filtrlarni oʻzgartiring.'))+'</div><div class="row-btns" style="justify-content:center;margin-bottom:10px"><button type="button" class="btn ghost" data-act="breset">'+L('Сбросить фильтры','Filtrlarni tozalash')+'</button></div>';
+  if(b.more)h+='<div class="row-btns" style="justify-content:center;margin-bottom:10px"><button type="button" class="btn ghost" data-act="basemore">'+L('Показать ещё','Yana koʻrsatish')+'</button></div>';
   el.innerHTML=h;
   paintSheet();
 }
@@ -6653,7 +6653,7 @@ function ownStatsHTML(){
     +'<div class="r"><span>'+L('Товаров на сумму','Mahsulotlar summasi')+'</span><span>'+esc(money(t.base))+'</span></div>'
     +(t.active?'<div class="r"><span>'+L('Сейчас в работе','Hozir jarayonda')+'</span><span>'+num(t.active)+'</span></div>':'')
     +'<div class="r t"><span>'+L('Комиссия к получению','Olinadigan komissiya')+'</span><span>'+esc(money(t.cm))+'</span></div></div>'
-    +'<div class="note" style="margin-top:12px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого продавца свой, его можно менять в его карточке: «Продавцы» → «Список». Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: покупатели платят продавцу при получении, продавец платит вам комиссию сам любым способом, а вы подтверждаете получение выше.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir sotuvchining foizi alohida, uni uning kartochkasida («Sotuvchilar» → «Roʻyxat») oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: xaridorlar sotuvchiga olganda toʻlaydi, sotuvchi komissiyani sizga oʻzi istalgan usulda toʻlaydi, siz esa olinganini yuqorida tasdiqlaysiz.')+'</div></div>';
+    +'<div class="note" style="margin-top:8px">'+L('Считаются только выданные и доставленные заказы. Комиссия — процент от суммы товаров после скидки, без доставки. Процент у каждого продавца свой, его можно менять в его карточке: «Продавцы» → «Список». Новый процент действует на заказы, выданные после изменения, прежние не пересчитываются. Деньги приложение не собирает: покупатели платят продавцу при получении, продавец платит вам комиссию сам любым способом, а вы подтверждаете получение выше.','Faqat topshirilgan va yetkazilgan buyurtmalar hisoblanadi. Komissiya — chegirmadan keyingi mahsulotlar summasidan foiz, yetkazib berishsiz. Har bir sotuvchining foizi alohida, uni uning kartochkasida («Sotuvchilar» → «Roʻyxat») oʻzgartirish mumkin. Yangi foiz oʻzgartirilgandan keyin topshirilgan buyurtmalarga amal qiladi, avvalgilari qayta hisoblanmaydi. Ilova pul yigʻmaydi: xaridorlar sotuvchiga olganda toʻlaydi, sotuvchi komissiyani sizga oʻzi istalgan usulda toʻlaydi, siz esa olinganini yuqorida tasdiqlaysiz.')+'</div></div>';
   return h;
 }
 async function ownPct(id){
@@ -6748,22 +6748,22 @@ const cmStats=(t,pending)=>'<div class="stats">'
   +'<div class="stat"><small>'+L('Начислено всего','Jami hisoblangan')+'</small><b>'+esc(money(t.acc))+'</b></div>'
   +'<div class="stat"><small>'+L('Оплачено (подтверждено)','Toʻlangan (tasdiqlangan)')+'</small><b>'+esc(money(t.paid))+'</b></div>'
   +'<div class="stat"><small>'+L('Ждут подтверждения','Tasdiq kutmoqda')+'</small><b>'+(t.nw?esc(money(t.ws))+'<span class="sub"> · '+t.nw+'</span>':'—')+'</b></div></div>';
-const cmErrHTML=()=>'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="commreload">'+L('Повторить','Qayta urinish')+'</button></div>';
+const cmErrHTML=()=>'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:10px;justify-content:center"><button type="button" class="btn" data-act="commreload">'+L('Повторить','Qayta urinish')+'</button></div>';
 /* Экран продавца: сколько он должен площадке, поле «оплатил» и история платежей */
 function commSellerHTML(){
   const c=S.cm,d=c.d;
   if(!d)return c.err?cmErrHTML():loadingHTML();
   let h='<p class="lead">'+L('Площадка берёт '+fmtPct(d.pct)+'% от суммы выданных заказов (товары после скидки, без доставки). Заплатите владельцу любым удобным способом, впишите сумму ниже и нажмите «Оплатил». Когда владелец подтвердит, сумма «К оплате» уменьшится.','Platforma berilgan buyurtmalar summasidan '+fmtPct(d.pct)+'% oladi (chegirmadan keyingi mahsulotlar, yetkazib berishsiz). Egasiga istalgan qulay usulda toʻlang, quyiga summani yozing va «Toʻladim» tugmasini bosing. Egasi tasdiqlagach, «Toʻlanishi kerak» summasi kamayadi.')+'</p>';
-  if(c.nb>0)h+='<div class="bannerbad" role="alert" style="margin-bottom:12px">'+esc(L('Владелец не подтвердил или отменил платежей: '+c.nb+'. Они в истории ниже. Проверьте сумму и отметьте оплату заново.','Egasi tasdiqlamagan yoki bekor qilgan toʻlovlar: '+c.nb+'. Ular quyidagi tarixda. Summani tekshirib, toʻlovni qaytadan belgilang.'))+'</div>';
+  if(c.nb>0)h+='<div class="bannerbad" role="alert" style="margin-bottom:8px">'+esc(L('Владелец не подтвердил или отменил платежей: '+c.nb+'. Они в истории ниже. Проверьте сумму и отметьте оплату заново.','Egasi tasdiqlamagan yoki bekor qilgan toʻlovlar: '+c.nb+'. Ular quyidagi tarixda. Summani tekshirib, toʻlovni qaytadan belgilang.'))+'</div>';
   h+=cmStats(d);
-  if(d.due<0)h+='<div class="note" style="margin-bottom:12px">'+L('Вы заплатили больше, чем начислено. Эта сумма зачтётся в счёт будущей комиссии.','Siz hisoblanganidan koʻp toʻladingiz. Bu summa kelgusi komissiyaga hisoblanadi.')+'</div>';
-  if(d.nw)h+='<div class="note" style="margin-bottom:12px">'+esc(L('Ждут подтверждения владельцем: '+d.nw+' на '+money(d.ws)+'. «К оплате» изменится после подтверждения.','Egasi tasdiqlashini kutmoqda: '+d.nw+' ta, '+money(d.ws)+'. Tasdiqlangach «Toʻlanishi kerak» oʻzgaradi.'))+'</div>';
+  if(d.due<0)h+='<div class="note" style="margin-bottom:8px">'+L('Вы заплатили больше, чем начислено. Эта сумма зачтётся в счёт будущей комиссии.','Siz hisoblanganidan koʻp toʻladingiz. Bu summa kelgusi komissiyaga hisoblanadi.')+'</div>';
+  if(d.nw)h+='<div class="note" style="margin-bottom:8px">'+esc(L('Ждут подтверждения владельцем: '+d.nw+' на '+money(d.ws)+'. «К оплате» изменится после подтверждения.','Egasi tasdiqlashini kutmoqda: '+d.nw+' ta, '+money(d.ws)+'. Tasdiqlangach «Toʻlanishi kerak» oʻzgaradi.'))+'</div>';
   h+='<div class="card"><h3>'+L('Я оплатил владельцу','Egasiga toʻladim')+'</h3><div class="form">'
     +'<div><label class="lab" for="cm-a">'+L('Сколько вы заплатили, сум','Qancha toʻladingiz, soʻm')+'</label><input type="text" inputmode="numeric" id="cm-a" data-cm="a" maxlength="16" value="'+esc(c.a)+'" autocomplete="off" placeholder="400000">'
     +hintD('Только цифры, например 400000. Можно меньше или больше суммы «К оплате»: остаток или аванс посчитаем сами.','Faqat raqamlar, masalan 400000. «Toʻlanishi kerak» summasidan kam yoki koʻp boʻlishi mumkin: qoldiq yoki avansni oʻzimiz hisoblaymiz.')+'</div>'
     +'<div><label class="lab" for="cm-n">'+L('Комментарий (необязательно)','Izoh (majburiy emas)')+'</label><input type="text" id="cm-n" data-cm="note" maxlength="120" value="'+esc(c.note)+'" autocomplete="off">'
     +hintD('Как и когда заплатили: перевод на карту, Click, наличными. Владелец увидит это в сообщении.','Qanday va qachon toʻlaganingiz: kartaga oʻtkazma, Click, naqd. Egasi buni xabarda koʻradi.')+'</div></div>'
-    +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="cmpay" data-act="commpay"'+(c.busy?' disabled':'')+'>'+(c.busy==='pay'?L('Отправляем…','Yuborilmoqda…'):L('Оплатил','Toʻladim'))+'</button></div></div>';
+    +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn" id="cmpay" data-act="commpay"'+(c.busy?' disabled':'')+'>'+(c.busy==='pay'?L('Отправляем…','Yuborilmoqda…'):L('Оплатил','Toʻladim'))+'</button></div></div>';
   h+='<div class="card"><h3>'+L('История платежей','Toʻlovlar tarixi')+'</h3>'
     +(d.pays.length?d.pays.map(p=>cmPayHTML(p,false,'')).join(''):'<div class="unit">'+L('Платежей пока нет.','Hozircha toʻlovlar yoʻq.')+'</div>')+'</div>';
   return h;
@@ -6778,7 +6778,7 @@ function cmShopHTML(r){
     +'<div class="r"><span>'+L('Оплачено (подтверждено)','Toʻlangan (tasdiqlangan)')+'</span><span>'+esc(money(r.paid))+'</span></div>'
     +'<div class="r t"><span>'+cmDueLab(r.due)+'</span><span>'+esc(money(Math.abs(r.due)))+'</span></div></div>'
     +'<div class="unit" style="margin-top:8px">'+L('Процент комиссии: ','Komissiya foizi: ')+'<b>'+esc(fmtPct(r.pct))+'%</b> · '+L('он меняется в карточке продавца','u sotuvchi kartochkasida oʻzgaradi')+'</div>';
-  h+='<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="commopen" data-did="'+esc(r.id)+'" aria-expanded="'+!!f.open+'">'+(f.open?L('Скрыть','Yashirish'):L('Записать полученную оплату','Olingan toʻlovni yozish'))+'</button>'
+  h+='<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="commopen" data-did="'+esc(r.id)+'" aria-expanded="'+!!f.open+'">'+(f.open?L('Скрыть','Yashirish'):L('Записать полученную оплату','Olingan toʻlovni yozish'))+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="otab" data-t="dist">'+L('Изменить процент','Foizni oʻzgartirish')+'</button></div>';
   if(f.open)h+='<div class="form" style="margin-top:10px">'
     +'<div><label class="lab" for="cmo-a-'+esc(r.id)+'">'+L('Сколько получили, сум','Qancha oldingiz, soʻm')+'</label><input type="text" inputmode="numeric" id="cmo-a-'+esc(r.id)+'" data-cmo="a" data-did="'+esc(r.id)+'" maxlength="16" value="'+esc(f.a)+'" autocomplete="off" placeholder="400000">'
@@ -6883,10 +6883,10 @@ function ownMadeHTML(){
       h+='<div class="card codebox"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Продавец добавлен: ','Sotuvchi qoʻshildi: ')+m.name)+'</h3>'
         +'<div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его продавцу.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni sotuvchiga yuboring.')+'</div>'
         +'<div class="mono">'+esc(m.code)+'</div>'
-        +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="'+esc(L('Код: ','Kod: '))+'">'+L('Копировать код','Kodni nusxalash')+'</button>'
+        +'<div class="row-btns" style="margin:8px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="'+esc(L('Код: ','Kod: '))+'">'+L('Копировать код','Kodni nusxalash')+'</button>'
         +'<button type="button" class="btn ghost" data-act="copy" data-v="/admin '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/admin КОД»','«/admin KOD» nusxalash')+'</button></div>'
         +'<div class="note">'+L('Продавец открывает бота, отправляет «/admin КОД» (бот сразу удалит сообщение с кодом) и нажимает «Открыть приложение». Заказы будут приходить ему в бот.','Sotuvchi botni ochib, «/admin KOD» yuboradi (bot kod yozilgan xabarni darhol oʻchiradi) va «Ilovani ochish» tugmasini bosadi. Buyurtmalar botga keladi.')+'</div>'
-        +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="ownmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
+        +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="ownmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
     }
   return h;
 }
@@ -6900,7 +6900,7 @@ function ownAddHTML(){
       +(cleanCat(o.fcat)==='bazaar'?'<div><label class="lab" for="o-bz">'+L('Базар (можно выбрать позже)','Bozor (keyinroq ham tanlash mumkin)')+'</label><select id="o-bz" data-own="fbz">'+bzOptsHTML(o.fbz)+'</select></div>':'')
       +'<div><label class="lab" for="o-code">'+L('Свой код (от 12 символов) или пусто — придумаем','Oʻz kodingiz (12 belgidan) yoki boʻsh — oʻzimiz yaratamiz')+'</label><input type="text" id="o-code" data-own="fcode" maxlength="64" value="'+esc(o.fcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Этот код продавец отправит боту командой «/admin КОД». Если оставить пустым, бот придумает код сам.','Sotuvchi bu kodni botga «/admin KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div>'
       +'</div><div class="err" id="o-err" role="alert">'+esc(o.err2||'')+'</div>'
-      +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" id="ownadd" data-act="ownadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='add'?L('Добавляем…','Qoʻshilmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
+      +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn" id="ownadd" data-act="ownadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='add'?L('Добавляем…','Qoʻshilmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
       +(full?'<div class="note" style="margin-top:10px">'+esc(ownErr('too_many'))+'</div>':'')+'</div>';
   return h;
 }
@@ -6943,7 +6943,7 @@ function ownBzHTML(){
     +'<div><label class="lab" for="bz-name">'+L('Название по-русски','Nomi ruscha')+'</label><input type="text" id="bz-name" data-bz="name" maxlength="40" value="'+esc(z.name)+'" autocomplete="off"></div>'
     +'<div><label class="lab" for="bz-uz">'+L('Название по-узбекски','Nomi oʻzbekcha')+'</label><input type="text" id="bz-uz" data-bz="uz" maxlength="40" value="'+esc(z.uz)+'" autocomplete="off">'+hintD('Хватит одного названия: на другом языке покажем то же самое.','Bitta nom yetarli: boshqa tilda ham shu koʻrsatiladi.')+'</div>'
     +'</div><div class="err" id="bz-err" role="alert">'+esc(z.err||'')+'</div>'
-    +'<div class="row-btns" style="margin-top:14px"><button type="button" class="btn" data-act="bzadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='bz'?L('Сохраняем…','Saqlanmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
+    +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn" data-act="bzadd"'+(o.busy||full?' disabled':'')+'>'+(o.busy==='bz'?L('Сохраняем…','Saqlanmoqda…'):L('Добавить','Qoʻshish'))+'</button></div>'
     +(full?'<div class="note" style="margin-top:10px">'+esc(bzErr('too_many'))+'</div>':'')+'</div>';
   if(!list.length)return h+'<div class="empty"><b>'+L('Базаров пока нет','Bozorlar hozircha yoʻq')+'</b>'+L('Добавьте первый: продавцы категории «Базары» смогут его выбрать.','Birinchisini qoʻshing: «Bozorlar» kategoriyasidagi sotuvchilar uni tanlay oladi.')+'</div>';
   return h+list.map(b=>{
@@ -6954,7 +6954,7 @@ function ownBzHTML(){
       +'<div class="full"><label class="lab" for="bze-h-'+esc(b.id)+'">'+L('Как это работает · по-русски','Bu qanday ishlaydi · ruscha')+' <span class="ltag">RU</span></label><textarea id="bze-h-'+esc(b.id)+'" data-bze="how" data-bid="'+esc(b.id)+'" rows="6" maxlength="1500">'+esc(e.how===undefined?(b.how||''):e.how)+'</textarea></div>'
       +'<div class="full"><label class="lab" for="bze-hu-'+esc(b.id)+'">'+L('Как это работает · по-узбекски','Bu qanday ishlaydi · oʻzbekcha')+' <span class="ltag">UZ</span></label><textarea id="bze-hu-'+esc(b.id)+'" data-bze="howUz" data-bid="'+esc(b.id)+'" rows="6" maxlength="1500">'+esc(e.howUz===undefined?(b.howUz||''):e.howUz)+'</textarea>'+hintD('Первая строка — заголовок, каждая следующая — отдельный шаг с номером. До 9 строк. Пусто — блок на экране базара не показывается.','Birinchi qator — sarlavha, har bir keyingisi — raqamli alohida qadam. 9 qatorgacha. Boʻsh boʻlsa — bozor ekranida blok koʻrsatilmaydi.')+'</div>'
       +'</div><div class="unit" style="margin-top:8px">'+esc(n?L(n+' '+plDistr(n),n+' ta sotuvchi'):L('Пока никого','Hozircha hech kim yoʻq'))+'</div>'
-      +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost sm" data-act="bzsave" data-id="'+esc(b.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button>'
+      +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost sm" data-act="bzsave" data-id="'+esc(b.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button>'
       +'<button type="button" class="btn ghost sm" data-act="bzdel" data-id="'+esc(b.id)+'"'+(o.busy?' disabled':'')+'>'+L('Удалить','Oʻchirish')+'</button></div></div>';
   }).join('');
 }
@@ -7005,7 +7005,7 @@ async function ownCat(id,v){
 /* процент комиссии продавца: условие сотрудничества, поэтому он в карточке продавца; на экране «Платежи комиссии» только показывается */
 function ownPctHTML(r){
   const o=S.own,row=S.cm.o&&S.cm.o.rows.find(x=>x.id===r.id);
-  if(!row||row.err)return '<div class="unit" style="margin-top:12px">'+L('Процент комиссии: ','Komissiya foizi: ')+(S.cm.o?L('нет данных','maʼlumot yoʻq'):L('загружаем…','yuklanmoqda…'))+'</div>';
+  if(!row||row.err)return '<div class="unit" style="margin-top:8px">'+L('Процент комиссии: ','Komissiya foizi: ')+(S.cm.o?L('нет данных','maʼlumot yoʻq'):L('загружаем…','yuklanmoqda…'))+'</div>';
   const pv=o.pcts[r.id]!==undefined?o.pcts[r.id]:fmtPct(row.pct);
   return '<div class="pctrow"><div><label class="lab" for="pc-'+esc(r.id)+'">'+L('Процент комиссии, %','Komissiya foizi, %')+'</label><input type="text" inputmode="decimal" id="pc-'+esc(r.id)+'" data-opct="'+esc(r.id)+'" maxlength="5" value="'+esc(pv)+'" autocomplete="off"></div>'
     +'<button type="button" class="btn ghost sm" data-act="ownpct" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить %','% ni saqlash')+'</button></div>'
@@ -7014,7 +7014,7 @@ function ownPctHTML(r){
 function ownAllLab(){return S.own.shops.some(r=>S.own.cardOpen[r.id])?L('Свернуть все','Hammasini yopish'):L('Развернуть все','Hammasini ochish')}
 function ownListHTML(){
   const o=S.own;
-  let h='<div class="row-btns" style="margin:0 0 12px"><button type="button" class="btn'+(o.addOpen?' ghost':'')+'" id="ownaddopen" data-act="ownaddopen" aria-expanded="'+!!o.addOpen+'">'+(o.addOpen?L('Скрыть форму','Formani yashirish'):L('＋ Добавить продавца','＋ Sotuvchi qoʻshish'))+'</button>'+(o.shops.length>1?'<button type="button" class="btn ghost sm" id="ownall" data-act="ownall">'+ownAllLab()+'</button>':'')+'</div>';
+  let h='<div class="row-btns" style="margin:0 0 8px"><button type="button" class="btn'+(o.addOpen?' ghost':'')+'" id="ownaddopen" data-act="ownaddopen" aria-expanded="'+!!o.addOpen+'">'+(o.addOpen?L('Скрыть форму','Formani yashirish'):L('＋ Добавить продавца','＋ Sotuvchi qoʻshish'))+'</button>'+(o.shops.length>1?'<button type="button" class="btn ghost sm" id="ownall" data-act="ownall">'+ownAllLab()+'</button>':'')+'</div>';
   if(o.addOpen)h+=ownAddHTML();
   h+=o.shops.map(r=>{
       const sure=o.rc===r.id;
@@ -7024,15 +7024,15 @@ function ownListHTML(){
       return '<div class="card sblk"><button type="button" class="sbh shd" data-act="oshop" data-id="'+esc(r.id)+'" aria-expanded="'+open+'" aria-controls="sc-'+esc(r.id)+'"><span class="shl"><span class="shn"><span class="shnm">'+esc(r.name)+'</span>'+(r.on?'':'<span class="dtag" style="white-space:nowrap">'+L('скрыт','yashirin')+'</span>')+'</span>'
         +'<span class="dmeta">'+esc(meta.join(' · '))+'</span></span><span class="sbc" aria-hidden="true"></span></button>'
         +'<div class="sbb" id="sc-'+esc(r.id)+'"'+(open?'':' hidden')+'>'
-        +'<div class="dmeta" style="margin-bottom:12px">'+L('доступ: '+r.sellers+' чел.','kirish: '+r.sellers+' kishi')+'</div>'
+        +'<div class="dmeta" style="margin-bottom:8px">'+L('доступ: '+r.sellers+' чел.','kirish: '+r.sellers+' kishi')+'</div>'
         +'<div class="ostat'+(r.on?'':' off')+'">'+(r.on?L('Виден покупателям, заказы открыты','Xaridorlarga koʻrinadi, buyurtmalar ochiq'):L('Скрыт: в каталоге его нет, заказы закрыты','Yashirin: katalogda yoʻq, buyurtmalar yopiq'))+'</div>'
         +'<div class="legrow"><div><label class="lab" for="lg-'+esc(r.id)+'">'+L('Юридическое название','Yuridik nomi')+'</label><input type="text" id="lg-'+esc(r.id)+'" data-olegal="'+esc(r.id)+'" maxlength="80" value="'+esc(o.legals[r.id]!==undefined?o.legals[r.id]:(r.legal||''))+'" autocomplete="off" placeholder="'+esc(L('ООО «Навои Фуд»','«Navoiy Fud» MChJ'))+'"></div>'
         +'<button type="button" class="btn ghost sm" data-act="ownlegal" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+L('Сохранить','Saqlash')+'</button></div>'
         +hintD('Покупатели видят его под названием в каталоге. Продавец тоже может его менять; побеждает последнее изменение.','Xaridorlar uni katalogda nom ostida koʻradi. Sotuvchi ham oʻzgartira oladi; oxirgi oʻzgarish ustun.')
-        +'<div class="form" style="margin-top:12px"><div><div class="unit" style="margin-bottom:4px">'+L('Категория','Kategoriya')+'</div>'+ownCatSel(r.id,r.cat)+'</div>'
+        +'<div class="form" style="margin-top:8px"><div><div class="unit" style="margin-bottom:4px">'+L('Категория','Kategoriya')+'</div>'+ownCatSel(r.id,r.cat)+'</div>'
         +(cleanCat(r.cat)==='bazaar'?ownBzSel(r.id,r.bz):'')+'</div>'
         +ownPctHTML(r)
-        +'<div class="row-btns" style="margin-top:12px">'
+        +'<div class="row-btns" style="margin-top:8px">'
         +'<button type="button" class="btn ghost sm" data-act="openshop" data-id="'+esc(r.id)+'">'+L('Открыть каталог','Katalogni ochish')+'</button>'
         +'<button type="button" class="btn ghost sm" data-act="owntoggle" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(r.on?L('Скрыть и закрыть заказы','Yashirish va buyurtmani yopish'):L('Вернуть в список','Roʻyxatga qaytarish'))+'</button>'
         +'<button type="button" class="btn ghost sm" data-act="ownreset" data-id="'+esc(r.id)+'"'+(o.busy?' disabled':'')+'>'+(sure?L('Точно? Вошедшие по прежнему коду потеряют доступ','Aniqmi? Eski kod bilan kirganlar kirolmaydi'):L('Новый код','Yangi kod'))+'</button>'
@@ -7047,14 +7047,14 @@ function ownTitleHTML(){
   const o=S.own;let h='';
     const tv=o.ftitle===null?o.title:o.ftitle;
     h+='<div class="card"><h3>'+L('Название площадки','Platforma nomi')+'</h3><div class="unit">'+L('Показывается наверху списка продавцов.','Sotuvchilar roʻyxati tepasida koʻrsatiladi.')+'</div><div class="form"><div class="full"><input type="text" id="o-title" data-own="ftitle" maxlength="60" value="'+esc(tv)+'" aria-label="'+esc(L('Название площадки','Platforma nomi'))+'"></div></div>'
-      +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="owntitle"'+(o.busy?' disabled':'')+'>'+L('Сохранить название','Nomni saqlash')+'</button></div></div>';
+      +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost" data-act="owntitle"'+(o.busy?' disabled':'')+'>'+L('Сохранить название','Nomni saqlash')+'</button></div></div>';
   return h;
 }
 function renderOwner(){
   const o=S.own,sec=o.sec||'dist',info=ownSecInfo(sec);
-  let h='<div class="wrap page">'+bkLink('shops',L('Все продавцы','Barcha sotuvchilar'))+'<div class="eyebrow" style="margin-top:12px">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1><div id="tbar"></div>';
+  let h='<div class="wrap page">'+bkLink('shops',L('Все продавцы','Barcha sotuvchilar'))+'<div class="eyebrow">'+esc(info.group)+'</div><h1>'+esc(info.title)+'</h1><div id="tbar"></div>';
   if(!o.loaded)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
-  else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:14px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
+  else if(o.err)h+='<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns" style="margin-top:10px;justify-content:center"><button type="button" class="btn" data-act="ownreload">'+L('Повторить','Qayta urinish')+'</button></div>';
   else{
     if(sec==='dist')h+=ownMadeHTML()+ownListHTML();
     else if(sec==='bz')h+=ownBzHTML();
@@ -7268,8 +7268,8 @@ function ownVidHTML(){
   let h='<p class="lead">'+L('Продавец в карточке товара нажимает «Добавить видео» и присылает ролик боту. Бот сам публикует его в канале и привязывает к товару. Покупатели видят видео последним слайдом в просмотре фото товара. Под видео в канале стоит кнопка «Открыть в приложении»: она открывает приложение на этом товаре. Подпись (название, цена, акция, упаковка, описание) бот пишет сам на двух языках и обновляет, когда продавец меняет товар.','Sotuvchi mahsulot kartasida «Video qoʻshish» tugmasini bosib, videoni botga yuboradi. Bot uni kanalga oʻzi joylaydi va mahsulotga bogʻlaydi. Xaridorlar videoni mahsulot rasmlari koʻrinishida oxirgi slayd sifatida koʻradi. Kanaldagi video ostida «Ilovada ochish» tugmasi turadi: u ilovani shu tovarda ochadi. Video izohini (nomi, narxi, aksiya, qadoq, tavsif) bot ikki tilda oʻzi yozadi va sotuvchi mahsulotni oʻzgartirsa yangilaydi.')+'</p>'
     +'<div class="card"><h3>'+L('Канал для видео','Videolar kanali')+'</h3><div class="unit">'+L('Публичный канал, где бот должен быть администратором с правами публикации и удаления сообщений.','Bot administrator boʻlishi kerak boʻlgan ochiq kanal: xabar joylash va oʻchirish huquqlari bilan.')+'</div>'
     +'<div class="form"><div class="full"><input type="text" id="o-vch" data-own-vid="fch" maxlength="64" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="sarbon_video" value="'+esc(cur)+'" aria-label="'+esc(L('Канал для видео','Videolar kanali'))+'">'+hintD('Ник канала без @. Пример: sarbon_video.','Kanal nomi @ siz. Masalan: sarbon_video.')+'</div></div>'
-    +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="ownvch"'+(V.busy?' disabled':'')+'>'+L('Сохранить канал','Kanalni saqlash')+'</button></div></div>';
-  h+='<div class="eyebrow" style="margin-top:18px">'+L('Все видео','Barcha videolar')+' · '+V.items.length+'</div>';
+    +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost" data-act="ownvch"'+(V.busy?' disabled':'')+'>'+L('Сохранить канал','Kanalni saqlash')+'</button></div></div>';
+  h+='<div class="eyebrow" style="margin-top:8px">'+L('Все видео','Barcha videolar')+' · '+V.items.length+'</div>';
   if(V.items.length)h+='<div class="row-btns" style="margin:0 0 10px"><button type="button" class="btn ghost sm" data-act="ovcap"'+(V.busy?' disabled':'')+'>'+(V.busy==='cap'?L('Обновляем…','Yangilanmoqda…'):L('Обновить подписи в канале','Kanaldagi izohlarni yangilash'))+'</button></div>';
   if(!V.items.length)return h+'<div class="empty"><b>'+L('Видео пока нет','Hozircha video yoʻq')+'</b>'+L('Когда продавцы добавят видео к товарам, они появятся здесь.','Sotuvchilar mahsulotlarga video qoʻshsa, ular shu yerda paydo boʻladi.')+'</div>';
   return h+V.items.filter(x=>vdOk(x.vd)).map(x=>{
@@ -7312,7 +7312,7 @@ function ownPeopleHTML(part){
   if(part==='clients'){
   h+='<div class="card"><h3>'+L('Перенос покупателей','Xaridorlarni oʻtkazish')+'</h3><div class="unit">'+L('Нужен один раз: покупатели, которые уже заказывали у продавцов, попадут в общую базу покупателей (раздел «Покупатели»). Кто уже есть в базе, не добавится повторно.','Bir marta kerak: sotuvchilarga allaqachon buyurtma bergan xaridorlar umumiy xaridorlar bazasiga («Xaridorlar» boʻlimi) tushadi. Bazada borlari qayta qoʻshilmaydi.')+'</div>'
     +(o.perr?'<div class="err" role="alert" style="margin-top:8px">'+esc(o.perr)+'</div>':'')
-    +'<div class="row-btns" style="margin-top:12px"><button type="button" class="btn ghost" data-act="baseimport"'+dis+'>'+L('Перенести покупателей продавцов','Sotuvchilar xaridorlarini oʻtkazish')+'</button></div>'
+    +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn ghost" data-act="baseimport"'+dis+'>'+L('Перенести покупателей продавцов','Sotuvchilar xaridorlarini oʻtkazish')+'</button></div>'
     +(o.imp?'<div class="note" style="margin-top:8px">'+esc(L('Перенос выполнен: добавлено '+o.imp.added+', уже были в базе '+o.imp.linked+', пропущено '+o.imp.skipped+'.','Oʻtkazildi: qoʻshildi '+o.imp.added+', bazada bor edi '+o.imp.linked+', oʻtkazib yuborildi '+o.imp.skipped+'.'))+'</div>':'')+'</div>';
   }
   else if(part==='terr'){
@@ -7332,8 +7332,8 @@ function ownPeopleHTML(part){
   h+='<div class="card"><h3>'+L('Склад','Ombor')+'</h3><div class="unit">'+L('Кладовщик принимает заказы продавцов из категории «Базары»: проверяет, взвешивает и отмечает «Принят на складе». Каждому вы даёте личный код. Он пишет боту «/sklad КОД», в приложении открывается раздел «Склад».','Omborchi «Bozorlar» kategoriyasidagi sotuvchilarning buyurtmalarini qabul qiladi: tekshiradi, tortadi va «Omborga qabul qilindi» deb belgilaydi. Har biriga shaxsiy kod berasiz. U botga «/sklad KOD» deb yozadi, ilovada «Ombor» boʻlimi ochiladi.')+'</div></div>';
   if(o.wmade){
     const m=o.wmade;
-    h+='<div class="codebox" style="margin:12px 0"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Кладовщик добавлен: ','Omborchi qoʻshildi: ')+m.name)+'</h3><div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его кладовщику.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni omborchiga yuboring.')+'</div><div class="mono">'+esc(m.code)+'</div>'
-      +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="">'+L('Копировать код','Kodni nusxalash')+'</button>'
+    h+='<div class="codebox" style="margin:8px 0"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Кладовщик добавлен: ','Omborchi qoʻshildi: ')+m.name)+'</h3><div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его кладовщику.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni omborchiga yuboring.')+'</div><div class="mono">'+esc(m.code)+'</div>'
+      +'<div class="row-btns" style="margin:8px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="">'+L('Копировать код','Kodni nusxalash')+'</button>'
       +'<button type="button" class="btn ghost" data-act="copy" data-v="/sklad '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/sklad КОД»','«/sklad KOD» nusxalash')+'</button></div>'
       +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="wmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
   }
@@ -7344,7 +7344,7 @@ function ownPeopleHTML(part){
     +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn ghost sm" data-act="whon" data-id="'+esc(w.id)+'"'+dis+'>'+(w.on?L('Отключить','Oʻchirib qoʻyish'):L('Включить','Yoqish'))+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="whcode" data-id="'+esc(w.id)+'"'+dis+'>'+L('Новый код','Yangi kod')+'</button>'
     +'<button type="button" class="btn ghost sm" data-act="whdel" data-id="'+esc(w.id)+'"'+dis+'>'+L('Удалить','Oʻchirish')+'</button></div></div>').join('');
-  h+='<div class="form" style="margin-top:12px"><div><label class="lab" for="o-wname">'+L('Имя кладовщика','Omborchi ismi')+'</label><input type="text" id="o-wname" data-own="wname" maxlength="60" value="'+esc(o.wname)+'" autocomplete="off">'+hintD('Как вы зовёте кладовщика. Пример: Салим.','Omborchini qanday chaqirasiz. Masalan: Salim.')+'</div>'
+  h+='<div class="form" style="margin-top:8px"><div><label class="lab" for="o-wname">'+L('Имя кладовщика','Omborchi ismi')+'</label><input type="text" id="o-wname" data-own="wname" maxlength="60" value="'+esc(o.wname)+'" autocomplete="off">'+hintD('Как вы зовёте кладовщика. Пример: Салим.','Omborchini qanday chaqirasiz. Masalan: Salim.')+'</div>'
     +'<div><label class="lab" for="o-wcode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-wcode" data-own="wcode" maxlength="64" value="'+esc(o.wcode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Кладовщик отправит этот код боту командой «/sklad КОД». Если оставить пустым, бот придумает код сам.','Omborchi bu kodni botga «/sklad KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div>'
     +(bzList().length?'<div class="full"><label class="lab" for="o-wbz">'+L('Какой базар принимает','Qaysi bozorni qabul qiladi')+'</label><select id="o-wbz" data-own="wbz">'+bzOpts(o.wbz)+'</select></div>':'')+'</div>'
     +'<div class="row-btns" style="margin-top:8px"><button type="button" class="btn" data-act="whadd"'+dis+'>'+L('Добавить кладовщика','Omborchi qoʻshish')+'</button></div>';
@@ -7354,18 +7354,18 @@ function ownPeopleHTML(part){
   const tn=p.terr.length,tids=new Set(p.terr.map(t=>t.id));
   const cnt=k=>L('выбрано '+k+' из '+tn,'tanlandi: '+k+' / '+tn);
   const chip=(t,on,attr)=>'<label class="pl'+(on?' on':'')+'"><input type="checkbox" '+attr+(on?' checked':'')+dis+'> '+esc(t.name)+'</label>';
-  const made=m=>'<div class="codebox" style="margin:12px 0"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Агент добавлен: ','Agent qoʻshildi: ')+m.name)+'</h3><div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его агенту.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni agentga yuboring.')+'</div><div class="mono">'+esc(m.code)+'</div>'
-    +'<div class="row-btns" style="margin:12px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="">'+L('Копировать код','Kodni nusxalash')+'</button>'
+  const made=m=>'<div class="codebox" style="margin:8px 0"><h3>'+esc(m.reset?L('Новый код: ','Yangi kod: ')+m.name:L('Агент добавлен: ','Agent qoʻshildi: ')+m.name)+'</h3><div class="unit">'+L('Сохраните код сейчас: потом он нигде не показывается. Отправьте его агенту.','Kodni hozir saqlang: keyin u hech qayerda koʻrsatilmaydi. Uni agentga yuboring.')+'</div><div class="mono">'+esc(m.code)+'</div>'
+    +'<div class="row-btns" style="margin:8px 0"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="">'+L('Копировать код','Kodni nusxalash')+'</button>'
     +'<button type="button" class="btn ghost" data-act="copy" data-v="/agent '+esc(m.code)+'" data-ok="'+esc(L('Команда скопирована','Buyruq nusxalandi'))+'" data-lab="">'+L('Копировать «/agent КОД»','«/agent KOD» nusxalash')+'</button></div>'
     +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="amadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
   h+='<p class="lead">'+L('Каждому агенту вы даёте личный код. Он пишет боту «/agent КОД», в приложении открывается вкладка «База». Агент видит покупателей своих территорий и покупателей без территории.','Har bir agentga shaxsiy kod berasiz. U botga «/agent KOD» deb yozadi, ilovada «Baza» boʻlimi ochiladi. Agent oʻz hududlaridagi va hududsiz xaridorlarni koʻradi.')+'</p>';
-  h+='<div class="row-btns" style="margin:0 0 12px"><button type="button" class="btn'+(o.agOpen?' ghost':'')+'" id="agaddopen" data-act="agaddopen" aria-expanded="'+!!o.agOpen+'">'+(o.agOpen?L('Скрыть форму','Formani yashirish'):L('＋ Добавить агента','＋ Agent qoʻshish'))+'</button></div>';
+  h+='<div class="row-btns" style="margin:0 0 8px"><button type="button" class="btn'+(o.agOpen?' ghost':'')+'" id="agaddopen" data-act="agaddopen" aria-expanded="'+!!o.agOpen+'">'+(o.agOpen?L('Скрыть форму','Formani yashirish'):L('＋ Добавить агента','＋ Agent qoʻshish'))+'</button></div>';
   if(o.amade)h+=made(o.amade);
   if(o.agOpen){
   const all=tn&&o.aterr.length===tn;
   h+='<div class="card"><h3>'+L('Добавить агента','Agent qoʻshish')+'</h3><div class="form"><div><label class="lab" for="o-aname">'+L('Имя агента','Agent ismi')+'</label><input type="text" id="o-aname" data-own="aname" maxlength="60" value="'+esc(o.aname)+'" autocomplete="off">'+hintD('Как вы зовёте агента. Пример: Бобур.','Agentni qanday chaqirasiz. Masalan: Bobur.')+'</div>'
     +'<div><label class="lab" for="o-acode">'+L('Свой код (от 12 символов) или пусто','Oʻz kodingiz (12 belgidan) yoki boʻsh')+'</label><input type="text" id="o-acode" data-own="acode" maxlength="64" value="'+esc(o.acode)+'" autocomplete="off" autocapitalize="off" spellcheck="false">'+hintD('Агент отправит этот код боту командой «/agent КОД». Если оставить пустым, бот придумает код сам.','Agent bu kodni botga «/agent KOD» buyrugʻi bilan yuboradi. Boʻsh qoldirsangiz, bot kodni oʻzi yaratadi.')+'</div></div>'
-    +(tn?'<div class="tline" style="margin-top:12px"><div class="t"><small>'+esc(L('Территории нового агента','Yangi agent hududlari'))+'</small><b id="ag-cnt">'+esc(cnt(o.aterr.length))+'</b></div><button type="button" class="btn ghost sm" data-act="agtall">'+(all?L('Снять все','Hammasini olib tashlash'):L('Выбрать все','Hammasini tanlash'))+'</button></div>'
+    +(tn?'<div class="tline" style="margin-top:8px"><div class="t"><small>'+esc(L('Территории нового агента','Yangi agent hududlari'))+'</small><b id="ag-cnt">'+esc(cnt(o.aterr.length))+'</b></div><button type="button" class="btn ghost sm" data-act="agtall">'+(all?L('Снять все','Hammasini olib tashlash'):L('Выбрать все','Hammasini tanlash'))+'</button></div>'
       +'<div class="pgrid" role="group" aria-label="'+esc(L('Территории нового агента','Yangi agent hududlari'))+'">'+p.terr.map(t=>chip(t,o.aterr.includes(t.id),'data-aterr="'+esc(t.id)+'"')).join('')+'</div>':'')
     +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn" data-act="agentadd"'+dis+'>'+L('Добавить агента','Agent qoʻshish')+'</button></div></div>';
   }

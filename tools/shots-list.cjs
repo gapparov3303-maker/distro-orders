@@ -54,6 +54,8 @@ const SHOTS = [
   } },
   { name: 'sel-catalog', role: 'seller', url: U + 'seller', prep: async (page) => {
     await page.evaluate(() => sellerOpen('prod')); await wait(page, 500);
+    // сначала открыть категорию с товаром p1 (список категорий — первый уровень), потом раскрыть сам товар
+    await page.evaluate(() => { const c = (S.prod.cats.find(c => S.prod.items.some(p => p.id === 'p1' && p.cat === c.id)) || S.prod.cats[0]); const b = document.querySelector('[data-act="pcat"][data-id="' + c.id + '"]'); if (b) b.click(); }); await wait(page, 500);
     await click(page, '#psum-p1'); await wait(page, 400);
     await scrollTo(page, '#prow-p1', 64);
   } },
