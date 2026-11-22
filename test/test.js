@@ -11797,7 +11797,7 @@ await t('владелец, список продавцов: карточки с�
   assert.ok(!/доступ|data-ocat|data-opct|data-olegal|<input/.test(ha), 'в шапке только сводка, полей нет');
   assert.ok(/<span class="dtag" style="white-space:nowrap">скрыт<\/span>/.test(head(h, 'b')) && /3 товаров · кода нет · комиссия 0%/.test(head(h, 'b')), 'скрытый продавец: статус «скрыт», комиссия 0% тоже показана');
   assert.ok(/3 товаров · код выдан<\/span>/.test(head(h, 'c')) && !/комиссия/.test(head(h, 'c')), 'нет данных по комиссии: в сводке её нет');
-  assert.ok(/id="sc-a" hidden><div class="dmeta" style="margin-bottom:12px">доступ: 1 чел\.<\/div>/.test(h), 'доступ внутри тела');
+  assert.ok(/id="sc-a" hidden><div class="dmeta" style="margin-bottom:\d+px">доступ: 1 чел\.<\/div>/.test(h), 'доступ внутри тела');
   // статус внутри карточки: у видимого «Виден покупателям…», у скрытого «Скрыт: …»; строка в теле, а не в шапке
   assert.ok(/id="sc-a" hidden>[\s\S]*?<div class="ostat">Виден покупателям, заказы открыты<\/div>/.test(h), 'в теле видимого продавца строка статуса');
   assert.ok(/id="sc-b" hidden>[\s\S]*?<div class="ostat off">Скрыт: в каталоге его нет, заказы закрыты<\/div>/.test(h), 'в теле скрытого продавца строка статуса');
@@ -12261,6 +12261,41 @@ await t('остатки: названия стилей в разметке не 
   // журнал
   assert.ok(src.includes('class="card sjcard"') && /background:var\(--info-soft\)/.test(rule('.sjcard')) && /\.sjcard h3\{color:var\(--info\)\}/.test(css), 'журнал синий: цвета из общих переменных, значит и тёмная тема подхватится');
   assert.ok(/--info:#1F5FA3;/.test(css) && /--info:#7DB6F0;/.test(css), 'у синего есть светлый и тёмный вариант');
+});
+
+await t('промежутки между блоками: единая тесная шкала 10 / 8, верх экрана 12; пустая строка «Сохранено…» не раздувает страницу', () => {
+  const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  const rule = sel => { const m = css.match(new RegExp('(?:^|\\n)' + sel.replace(/[.\\[\]"=*+?^${}()|>]/g, '\\$&') + '\\{([^}]*)\\}')); assert.ok(m, 'правило ' + sel); return m[1]; };
+  const has = (sel, decl) => assert.ok(rule(sel).includes(decl), sel + ': ' + decl);
+  // нижний отступ правила: из margin-bottom или из margin
+  const bottom = sel => { const b = rule(sel); const m1 = b.match(/(?:^|;)margin-bottom:(\d+)px/); if (m1) return Number(m1[1]); const m = b.match(/(?:^|;)margin:([^;]+)/); assert.ok(m, sel + ': есть нижний отступ'); const v = m[1].trim().split(/\s+/).map(parseFloat); return v.length < 3 ? v[0] : v[2]; };
+  // блоки друг под другом: 10 пикселей
+  for (const sel of ['.card', '.filters', '.slist', '.dgrid', '.regbar']) assert.equal(bottom(sel), 10, sel + ': нижний отступ 10');
+  has('.form', 'gap:10px'); has('.settings', 'gap:10px'); has('.stack', 'gap:8px'); has('.ordlist', 'gap:8px'); has('.pgrid', 'gap:8px');
+  // мелкие промежутки: 8 пикселей
+  for (const sel of ['.sec h2', '.xtools', '.shead', '.rcard', '.bcard', '.btop', '.modnote']) assert.equal(bottom(sel), 8, sel + ': нижний отступ 8');
+  // верх экрана
+  has('.page', 'padding-block:12px 48px'); has('.sec', 'padding-top:12px');
+  // строка «Сохранено…» всегда занимает место (иначе поля прыгают при сохранении), но совсем немного: 16 + 4 + 2 = 22 пикселя
+  const sb = rule('.savebar');
+  assert.ok(/min-height:16px/.test(sb) && /margin:4px 0 2px/.test(sb), 'строка статуса сохранения тонкая');
+  assert.ok(html.includes('<div class="note" style="margin-bottom:0">\'+L(\'Товары компании по категориям'), 'подсказка над строкой статуса без своего отступа');
+  // нигде не осталось крупных вертикальных отступов: в разметке и в стилях не больше 16 (боковые и внутренние отступы карточек не считаются)
+  const big = [];
+  for (const m of html.matchAll(/style="([^"]*)"/g)) for (const d of m[1].matchAll(/margin(-top|-bottom)?:\s*([^;]+)/g)) {
+    const v = d[2].trim().split(/\s+/).map(x => parseFloat(x));
+    const vert = d[1] === '-top' || d[1] === '-bottom' ? [v[0]] : v.length === 1 ? [v[0]] : v.length === 2 ? [v[0]] : [v[0], v[2]];
+    if (vert.some(x => x > 16 || x === 12 || x === 14)) big.push(m[0]);
+  }
+  assert.deepEqual(big, [], 'в разметке вертикальные отступы не больше 16 пикселей, а прежние 12 и 14 заменены на 8 и 10');
+  const bigCss = [];
+  for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) for (const d of m[2].matchAll(/(?:^|;)margin(-top|-bottom)?:\s*([^;]+)/g)) {
+    const v = d[2].trim().split(/\s+/).map(x => parseFloat(x));
+    const vert = d[1] ? [v[0]] : v.length === 1 ? [v[0]] : v.length === 2 ? [v[0]] : [v[0], v[2]];
+    if (vert.some(x => x > 16)) bigCss.push(m[1].trim() + '{' + d[0].replace(/^;/, '') + '}');
+  }
+  assert.deepEqual(bigCss, [], 'в стилях вертикальные отступы не больше 16 пикселей');
 });
 
 await t('«О нас»: пути в подсказках совпадают с новой структурой (Люди, Районы и города, Служебное, «＋ Добавить …», Мои заказы, Товары)', () => {
