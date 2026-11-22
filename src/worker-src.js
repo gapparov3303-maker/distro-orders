@@ -434,7 +434,7 @@ function validateOrder(b, cfg, prod, stk) {
   if (packBad) return { err: 'pack', id: packBad.id, step: packBad.step };
   if (missing) return { err: 'unavailable' };
   if (minBad) return { err: 'min_qty', id: minBad.id, minq: minBad.minq };
-  // остатки: заказать можно не больше, чем свободно (на складе минус уже отложенное под другие заказы)
+  // остатки: заказать можно не больше, чем доступно (на складе минус уже отложенное под другие заказы)
   const short = [];
   if (stk) items.forEach(it => {
     const s = stk[it.id];
@@ -1839,7 +1839,7 @@ function reportSheets(r, lang) {
   const months = [[L('Месяц', 'Oy'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.months.map(x => [ruMonth(x.m), x.n, x.sum]));
   const prods = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Продано (шт, кг или л)', 'Sotildi (dona, kg yoki l)'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.prods.map(x => [nmx(x), wx(x), x.qty, x.sum]));
   const cl = [[L('Покупатель', 'Xaridor'), L('Организация', 'Tashkilot'), L('Заказов', 'Buyurtmalar'), L('Сумма, сум', 'Summa, soʻm')]].concat(r.cl.map(x => [x.name, x.org || '', x.n, x.sum]));
-  const buy = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Свободно (шт, кг или л)', 'Boʻsh (dona, kg yoki l)'), L('Продаётся в день (шт, кг или л)', 'Kuniga sotiladi (dona, kg yoki l)'), L('Хватит на, дней', 'Necha kunga yetadi'),
+  const buy = [[L('Товар', 'Mahsulot'), L('Вес / объём', 'Ogʻirlik / hajm'), L('Доступно (шт, кг или л)', 'Mavjud (dona, kg yoki l)'), L('Продаётся в день (шт, кг или л)', 'Kuniga sotiladi (dona, kg yoki l)'), L('Хватит на, дней', 'Necha kunga yetadi'),
     L('Докупить на ' + r.buy.cover + ' дн. (шт, кг или л)', r.buy.cover + ' kunga sotib olish (dona, kg yoki l)')]].concat(r.buy.list.map(x => [nmx(x), wx(x), x.avail, x.daily, x.left, x.need]));
   const head = [L('Отчёт за ' + ruDay(r.from) + ' — ' + ruDay(r.to), 'Hisobot: ' + ruDay(r.from) + ' — ' + ruDay(r.to)),
     L('Учёт продаж ведётся с ' + ruDay(r.since) + '. В отчёт входят заказы со статусом «выдан» и «доставлен».', 'Savdo hisobi ' + ruDay(r.since) + ' dan yuritiladi. Hisobotga «topshirildi» va «yetkazildi» holatidagi buyurtmalar kiradi.'),
@@ -2213,7 +2213,7 @@ export class Shop {
       for (const x of rows) {
         if (!hit(x)) continue;
         const t = uz ? x.titleUz || x.title : x.title;
-        if (x.after === 0) lines.push(L('🚫 ' + t + ': свободного остатка нет (на складе ' + x.q + ', в заказах ' + x.r + ').', '🚫 ' + t + ': boʻsh qoldiq yoʻq (omborda ' + x.q + ', buyurtmalarda ' + x.r + ').'));
+        if (x.after === 0) lines.push(L('🚫 ' + t + ': доступного остатка нет (на складе ' + x.q + ', в заказах ' + x.r + ').', '🚫 ' + t + ': mavjud qoldiq yoʻq (omborda ' + x.q + ', buyurtmalarda ' + x.r + ').'));
         else lines.push(L('⚠️ ' + t + ': осталось ' + qtyStr(x.p, x.after) + ' (порог ' + x.low + ').', '⚠️ ' + t + ': ' + qtyTa(x.p, x.after) + ' qoldi (chegara ' + x.low + ').'));
       }
       return L('Остатки на складе:\n', 'Ombordagi qoldiqlar:\n') + lines.join('\n');
@@ -3826,7 +3826,7 @@ export class Shop {
         if (to === 'done') { cl.ds += 1; cl.sum += Number(o.total) || 0; } else cl.n = Math.max(0, cl.n - 1);
         upd['c:' + o.uid] = cl;
       }
-      // отложенный товар: при отмене возвращается в свободный, при выдаче списывается со склада
+      // отложенный товар: при отмене возвращается в доступный, при выдаче списывается со склада
       if (o.rs) {
         const stk = await this.getStk(), rows = [];
         for (const pid of Object.keys(o.rs)) {
