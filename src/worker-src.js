@@ -4954,6 +4954,18 @@ function fbMessage(it) {
   const k = FB_KIND[it.k] || FB_KIND.other;
   return '📨 Murojaat / Обращение ' + it.id + '\n' + k[1] + ' · ' + k[0] + '\nKimdan / От: ' + who + '\nRol / Роль: ' + fbRoleText(it) + '\n\n' + it.t;
 }
+/* «Стать продавцом»: заявки. Не больше AP_DAY заявок в день от человека, хранится последние AP_MAX, комментарий до AP_TEXT знаков, причина отказа до AP_WHY. */
+const AP_DAY = 3, AP_MAX = 300, AP_TEXT = 500, AP_WHY = 300;
+const validAp = id => /^Z-[A-Z0-9]{5}$/.test(String(id || ''));
+/* Что видит сам заявитель: без служебных полей. */
+const apPub = it => it ? { id: it.id, st: it.st, n: it.n, c: it.c, at: it.at, dt: it.dt || '', why: it.st === 'no' ? (it.why || '') : '' } : null;
+/* Сообщение владельцу о новой заявке: заголовок на двух языках, комментарий заявителя один раз. */
+function apMessage(it) {
+  const who = [it.nm, it.un ? '@' + it.un : ''].filter(Boolean).join(' · ') || 'ID ' + it.uid, cat = SHOP_CAT_NAMES[it.c] || ['', ''];
+  return '🆕 Ariza / Заявка ' + it.id + '\nSotuvchi boʻlish / Стать продавцом\nKompaniya / Компания: ' + it.n + '\nKategoriya / Категория: ' + cat[1] + ' · ' + cat[0]
+    + '\nTelefon / Телефон: ' + it.ph + '\nHudud / Район: ' + it.rg + '\nKimdan / От: ' + who + (it.t ? '\n\n' + it.t : '')
+    + '\n\nIlova: ☰ → Kelganlar → Arizalar · Приложение: ☰ → Входящие → Заявки';
+}
 const BASE_STATUS = ['new', 'talk', 'refuse'];
 /* Тип точки (один на всех дистрибьюторов, ставит агент или владелец): магазин, супермаркет, оптовый покупатель, HoReCa. Пусто — не указан. */
 const BASE_TYPES = ['shop', 'super', 'whole', 'horeca'];
@@ -5396,12 +5408,117 @@ export class Hub {
     return null;
   }
   /* Сообщение всем владельцам площадки (кроме самого человека, если он владелец). */
-  async notifyOwners(text, exceptUid) {
+  async notifyOwners(text, exceptUid, markup) {
     if (!this.env.BOT_TOKEN) return;
     for (const o of await this.owners()) {
       if (o === exceptUid) continue;
-      try { await this.tg('sendMessage', { chat_id: o, text }); } catch (e) { console.error('owner notify failed', e && e.message || e); }
+      try { await this.tg('sendMessage', markup ? { chat_id: o, text, reply_markup: markup } : { chat_id: o, text }); } catch (e) { console.error('owner notify failed', e && e.message || e); }
     }
+  }
+  /* ---------- «Стать продавцом»: заявки ----------
+     ap:<id> — заявка, apx — номера (свежие первыми, не больше AP_MAX), apn — сколько ждут решения (число на значке владельца),
+     apu:<uid> — последняя заявка человека, apr:<uid> — сколько заявок человек подал сегодня.
+     Заявка: n название компании, c категория, ph телефон, rg район или город, t комментарий, st new | ok | no, why причина отказа, did номер созданного продавца. */
+  async apItems() {
+    const idx = (await this.st.get('apx')) || [];
+    if (!idx.length) return [];
+    const map = await this.getMany(idx.map(x => 'ap:' + x));
+    return idx.map(x => map.get('ap:' + x)).filter(Boolean);
+  }
+  /* Пересчёт «ждут решения» по списку: число на значке не может разойтись с самим списком. */
+  async apRecount(items) {
+    const n = (items || await this.apItems()).filter(x => x.st === 'new').length;
+    if ((await this.st.get('apn')) !== n) await this.st.put('apn', n);
+    return n;
+  }
+  /* Что видит человек про свою заявку. Одобренная, но не введённая код заявка остаётся «одобрена» (пока продавец не удалён). */
+  async applyState(uid) {
+    const seller = (await this.sellsOf(uid)).length > 0 || (await this.owners()).includes(uid);
+    const id = await this.st.get('apu:' + uid);
+    let it = id ? await this.st.get('ap:' + id) : null;
+    if (it && it.st === 'ok' && it.did && !(await this.getRec(it.did))) it = null;   // продавца потом удалили: можно подать новую заявку
+    const bid = await this.st.get('bu:' + uid), br = bid ? await this.st.get('b:' + bid) : null;
+    return { seller, item: apPub(it), phone: br && br.phone ? cleanStr(String(br.phone), 30) : '' };
+  }
+  async applyAdd(user, body) {
+    const uid = user.id;
+    if ((await this.sellsOf(uid)).length || (await this.owners()).includes(uid)) return { err: 'already_seller' };
+    const n = cleanStr(body && body.name, 60), c = cleanCat(body && body.cat), ph = cleanStr(String((body && body.phone) || ''), 30);
+    const rg = cleanStr(body && body.region, 60), t = cleanMsg(body && body.text, AP_TEXT);
+    if (n.length < 2) return { err: 'bad_name' };
+    if (!c) return { err: 'bad_cat' };
+    if (!phoneOk(ph)) return { err: 'bad_phone' };
+    if (rg.length < 2) return { err: 'bad_region' };
+    const lastId = await this.st.get('apu:' + uid), last = lastId ? await this.st.get('ap:' + lastId) : null;
+    if (last && last.st === 'new') return { err: 'pending' };
+    if (last && last.st === 'ok' && last.did && await this.getRec(last.did)) return { err: 'approved' };
+    const now = new Date().toISOString(), day = dayOf(now);
+    const lim = await this.st.get('apr:' + uid), cnt = lim && lim.d === day ? Number(lim.n) || 0 : 0;
+    if (cnt >= AP_DAY) return { err: 'limit' };
+    let id;
+    do { id = 'Z-' + randId(5); } while (await this.st.get('ap:' + id));
+    const item = { id, uid, nm: whoName(user), un: cleanStr(user.username || '', 40), roles: await this.fbRoles(uid), n, c, ph, rg, t, at: now, st: 'new' };
+    const idx = (await this.st.get('apx')) || [];
+    idx.unshift(id);
+    const drop = idx.splice(AP_MAX);
+    await this.st.put({ ['ap:' + id]: item, apx: idx, ['apu:' + uid]: id, ['apr:' + uid]: { d: day, n: cnt + 1 } });
+    for (const d of drop) await this.st.delete('ap:' + d);
+    await this.apRecount();
+    await this.notifyOwners(apMessage(item), 0, openBtn(this.origin, btn2('Ilovani ochish', 'Открыть приложение'), this.origin + '/?v=owner&t=ap'));
+    return { item };
+  }
+  /* Владелец: список заявок (GET) и решение (POST decide): одобрить создаёт продавца с новым кодом и присылает код заявителю, отклонить требует причину. */
+  async adminApply(request, path, method, user) {
+    if (path === '/api/hub/admin/apply' && method === 'GET') {
+      const items = await this.apItems();
+      return json({ items, n: await this.apRecount(items), max: AP_MAX });
+    }
+    if (path === '/api/hub/admin/apply/decide' && method === 'POST') {
+      const r = await this.readBody(request, 2000);
+      const b = r.body && typeof r.body === 'object' ? r.body : null;
+      if (r.err || !b || !validAp(b.id) || typeof b.ok !== 'boolean') return json({ error: 'bad_request' }, 400);
+      const it = await this.st.get('ap:' + b.id);
+      if (!it) return json({ error: 'not_found' }, 404);
+      if (it.st !== 'new' || it.busy) return json({ error: 'done', item: it, n: await this.apRecount() }, 409);
+      const now = new Date().toISOString();
+      if (!b.ok) {
+        const why = cleanMsg(b.why, AP_WHY);
+        if (why.length < 2) return json({ error: 'need_reason' }, 400);
+        it.st = 'no'; it.why = why; it.dt = now; it.db = whoName(user);
+        await this.st.put('ap:' + it.id, it);
+        const sent = await this.apTell(it, biL(() => L('❌ Заявка «' + it.n + '» отклонена.\nПричина: ' + why + '\n\nИсправьте это и подайте новую заявку: ☰ → «Стать продавцом».',
+          '❌ «' + it.n + '» arizasi rad etildi.\nSababi: ' + why + '\n\nUni tuzatib, yangi ariza yuboring: ☰ → «Sotuvchi boʻlish».')));
+        return json({ item: it, n: await this.apRecount(), sent });
+      }
+      // одобрить: пока создаётся продавец, повторное нажатие не создаст второго
+      it.busy = true;
+      await this.st.put('ap:' + it.id, it);
+      let made = null, status = 500, fail = 'server';
+      try {
+        const res = await this.createShop({ name: it.n, cat: it.c });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data && data.shop && data.code) made = data;
+        else { status = res.status || 500; fail = data && data.error || 'server'; }
+      } catch (e) { console.error('apply approve failed', e && e.stack || e); }
+      delete it.busy;
+      if (!made) { await this.st.put('ap:' + it.id, it); return json({ error: fail }, status); }
+      it.st = 'ok'; it.did = made.shop.id; it.dt = now; it.db = whoName(user);
+      await this.st.put('ap:' + it.id, it);
+      const sent = await this.apTell(it, biL(() => L('✅ Заявка одобрена: компания «' + it.n + '» добавлена на площадку.\n\nВаш код:\n' + made.code
+        + '\n\nОткройте приложение: ☰ → «Стать продавцом» → «У меня уже есть код», вставьте код и нажмите «Войти как продавец». Код личный, никому его не показывайте.',
+        '✅ Ariza maʼqullandi: «' + it.n + '» kompaniyasi platformaga qoʻshildi.\n\nSizning kodingiz:\n' + made.code
+        + '\n\nIlovani oching: ☰ → «Sotuvchi boʻlish» → «Menda kod bor», kodni qoʻying va «Sotuvchi sifatida kirish» tugmasini bosing. Kod shaxsiy, uni hech kimga koʻrsatmang.')));
+      return json({ item: it, n: await this.apRecount(), sent, code: made.code, shop: made.shop });
+    }
+    return null;
+  }
+  /* Сообщение заявителю в бот с кнопкой «Открыть приложение». Возвращает true, если Telegram принял. */
+  async apTell(it, text) {
+    if (!this.env.BOT_TOKEN) return false;
+    try {
+      const r = await this.tg('sendMessage', { chat_id: it.uid, text, reply_markup: openBtn(this.origin, btn2('Ilovani ochish', 'Открыть приложение'), this.origin + '/?v=become') });
+      return !!(r && r.ok);
+    } catch (e) { console.error('apply notify failed', e && e.message || e); return false; }
   }
   async baseRole(uid) {
     if ((await this.owners()).includes(uid)) return { r: 'owner' };
@@ -6165,6 +6282,8 @@ export class Hub {
       if (out.me.owner) out.me.modN = all.reduce((n, r) => n + (Number(r.wait) || 0), 0);
       // и число обращений («Написать нам»), которые ещё не решены
       if (out.me.owner) out.me.fbn = Number(await this.st.get('fbn')) || 0;
+      // и число заявок «Стать продавцом», которые ждут решения
+      if (out.me.owner) out.me.apn = Number(await this.st.get('apn')) || 0;
       // доставщик: у каких дистрибьюторов человек возит заказы (запись сверяется с хранилищем, снятые и удалённые пропадают)
       const dl = (await this.st.get('dls:' + au.user.id)) || [];
       if (dl.length) {
@@ -6312,6 +6431,29 @@ export class Hub {
       return json({ ok: true, id: res.item.id });
     }
 
+    // «Стать продавцом»: заявка (GET — что с моей заявкой, POST — подать) и вход по коду, который выдал владелец
+    if (path === '/api/hub/apply' && method === 'GET') return json(await this.applyState(uid));
+    if (path === '/api/hub/apply' && method === 'POST') {
+      const r = await this.readBody(request, 4000);
+      if (r.err || !r.body || typeof r.body !== 'object') return json({ error: 'bad_request' }, 400);
+      const res = await this.applyAdd(au.user, r.body);
+      if (res.err) return json({ error: res.err }, res.err === 'limit' ? 429 : res.err === 'pending' || res.err === 'approved' || res.err === 'already_seller' ? 409 : 400);
+      return json({ ok: true, state: await this.applyState(uid) });
+    }
+    if (path === '/api/hub/seller-code' && method === 'POST') {
+      const r = await this.readBody(request, 500);
+      const code = r.body && typeof r.body === 'object' && typeof r.body.code === 'string' ? r.body.code.trim().slice(0, 64) : '';
+      if (r.err || !code) return json({ error: 'bad_request' }, 400);
+      const res = await this.tryCode(code, uid);
+      if (res.r === 'locked') return json({ error: 'locked' }, 429);
+      if (res.r === 'bad') return json({ error: 'bad_code' }, 403);
+      if (res.r !== 'ok') return json({ error: 'server' }, 500);
+      const rec = await this.getRec(res.did), sname = rec ? rec.name : res.did;
+      if (res.fresh) await this.notifyOwners(biL(() => L('🔑 Вход по коду: ' + whoFull(au.user) + ' вошёл как ' + (res.owner ? 'владелец площадки' : 'продавец «' + sname + '»') + '.',
+        '🔑 Kod bilan kirish: ' + whoFull(au.user) + (res.owner ? ' platforma egasi sifatida kirdi.' : ' «' + sname + '» sotuvchisi sifatida kirdi.'))), uid);
+      return json({ ok: true, did: res.did, name: sname, owner: res.owner, fresh: res.fresh });
+    }
+
     // регион магазина: запоминается, чтобы на другом телефоне список был тем же
     if (path === '/api/hub/region' && method === 'PUT') {
       const r = await this.readBody(request, 500);
@@ -6354,6 +6496,10 @@ export class Hub {
     if (path.startsWith('/api/hub/admin/mod')) return await this.adminMod(request, path, method);
     if (path.startsWith('/api/hub/admin/feedback')) {
       const res = await this.adminFeedback(request, path, method, au.user);
+      if (res) return res;
+    }
+    if (path.startsWith('/api/hub/admin/apply')) {
+      const res = await this.adminApply(request, path, method, au.user);
       if (res) return res;
     }
     if (path.startsWith('/api/hub/admin/people') || path.startsWith('/api/hub/admin/terr') || path.startsWith('/api/hub/admin/agents') || path.startsWith('/api/hub/admin/wh') || path === '/api/hub/admin/base/import') {
