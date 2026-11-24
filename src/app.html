@@ -339,6 +339,7 @@ button.lrow[aria-expanded="true"] .lchev svg{transform:rotate(180deg)}
 
 /* settings, cards */
 .card{background:var(--surface);border:1.5px solid var(--edge);border-radius:16px;padding:14px;margin-bottom:10px}
+.bcta{margin-top:10px}
 .card h3{font:700 13px var(--f-display);margin-bottom:2px}
 .card .unit{font-size:12px;color:var(--ink-2);margin-bottom:6px}
 .savebar{font-size:12px;color:var(--ink-2);min-height:16px;margin:4px 0 2px}
@@ -1126,8 +1127,9 @@ const S={
   ab:{open:null},
   wh:{ok:false,err:false,rate:500,info:null,orders:[],tab:'wait',q:'',kg:{},ed:{},open:{},busy:''},
   fb:{kind:'',text:'',busy:false,sent:'',err:''},   // «Написать нам»: форма обращения
+  bs:{ok:false,err:false,seller:false,item:null,phone:'',busy:false,ferr:'',name:'',cat:'',tel:'',reg:'',text:'',code:'',cbusy:false,cerr:''},   // «Стать продавцом»: заявка и вход по коду
   sblk:{about:true},   // настройки компании: какие блоки раскрыты (по умолчанию «О компании»)
-  own:{sec:'dist',addOpen:false,agOpen:false,dn:0,fbn:0,fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',cardOpen:{},legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false},vid:{ok:false,err:false,ch:'',fch:null,items:[],bot:'',busy:'',ask:''}},
+  own:{sec:'dist',addOpen:false,agOpen:false,dn:0,fbn:0,apn:0,ap:{ok:false,err:false,items:[],f:'new',busy:'',ask:'',why:'',made:null},fb:{ok:false,err:false,items:[],f:'new',busy:''},disp:{ok:false,items:[],note:{},busy:''},shops:[],title:'',max:50,loaded:false,err:false,made:null,busy:'',fname:'',fcode:'',fcat:'',fbz:'',cardOpen:{},legals:{},bz:{name:'',uz:'',err:'',edit:{}},ftitle:null,faRu:null,faUz:null,faPhone:null,faTg:null,faIg:null,rc:'',err2:'',period:'month',stats:null,serr:false,pcts:{},ppl:null,pbusy:false,perr:'',tname:'',aname:'',acode:'',aterr:[],agopen:{},amade:null,wname:'',wcode:'',wbz:'',wrate:null,wmade:null,imp:null,who:{ok:false,err:false,people:[],total:0,q:'',f:'all',all:false},vid:{ok:false,err:false,ch:'',fch:null,items:[],bot:'',busy:'',ask:''}},
   cm:{d:null,o:null,err:false,a:'',note:'',busy:'',nb:0,ow:{},all:{},fo:{}},
   rv:{seg:'wait',items:[],counts:{wait:0,ret:0,ok:0},shops:[],loaded:false,err:false,q:'',did:'',cat:'',busy:false,ret:null,rtxt:'',edit:null},
   base:{role:'',loaded:false,err:false,items:[],total:0,all:0,counts:{},tcounts:{},ty:'',unchk:0,terrs:[],mine:[],agents:[],more:false,terr:'',f:'',ag:'',sort:'',sheet:false,legend:false,q:'',busy:false,seq:0,qt:null,edit:null,fm:{},ferr:'',near:null,link:'',locBusy:false,mark:'',mc:false,cd:'',cx:null,cdd:null,cf:null,cbusy:false,cseq:0,mg:null}
@@ -1636,7 +1638,7 @@ const MIC={
 const micon=k=>'<svg class="mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(MIC[k]||'')+'</svg>';
 const dataAttrs=d=>Object.keys(d||{}).map(k=>' data-'+k+'="'+esc(d[k])+'"').join('');
 /* «Входящие» владельца: всё, что ждёт его решения. Часть вкладок — отдельные экраны (проверка товаров, платежи комиссии), часть — разделы владельца */
-const inboxTabs=()=>[['review',L('Проверка товаров','Mahsulotlarni tekshirish'),modN(),'bad'],['comm',L('Платежи комиссии','Komissiya toʻlovlari'),commBadge(),'bad'],['disp',L('Спорные записи','Bahsli yozuvlar'),S.own.dn,'bad'],['fb',L('Обращения','Murojaatlar'),S.own.fbn,'bad']];
+const inboxTabs=()=>[['ap',L('Заявки','Arizalar'),S.own.apn,'bad'],['review',L('Проверка товаров','Mahsulotlarni tekshirish'),modN(),'bad'],['comm',L('Платежи комиссии','Komissiya toʻlovlari'),commBadge(),'bad'],['disp',L('Спорные записи','Bahsli yozuvlar'),S.own.dn,'bad'],['fb',L('Обращения','Murojaatlar'),S.own.fbn,'bad']];
 const ownGroupOf=sec=>(ownSecs().find(g=>g[2].some(x=>x[0]===sec))||[''])[0];
 const inboxHere=cur=>cur==='review'||(cur==='comm'&&commOwn())||(cur==='owner'&&ownGroupOf(S.own.sec)==='inbox');
 /* Меню плоское: одна строка — один раздел, подразделы лежат вкладками на самом экране (barSpec). Строка: {k ключ, n название, i значок, a действие, d данные, b число, c цвет числа, cnt число компаний, on открыт сейчас} */
@@ -1646,6 +1648,7 @@ function menuGroups(){
   const top=[mk('shop',L('Каталог','Katalog'),'grid',{b:cartCount()}),mk('mine',L('Мои заказы','Mening buyurtmalarim'),'box',{b:activeMine()})];
   if(S.mdebt.ok&&(S.mdebt.total>0||S.mdebt.ask>0))top.push(mk('debt',L('Мой долг','Mening qarzim'),'coin',{b:S.mdebt.ask,c:'warn'}));
   if(S.auth&&S.did)top.push(mk('profile',L('Профиль','Profil'),'user'));
+  if(becomeOn())top.push(mk('become',L('Стать продавцом','Sotuvchi boʻlish'),'store'));
   if(!as||as==='shop')g.push(['',top]);
   const work=[];
   const mine=S.auth&&S.hub.me&&S.hub.me.sells||[],open=!!(S.admin&&S.did);
@@ -5498,7 +5501,12 @@ const ABOUT_ROLES=[
  {img:'fb-form',h:['Написать нам','Bizga yozish'],cap:['Форма «Написать нам»','«Bizga yozish» shakli'],li:[
   ['В меню ☰ внизу есть «Написать нам»: сообщите об ошибке, предложите новую функцию или напишите о другом. Ваше сообщение получит владелец площадки.','☰ menyuning pastida «Bizga yozish» bor: xato haqida xabar bering, yangi funksiya taklif qiling yoki boshqa narsa haqida yozing. Xabaringizni platforma egasi oladi.'],
   ['Выберите тему («Ошибка», «Новая функция» или «Другое»), напишите до 1000 знаков и нажмите «Отправить». Мы видим ваше имя, @логин и роль в приложении. Не больше 5 обращений в день.','Mavzuni tanlang («Xato», «Yangi funksiya» yoki «Boshqa»), 1000 belgigacha yozing va «Yuborish» tugmasini bosing. Biz ismingizni, @loginingizni va ilovadagi rolingizni koʻramiz. Kuniga 5 tadan koʻp murojaat yuborib boʻlmaydi.'],
-  ['Ответит вам владелец площадки прямо в Telegram.','Platforma egasi sizga bevosita Telegramda javob beradi.']]}
+  ['Ответит вам владелец площадки прямо в Telegram.','Platforma egasi sizga bevosita Telegramda javob beradi.']]},
+ {h:['Стать продавцом','Sotuvchi boʻlish'],li:[
+  ['Хотите продавать на площадке? В меню ☰ есть «Стать продавцом», такая же кнопка внизу главного экрана. Они видны тем, кто пока ничего не продаёт.','Platformada sotmoqchimisiz? ☰ menyuda «Sotuvchi boʻlish» bor, xuddi shunday tugma bosh ekranning pastida ham. Ular hozircha hech narsa sotmaydiganlarga koʻrinadi.'],
+  ['Заполните заявку: название компании, что продаёте, телефон, район или город и комментарий по желанию. Не больше 3 заявок в день; пока заявка ждёт ответа, новую подать нельзя.','Arizani toʻldiring: kompaniya nomi, nima sotasiz, telefon, tuman yoki shahar va xohlasangiz izoh. Kuniga 3 tadan koʻp ariza berib boʻlmaydi; ariza javob kutayotganda yangisini berib boʻlmaydi.'],
+  ['Владелец площадки рассматривает заявку сам и отвечает в Telegram. Если отказал, придёт причина, и вы сможете подать новую заявку. Если одобрил, придёт личный код.','Platforma egasi arizani oʻzi koʻrib chiqadi va Telegramda javob beradi. Rad etsa, sabab keladi va yangi ariza berishingiz mumkin. Maʼqullasa, shaxsiy kod keladi.'],
+  ['Вставьте код на том же экране, в блоке «У меня уже есть код», и нажмите «Войти как продавец»: в меню появится «Моя компания». Код личный, никому его не показывайте.','Kodni shu ekranda «Menda kod bor» blokiga qoʻying va «Sotuvchi sifatida kirish» tugmasini bosing: menyuda «Kompaniyam» paydo boʻladi. Kod shaxsiy, uni hech kimga koʻrsatmang.']]}
  ]},
 {k:'seller',n:['Продавец','Sotuvchi'],
  lead:['Вы продаёте напрямую покупателям и точкам общепита. Вход по личному коду от владельца площадки: откройте бота и отправьте /admin и ваш код. Бот удалит сообщение с кодом, а в меню ☰ появится пункт «Моя компания». Производители работают здесь же.','Siz xaridorlar va umumiy ovqatlanish nuqtalariga bevosita sotasiz. Kirish platforma egasi bergan shaxsiy kod bilan: botni oching va /admin va kodingizni yuboring. Bot kodli xabarni oʻchiradi, ☰ menyuda esa «Kompaniyam» bandi paydo boʻladi. Ishlab chiqaruvchilar ham shu yerda ishlaydi.'],
@@ -5661,6 +5669,11 @@ const ABOUT_ROLES=[
   ['«Входящие → Платежи комиссии»: сводка по продавцам, накопленное и оплаченное; оплаты продавцов вы подтверждаете. Процент комиссии у каждого продавца свой: его задают в карточке продавца («Продавцы» → «Список»), здесь он только показан.','«Kelganlar → Komissiya toʻlovlari»: sotuvchilar boʻyicha xulosa, toʻplangan va toʻlangan; sotuvchilar toʻlovlarini siz tasdiqlaysiz. Komissiya foizi har bir sotuvchida alohida: uni sotuvchi kartochkasida («Sotuvchilar» → «Roʻyxat») belgilanadi, bu yerda faqat koʻrsatiladi.'],
   ['«Аналитика»: продажи по категориям, товарам и покупателям за выбранный период, по всем продавцам или по одному.','«Tahlil»: tanlangan davr uchun kategoriyalar, tovarlar va xaridorlar boʻyicha sotuvlar — barcha sotuvchilar yoki bittasi boʻyicha.'],
   ['«Настройки»: название, этот экран «О нас» с контактами, «Видео», «Районы и города» и «Служебное»: там разовый перенос покупателей продавцов в общую базу.','«Sozlamalar»: nomi, kontaktlar bilan shu «Biz haqimizda» ekrani, «Video», «Tuman va shaharlar» va «Xizmat»: u yerda sotuvchilar xaridorlarini umumiy bazaga bir martalik koʻchirish bor.']]},
+ {h:['Заявки продавцов','Sotuvchi arizalari'],li:[
+  ['Кто хочет продавать, оставляет заявку кнопкой «Стать продавцом». Бот присылает вам сообщение: компания, категория, телефон, район и @логин. Кнопка «Открыть приложение» ведёт в ☰ → «Площадка» → «Входящие» → «Заявки».','Kim sotmoqchi boʻlsa, «Sotuvchi boʻlish» tugmasi bilan ariza qoldiradi. Bot sizga xabar yuboradi: kompaniya, kategoriya, telefon, tuman va @login. «Ilovani ochish» tugmasi ☰ → «Platforma» → «Kelganlar» → «Arizalar» ga olib boradi.'],
+  ['Вкладки «Ждут», «Одобрены» и «Отклонены». «Одобрить» сразу добавляет продавца с новым кодом и отправляет код человеку в Telegram. Код виден и вам: если сообщение не дошло, отправьте его сами.','«Kutmoqda», «Maʼqullangan» va «Rad etilgan» sahifalari. «Maʼqullash» darhol yangi kodli sotuvchi qoʻshadi va kodni odamga Telegramda yuboradi. Kod sizga ham koʻrinadi: xabar yetib bormasa, oʻzingiz yuboring.'],
+  ['Заявка не подходит: нажмите «Отклонить» и впишите причину, бот отправит её заявителю. После этого он сможет подать новую заявку.','Ariza mos kelmasa: «Rad etish»ni bosing va sababni yozing, bot uni arizachiga yuboradi. Shundan keyin u yangi ariza bera oladi.'],
+  ['Человек вводит код в приложении: ☰ → «Стать продавцом» → «У меня уже есть код», вам приходит сообщение, что он вошёл. На пункте «Входящие» красный значок с числом ждущих заявок. Больше 50 продавцов на площадке быть не может.','Odam kodni ilovada kiritadi: ☰ → «Sotuvchi boʻlish» → «Menda kod bor», sizga u kirgani haqida xabar keladi. «Kelganlar» bandida kutayotgan arizalar soni bilan qizil belgi turadi. Platformada 50 tadan ortiq sotuvchi boʻlishi mumkin emas.']]},
  {img:'ow-fb',h:['Обращения и «Смотреть как»','Murojaatlar va «Rol sifatida koʻrish»'],cap:['Раздел «Обращения»','«Murojaatlar» boʻlimi'],li:[
   ['Что пишут люди через «Написать нам»: ☰ → «Площадка» → «Входящие» → «Обращения». Бот присылает сообщение: тема, текст, имя, телефон, @логин и роль человека. Отвечаете вы сами, в Telegram.','Odamlar «Bizga yozish» orqali nima yozayotgani: ☰ → «Platforma» → «Kelganlar» → «Murojaatlar». Bot xabar yuboradi: mavzu, matn, ism, telefon, @login va odamning roli. Javobni oʻzingiz, Telegramda berasiz.'],
   ['Вкладки «Новые», «Решено» и «Все». Ответили: нажмите «Решено». На пункте «Входящие» красный значок с числом новых.','«Yangilar», «Hal qilingan» va «Hammasi» sahifalari. Javob berdingiz: «Hal qilindi»ni bosing. «Kelganlar» bandida yangilari soni bilan qizil belgi turadi.'],
@@ -5758,6 +5771,7 @@ function render(){
   else if(S.view==='comm')renderComm();
   else if(S.view==='about')renderAbout();
   else if(S.view==='feedback')renderFeedback();
+  else if(S.view==='become')renderBecome();
   else if(S.view==='courier')renderCourier();
   else renderSeller();
 }
@@ -5779,6 +5793,7 @@ function go(v,o){
   if(v==='comm'&&was!=='comm')S.cm.fo={};   // при входе на экран все карточки продавцов свёрнуты
   if(v==='base'&&was!=='base')baseResetUI();
   if(v==='feedback'&&was!=='feedback'){S.fb.sent='';S.fb.err=''}
+  if(v==='become'&&was!=='become'){S.bs.ferr='';S.bs.cerr=''}
   if(v==='shops'&&!back){S.shopsCat='';S.shopsBz=''}
   S.view=v;S.navDid=S.did;S.cc=null;S.cp=null;setScrollLock();
   render();window.scrollTo(0,0);
@@ -5794,6 +5809,7 @@ function go(v,o){
   if(v==='analytics')loadAnalytics();
   if(v==='comm')loadComm();
   if(v==='about')loadHub();
+  if(v==='become')loadBecome();
   if(v==='review'){S.rv.ret=null;S.rv.edit=null;loadReview()}
 }
 /* ---------- склад Sarbon: кладовщик принимает заказы продавцов-базаров, взвешивает и отмечает «Принят на складе» ---------- */
@@ -6125,6 +6141,7 @@ function renderShops(){
     if(!ck)out+=socHTML();
     out+=ck?catListHTML(ck):catsHTML();
     if(!ck)out+=popHTML();
+    if(!ck&&becomeOn())out+=becomeCardHTML();
   }
   view.innerHTML=out+'</div>';
 }
@@ -6147,6 +6164,7 @@ async function loadHub(){
   const same=h.loaded&&JSON.stringify([h.title,h.about,h.shops,h.me,h.terrs,h.bazaars,h.pop])===JSON.stringify([next.title,next.about,next.shops,next.me,next.terrs,next.bazaars,next.pop]);
   Object.assign(h,next,{loaded:true,err:false});
   if(isOwner()&&h.me&&typeof h.me.fbn==='number')S.own.fbn=h.me.fbn;   // число новых обращений у владельца
+  if(isOwner()&&h.me&&typeof h.me.apn==='number')S.own.apn=h.me.apn;   // и заявок «Стать продавцом», которые ждут решения
   if(same)return true;
   paintBzSel();
   renderNav();
@@ -6246,7 +6264,7 @@ async function leaveDone(did,nm){
   toast(nm?L('Вы вышли из роли продавца «'+nm+'»','Siz «'+nm+'» sotuvchisi rolidan chiqdingiz'):L('Вы вышли из роли продавца','Siz sotuvchi rolidan chiqdingiz'));
 }
 /* Переключатель «Смотреть как»: ставит режим и открывает начальный экран выбранной роли */
-const AS_SHOP_VIEWS=['shops','shop','mine','debt','profile','about','feedback'];
+const AS_SHOP_VIEWS=['shops','shop','mine','debt','profile','about','feedback','become'];
 async function setViewAs(v){
   if(v&&!asRoles().some(x=>x[0]===v))v='';
   S.as=v;S.ab.open=null;S.vam=false;
@@ -6688,6 +6706,7 @@ async function loadOwner(){
   loadOwnerPeople();
   loadOwnerWho();
   loadOwnerFb();
+  loadOwnerAp();
   if(S.own.sec==='video')loadOwnerVid();
   const r=await api('GET','/api/hub/admin/shops');
   const o=S.own;
@@ -6953,7 +6972,7 @@ async function commAddOwn(did){
 const ownSecs=()=>[
   ['dists',L('Продавцы','Sotuvchilar'),[['dist',L('Список','Roʻyxat'),L('Продавцы','Sotuvchilar')],['bz',L('Базары','Bozorlar'),L('Базары','Bozorlar')]]],
   ['team',L('Люди','Odamlar'),[['people',L('Все','Hammasi'),L('Все люди','Barcha odamlar')],['agents',L('Агенты','Agentlar'),L('Агенты','Agentlar')],['wh',L('Склад','Ombor'),L('Склад','Ombor')]]],
-  ['inbox',L('Входящие','Kelganlar'),[['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]],
+  ['inbox',L('Входящие','Kelganlar'),[['ap',L('Заявки','Arizalar'),L('Заявки продавцов','Sotuvchi arizalari')],['disp',L('Спорные записи','Bahsli yozuvlar'),L('Спорные записи','Bahsli yozuvlar')],['fb',L('Обращения','Murojaatlar'),L('Обращения','Murojaatlar')]]],
   ['site',L('Настройки','Sozlamalar'),[['title',L('Название','Nomi'),L('Название площадки','Platforma nomi')],['about',L('О нас','Biz haqimizda'),L('Экран «О нас»','«Biz haqimizda» ekrani')],['video',L('Видео','Video'),L('Видео товаров','Mahsulot videolari')],['terr',L('Районы и города','Tuman va shaharlar'),L('Районы и города','Tuman va shaharlar')],['clients',L('Служебное','Xizmat'),L('Служебное','Xizmat')]]]
 ];
 function ownSecInfo(sec){
@@ -6967,7 +6986,7 @@ function ownOpen(sec){
   if(old){sec=old[0];if(old[1])S.own[old[1]]=true}
   S.own.sec=sec;S.own.perr='';
   if(S.view!=='owner')go('owner');
-  else{renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb();if(sec==='video')loadOwnerVid()}
+  else{renderNav();renderOwner();window.scrollTo(0,0);if(sec==='fb')loadOwnerFb();if(sec==='ap')loadOwnerAp();if(sec==='video')loadOwnerVid()}
 }
 function ownMadeHTML(){
   const o=S.own;let h='';
@@ -7157,6 +7176,7 @@ function renderOwner(){
     else if(sec==='people')h+=ownWhoHTML();
     else if(sec==='video')h+=ownVidHTML();
     else if(sec==='fb')h+=ownFbHTML();
+    else if(sec==='ap')h+=ownApHTML();
     else h+=ownPeopleHTML(sec);
   }
   view.innerHTML=h+'</div>';
@@ -7235,6 +7255,102 @@ function whoListHTML(){
   if(!list.length)return '<div class="empty"><b>'+L('Никого не нашли','Hech kim topilmadi')+'</b>'+L('Измените поиск или фильтр.','Qidiruv yoki filtrni oʻzgartiring.')+'</div>';
   return shown.map(whoRowHTML).join('')+(list.length>shown.length?'<div class="row-btns"><button type="button" class="btn ghost" data-act="whoall">'+L('Показать всех ('+list.length+')','Hammasini koʻrsatish ('+list.length+')')+'</button></div>':'');
 }
+/* ---------- «Стать продавцом»: заявка владельцу площадки и вход по коду, который он выдал ---------- */
+const AP_TEXT=500;
+/* Кому показывать «Стать продавцом»: вошедшему человеку, который ещё ничего не продаёт. Владельцу (он сам продавец) и продавцу: только в режиме «Смотреть как покупатель» */
+const becomeOn=()=>{const me=S.hub.me;if(!S.auth||!S.hub.loaded||!me)return false;const as=viewAs();return as==='shop'||(!as&&!isOwner()&&!(me.sells||[]).length)};
+const becomeCardHTML=()=>'<div class="card bcta"><h3>'+esc(L('Хотите продавать на '+hubTitle()+'?',hubTitle()+'da sotmoqchimisiz?'))+'</h3><div class="unit">'+L('Свой каталог, заказы в Telegram, остатки и долги покупателей в одном приложении.','Oʻz katalogingiz, Telegramga keladigan buyurtmalar, qoldiq va xaridorlar qarzi bitta ilovada.')+'</div>'
+  +'<div class="row-btns"><button type="button" class="btn ghost sm" data-act="nav" data-v="become">'+L('Стать продавцом','Sotuvchi boʻlish')+'</button></div></div>';
+const apErr=e=>({
+  already_seller:L('Вы уже продавец: заявка не нужна.','Siz allaqachon sotuvchisiz: ariza kerak emas.'),
+  pending:L('Ваша заявка уже отправлена. Дождитесь ответа.','Arizangiz yuborilgan. Javobni kuting.'),
+  approved:L('Заявка уже одобрена. Код пришёл вам в Telegram: вставьте его ниже.','Ariza allaqachon maʼqullangan. Kod Telegramga keldi: uni pastga qoʻying.'),
+  limit:L('Сегодня вы уже отправили 3 заявки. Попробуйте завтра.','Bugun 3 ta ariza yubordingiz. Ertaga urinib koʻring.'),
+  bad_name:L('Название компании: от 2 знаков','Kompaniya nomi: kamida 2 belgi'),
+  bad_cat:L('Выберите, что вы продаёте','Nima sotishingizni tanlang'),
+  bad_phone:L('Телефон: от 9 цифр, например +998 90 123 45 67','Telefon: kamida 9 raqam, masalan +998 90 123 45 67'),
+  bad_region:L('Укажите район или город','Tuman yoki shaharni yozing'),
+  locked:L('Слишком много неверных кодов. Попробуйте через час.','Notoʻgʻri kodlar koʻp. Bir soatdan keyin urinib koʻring.'),
+  bad_code:L('Код не подошёл. Проверьте его и попробуйте ещё раз.','Kod mos kelmadi. Tekshirib, yana urinib koʻring.')
+}[e]||L('Не получилось. Проверьте соединение и попробуйте ещё раз.','Bajarib boʻlmadi. Ulanishni tekshirib, qayta urinib koʻring.'));
+function renderBecome(){
+  const B=S.bs,as=viewAs()==='shop'&&B.seller;   // «Смотреть как покупатель»: форма видна, как у покупателя, но отправить её нельзя
+  let h='<div class="wrap page"><h1>'+L('Стать продавцом','Sotuvchi boʻlish')+'</h1>';
+  if(!S.ready)h+='<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else if(!S.auth)h+='<div class="empty"><b>'+L('Откройте через бота','Bot orqali oching')+'</b>'+L('Подать заявку можно, если открыть приложение из бота в Telegram.','Ariza berish uchun ilovani Telegramdagi bot orqali oching.')+'</div>';
+  else if(!B.ok)h+=B.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div><div class="row-btns"><button type="button" class="btn" data-act="bsreload">'+L('Повторить','Qayta urinish')+'</button></div>'
+    :'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  else if(B.seller&&!as){
+    const mine=S.hub.me&&S.hub.me.sells||[];
+    h+='<div class="card"><h3>✅ '+(isOwner()?L('Вы владелец площадки','Siz platforma egasisiz'):L('Вы уже продавец','Siz allaqachon sotuvchisiz'))+'</h3><div class="unit">'+L('Заявка не нужна.','Ariza kerak emas.')+(mine.length?' '+L('Ваша компания открывается в меню ☰ → «Моя компания».','Kompaniyangiz ☰ menyusidagi «Kompaniyam» orqali ochiladi.'):'')+'</div>'
+      +'<div class="row-btns">'+(mine.length?'<button type="button" class="btn" data-act="coopen">'+L('Открыть мою компанию','Kompaniyamni ochish')+'</button>':'')+'<button type="button" class="btn ghost" data-act="shops">'+L('На главную','Bosh sahifa')+'</button></div></div>';
+  }else{
+    const it=B.item,hn=hubTitle(),dis=as||B.busy?' disabled':'',cdis=as||B.cbusy?' disabled':'';
+    h+='<p class="lead">'+esc(L('Продавайте на '+hn+': свой каталог, заказы приходят в Telegram, остатки и долги покупателей в одном приложении.','Sotuvchi boʻling: '+hn+'da oʻz katalogingiz, buyurtmalar Telegramga keladi, qoldiq va xaridorlar qarzi bitta ilovada.'))+'</p>';
+    if(as)h+='<div class="note" style="margin-bottom:8px">'+L('Вы смотрите как покупатель: так этот экран видят покупатели. Вы уже продавец, поэтому отправить заявку здесь нельзя.','Siz xaridor sifatida koʻryapsiz: xaridorlar bu ekranni shunday koʻradi. Siz allaqachon sotuvchisiz, shuning uchun bu yerda ariza yuborib boʻlmaydi.')+'</div>';
+    if(it&&it.st==='new')h+='<div class="card"><h3>⏳ '+L('Заявка отправлена','Ariza yuborildi')+'</h3><div class="unit">'+esc('«'+it.n+'» · '+shopCatName(it.c)+' · '+jrDate(it.at))+'</div><div class="unit">'+L('Владелец площадки рассмотрит заявку и ответит вам в Telegram. Новую заявку можно будет подать после ответа.','Platforma egasi arizani koʻrib chiqadi va Telegramda javob beradi. Yangi arizani javobdan keyin berish mumkin.')+'</div></div>';
+    else if(it&&it.st==='ok')h+='<div class="card"><h3>✅ '+L('Заявка одобрена','Ariza maʼqullandi')+'</h3><div class="unit">'+esc(L('«'+it.n+'» добавлена на площадку. Код пришёл вам в Telegram: вставьте его ниже и нажмите «Войти как продавец».','«'+it.n+'» platformaga qoʻshildi. Kod Telegramga keldi: uni pastga qoʻying va «Sotuvchi sifatida kirish» tugmasini bosing.'))+'</div><div class="unit">'+L('Не пришёл код? Напишите нам: ☰ → «Написать нам».','Kod kelmadimi? Bizga yozing: ☰ → «Bizga yozish».')+'</div></div>';
+    else{
+      if(it&&it.st==='no')h+='<div class="card"><h3>'+L('Заявка отклонена','Ariza rad etildi')+'</h3><div class="unit">'+esc('«'+it.n+'»')+'</div><div class="note warnnote">'+esc(L('Причина: ','Sabab: ')+(it.why||'—'))+'</div><div class="unit">'+L('Исправьте это и подайте новую заявку ниже.','Buni tuzatib, quyida yangi ariza bering.')+'</div></div>';
+      h+='<div class="card"><h3>'+(it&&it.st==='no'?L('Новая заявка','Yangi ariza'):L('Оставить заявку','Ariza qoldirish'))+'</h3><div class="form">'
+        +'<div><label class="lab" for="bs-name">'+L('Название компании','Kompaniya nomi')+'</label><input type="text" id="bs-name" maxlength="60" value="'+esc(B.name)+'" placeholder="'+esc(L('Например: Навои Фуд','Masalan: Navoiy Fud'))+'" autocomplete="off"'+(as?' disabled':'')+'></div>'
+        +'<div><div class="lab">'+L('Что продаёте','Nima sotasiz')+'</div><div class="filters">'+SHOP_CATS.map(k=>'<button type="button" class="chip" data-act="bscat" data-v="'+k+'" aria-pressed="'+(B.cat===k)+'"'+(as?' disabled':'')+'>'+esc(shopCatName(k))+'</button>').join('')+'</div></div>'
+        +'<div><label class="lab" for="bs-ph">'+L('Телефон','Telefon')+'</label><input type="tel" id="bs-ph" maxlength="30" value="'+esc(B.tel)+'" placeholder="+998 90 123 45 67" autocomplete="off"'+(as?' disabled':'')+'></div>'
+        +'<div><label class="lab" for="bs-reg">'+L('Район или город','Tuman yoki shahar')+'</label><input type="text" id="bs-reg" maxlength="60" value="'+esc(B.reg)+'" placeholder="'+esc(L('Например: Навои','Masalan: Navoiy'))+'" autocomplete="off"'+(as?' disabled':'')+'></div>'
+        +'<div class="full"><label class="lab" for="bs-t">'+L('Комментарий (по желанию)','Izoh (ixtiyoriy)')+'</label><textarea id="bs-t" rows="3" maxlength="'+AP_TEXT+'" placeholder="'+esc(L('Что продаёте, какие товары','Qanday mahsulotlar sotasiz'))+'"'+(as?' disabled':'')+'>'+esc(B.text)+'</textarea><div class="unit" id="bs-cnt">'+B.text.length+' / '+AP_TEXT+'</div></div>'
+        +'</div>'+(B.ferr?'<div class="note warnnote" role="alert">'+esc(B.ferr)+'</div>':'')
+        +'<div class="row-btns"><button type="button" class="btn" data-act="bssend"'+dis+'>'+(B.busy?L('Отправляем','Yuborilmoqda'):L('Отправить заявку','Ariza yuborish'))+'</button></div>'
+        +hintD('Владелец площадки рассмотрит заявку и ответит вам в Telegram. Не больше 3 заявок в день.','Platforma egasi arizani koʻrib chiqadi va Telegramda javob beradi. Kuniga 3 tadan koʻp ariza berib boʻlmaydi.')+'</div>';
+    }
+    h+='<div class="card"><h3>'+L('У меня уже есть код','Menda kod bor')+'</h3><div class="unit">'+L('Владелец дал вам код? Вставьте его сюда, и вы сразу станете продавцом.','Egasi sizga kod berdimi? Uni shu yerga qoʻying, darhol sotuvchi boʻlasiz.')+'</div>'
+      +'<div class="form"><div><label class="lab" for="bs-code">'+L('Код','Kod')+'</label><input type="text" id="bs-code" maxlength="64" value="'+esc(B.code)+'" autocomplete="off" autocapitalize="off" spellcheck="false"'+(as?' disabled':'')+'></div></div>'
+      +(B.cerr?'<div class="note warnnote" role="alert">'+esc(B.cerr)+'</div>':'')
+      +'<div class="row-btns" style="margin-top:10px"><button type="button" class="btn ghost" data-act="bscode"'+cdis+'>'+(B.cbusy?L('Проверяем','Tekshirilmoqda'):L('Войти как продавец','Sotuvchi sifatida kirish'))+'</button></div></div>';
+  }
+  view.innerHTML=h+'</div>';
+}
+/* что с моей заявкой и не продаю ли я уже */
+async function loadBecome(){
+  if(!S.auth){if(S.view==='become')renderBecome();return}
+  const B=S.bs,r=await api('GET','/api/hub/apply');
+  if(!r.ok||!r.data||typeof r.data!=='object'){B.err=!B.ok;if(!B.ok&&S.view==='become')renderBecome();return}
+  B.ok=true;B.err=false;B.seller=!!r.data.seller;B.item=r.data.item||null;B.phone=String(r.data.phone||'');
+  if(!B.tel&&B.phone)B.tel=B.phone;   // телефон из записи покупателя: можно не вводить заново
+  if(S.view==='become'&&!/^(INPUT|TEXTAREA)$/.test((document.activeElement||{}).tagName||''))renderBecome();
+}
+async function bsSend(){
+  const B=S.bs;if(B.busy)return;
+  const name=B.name.trim(),tel=B.tel.trim(),reg=B.reg.trim(),dg=tel.replace(/\D/g,'').length;
+  const bad=name.length<2?'bad_name':!B.cat?'bad_cat':dg<9||dg>15?'bad_phone':reg.length<2?'bad_region':'';
+  if(bad){B.ferr=apErr(bad);renderBecome();return}
+  B.busy=true;B.ferr='';renderBecome();
+  const r=await api('POST','/api/hub/apply',{name,cat:B.cat,phone:tel,region:reg,text:B.text.trim()});
+  B.busy=false;
+  if(r.ok&&r.data&&r.data.state){
+    B.seller=!!r.data.state.seller;B.item=r.data.state.item||null;
+    B.name='';B.cat='';B.reg='';B.text='';
+    renderBecome();window.scrollTo(0,0);return;
+  }
+  const e=r.data&&r.data.error;
+  B.ferr=apErr(e);
+  if(e==='pending'||e==='approved'||e==='already_seller'){await loadBecome();return}   // состояние на сервере другое: показываем его
+  renderBecome();
+}
+/* вход по коду, который выдал владелец: человек сразу становится продавцом и попадает в «Мою компанию» */
+async function bsCode(){
+  const B=S.bs;if(B.cbusy)return;
+  const code=B.code.trim();
+  if(!code){B.cerr=L('Вставьте код','Kodni qoʻying');renderBecome();return}
+  B.cbusy=true;B.cerr='';renderBecome();
+  const r=await api('POST','/api/hub/seller-code',{code});
+  B.cbusy=false;
+  if(!(r.ok&&r.data&&r.data.ok)){B.cerr=apErr(r.data&&r.data.error);renderBecome();return}
+  B.code='';B.seller=true;B.item=null;
+  await loadHub();
+  toast(r.data.owner?L('Вы вошли как владелец площадки','Siz platforma egasi sifatida kirdingiz'):L('Вы вошли как продавец «'+r.data.name+'»','Siz «'+r.data.name+'» sotuvchisi sifatida kirdingiz'));
+  if(r.data.owner&&isOwner())go('owner');
+  else if(!(await enterSeller(r.data.did,'orders')))renderBecome();
+}
 /* ---------- «Написать нам»: человек пишет владельцу площадки об ошибке или новой функции ---------- */
 const FB_LEN=1000,FB_MIN=5;
 const fbKinds=()=>[['bug',L('Ошибка','Xato')],['idea',L('Новая функция','Yangi funksiya')],['other',L('Другое','Boshqa')]];
@@ -7312,6 +7428,71 @@ function ownFbHTML(){
   return '<p class="lead">'+L('Что пишут люди через кнопку «Написать нам». Ответьте человеку сами: по @логину или телефону. Хранятся последние 300 обращений.','Odamlar «Bizga yozish» tugmasi orqali yozganlari. Odamga oʻzingiz javob bering: @login yoki telefon orqali. Oxirgi 300 ta murojaat saqlanadi.')+'</p>'
     +'<div class="filters">'+[['new',L('Новые','Yangilar'),nNew],['done',L('Решено','Hal qilingan'),nDone],['all',L('Все','Hammasi'),D.items.length]].map(f=>'<button type="button" class="chip" data-act="fbf" data-v="'+f[0]+'" aria-pressed="'+(D.f===f[0])+'">'+f[1]+' · '+f[2]+'</button>').join('')+'</div>'
     +(list.length?list.map(fbCardHTML).join(''):'<div class="empty"><b>'+(D.f==='new'?L('Новых обращений нет','Yangi murojaatlar yoʻq'):L('Пока пусто','Hozircha boʻsh'))+'</b>'+L('Когда кто-то напишет через «Написать нам», обращение появится здесь.','Kimdir «Bizga yozish» orqali yozsa, murojaat shu yerda paydo boʻladi.')+'</div>');
+}
+/* владелец: заявки «Стать продавцом» с кнопками «Одобрить» и «Отклонить» */
+async function loadOwnerAp(){
+  if(!isOwner())return;
+  const D=S.own.ap,r=await api('GET','/api/hub/admin/apply');
+  if(!r.ok||!r.data||!Array.isArray(r.data.items)){D.err=!D.ok;if(!D.ok&&S.view==='owner'&&S.own.sec==='ap')ownRefresh();return}
+  D.ok=true;D.err=false;D.items=r.data.items;
+  const chg=S.own.apn!==r.data.n;
+  S.own.apn=r.data.n;
+  if(chg)renderNav();
+  if(S.view==='owner'&&S.own.sec==='ap')ownRefresh();
+}
+async function apDecide(id,ok){
+  const D=S.own.ap;if(D.busy)return;
+  const why=D.why.trim();
+  if(!ok&&why.length<2){toast(L('Напишите причину отказа: её увидит заявитель','Rad etish sababini yozing: arizachi uni koʻradi'));return}
+  D.busy=id;renderOwner();
+  const r=await api('POST','/api/hub/admin/apply/decide',ok?{id,ok:true}:{id,ok:false,why});
+  D.busy='';
+  const d=r.data;
+  if(r.ok&&d&&d.item){
+    D.items=D.items.map(x=>x.id===id?d.item:x);S.own.apn=d.n;D.ask='';D.why='';
+    if(ok){
+      D.made={id,name:d.item.n,code:d.code,sent:!!d.sent};
+      if(S.own.loaded&&d.shop&&!S.own.shops.some(x=>x.id===d.shop.id))S.own.shops=S.own.shops.concat([d.shop]);
+      loadHub();
+    }else toast(d.sent?L('Заявка отклонена, причина отправлена','Ariza rad etildi, sabab yuborildi'):L('Заявка отклонена, но сообщение не дошло: напишите заявителю сами','Ariza rad etildi, lekin xabar yetib bormadi: arizachiga oʻzingiz yozing'));
+    renderNav();
+  }else if(d&&d.error==='done'&&d.item){
+    D.items=D.items.map(x=>x.id===id?d.item:x);S.own.apn=d.n;D.ask='';D.why='';renderNav();
+    toast(L('Эта заявка уже решена','Bu ariza allaqachon hal qilingan'));
+  }else toast(d&&d.error==='need_reason'?L('Напишите причину отказа','Rad etish sababini yozing'):ownErr(d&&d.error));
+  renderOwner();
+}
+function apCardHTML(x){
+  const D=S.own.ap,busy=!!D.busy,dis=busy?' disabled':'',nw=x.st==='new',ask=D.ask===x.id;
+  const tag=nw?L('Новая','Yangi'):x.st==='ok'?L('Одобрена','Maʼqullangan'):L('Отклонена','Rad etilgan');
+  const roles=x.roles&&x.roles.length?x.roles.map(whoRoleTag).join(''):'';
+  let h='<div class="bcard who"><div class="bh"><h3>'+esc(x.n)+'</h3><span class="dtag">'+tag+'</span></div>'
+    +'<div class="dmeta">'+esc([x.un?'@'+x.un:(x.nm||'ID '+x.uid),x.ph].join(' · '))+'</div>'
+    +'<div class="wtags"><span class="dtag">'+esc(shopCatName(x.c))+'</span><span class="dtag">'+esc(x.rg)+'</span>'+roles+'</div>'
+    +(x.t?'<div class="fbt">'+esc(x.t)+'</div>':'')
+    +'<div class="dmeta">'+esc(x.id+' · '+jrDate(x.at)+(!nw&&x.dt?' · '+(x.st==='ok'?L('Одобрено: ','Maʼqullagan: '):L('Отклонено: ','Rad etgan: '))+(x.db?x.db+', ':'')+jrDate(x.dt):''))+'</div>';
+  if(x.st==='no'&&x.why)h+='<div class="dmeta">'+esc(L('Причина: ','Sabab: ')+x.why)+'</div>';
+  if(nw&&ask)h+='<div class="full"><label class="lab" for="ap-why">'+L('Причина отказа (её увидит заявитель)','Rad etish sababi (arizachi uni koʻradi)')+'</label><textarea id="ap-why" rows="3" maxlength="300"'+dis+'>'+esc(D.why)+'</textarea></div>'
+    +'<div class="row-btns"><button type="button" class="btn sm" data-act="apnogo" data-id="'+esc(x.id)+'"'+dis+'>'+(D.busy===x.id?L('Отправляем','Yuborilmoqda'):L('Отклонить','Rad etish'))+'</button><button type="button" class="btn ghost sm" data-act="apnox"'+dis+'>'+L('Назад','Orqaga')+'</button></div>';
+  else if(nw)h+='<div class="row-btns"><button type="button" class="btn sm" data-act="apok" data-id="'+esc(x.id)+'"'+dis+'>'+(D.busy===x.id?L('Создаём','Yaratilmoqda'):L('Одобрить','Maʼqullash'))+'</button><button type="button" class="btn ghost sm" data-act="apno" data-id="'+esc(x.id)+'"'+dis+'>'+L('Отклонить','Rad etish')+'</button></div>';
+  return h+'</div>';
+}
+function ownApHTML(){
+  const D=S.own.ap;
+  if(!D.ok)return D.err?'<div class="empty"><b>'+L('Не удалось загрузить','Yuklab boʻlmadi')+'</b>'+L('Проверьте соединение и попробуйте ещё раз.','Ulanishni tekshirib, qayta urinib koʻring.')+'</div>':'<div class="empty"><b>'+L('Загружаем','Yuklanmoqda')+'</b>'+L('Подождите секунду.','Bir soniya kuting.')+'</div>';
+  const cnt=k=>D.items.filter(x=>x.st===k).length,list=D.items.filter(x=>x.st===D.f);
+  let h='';
+  if(D.made){
+    const m=D.made;
+    h+='<div class="card codebox"><h3>'+esc(L('Одобрено: ','Maʼqullandi: ')+m.name)+'</h3>'
+      +'<div class="unit">'+(m.sent?L('Код отправлен заявителю в Telegram.','Kod arizachiga Telegramda yuborildi.'):L('Telegram не принял сообщение. Отправьте код заявителю сами.','Telegram xabarni qabul qilmadi. Kodni arizachiga oʻzingiz yuboring.'))+' '+L('Сохраните код: потом он нигде не показывается.','Kodni saqlang: keyin u hech qayerda koʻrsatilmaydi.')+'</div>'
+      +'<div class="mono">'+esc(m.code)+'</div>'
+      +'<div class="row-btns"><button type="button" class="btn" data-act="copy" data-v="'+esc(m.code)+'" data-ok="'+esc(L('Код скопирован','Kod nusxalandi'))+'" data-lab="'+esc(L('Код: ','Kod: '))+'">'+L('Копировать код','Kodni nusxalash')+'</button>'
+      +'<button type="button" class="btn ghost" data-act="apmadeclose">'+L('Готово, код сохранён','Tayyor, kod saqlandi')+'</button></div></div>';
+  }
+  return h+'<p class="lead">'+L('Люди, которые хотят продавать на площадке. «Одобрить» добавит продавца и отправит ему код в Telegram, «Отклонить» отправит причину. Хранятся последние 300 заявок.','Platformada sotmoqchi boʻlganlar. «Maʼqullash» sotuvchi qoʻshadi va unga kodni Telegramda yuboradi, «Rad etish» sababni yuboradi. Oxirgi 300 ta ariza saqlanadi.')+'</p>'
+    +'<div class="filters">'+[['new',L('Ждут','Kutmoqda')],['ok',L('Одобрены','Maʼqullangan')],['no',L('Отклонены','Rad etilgan')]].map(f=>'<button type="button" class="chip" data-act="apf" data-v="'+f[0]+'" aria-pressed="'+(D.f===f[0])+'">'+f[1]+' · '+cnt(f[0])+'</button>').join('')+'</div>'
+    +(list.length?list.map(apCardHTML).join(''):'<div class="empty"><b>'+(D.f==='new'?L('Новых заявок нет','Yangi arizalar yoʻq'):L('Пока пусто','Hozircha boʻsh'))+'</b>'+L('Когда кто-то нажмёт «Стать продавцом» и отправит заявку, она появится здесь.','Kimdir «Sotuvchi boʻlish» orqali ariza yuborsa, u shu yerda paydo boʻladi.')+'</div>');
 }
 /* владелец: канал для видео и все видео товаров с кнопками «Смотреть» и «Убрать» */
 async function loadOwnerVid(){
@@ -7567,6 +7748,16 @@ document.addEventListener('click',e=>{
   else if(a==='fbf'){S.own.fb.f=t.dataset.v;renderOwner()}
   else if(a==='fbdone')fbDone(t.dataset.id,true);
   else if(a==='fbundo')fbDone(t.dataset.id,false);
+  else if(a==='bscat'){S.bs.cat=t.dataset.v;S.bs.ferr='';renderBecome()}
+  else if(a==='bssend')bsSend();
+  else if(a==='bscode')bsCode();
+  else if(a==='bsreload'){S.bs.err=false;renderBecome();loadBecome()}
+  else if(a==='apf'){S.own.ap.f=t.dataset.v;renderOwner()}
+  else if(a==='apok')apDecide(t.dataset.id,true);
+  else if(a==='apno'){const D=S.own.ap;D.ask=t.dataset.id;D.why='';renderOwner();const w=$('#ap-why');if(w)w.focus()}
+  else if(a==='apnox'){S.own.ap.ask='';renderOwner()}
+  else if(a==='apnogo')apDecide(t.dataset.id,false);
+  else if(a==='apmadeclose'){S.own.ap.made=null;renderOwner()}
   else if(a==='nav'){
     const nv=t.dataset.v;
     // «Каталог» при нескольких продавцах ведёт на первый экран (категории и список), а не в ту компанию, где были в прошлый раз;
@@ -8080,6 +8271,12 @@ document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='q'){S.q=t.value;paintGrid()}
   else if(t.id==='fb-t'){S.fb.text=t.value;const c=$('#fb-cnt');if(c)c.textContent=t.value.length+' / '+FB_LEN}
+  else if(t.id==='bs-name')S.bs.name=t.value
+  else if(t.id==='bs-ph')S.bs.tel=t.value
+  else if(t.id==='bs-reg')S.bs.reg=t.value
+  else if(t.id==='bs-t'){S.bs.text=t.value;const c=$('#bs-cnt');if(c)c.textContent=t.value.length+' / '+AP_TEXT}
+  else if(t.id==='bs-code')S.bs.code=t.value
+  else if(t.id==='ap-why')S.own.ap.why=t.value
   else if(t.id==='dp-amount')DB().amount=t.value
   else if(t.id==='dp-note')DB().note=t.value
   else if(t.id==='dv-name')S.dv.name=t.value
@@ -8356,6 +8553,7 @@ function tick(){
   if((S.view==='shops'||S.view==='review')&&tickN%2===0)loadHub();
   else if(isOwner()&&tickN%4===0)loadHub();
   if(isOwner()&&(tickN%4===0||(S.view==='owner'&&S.own.sec==='disp'&&tickN%2===0)))loadDisputes();
+  if(isOwner()&&S.view==='owner'&&S.own.sec==='ap'&&tickN%2===0&&!S.own.ap.busy)loadOwnerAp();
   if(S.view==='review'&&tickN%2===0&&!S.rv.ret&&!S.rv.edit&&!S.rv.busy)loadReview(true);
   if(isOwner()&&((S.view==='comm'&&tickN%2===0)||tickN%4===0))loadCommOwner();
   if(S.admin&&S.did&&(S.view==='seller'||S.view==='comm'||tickN%2===0))loadAdmin();
@@ -8382,17 +8580,18 @@ function tick(){
   const me=S.hub.me;
   let did=validDid(want)?want:'';
   if(!did&&!vw&&S.hub.shops.length===1)did=S.hub.shops[0].id;   // продавец один: список выбирать не из чего
-  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about'&&vw!=='feedback'&&vw!=='wh')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым продавцом
+  if(!did&&!S.hub.loaded&&vw!=='owner'&&vw!=='review'&&vw!=='analytics'&&vw!=='comm'&&vw!=='about'&&vw!=='feedback'&&vw!=='become'&&vw!=='wh')did='main';   // список недоступен (площадка не подключена): работаем как раньше, с первым продавцом
   if(!did&&vw==='seller'&&me&&me.sells.length===1)did=me.sells[0].id;
   if(!did&&vw==='courier'&&me&&me.delivers&&me.delivers.length===1)did=me.delivers[0].id;
   S.ready=true;
   let v='shops';
-  if(did&&await openShop(did))v=vw==='review'&&isOwner()?'review':vw==='comm'&&(isOwner()||S.admin)?'comm':vw==='seller'&&S.admin?'seller':vw==='courier'&&S.courier?'courier':vw==='mine'?'mine':vw==='debt'?'debt':vw==='about'?'about':vw==='feedback'?'feedback':'shop';
+  if(did&&await openShop(did))v=vw==='review'&&isOwner()?'review':vw==='comm'&&(isOwner()||S.admin)?'comm':vw==='seller'&&S.admin?'seller':vw==='courier'&&S.courier?'courier':vw==='mine'?'mine':vw==='debt'?'debt':vw==='about'?'about':vw==='feedback'?'feedback':vw==='become'?'become':'shop';
   else if(vw==='mine')v='mine';
   else if(vw==='about')v='about';
   else if(vw==='feedback')v='feedback';
+  else if(vw==='become')v='become';
   else if(vw==='debt')v='debt';
-  else if(vw==='owner'&&isOwner())v='owner';
+  else if(vw==='owner'&&isOwner()){v='owner';if(QS.get('t')==='ap')S.own.sec='ap'}   // из сообщения бота о новой заявке сразу на вкладку «Заявки»
   else if(vw==='base'&&canBase())v='base';
   else if(vw==='wh'&&S.hub.me&&S.hub.me.wh)v='wh';
   else if(vw==='review'&&isOwner())v='review';
@@ -8407,6 +8606,7 @@ function tick(){
   hsInit();
   if(v==='debt')loadMyDebt(true);
   if(v==='owner')loadOwner();
+  if(v==='become')loadBecome();
   if(v==='base')loadBase(true);
   if(v==='wh')loadWh();
   if(v==='analytics')loadAnalytics();

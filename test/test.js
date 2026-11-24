@@ -8239,7 +8239,7 @@ await t('«О нас»: пункт меню последний и виден в�
     }
   }
   assert.equal(imgs, 24, 'двадцать четыре экрана со снимками');
-  assert.equal(text, 7, 'семь текстовых разделов: «Доставка из другого региона» у покупателя, «Дальняя доставка после оплаты», «Заказы Базара» и «Отчёты, база и настройки» у продавца, «Отправка в Навои» у склада, «Склад и Базары» и «Деньги, аналитика и площадка» у владельца');
+  assert.equal(text, 9, 'девять текстовых разделов: «Доставка из другого региона» и «Стать продавцом» у покупателя, «Дальняя доставка после оплаты», «Заказы Базара» и «Отчёты, база и настройки» у продавца, «Отправка в Навои» у склада, «Склад и Базары», «Деньги, аналитика и площадка» и «Заявки продавцов» у владельца');
   // комиссия в блоке продавца описана без процента
   assert.ok(!/\d\s*%/.test(JSON.stringify(ROLES.find(x => x.k === 'seller'))), 'в блоке продавца нет числа процентов');
   // каждый снимок используется: лишних файлов нет
@@ -8836,7 +8836,7 @@ await t('«Покупатель» вместо «магазин» и «клие�
 
 /* ---------- плоское меню: песочница, в которой работает настоящий код меню из app.html ---------- */
 const menuLab = (html, st = {}, o = {}) => {
-  const S = Object.assign({ view: 'shops', auth: true, did: '', admin: false, courier: null, cr: { tab: 'today' }, mdebt: { ok: false, total: 0, ask: 0 }, hub: { me: { sells: [], delivers: [], owner: false } }, own: { sec: 'dist', dn: 0, fbn: 0 }, sellerTab: 'orders', as: '', vam: false }, st);
+  const S = Object.assign({ view: 'shops', auth: true, did: '', admin: false, courier: null, cr: { tab: 'today' }, mdebt: { ok: false, total: 0, ask: 0 }, hub: { me: { sells: [], delivers: [], owner: false } }, own: { sec: 'dist', dn: 0, fbn: 0, apn: 0 }, sellerTab: 'orders', as: '', vam: false }, st);
   const calls = [];
   const lang = o.uz ? 1 : 0;
   const env = {
@@ -8847,6 +8847,7 @@ const menuLab = (html, st = {}, o = {}) => {
     isOwner: () => !!(S.hub.me && S.hub.me.owner), modN: () => o.mod || 0, commBadge: () => o.cb || 0, commOwn: () => !!(S.hub.me && S.hub.me.owner) && S.as !== 'seller',
     go: v => calls.push(['go', v]), ownOpen: s => calls.push(['own', s]), enterSeller: (d, t) => calls.push(['seller', d, t]),
   };
+  env.becomeOn = new Function('S', 'viewAs', 'isOwner', html.match(/^const becomeOn=.*$/m)[0] + '\nreturn becomeOn;')(S, env.viewAs, env.isOwner);   // настоящая проверка «показывать ли «Стать продавцом»»
   env.logoBox = new Function('esc', html.match(/^const logoUrl=.*$/m)[0] + '\n' + html.match(/^const logoBox=.*$/m)[0] + '\nreturn logoBox;')(env.esc);
   const own = html.slice(html.indexOf('const ownSecs=()=>['), html.indexOf('function ownSecInfo('));
   const ui = html.slice(html.indexOf('const subSum='), html.indexOf('/* полоска перерисовывается'));
@@ -8916,9 +8917,9 @@ await t('меню: числа — у строки своё, у «Входящи�
   assert.equal(menuRows(closed.menuGroups()).find(x => x.k === 'seller').b, 0, 'без открытой компании числа нет');
   // нет оповещений — ☰ без числа
   assert.equal(menuLab(html, { hub: { me } }).menuTotal(), 0);
-  // у четырёх вкладок «Входящих» числа те же, что в сумме строки
+  // у пяти вкладок «Входящих» числа те же, что в сумме строки
   const tb = m.inboxTabs();
-  assert.deepEqual(tb.map(x => x[0]), ['review', 'comm', 'disp', 'fb']);
+  assert.deepEqual(tb.map(x => x[0]), ['ap', 'review', 'comm', 'disp', 'fb']);
   assert.equal(tb.reduce((a, x) => a + (Number(x[2]) || 0), 0), by.inbox.b, 'сумма вкладок = число строки');
 });
 
@@ -9001,15 +9002,15 @@ await t('вкладки на экране: «Входящие», группы в
   // экраны без вкладок
   for (const v of ['shops', 'shop', 'mine', 'about', 'feedback', 'base', 'analytics', 'wh', 'courier', 'profile']) assert.equal(lab({ view: v }).barSpec(), null, 'вкладок нет: ' + v);
   assert.equal(lab({ view: 'about' }).barHTML(), '');
-  // входящие: четыре вкладки, две — отдельные экраны, две — разделы владельца
+  // входящие: пять вкладок, две — отдельные экраны, три — разделы владельца
   let b = lab({ view: 'review' }, { mod: 2, cb: 3 }).barSpec();
-  assert.deepEqual(b.tabs.map(x => x.id), ['review', 'comm', 'disp', 'fb']);
+  assert.deepEqual(b.tabs.map(x => x.id), ['ap', 'review', 'comm', 'disp', 'fb']);
   assert.equal(b.cur, 'review');
-  assert.deepEqual(b.tabs.map(x => [x.a, x.d.v || x.d.t]), [['nav', 'review'], ['nav', 'comm'], ['otab', 'disp'], ['otab', 'fb']], 'нажатие: экраны проверки и комиссии через nav, споры и обращения — разделы владельца');
-  assert.deepEqual(b.tabs.map(x => x.b), [2, 3, 0, 0], 'числа берутся те же, что и у строки меню');
+  assert.deepEqual(b.tabs.map(x => [x.a, x.d.v || x.d.t]), [['otab', 'ap'], ['nav', 'review'], ['nav', 'comm'], ['otab', 'disp'], ['otab', 'fb']], 'нажатие: экраны проверки и комиссии через nav, заявки, споры и обращения — разделы владельца');
+  assert.deepEqual(b.tabs.map(x => x.b), [0, 2, 3, 0, 0], 'числа берутся те же, что и у строки меню');
   assert.equal(lab({ view: 'comm' }).barSpec().cur, 'comm', 'платежи комиссии у владельца — вкладка «Входящих»');
   b = lab({ view: 'owner', own: { sec: 'fb', dn: 1, fbn: 5 } }).barSpec();
-  assert.deepEqual([b.cur, b.tabs.length], ['fb', 4], 'обращения — тоже вкладка «Входящих»');
+  assert.deepEqual([b.cur, b.tabs.length], ['fb', 5], 'обращения — тоже вкладка «Входящих»');
   // группы владельца
   b = lab({ view: 'owner', own: { sec: 'wh', dn: 0, fbn: 0 } }).barSpec();
   assert.deepEqual(b.tabs.map(x => x.id), ['people', 'agents', 'wh'], 'люди: все, агенты, склад');
@@ -9052,7 +9053,8 @@ await t('вкладки на экране: «Входящие», группы в
   let ib = lab({ view: 'shops', own: { sec: 'dist', dn: 0, fbn: 3 } }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['own', 'fb']], 'ждут только обращения — открываются они');
   ib = lab({ view: 'shops' }, { mod: 1 }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['go', 'review']], 'ждёт проверка товаров');
   ib = lab({ view: 'shops' }, { cb: 2, mod: 0 }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['go', 'comm']], 'ждёт комиссия');
-  ib = lab({ view: 'shops' }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['go', 'review']], 'ничего не ждёт — первая вкладка');
+  ib = lab({ view: 'shops', own: { sec: 'dist', dn: 0, fbn: 0, apn: 2 } }, { mod: 1 }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['own', 'ap']], 'ждут заявки и проверка — первыми открываются заявки');
+  ib = lab({ view: 'shops' }); ib.inboxOpen(); assert.deepEqual(ib.calls, [['own', 'ap']], 'ничего не ждёт — первая вкладка «Заявки»');
   // в коде экранов: полоска стоит на месте и перерисовывается с меню
   const at = (a, z) => html.slice(html.indexOf(a), html.indexOf(z, html.indexOf(a)));
   assert.equal((html.match(/id="tbar"/g) || []).length, 4, 'место под полоску есть на четырёх экранах: компания, проверка, комиссия, владелец');
@@ -10207,13 +10209,200 @@ await t('обращения «Написать нам»: человек пише
   assert.equal((await list()).items[0].t, 'Самое свежее обращение');
 });
 
+await t('«Стать продавцом»: заявка человека, список и решение владельца, код приходит в бот, вход по коду из приложения, лимиты', async () => {
+  await hubWorld();
+  const hub = W.hubStorage;
+  const apply = (init, body) => call('POST', '/api/hub/apply', { init, body });
+  const mine = async init => jsonOf(await call('GET', '/api/hub/apply', { init }));
+  const list = async () => jsonOf(await call('GET', '/api/hub/admin/apply', { init: iS() }));
+  const decide = (init, body) => call('POST', '/api/hub/admin/apply/decide', { init, body });
+  const enter = (init, code) => call('POST', '/api/hub/seller-code', { init, body: { code } });
+  const meOf = async init => (await jsonOf(await call('GET', '/api/shops', { init }))).me;
+  const good = (extra = {}) => Object.assign({ name: 'Самарканд Ун', cat: 'wholesale', phone: '+998 90 555 12 34', region: 'Самарканд', text: 'Продаём муку и крупы оптом' }, extra);
+  const A = newUser(), B = newUser(), C = newUser();
+
+  // без входа ничего нельзя
+  assert.equal((await call('GET', '/api/hub/apply')).status, 401);
+  assert.equal((await call('POST', '/api/hub/apply', { body: good() })).status, 401);
+  assert.equal((await call('POST', '/api/hub/seller-code', { body: { code: 'x' } })).status, 401);
+  assert.deepEqual(await mine(A.init()), { seller: false, item: null, phone: '' }, 'новый человек: заявки нет, продавцом не является');
+  assert.equal((await mine(iS())).seller, true, 'владелец уже продавец');
+
+  // плохие данные не сохраняются
+  for (const [body, err] of [[good({ name: 'a' }), 'bad_name'], [good({ cat: 'zzz' }), 'bad_cat'], [good({ cat: '' }), 'bad_cat'], [good({ phone: '12345' }), 'bad_phone'], [good({ region: ' ' }), 'bad_region']]) {
+    const r = await apply(A.init(), body);
+    assert.equal(r.status, 400, err); assert.equal((await jsonOf(r)).error, err);
+  }
+  assert.equal((await apply(A.init(), 'oops')).status, 400);
+  assert.equal((await list()).items.length, 0, 'плохие заявки не сохраняются');
+  assert.equal((await meOf(iS())).apn, 0, 'у владельца значок пуст');
+  assert.ok(!('apn' in (await meOf(A.init()))), 'у обычного человека значка нет');
+
+  // хорошая заявка: сохраняется, владельцу приходит сообщение с кнопкой «Открыть приложение»
+  tgLog = [];
+  let r = await apply(A.init(), good({ text: '  Продаём муку\r\n\r\n\r\nи крупы  ' }));
+  assert.equal(r.status, 200);
+  let st = (await jsonOf(r)).state;
+  assert.equal(st.seller, false);
+  assert.ok(/^Z-[A-Z0-9]{5}$/.test(st.item.id), st.item.id);
+  assert.deepEqual([st.item.st, st.item.n, st.item.c, st.item.why], ['new', 'Самарканд Ун', 'wholesale', '']);
+  assert.ok(!('uid' in st.item) && !('ph' in st.item) && !('t' in st.item) && !('roles' in st.item), 'заявитель не получает служебных полей');
+  const id1 = st.item.id;
+  const ms = tgAll('sendMessage', p => p.chat_id === SELLER.id && String(p.text).includes(id1));
+  assert.equal(ms.length, 1, 'владельцу ушло одно сообщение');
+  const mt = String(ms[0].payload.text);
+  assert.ok(mt.includes('Ariza / Заявка ' + id1) && mt.includes('Компания: Самарканд Ун') && mt.includes('Ulgurji sotuvchilar · Оптовики') && mt.includes('+998 90 555 12 34') && mt.includes('Район: Самарканд') && mt.includes('Гость' + A.u.id) && mt.endsWith('Продаём муку\n\nи крупы\n\nIlova: ☰ → Kelganlar → Arizalar · Приложение: ☰ → Входящие → Заявки'), mt);
+  assert.ok(ms[0].payload.reply_markup.inline_keyboard[0][0].web_app.url.endsWith('/?v=owner&t=ap'), 'кнопка ведёт на вкладку «Заявки»');
+  let ls = await list();
+  assert.equal(ls.items.length, 1); assert.equal(ls.n, 1);
+  assert.deepEqual([ls.items[0].id, ls.items[0].uid, ls.items[0].n, ls.items[0].c, ls.items[0].ph, ls.items[0].rg, ls.items[0].t, ls.items[0].st], [id1, A.u.id, 'Самарканд Ун', 'wholesale', '+998 90 555 12 34', 'Самарканд', 'Продаём муку\n\nи крупы', 'new']);
+  assert.equal((await meOf(iS())).apn, 1, 'на значке владельца 1');
+  assert.equal((await mine(A.init())).item.id, id1);
+
+  // пока заявка ждёт, вторую подать нельзя; чужие не видят список и не решают
+  r = await apply(A.init(), good()); assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'pending');
+  assert.equal((await call('GET', '/api/hub/admin/apply', { init: A.init() })).status, 403);
+  assert.equal((await call('GET', '/api/hub/admin/apply')).status, 401);
+  assert.equal((await decide(A.init(), { id: id1, ok: true })).status, 403);
+  assert.equal((await decide(iS(), { id: 'bad', ok: true })).status, 400);
+  assert.equal((await decide(iS(), { id: id1, ok: 'yes' })).status, 400);
+  assert.equal((await decide(iS(), { id: 'Z-ZZZZZ', ok: true })).status, 404);
+  r = await decide(iS(), { id: id1, ok: false }); assert.equal(r.status, 400); assert.equal((await jsonOf(r)).error, 'need_reason', 'отказ без причины нельзя');
+  r = await decide(iS(), { id: id1, ok: false, why: ' x ' }); assert.equal(r.status, 400, 'причина короче 2 знаков');
+  assert.equal((await list()).items[0].st, 'new', 'ничего не изменилось');
+
+  // отказ: причина уходит заявителю, потом можно подать новую
+  tgLog = [];
+  let d = await jsonOf(await decide(iS(), { id: id1, ok: false, why: 'Нет документов на склад' }));
+  assert.equal(d.item.st, 'no'); assert.equal(d.item.why, 'Нет документов на склад'); assert.equal(d.item.db, 'Jasur'); assert.ok(d.item.dt); assert.equal(d.n, 0); assert.equal(d.sent, true);
+  const rm = tgAll('sendMessage', p => p.chat_id === A.u.id);
+  assert.equal(rm.length, 1, 'заявителю ушло сообщение');
+  assert.ok(String(rm[0].payload.text).includes('Sababi: Нет документов на склад') && String(rm[0].payload.text).includes('Причина: Нет документов на склад'), String(rm[0].payload.text));
+  assert.ok(rm[0].payload.reply_markup.inline_keyboard[0][0].web_app.url.endsWith('/?v=become'), 'кнопка открывает «Стать продавцом»');
+  assert.equal((await meOf(iS())).apn, 0, 'значок уменьшился');
+  st = await mine(A.init());
+  assert.deepEqual([st.item.st, st.item.why], ['no', 'Нет документов на склад'], 'заявитель видит причину');
+  r = await decide(iS(), { id: id1, ok: false, why: 'Ещё раз' }); assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'done', 'повторное решение ничего не меняет');
+  assert.equal((await decide(iS(), { id: id1, ok: true })).status, 409);
+  assert.equal((await list()).items[0].why, 'Нет документов на склад');
+
+  // новая заявка после отказа; одобрение создаёт продавца с новым кодом и присылает код заявителю
+  r = await apply(A.init(), good({ name: 'Самарканд Ун Плюс', cat: 'maker', text: '' }));
+  assert.equal(r.status, 200);
+  const id2 = (await jsonOf(r)).state.item.id;
+  assert.notEqual(id2, id1);
+  assert.equal((await mine(A.init())).item.st, 'new', 'человек видит последнюю заявку');
+  const dx0 = ((await hub.get('dx')) || []).length;
+  tgLog = [];
+  d = await jsonOf(await decide(iS(), { id: id2, ok: true }));
+  assert.equal(d.item.st, 'ok'); assert.ok(d.item.did); assert.equal(d.shop.id, d.item.did); assert.equal(d.shop.name, 'Самарканд Ун Плюс'); assert.equal(d.shop.cat, 'maker');
+  assert.ok(d.code && d.code.length >= 12, 'код создан'); assert.equal(d.sent, true); assert.equal(d.n, 0);
+  assert.equal(((await hub.get('dx')) || []).length, dx0 + 1, 'продавец добавлен');
+  const am = tgAll('sendMessage', p => p.chat_id === A.u.id);
+  assert.equal(am.length, 1);
+  assert.ok(String(am[0].payload.text).includes(d.code) && String(am[0].payload.text).includes('Sizning kodingiz') && String(am[0].payload.text).includes('Ваш код') && String(am[0].payload.text).includes('«Самарканд Ун Плюс»'), String(am[0].payload.text));
+  assert.ok(am[0].payload.reply_markup.inline_keyboard[0][0].web_app.url.endsWith('/?v=become'));
+  assert.ok(!JSON.stringify(await list()).includes(d.code), 'код нигде не хранится открытым');
+  r = await decide(iS(), { id: id2, ok: true }); assert.equal(r.status, 409, 'повторное «Одобрить» не создаёт второго продавца');
+  assert.equal(((await hub.get('dx')) || []).length, dx0 + 1);
+  st = await mine(A.init());
+  assert.deepEqual([st.seller, st.item.st], [false, 'ok'], 'заявитель пока не продавец: ему нужно ввести код');
+  r = await apply(A.init(), good()); assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'approved', 'пока код не введён, новую заявку подать нельзя');
+
+  // вход по коду из приложения: неверный код, пустой, затем верный
+  r = await enter(A.init(), 'wrong-code-wrong-code'); assert.equal(r.status, 403); assert.equal((await jsonOf(r)).error, 'bad_code');
+  assert.equal((await enter(A.init(), '')).status, 400);
+  assert.equal((await call('POST', '/api/hub/seller-code', { init: A.init(), body: { code: 5 } })).status, 400);
+  assert.equal((await call('POST', '/api/hub/seller-code', { init: A.init(), body: 'x' })).status, 400);
+  tgLog = [];
+  r = await enter(A.init(), d.code);
+  assert.equal(r.status, 200);
+  let e = await jsonOf(r);
+  assert.deepEqual([e.ok, e.did, e.name, e.owner, e.fresh], [true, d.item.did, 'Самарканд Ун Плюс', false, true]);
+  assert.ok(tgAll('sendMessage', p => p.chat_id === SELLER.id && String(p.text).includes('Вход по коду') && String(p.text).includes('Самарканд Ун Плюс')).length === 1, 'владельцу сообщение о входе');
+  assert.deepEqual((await meOf(A.init())).sells.map(x => x.id), [d.item.did], 'теперь человек продавец этой компании');
+  st = await mine(A.init());
+  assert.equal(st.seller, true);
+  r = await apply(A.init(), good()); assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'already_seller');
+  tgLog = [];
+  assert.equal((await enter(A.init(), d.code)).status, 200, 'повторный ввод кода работает');
+  assert.equal(tgAll('sendMessage', p => p.chat_id === SELLER.id).length, 0, 'повторный вход владельца не беспокоит');
+
+  // код владельца площадки (ADMIN_CODE) в приложении работает как команда /admin
+  assert.equal((await enter(C.init(), 'x'.repeat(14))).status, 403);
+  r = await enter(C.init(), CODE); e = await jsonOf(r);
+  assert.deepEqual([r.status, e.ok, e.owner], [200, true, true]);
+  assert.equal((await meOf(C.init())).owner, true, 'владелец по коду из приложения');
+
+  // восемь неверных кодов подряд: час блокировки, даже верный код не пускает
+  const D2 = newUser();
+  for (let i = 0; i < 8; i++) assert.equal((await enter(D2.init(), 'wrong-code-' + i)).status, 403);
+  r = await enter(D2.init(), 'wrong-code-9'); assert.equal(r.status, 429); assert.equal((await jsonOf(r)).error, 'locked');
+  assert.equal((await enter(D2.init(), d.code)).status, 429, 'пока блокировка, верный код тоже не принимается');
+  await hub.put('fail:' + D2.u.id, { n: 0, until: 1 });
+  assert.equal((await enter(D2.init(), d.code)).status, 200, 'час прошёл — вход работает');
+
+  // отказ, когда Telegram не принял сообщение: решение сохранено, владелец узнаёт «sent: false»
+  r = await apply(B.init(), good({ name: 'Гулшан Мевалари', cat: 'bazaar', region: 'Навои' }));
+  const id3 = (await jsonOf(r)).state.item.id;
+  tgFail = true;
+  d = await jsonOf(await decide(iS(), { id: id3, ok: true }));
+  tgFail = false;
+  assert.equal(d.item.st, 'ok'); assert.equal(d.sent, false, 'Telegram недоступен: владелец видит, что сообщение не дошло'); assert.ok(d.code, 'код всё равно показан владельцу');
+  const dB = d;
+  // продавца удалили, код не введён: можно подать новую заявку
+  assert.equal((await call('DELETE', '/api/hub/admin/shops/' + dB.item.did, { init: iS() })).status, 200);
+  st = await mine(B.init());
+  assert.equal(st.item, null, 'после удаления продавца одобренная заявка не мешает');
+  r = await apply(B.init(), good({ name: 'Гулшан Мевалари 2' })); assert.equal(r.status, 200);
+  assert.equal((await decide(iS(), { id: (await jsonOf(r)).state.item.id, ok: false, why: 'Дубль' })).status, 200);
+
+  // три заявки в день: четвёртая — «limit», на следующий день снова можно
+  const E = newUser();
+  for (let i = 0; i < 3; i++) {
+    r = await apply(E.init(), good({ name: 'Компания ' + i })); assert.equal(r.status, 200, 'заявка ' + i);
+    assert.equal((await decide(iS(), { id: (await jsonOf(r)).state.item.id, ok: false, why: 'Не подходит ' + i })).status, 200);
+  }
+  r = await apply(E.init(), good()); assert.equal(r.status, 429); assert.equal((await jsonOf(r)).error, 'limit');
+  await hub.put('apr:' + E.u.id, { d: '2000-01-01', n: 3 });
+  assert.equal((await apply(E.init(), good())).status, 200);
+
+  // лимит продавцов на площадке: «Одобрить» говорит об этом, заявка остаётся ждать
+  const F = newUser();
+  const idF = (await jsonOf(await apply(F.init(), good({ name: 'Последний' })))).state.item.id;
+  const dxs = (await hub.get('dx')) || [];
+  await hub.put('dx', dxs.concat(Array.from({ length: 50 - dxs.length }, (_, i) => 'fake' + i)));
+  r = await decide(iS(), { id: idF, ok: true }); assert.equal(r.status, 409); assert.equal((await jsonOf(r)).error, 'too_many');
+  assert.equal((await hub.get('ap:' + idF)).st, 'new', 'заявка осталась ждать'); assert.ok(!(await hub.get('ap:' + idF)).busy, 'и не зависла в «создаётся»');
+  await hub.put('dx', dxs);
+  assert.equal((await decide(iS(), { id: idF, ok: true })).status, 200, 'место освободилось — одобряется');
+  // заявка, которая прямо сейчас одобряется, повторно не решается
+  const G = newUser();
+  const idG = (await jsonOf(await apply(G.init(), good({ name: 'Параллельная' })))).state.item.id;
+  const rec = await hub.get('ap:' + idG); rec.busy = true; await hub.put('ap:' + idG, rec);
+  r = await decide(iS(), { id: idG, ok: true }); assert.equal(r.status, 409);
+
+  // хранится не больше 300: самые старые уходят
+  const idx = (await hub.get('apx'));
+  const keep = idx.slice(0, 299);
+  for (let i = 0; i < 300; i++) { const zid = 'Z-T' + String(i).padStart(4, '0'); await hub.put('ap:' + zid, { id: zid, uid: 1, nm: 'x', un: '', roles: [], n: 'старая ' + i, c: 'maker', ph: '1', rg: 'x', t: '', at: '2020-01-01T00:00:00.000Z', st: 'no', why: 'x' }); keep.push(zid); }
+  await hub.put('apx', keep);
+  assert.equal((await apply(newUser().init(), good({ name: 'Самая свежая' }))).status, 200);
+  assert.equal((await hub.get('apx')).length, 300);
+  assert.equal(await hub.get('ap:Z-T0299'), undefined, 'самая старая удалена');
+  assert.equal((await list()).items[0].n, 'Самая свежая');
+  // значок пересчитывается по списку
+  await hub.put('apn', 99);
+  assert.equal((await list()).n, (await list()).items.filter(x => x.st === 'new').length, 'значок равен числу ждущих');
+});
+
 await t('«Написать нам» на экране: пункт меню, форма (тема, текст до 1000, счётчик), отправка и ошибки, раздел «Обращения» у владельца со значком', () => {
   const html = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
   const wk = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
   const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
   assert.ok(/cell\('info',L\('О нас','Biz haqimizda'\)[^\n]*\n\s*\+cell\('msg',L\('Написать нам','Bizga yozish'\),'nav',\{v:'feedback'\}/.test(fn('menuFootHTML')), 'кнопка рядом с «О нас» в нижнем ряду меню, видна всем');
   assert.ok(/else if\(S\.view==='feedback'\)renderFeedback\(\)/.test(fn('render')) && /if\(v==='feedback'&&was!=='feedback'\)\{S\.fb\.sent='';S\.fb\.err=''\}/.test(fn('go')), 'экран открывается, при входе старое «Спасибо» и ошибка стираются');
-  assert.ok(/vw!=='feedback'/.test(html) && /vw==='feedback'\)v='feedback'/.test(html) && /AS_SHOP_VIEWS=\[[^\]]*'feedback'\]/.test(html), 'адрес ?v=feedback и «Смотреть как»');
+  assert.ok(/vw!=='feedback'/.test(html) && /vw==='feedback'\)v='feedback'/.test(html) && /AS_SHOP_VIEWS=\[[^\]]*'feedback'[^\]]*\]/.test(html), 'адрес ?v=feedback и «Смотреть как»');
   const rf = fn('renderFeedback');
   assert.ok(/!S\.auth/.test(rf) && /F\.sent/.test(rf) && /data-act="fbkind"/.test(rf) && /data-act="fbsend"/.test(rf) && /data-act="fbagain"/.test(rf), 'без входа, «Спасибо», темы, «Отправить», «Написать ещё»');
   assert.ok(/maxlength="'\+FB_LEN\+'"/.test(rf) && /id="fb-cnt"/.test(rf) && /FB_LEN=1000,FB_MIN=5/.test(html), 'до 1000 знаков и счётчик');
@@ -11963,8 +12152,8 @@ await t('владелец: «Люди» (Все · Агенты · Склад) �
   assert.deepEqual(ru.ownSecInfo('clients'), { group: 'Настройки', title: 'Служебное' });
   assert.deepEqual(ru.ownSecInfo('dist'), { group: 'Продавцы', title: 'Продавцы' });
   assert.deepEqual(uzl.ownSecInfo('people'), { group: 'Odamlar', title: 'Barcha odamlar' });
-  // «Входящие» не изменились
-  assert.deepEqual(ru.ownSecs().find(g => g[0] === 'inbox')[2].map(x => x[0]), ['disp', 'fb']);
+  // «Входящие»: сверху «Заявки»
+  assert.deepEqual(ru.ownSecs().find(g => g[0] === 'inbox')[2].map(x => x[0]), ['ap', 'disp', 'fb']);
   // экраны частей: «Районы и города» и «Служебное»
   const ppl = html.slice(html.indexOf('function ownPeopleHTML('), html.indexOf('async function ownTerrAdd('));
   const draw = (part, extra, uz) => { const S = { own: Object.assign({ ppl: { total: 40, free: 5, terr: [{ id: 't1', name: 'Навои', n: 3 }], agents: [], wh: [], whrate: 500 }, pbusy: false, perr: '', tname: '', imp: null, wrate: null, wname: '', wcode: '', wbz: '', wmade: null, agopen: {}, agOpen: false, aterr: [], amade: null, aname: '', acode: '' }, extra) }; return new Function('S', 'L', 'esc', 'hintD', 'ownSecInfo', 'num', 'bzList', ppl + '\nreturn ownPeopleHTML;')(S, (a, b) => (uz ? b : a), escH, () => '', () => ({ title: '' }), x => x, () => [])(part); };
@@ -12469,6 +12658,258 @@ await t('заказы продавца: карточка свёрнута до �
   assert.ok(css.includes('.ord.sc:not(.ex):not(.hp) .acts{display:none}') && css.includes('.ord.sc .odet[hidden]{display:none}'), 'пустой блок кнопок и скрытые детали не занимают места');
   assert.ok(/\.odh\{[^}]*min-height:56px/.test(css) && /\.ord\.sc \.acts \.btn\{min-height:40px;font-size:14px\}/.test(css) && /\.odh\[aria-expanded="true"\] \.lchev svg\{transform:rotate\(180deg\)\}/.test(css), 'шапка 56, кнопки 40, стрелка поворачивается');
   assert.ok(/\.ord\.sc\.is-new|\.ord\.is-new\{/.test(css), 'подсветка новых — прежнее правило .is-new');
+});
+
+/* ---------- «Стать продавцом» на экране: настоящий код экрана и владельческой вкладки в песочнице ---------- */
+const bsHtml = fs.readFileSync(path.join(root, 'src/app.html'), 'utf8');
+const bsLab = (o = {}) => {
+  const shared = fs.readFileSync(path.join(root, 'src/shared.js'), 'utf8');
+  const { SHOP_CATS, shopCatName } = new Function('LANG', ['SHOP_CATS', 'SHOP_CAT_NAMES', 'shopCatName'].map(n => shared.match(new RegExp('^const ' + n + '=.*$', 'm'))[0]).join('\n') + '\nreturn {SHOP_CATS,shopCatName};')(o.uz ? 'uz' : 'ru');
+  const S = Object.assign({
+    ready: true, auth: true, view: 'become', as: '', hub: { loaded: true, title: '', me: { sells: [], owner: false } },
+    bs: { ok: true, err: false, seller: false, item: null, phone: '', busy: false, ferr: '', name: '', cat: '', tel: '', reg: '', text: '', code: '', cbusy: false, cerr: '' },
+    own: { apn: 0, loaded: true, shops: [], ap: { ok: true, err: false, items: [], f: 'new', busy: '', ask: '', why: '', made: null } }
+  }, o.S || {});
+  const calls = [], view = { innerHTML: '' };
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const L = (ru, uz) => (o.uz ? uz : ru);
+  const env = {
+    S, view, L, esc, SHOP_CATS, shopCatName, hintD: (ru, uz) => '<div class="hint">' + esc(L(ru, uz)) + '</div>', hubTitle: () => S.hub.title || 'Sarbon', viewAs: () => S.as,
+    isOwner: () => !!(S.hub.me && S.hub.me.owner), jrDate: () => '24 нояб., 18:40', whoRoleTag: r => '<span class="dtag">' + r.r + (r.n ? ' · ' + esc(r.n) : '') + '</span>', ownErr: e => 'ownErr:' + e,
+    api: async (m, p, b) => { calls.push([m, p, b]); const r = (o.reply || {})[p]; return typeof r === 'function' ? r(b) : r || { ok: false, status: 0, data: null }; },
+    toast: m => calls.push(['toast', m]), go: v => calls.push(['go', v]), enterSeller: async (d, t) => { calls.push(['seller', d, t]); return o.enter !== false; },
+    loadHub: async () => { calls.push(['loadHub']); if (o.afterHub) o.afterHub(S); },
+    renderOwner: () => calls.push(['renderOwner']), renderNav: () => calls.push(['renderNav']), ownRefresh: () => calls.push(['ownRefresh']),
+    document: { activeElement: null }, window: { scrollTo: () => calls.push(['scroll']) }, $: () => null
+  };
+  const bi = bsHtml.indexOf('/* ---------- «Стать продавцом»: заявка владельцу площадки'), be = bsHtml.indexOf('/* ---------- «Написать нам»: человек пишет');
+  const oi = bsHtml.indexOf('/* владелец: заявки «Стать продавцом»'), oe = bsHtml.indexOf('/* владелец: канал для видео');
+  assert.ok(bi > 0 && be > bi && oi > 0 && oe > oi, 'блоки «Стать продавцом» найдены в app.html');
+  const api = new Function(...Object.keys(env), bsHtml.slice(bi, be) + '\n' + bsHtml.slice(oi, oe) + '\nreturn {becomeOn,becomeCardHTML,renderBecome,loadBecome,bsSend,bsCode,loadOwnerAp,apDecide,apCardHTML,ownApHTML,apErr,AP_TEXT};')(...Object.values(env));
+  return Object.assign(api, { S, calls, view, esc });
+};
+const bsItem = (o = {}) => Object.assign({ id: 'Z-AAAAA', st: 'new', n: 'Самарканд Ун', c: 'wholesale', at: '2026-11-24T10:00:00.000Z', dt: '', why: '' }, o);
+
+await t('«Стать продавцом»: кому показывать — вошедшему покупателю; владельцу и продавцу только в режиме «Смотреть как покупатель»', () => {
+  const on = (st, me) => bsLab({ S: Object.assign({ hub: { loaded: true, title: '', me } }, st) }).becomeOn();
+  const buyer = { sells: [], delivers: [], owner: false };
+  assert.equal(on({}, buyer), true, 'покупатель');
+  assert.equal(on({}, Object.assign({}, buyer, { delivers: [{ id: 'a' }] })), true, 'доставщик и агент, которые ничего не продают, тоже могут подать заявку');
+  assert.equal(on({ auth: false }, buyer), false, 'без входа нельзя: заявка привязана к человеку');
+  assert.equal(on({ hub: { loaded: false, title: '', me: buyer } }, buyer), false, 'список ещё не загружен');
+  assert.equal(on({}, null), false);
+  assert.equal(on({}, { sells: [{ id: 'a' }], owner: false }), false, 'продавец');
+  assert.equal(on({}, { sells: [], owner: true }), false, 'владелец');
+  assert.equal(on({ as: 'shop' }, { sells: [{ id: 'a' }], owner: true }), true, 'владелец в режиме «Смотреть как покупатель»');
+  assert.equal(on({ as: 'shop' }, { sells: [{ id: 'a' }], owner: false }), true, 'продавец в режиме «Смотреть как покупатель»');
+  assert.equal(on({ as: 'seller' }, { sells: [{ id: 'a' }], owner: true }), false, 'в режиме «Смотреть как продавец» строки нет');
+  assert.equal(on({ as: 'seller' }, buyer), false);
+});
+
+await t('«Стать продавцом»: экран по состояниям — загрузка, без входа, форма, «Заявка отправлена», «одобрена», «отклонена» с причиной, «Вы уже продавец», просмотр', () => {
+  const draw = (S, o) => { const m = bsLab(Object.assign({ S }, o)); m.renderBecome(); return m.view.innerHTML; };
+  const bs = x => ({ ok: true, err: false, seller: false, item: null, phone: '', busy: false, ferr: '', name: '', cat: '', tel: '', reg: '', text: '', code: '', cbusy: false, cerr: '', ...x });
+  assert.ok(draw({ ready: false }).includes('Загружаем'), 'до загрузки');
+  const na = draw({ auth: false });
+  assert.ok(na.includes('Откройте через бота') && !na.includes('bs-name'), 'без входа форма не рисуется');
+  assert.ok(draw({ bs: bs({ ok: false }) }).includes('Загружаем'), 'состояние заявки ещё грузится');
+  const er = draw({ bs: bs({ ok: false, err: true }) });
+  assert.ok(er.includes('Не удалось загрузить') && er.includes('data-act="bsreload"') && !er.includes('bs-name'), 'ошибка загрузки: «Повторить»');
+  // форма
+  let h = draw({ bs: bs({ tel: '+998 90 123 45 67', name: 'Мой "Склад"', text: 'abc' }) });
+  assert.ok(h.includes('Оставить заявку') && h.includes('У меня уже есть код') && h.includes('Продавайте на Sarbon'), 'форма, код и вступление');
+  assert.ok(['bs-name', 'bs-ph', 'bs-reg', 'bs-t', 'bs-code'].every(id => h.includes('id="' + id + '"')), 'все поля');
+  assert.deepEqual([...h.matchAll(/data-act="bscat" data-v="(\w+)"/g)].map(x => x[1]), ['maker', 'importer', 'wholesale', 'distributor', 'bazaar'], 'пять категорий в порядке главного экрана');
+  for (const nm of ['Производители', 'Импортеры', 'Оптовики', 'Дистрибьюторы', 'Базары']) assert.ok(h.includes('>' + nm + '<'), nm);
+  assert.ok(h.includes('value="+998 90 123 45 67"') && h.includes('value="Мой &quot;Склад&quot;"') && h.includes('3 / 500'), 'введённое сохраняется, кавычки не ломают разметку');
+  assert.ok(/maxlength="500"/.test(h) && /maxlength="60"/.test(h), 'ограничения длины как на сервере');
+  assert.equal((h.match(/aria-pressed="true"/g) || []).length, 0, 'категория не выбрана');
+  assert.equal((draw({ bs: bs({ cat: 'bazaar' }) }).match(/data-v="bazaar" aria-pressed="true"/g) || []).length, 1, 'выбранная категория отмечена');
+  assert.ok(h.includes('Не больше 3 заявок в день'));
+  assert.ok(draw({ bs: bs({ ferr: 'Укажите район или город' }) }).includes('role="alert">Укажите район или город'), 'ошибка формы');
+  assert.ok(draw({ bs: bs({ busy: true }) }).includes('data-act="bssend" disabled>Отправляем'), 'во время отправки кнопка неактивна');
+  // ждёт ответа
+  h = draw({ bs: bs({ item: bsItem() }) });
+  assert.ok(h.includes('Заявка отправлена') && h.includes('«Самарканд Ун» · Оптовики') && !h.includes('bs-name') && h.includes('bs-code'), 'новая заявка: формы нет, поле кода есть');
+  // одобрена
+  h = draw({ bs: bs({ item: bsItem({ st: 'ok' }) }) });
+  assert.ok(h.includes('Заявка одобрена') && h.includes('Код пришёл вам в Telegram') && h.includes('Написать нам') && !h.includes('bs-name') && h.includes('bs-code'), 'одобрена: подсказка про код и «Написать нам»');
+  // отклонена: причина (с защитой от разметки) и новая форма
+  h = draw({ bs: bs({ item: bsItem({ st: 'no', why: 'Нет <b>документов</b>' }) }) });
+  assert.ok(h.includes('Заявка отклонена') && h.includes('Причина: Нет &lt;b&gt;документов&lt;/b&gt;') && !h.includes('<b>документов') && h.includes('Новая заявка') && h.includes('bs-name'), 'отказ: причина без разметки и новая форма');
+  // продавец и владелец
+  h = draw({ bs: bs({ seller: true }), hub: { loaded: true, title: '', me: { sells: [{ id: 'a', name: 'А' }], owner: false } } });
+  assert.ok(h.includes('Вы уже продавец') && h.includes('data-act="coopen"') && !h.includes('bs-name') && !h.includes('bs-code'), 'продавец: «Вы уже продавец» и «Открыть мою компанию»');
+  h = draw({ bs: bs({ seller: true }), hub: { loaded: true, title: '', me: { sells: [], owner: true } } });
+  assert.ok(h.includes('Вы владелец площадки') && !h.includes('data-act="coopen"'), 'владелец без компаний: без кнопки компании');
+  // просмотр глазами покупателя: форма видна, всё неактивно
+  h = draw({ as: 'shop', bs: bs({ seller: true }), hub: { loaded: true, title: '', me: { sells: [{ id: 'a' }], owner: true } } });
+  assert.ok(h.includes('Вы смотрите как покупатель') && h.includes('bs-name'), 'просмотр: форма видна');
+  assert.ok(!/<(input|textarea)(?![^>]*disabled)[^>]*id="bs-/.test(h) && !/data-act="(bssend|bscode)"(?![^>]*disabled)/.test(h) && !/data-act="bscat"(?![^>]*disabled)/.test(h), 'просмотр: все поля и кнопки неактивны');
+  // название платформы берётся с площадки
+  assert.ok(draw({ bs: bs(), hub: { loaded: true, title: 'Навои Опт', me: { sells: [], owner: false } } }).includes('Продавайте на Навои Опт'), 'название площадки');
+  // узбекский
+  h = draw({ bs: bs() }, { uz: true });
+  assert.ok(h.includes('Sotuvchi boʻlish') && h.includes('Ariza qoldirish') && h.includes('Menda kod bor') && h.includes('Ishlab chiqaruvchilar') && !/[А-Яа-я]/.test(h.replace(/Sarbon/g, '')), 'на узбекском ни одного русского слова');
+  // блок на главном экране
+  const card = bsLab().becomeCardHTML();
+  assert.ok(card.includes('Хотите продавать на Sarbon?') && card.includes('data-act="nav" data-v="become"') && card.includes('class="card bcta"'), 'блок на главном экране');
+  assert.ok(bsLab({ uz: true }).becomeCardHTML().includes('Sarbonda sotmoqchimisiz?'));
+});
+
+await t('«Стать продавцом»: «Отправить заявку» проверяет поля сам, не шлёт дважды, показывает ответ сервера; вход по коду; загрузка состояния', async () => {
+  const fill = (m, x) => Object.assign(m.S.bs, { name: 'Самарканд Ун', cat: 'wholesale', tel: '+998 90 555 12 34', reg: 'Самарканд', text: ' Продаём муку ' }, x);
+  // проверка полей: порядок и тексты, на сервер ничего не уходит
+  for (const [patch, msg] of [[{ name: ' a ' }, 'Название компании: от 2 знаков'], [{ cat: '' }, 'Выберите, что вы продаёте'], [{ tel: '12 345' }, 'Телефон: от 9 цифр'], [{ tel: '1'.repeat(16) }, 'Телефон: от 9 цифр'], [{ reg: ' ' }, 'Укажите район или город']]) {
+    const m = bsLab(); fill(m, patch); await m.bsSend();
+    assert.ok(m.S.bs.ferr.startsWith(msg), msg + ' / ' + m.S.bs.ferr);
+    assert.equal(m.calls.filter(c => c[0] === 'POST').length, 0, 'запрос не отправлен: ' + msg);
+    assert.ok(m.view.innerHTML.includes('role="alert">' + m.esc(m.S.bs.ferr)), 'ошибка видна на экране');
+  }
+  // удачная отправка: точные поля, поля формы стираются, телефон остаётся, экран показывает «Заявка отправлена»
+  let m = bsLab({ reply: { '/api/hub/apply': { ok: true, status: 200, data: { ok: true, state: { seller: false, item: bsItem() } } } } }); fill(m);
+  await m.bsSend();
+  assert.deepEqual(m.calls.filter(c => c[0] === 'POST'), [['POST', '/api/hub/apply', { name: 'Самарканд Ун', cat: 'wholesale', phone: '+998 90 555 12 34', region: 'Самарканд', text: 'Продаём муку' }]]);
+  assert.deepEqual([m.S.bs.name, m.S.bs.cat, m.S.bs.reg, m.S.bs.text, m.S.bs.tel, m.S.bs.busy, m.S.bs.item.st], ['', '', '', '', '+998 90 555 12 34', false, 'new']);
+  assert.ok(m.view.innerHTML.includes('Заявка отправлена') && m.calls.some(c => c[0] === 'scroll'), 'вверх экрана, «Заявка отправлена»');
+  // двойное нажатие: второй вызов, пока идёт первый, ничего не делает
+  m = bsLab({ reply: { '/api/hub/apply': { ok: true, status: 200, data: { ok: true, state: { seller: false, item: bsItem() } } } } }); fill(m);
+  await Promise.all([m.bsSend(), m.bsSend()]);
+  assert.equal(m.calls.filter(c => c[0] === 'POST').length, 1, 'одна заявка');
+  // ответы сервера
+  for (const [err, status, msg] of [['limit', 429, 'Сегодня вы уже отправили 3 заявки'], ['bad_phone', 400, 'Телефон: от 9 цифр'], ['', 0, 'Не получилось']]) {
+    m = bsLab({ reply: { '/api/hub/apply': { ok: false, status, data: err ? { error: err } : null } } }); fill(m);
+    await m.bsSend();
+    assert.ok(m.S.bs.ferr.includes(msg), err + ': ' + m.S.bs.ferr);
+    assert.equal(m.S.bs.name, 'Самарканд Ун', 'при ошибке введённое не стирается'); assert.equal(m.S.bs.busy, false);
+  }
+  // «уже ждёт» и «уже одобрена»: показываем то, что на сервере
+  m = bsLab({ reply: { '/api/hub/apply': r => r ? { ok: false, status: 409, data: { error: 'pending' } } : { ok: true, status: 200, data: { seller: false, item: bsItem(), phone: '' } } } }); fill(m);
+  await m.bsSend();
+  assert.ok(m.calls.some(c => c[0] === 'GET' && c[1] === '/api/hub/apply'), 'после ответа «pending» состояние перечитано'); assert.equal(m.S.bs.item.st, 'new');
+  // вход по коду
+  m = bsLab(); await m.bsCode();
+  assert.ok(m.S.bs.cerr.startsWith('Вставьте код') && m.calls.length === 0, 'пустой код: сервер не трогаем');
+  m = bsLab({ reply: { '/api/hub/seller-code': { ok: false, status: 403, data: { error: 'bad_code' } } } }); m.S.bs.code = ' WRONG ';
+  await m.bsCode();
+  assert.deepEqual(m.calls.filter(c => c[0] === 'POST'), [['POST', '/api/hub/seller-code', { code: 'WRONG' }]], 'код уходит без пробелов по краям');
+  assert.ok(m.S.bs.cerr.startsWith('Код не подошёл') && m.S.bs.code === ' WRONG ' && !m.calls.some(c => c[0] === 'seller'), 'неверный код: сообщение, поле не стирается, в компанию не пускает');
+  m = bsLab({ reply: { '/api/hub/seller-code': { ok: false, status: 429, data: { error: 'locked' } } } }); m.S.bs.code = 'X';
+  await m.bsCode(); assert.ok(m.S.bs.cerr.startsWith('Слишком много неверных кодов'));
+  m = bsLab({ reply: { '/api/hub/seller-code': { ok: true, status: 200, data: { ok: true, did: 's7', name: 'Самарканд Ун', owner: false, fresh: true } } } }); m.S.bs.code = 'GOOD-CODE'; m.S.bs.item = bsItem({ st: 'ok' });
+  await m.bsCode();
+  assert.deepEqual(m.calls.filter(c => c[0] !== 'POST').map(c => c.join(':')), ['loadHub', 'toast:Вы вошли как продавец «Самарканд Ун»', 'seller:s7:orders'], 'список обновлён, сообщение, «Моя компания» на заказах');
+  assert.deepEqual([m.S.bs.code, m.S.bs.seller, m.S.bs.item, m.S.bs.cbusy], ['', true, null, false], 'код стёрт');
+  m = bsLab({ reply: { '/api/hub/seller-code': { ok: true, status: 200, data: { ok: true, did: 'main', name: 'Sarbon', owner: true, fresh: true } } }, afterHub: S => { S.hub.me.owner = true; } }); m.S.bs.code = 'OWNER-CODE-123';
+  await m.bsCode();
+  assert.ok(m.calls.some(c => c[0] === 'go' && c[1] === 'owner') && !m.calls.some(c => c[0] === 'seller'), 'код владельца: раздел владельца');
+  // загрузка состояния: телефон подставляется один раз, ошибка не стирает загруженное
+  m = bsLab({ S: { bs: { ok: false, err: false, seller: false, item: null, phone: '', busy: false, ferr: '', name: '', cat: '', tel: '', reg: '', text: '', code: '', cbusy: false, cerr: '' } }, reply: { '/api/hub/apply': { ok: true, status: 200, data: { seller: false, item: bsItem({ st: 'no', why: 'x' }), phone: '+998 90 111 22 33' } } } });
+  await m.loadBecome();
+  assert.deepEqual([m.S.bs.ok, m.S.bs.tel, m.S.bs.item.st], [true, '+998 90 111 22 33', 'no']);
+  m.S.bs.tel = '+998 91 000 00 00'; await m.loadBecome();
+  assert.equal(m.S.bs.tel, '+998 91 000 00 00', 'то, что человек уже ввёл, не заменяется');
+  m = bsLab({ reply: { '/api/hub/apply': { ok: false, status: 0, data: null } } });
+  await m.loadBecome();
+  assert.equal(m.S.bs.ok, true, 'сбой сети не стирает загруженное состояние'); assert.equal(m.S.bs.err, false);
+  m = bsLab({ S: { bs: { ok: false, err: false, seller: false, item: null, phone: '', busy: false, ferr: '', name: '', cat: '', tel: '', reg: '', text: '', code: '', cbusy: false, cerr: '' } }, reply: { '/api/hub/apply': { ok: false, status: 0, data: null } } });
+  await m.loadBecome(); assert.equal(m.S.bs.err, true, 'первая загрузка не удалась: «Повторить»');
+  m = bsLab({ S: { auth: false }, reply: {} }); await m.loadBecome();
+  assert.equal(m.calls.filter(c => c[0] === 'GET').length, 0, 'без входа запроса нет');
+});
+
+await t('«Стать продавцом»: вкладка «Заявки» у владельца — карточки, фильтры, «Одобрить» (код), «Отклонить» (причина), защита от двойного нажатия', async () => {
+  const mk = (id, st, x) => Object.assign({ id, uid: 51, nm: 'Бобур', un: 'samun', roles: [], n: 'Компания ' + id, c: 'maker', ph: '+998 90 555 12 34', rg: 'Навои', t: '', at: '2026-11-24T10:00:00.000Z', st }, x);
+  const items = () => [mk('Z-AAAAA', 'new', { t: 'Продаём <script>x</script> муку', roles: [{ r: 'agent', n: 'Азиз' }] }), mk('Z-BBBBB', 'new', { un: '' }), mk('Z-CCCCC', 'ok', { dt: '2026-11-24T11:00:00.000Z', db: 'Jasur' }), mk('Z-DDDDD', 'no', { why: 'Нет документов', dt: '2026-11-24T11:00:00.000Z', db: 'Jasur' })];
+  const lab = (o = {}) => { const m = bsLab(Object.assign({ S: { hub: { loaded: true, title: '', me: { sells: [], owner: true } }, own: { apn: 2, loaded: true, shops: [], ap: { ok: true, err: false, items: items(), f: 'new', busy: '', ask: '', why: '', made: null } } } }, o)); return m; };
+  let m = lab(), h = m.ownApHTML();
+  assert.ok(h.includes('Ждут · 2') && h.includes('Одобрены · 1') && h.includes('Отклонены · 1'), 'счётчики фильтров');
+  assert.equal((h.match(/class="bcard who"/g) || []).length, 2, 'в «Ждут» две карточки');
+  assert.ok(h.includes('data-act="apok" data-id="Z-AAAAA"') && h.includes('data-act="apno" data-id="Z-BBBBB"'), 'у каждой «Одобрить» и «Отклонить»');
+  assert.ok(h.includes('@samun · +998 90 555 12 34') && h.includes('Бобур · +998 90 555 12 34'), 'сначала @логин, а имя, только если логина нет');
+  assert.ok(h.includes('Производители') && h.includes('Навои') && h.includes('agent · Азиз'), 'категория, район, роль человека');
+  assert.ok(h.includes('&lt;script&gt;x&lt;/script&gt;') && !h.includes('<script>'), 'текст заявителя без разметки');
+  assert.ok(!h.includes('class="empty"'), 'список не пустой');
+  m.S.own.ap.f = 'ok'; h = m.ownApHTML();
+  assert.ok(h.includes('Одобрено: Jasur, ') && !h.includes('data-act="apok"') && !h.includes('data-act="apno"'), 'у решённых кнопок нет, видно кто решил');
+  m.S.own.ap.f = 'no'; h = m.ownApHTML();
+  assert.ok(h.includes('Причина: Нет документов') && h.includes('Отклонено: Jasur, '), 'отказ: причина');
+  m.S.own.ap.items = []; m.S.own.ap.f = 'new'; assert.ok(m.ownApHTML().includes('Новых заявок нет'), 'пусто');
+  assert.ok(lab({ S: { hub: { loaded: true, title: '', me: { sells: [], owner: true } }, own: { apn: 0, loaded: true, shops: [], ap: { ok: false, err: true, items: [], f: 'new', busy: '', ask: '', why: '', made: null } } } }).ownApHTML().includes('Не удалось загрузить'));
+  // «Отклонить»: поле причины вместо кнопок
+  m = lab(); m.S.own.ap.ask = 'Z-BBBBB'; m.S.own.ap.why = 'Нужен ИНН';
+  h = m.ownApHTML();
+  assert.ok(h.includes('id="ap-why"') && h.includes('>Нужен ИНН</textarea>') && h.includes('data-act="apnogo" data-id="Z-BBBBB"') && h.includes('data-act="apnox"') && h.includes('data-act="apok" data-id="Z-AAAAA"'), 'у одной карточки поле причины, у другой кнопки как были');
+  m = lab(); m.S.own.ap.busy = 'Z-AAAAA';
+  assert.equal((m.ownApHTML().match(/data-act="ap(ok|no)"[^>]* disabled/g) || []).length, 4, 'пока идёт решение, все кнопки неактивны');
+  // отказ без причины ничего не отправляет
+  m = lab(); m.S.own.ap.ask = 'Z-BBBBB'; m.S.own.ap.why = ' x ';
+  await m.apDecide('Z-BBBBB', false);
+  assert.equal(m.calls.filter(c => c[0] === 'POST').length, 0); assert.ok(m.calls.some(c => c[0] === 'toast' && c[1].startsWith('Напишите причину отказа')));
+  // отказ с причиной
+  m = lab({ reply: { '/api/hub/admin/apply/decide': b => ({ ok: true, status: 200, data: { item: mk(b.id, 'no', { why: b.why, dt: '2026-11-24T12:00:00.000Z', db: 'Jasur' }), n: 1, sent: true } }) } });
+  m.S.own.ap.ask = 'Z-BBBBB'; m.S.own.ap.why = ' Нужен ИНН ';
+  await m.apDecide('Z-BBBBB', false);
+  assert.deepEqual(m.calls.filter(c => c[0] === 'POST'), [['POST', '/api/hub/admin/apply/decide', { id: 'Z-BBBBB', ok: false, why: 'Нужен ИНН' }]]);
+  assert.deepEqual([m.S.own.ap.items.find(x => x.id === 'Z-BBBBB').st, m.S.own.apn, m.S.own.ap.ask, m.S.own.ap.why, m.S.own.ap.busy], ['no', 1, '', '', ''], 'карточка обновлена, значок 1, поле причины закрыто');
+  assert.ok(m.calls.some(c => c[0] === 'toast' && c[1] === 'Заявка отклонена, причина отправлена'));
+  m = lab({ reply: { '/api/hub/admin/apply/decide': b => ({ ok: true, status: 200, data: { item: mk(b.id, 'no', { why: b.why }), n: 1, sent: false } }) } }); m.S.own.ap.why = 'Дубль';
+  await m.apDecide('Z-BBBBB', false);
+  assert.ok(m.calls.some(c => c[0] === 'toast' && c[1].includes('сообщение не дошло')), 'Telegram не доставил причину: владелец об этом узнаёт');
+  // одобрить: код показывается владельцу, продавец попадает в список один раз
+  const shop = { id: 's9', name: 'Компания Z-AAAAA', cat: 'maker' };
+  m = lab({ reply: { '/api/hub/admin/apply/decide': b => ({ ok: true, status: 200, data: { item: mk(b.id, 'ok', { did: 's9', dt: '2026-11-24T12:00:00.000Z', db: 'Jasur' }), n: 1, sent: false, code: 'KXQM-7P2R-WD8T', shop } }) } });
+  await m.apDecide('Z-AAAAA', true);
+  assert.deepEqual(m.calls.filter(c => c[0] === 'POST'), [['POST', '/api/hub/admin/apply/decide', { id: 'Z-AAAAA', ok: true }]]);
+  assert.deepEqual(m.S.own.ap.made, { id: 'Z-AAAAA', name: 'Компания Z-AAAAA', code: 'KXQM-7P2R-WD8T', sent: false });
+  assert.deepEqual([m.S.own.shops.map(x => x.id), m.S.own.apn], [['s9'], 1], 'продавец в списке площадки, значок 1');
+  assert.ok(m.calls.some(c => c[0] === 'loadHub'), 'главный список обновлён');
+  h = m.ownApHTML();
+  assert.ok(h.includes('class="card codebox"') && h.includes('KXQM-7P2R-WD8T') && h.includes('Telegram не принял сообщение') && h.includes('data-act="copy" data-v="KXQM-7P2R-WD8T"') && h.includes('data-act="apmadeclose"'), 'карточка с кодом: предупреждение, копирование, «Готово»');
+  m.S.own.ap.made.sent = true; assert.ok(m.ownApHTML().includes('Код отправлен заявителю в Telegram'));
+  // повторное нажатие, пока идёт запрос
+  m = lab({ reply: { '/api/hub/admin/apply/decide': b => ({ ok: true, status: 200, data: { item: mk(b.id, 'ok', { did: 's9' }), n: 1, sent: true, code: 'AAAA-BBBB-CCCC', shop } }) } });
+  await Promise.all([m.apDecide('Z-AAAAA', true), m.apDecide('Z-AAAAA', true)]);
+  assert.equal(m.calls.filter(c => c[0] === 'POST').length, 1, 'один запрос');
+  // уже решено кем-то ещё: карточка обновляется, значок пересчитывается
+  m = lab({ reply: { '/api/hub/admin/apply/decide': { ok: false, status: 409, data: { error: 'done', n: 1, item: mk('Z-AAAAA', 'no', { why: 'Другой владелец' }) } } } });
+  await m.apDecide('Z-AAAAA', true);
+  assert.deepEqual([m.S.own.ap.items.find(x => x.id === 'Z-AAAAA').st, m.S.own.apn, m.S.own.ap.made], ['no', 1, null]);
+  assert.ok(m.calls.some(c => c[0] === 'toast' && c[1] === 'Эта заявка уже решена'));
+  // лимит продавцов: заявка остаётся
+  m = lab({ reply: { '/api/hub/admin/apply/decide': { ok: false, status: 409, data: { error: 'too_many' } } } });
+  await m.apDecide('Z-AAAAA', true);
+  assert.equal(m.S.own.ap.items.find(x => x.id === 'Z-AAAAA').st, 'new'); assert.ok(m.calls.some(c => c[0] === 'toast' && c[1] === 'ownErr:too_many'));
+  assert.equal(m.S.own.ap.busy, '', 'кнопки снова активны');
+  // загрузка списка: значок обновляется, из этого вкладка перерисовывается только когда открыта
+  m = lab({ S: { view: 'owner', hub: { loaded: true, title: '', me: { sells: [], owner: true } }, own: { sec: 'ap', apn: 5, loaded: true, shops: [], ap: { ok: false, err: false, items: [], f: 'new', busy: '', ask: '', why: '', made: null } } }, reply: { '/api/hub/admin/apply': { ok: true, status: 200, data: { items: items(), n: 2, max: 300 } } } });
+  await m.loadOwnerAp();
+  assert.deepEqual([m.S.own.ap.ok, m.S.own.apn, m.S.own.ap.items.length], [true, 2, 4]);
+  assert.ok(m.calls.some(c => c[0] === 'renderNav') && m.calls.some(c => c[0] === 'ownRefresh'), 'значок и открытая вкладка обновлены');
+  m = lab({ S: { hub: { loaded: true, title: '', me: { sells: [], owner: false } } } }); await m.loadOwnerAp();
+  assert.equal(m.calls.length, 0, 'не владельцу ничего не грузится');
+});
+
+await t('«Стать продавцом»: проводка в app.html — меню, экран, адреса, нажатия, ввод, обновление значка; сервер: маршруты и защита', () => {
+  const html = bsHtml, wk = fs.readFileSync(path.join(root, 'src/worker-src.js'), 'utf8');
+  const fn = name => { const i = html.indexOf('function ' + name + '('); assert.ok(i > 0, 'функция ' + name); const j = html.indexOf('\nfunction ', i + 1); return html.slice(i, j > 0 ? j : i + 4000); };
+  assert.ok(/mk\('profile',L\('Профиль','Profil'\),'user'\)\);\n\s*if\(becomeOn\(\)\)top\.push\(mk\('become',L\('Стать продавцом','Sotuvchi boʻlish'\),'store'\)\)/.test(fn('menuGroups')), 'строка меню сразу после «Профиля», значок store');
+  assert.ok(/if\(!ck&&becomeOn\(\)\)out\+=becomeCardHTML\(\)/.test(fn('renderShops')), 'блок только на экране категорий, не внутри категории');
+  assert.ok(/else if\(S\.view==='become'\)renderBecome\(\)/.test(fn('render')) && /if\(v==='become'&&was!=='become'\)\{S\.bs\.ferr='';S\.bs\.cerr=''\}/.test(fn('go')) && /if\(v==='become'\)loadBecome\(\)/.test(fn('go')), 'экран открывается, старые ошибки стираются, состояние загружается');
+  assert.ok(/AS_SHOP_VIEWS=\[[^\]]*'become'[^\]]*\]/.test(html), '«Смотреть как покупатель»');
+  assert.ok(/vw!=='become'&&vw!=='wh'\)did='main'/.test(html) && /vw==='become'\?'become':'shop'/.test(html) && /else if\(vw==='become'\)v='become'/.test(html), 'адрес ?v=become');
+  assert.ok(/if\(QS\.get\('t'\)==='ap'\)S\.own\.sec='ap'/.test(html), 'адрес ?v=owner&t=ap');
+  for (const a of ['bscat', 'bssend', 'bscode', 'bsreload', 'apf', 'apok', 'apno', 'apnox', 'apnogo', 'apmadeclose']) assert.equal((html.match(new RegExp("a==='" + a + "'", 'g')) || []).length, 1, 'обработчик ' + a + ' один');
+  for (const id of ['bs-name', 'bs-ph', 'bs-reg', 'bs-t', 'bs-code', 'ap-why']) assert.ok(html.includes("t.id==='" + id + "'"), 'ввод ' + id);
+  assert.ok(/const AP_TEXT=500/.test(html) && /AP_TEXT = 500/.test(wk) && /AP_DAY = 3/.test(wk) && /AP_MAX = 300/.test(wk), 'пределы на экране и на сервере совпадают');
+  assert.ok(/typeof h\.me\.apn==='number'\)S\.own\.apn=h\.me\.apn/.test(html), 'число заявок приходит с главным списком');
+  assert.ok(/if\(sec==='ap'\)loadOwnerAp\(\)/.test(html) && /loadOwnerFb\(\);\n\s*loadOwnerAp\(\);/.test(html) && /S\.own\.sec==='ap'&&tickN%2===0&&!S\.own\.ap\.busy\)loadOwnerAp\(\)/.test(html), 'заявки грузятся при открытии, при входе владельца и раз в полминуты, пока вкладка открыта');
+  // сервер: людям, владельцу, значок; чужой не решает, код не хранится и не возвращается заявителю
+  for (const e of ["path === '/api/hub/apply' && method === 'GET'", "path === '/api/hub/apply' && method === 'POST'", "path === '/api/hub/seller-code' && method === 'POST'", "path.startsWith('/api/hub/admin/apply')", "out.me.apn = Number(await this.st.get('apn')) || 0"]) assert.ok(wk.includes(e), e);
+  assert.ok(/const au = [^\n]*\n/.test(wk) && wk.indexOf("path === '/api/hub/apply' && method === 'GET'") > wk.indexOf('/api/hub/feedback') - 3000, 'маршруты человека стоят после проверки входа');
+  const ad = wk.slice(wk.indexOf('async adminApply('), wk.indexOf('async apTell('));
+  assert.ok(ad.includes("it.st !== 'new' || it.busy") && ad.includes('it.busy = true') && ad.includes('delete it.busy'), 'двойное «Одобрить» не создаёт второго продавца');
+  assert.ok(!/apPub[^\n]*(code|uid|ph\b|\bt\b)/.test(wk.slice(wk.indexOf('const apPub'), wk.indexOf('const apPub') + 300)), 'заявитель не получает чужих полей');
 });
 
 await t('«О нас»: пути в подсказках совпадают с новой структурой (Люди, Районы и города, Служебное, «＋ Добавить …», Мои заказы, Товары)', () => {
